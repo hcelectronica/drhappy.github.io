@@ -1,0 +1,13 @@
+medicamento,principio_activo,presentacion,indicaciones,posologia,contraindicaciones,observaciones
+Ibuprofeno,Ibuprofeno,Comprimidos 400 mg / suspensión oral,Dolor leve a moderado y fiebre,Según criterio médico y ficha técnica,Hipersensibilidad a AINEs o úlcera activa,Verificar riesgo gastrointestinal y renal
+Paracetamol,Paracetamol,Comprimidos 500 mg / gotas,Fiebre y dolor leve a moderado,Según criterio médico y ficha técnica,Insuficiencia hepática grave,Controlar dosis máxima diaria
+Amoxicilina,Amoxicilina,Cápsulas 500 mg / suspensión,Infecciones bacterianas sensibles,Según criterio médico y ficha técnica,Alergia a penicilinas,Ajustar según función renal
+Azitromicina,Azitromicina,Comprimidos 500 mg / suspensión,Infecciones respiratorias y de piel,Según criterio médico y ficha técnica,Hipersensibilidad a macrólidos,Controlar interacciones y QT
+Omeprazol,Omeprazol,Cápsulas 20 mg,ERGE y protección gástrica,Según criterio médico y ficha técnica,Hipersensibilidad al compuesto,Evaluar uso prolongado
+Losartán,Losartán,Comprimidos 50 mg,Hipertensión arterial,Según criterio médico y ficha técnica,Embarazo y estenosis bilateral de arterias renales,Controlar potasio y función renal
+Enalapril,Enalapril,Comprimidos 10 mg,Hipertensión e insuficiencia cardíaca,Según criterio médico y ficha técnica,Antecedente de angioedema,Controlar creatinina y potasio
+Metformina,Metformina,Comprimidos 500 mg y 850 mg,Diabetes mellitus tipo 2,Según criterio médico y ficha técnica,Insuficiencia renal avanzada y acidosis metabólica,Administrar con comidas
+Salbutamol,Salbutamol,Aerosol dosificador y solución nebulizable,Broncoespasmo y asma,Según criterio médico y ficha técnica,Hipersensibilidad al compuesto,Monitorizar respuesta clínica
+Levotiroxina,Levotiroxina,Comprimidos 25/50/100 mcg,Hipotiroidismo,Según criterio médico y ficha técnica,Tirotoxicosis no tratada,Ajuste individual por laboratorio
+Atorvastatina,Atorvastatina,Comprimidos 10/20/40 mg,Dislipidemia y prevención cardiovascular,Según criterio médico y ficha técnica,Enfermedad hepática activa,Controlar enzimas hepáticas
+Cefalexina,Cefalexina,Cápsulas 500 mg / suspensión,Infecciones de piel y urinarias,Según criterio médico y ficha técnica,Alergia a cefalosporinas,Ajustar según función renal
