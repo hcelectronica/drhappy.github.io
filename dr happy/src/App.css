@@ -972,7 +972,8 @@ body.theme-night .ambulance-result-dni {
 }
 
 .install-app-toast-actions button.ghost {
-  color: #cfe0ff;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eaf2ff;
   border-color: rgba(207, 224, 255, 0.5);
 }
 
