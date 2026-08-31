@@ -340,6 +340,8 @@ const USER_ACTIVE_OVERRIDES_KEY = 'drhappy-user-active-overrides'
 const CUSTOM_DIAGNOSIS_STORAGE_KEY = 'drhappy-custom-diagnosis-catalog'
 const DELETED_USER_ARCHIVES_KEY = 'drhappy-deleted-user-archives'
 const INSTALL_PROMPT_DISMISSED_KEY = 'drhappy-install-prompt-dismissed'
+// Cuántos días esperamos antes de volver a ofrecer la instalación tras un "Ahora no".
+const INSTALL_PROMPT_SNOOZE_DAYS = 7
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -3238,7 +3240,9 @@ function App() {
     function handleAppInstalled(): void {
       setInstallPromptEvent(null)
       setShowInstallToast(false)
-      localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, 'true')
+      // No guardamos un bloqueo permanente: si el usuario desinstala la app más
+      // adelante, dejará de estar en modo standalone y el aviso podrá reaparecer.
+      localStorage.removeItem(INSTALL_PROMPT_DISMISSED_KEY)
     }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
@@ -3257,7 +3261,9 @@ function App() {
       setShowInstallToast(false)
       return
     }
-    if (localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY) === 'true') {
+    const dismissedUntilRaw = localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY)
+    const dismissedUntil = dismissedUntilRaw ? Number(dismissedUntilRaw) : 0
+    if (dismissedUntil && Date.now() < dismissedUntil) {
       return
     }
     const timer = window.setTimeout(() => setShowInstallToast(true), 1200)
@@ -3271,7 +3277,14 @@ function App() {
     setShowInstallToast(false)
     await installPromptEvent.prompt()
     const choice = await installPromptEvent.userChoice
-    localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, 'true')
+    if (choice.outcome !== 'accepted') {
+      // Solo pospone el aviso si el usuario no instaló; si aceptó, lo maneja
+      // el evento "appinstalled" (sin bloqueo permanente).
+      localStorage.setItem(
+        INSTALL_PROMPT_DISMISSED_KEY,
+        String(Date.now() + INSTALL_PROMPT_SNOOZE_DAYS * 24 * 60 * 60 * 1000),
+      )
+    }
     setInstallPromptEvent(null)
     setAppNotice(
       choice.outcome === 'accepted'
@@ -3283,7 +3296,10 @@ function App() {
 
   function handleDismissInstallToast(): void {
     setShowInstallToast(false)
-    localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, 'true')
+    localStorage.setItem(
+      INSTALL_PROMPT_DISMISSED_KEY,
+      String(Date.now() + INSTALL_PROMPT_SNOOZE_DAYS * 24 * 60 * 60 * 1000),
+    )
   }
 
   useEffect(() => {
