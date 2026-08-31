@@ -339,6 +339,12 @@ const PASSWORD_RECOVERY_KEY = 'drhappy-password-recovery'
 const USER_ACTIVE_OVERRIDES_KEY = 'drhappy-user-active-overrides'
 const CUSTOM_DIAGNOSIS_STORAGE_KEY = 'drhappy-custom-diagnosis-catalog'
 const DELETED_USER_ARCHIVES_KEY = 'drhappy-deleted-user-archives'
+const INSTALL_PROMPT_DISMISSED_KEY = 'drhappy-install-prompt-dismissed'
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
 
 const emptyPatientDraft: PatientDraft = {
   nombre: '',
@@ -2077,6 +2083,10 @@ function App() {
   const [appError, setAppError] = useState<string | null>(null)
   const [appNotice, setAppNotice] = useState<string | null>(null)
   const [floatingNotice, setFloatingNotice] = useState<string | null>(null)
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(
+    null,
+  )
+  const [showInstallToast, setShowInstallToast] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -3218,6 +3228,63 @@ function App() {
     localStorage.setItem(THEME_MODE_KEY, themeMode)
     document.body.classList.toggle('theme-night', themeMode === 'night')
   }, [themeMode])
+
+  useEffect(() => {
+    function handleBeforeInstallPrompt(event: Event): void {
+      event.preventDefault()
+      setInstallPromptEvent(event as BeforeInstallPromptEvent)
+    }
+
+    function handleAppInstalled(): void {
+      setInstallPromptEvent(null)
+      setShowInstallToast(false)
+      localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, 'true')
+    }
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    window.addEventListener('appinstalled', handleAppInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', handleAppInstalled)
+    }
+  }, [])
+
+  useEffect(() => {
+    const isStandalone =
+      window.matchMedia?.('(display-mode: standalone)').matches ||
+      (window.navigator as { standalone?: boolean }).standalone === true
+    if (!profile || !installPromptEvent || isStandalone) {
+      setShowInstallToast(false)
+      return
+    }
+    if (localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY) === 'true') {
+      return
+    }
+    const timer = window.setTimeout(() => setShowInstallToast(true), 1200)
+    return () => window.clearTimeout(timer)
+  }, [profile, installPromptEvent])
+
+  async function handleInstallApp(): Promise<void> {
+    if (!installPromptEvent) {
+      return
+    }
+    setShowInstallToast(false)
+    await installPromptEvent.prompt()
+    const choice = await installPromptEvent.userChoice
+    localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, 'true')
+    setInstallPromptEvent(null)
+    setAppNotice(
+      choice.outcome === 'accepted'
+        ? 'DrHappy se está instalando en tu dispositivo.'
+        : 'Podés instalar DrHappy más tarde desde el menú del navegador.',
+    )
+    showSavedFloatingNotice(choice.outcome === 'accepted' ? 'Instalando DrHappy' : 'Instalación cancelada')
+  }
+
+  function handleDismissInstallToast(): void {
+    setShowInstallToast(false)
+    localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, 'true')
+  }
 
   useEffect(() => {
     if (loadingUsers || seedUsers.length === 0) {
@@ -8364,6 +8431,25 @@ function App() {
         </div>
       ) : null}
       {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
+      {showInstallToast ? (
+        <div className="install-app-toast" role="status">
+          <div className="install-app-toast-icon" aria-hidden="true">
+            📲
+          </div>
+          <div className="install-app-toast-copy">
+            <strong>Instalar DrHappy</strong>
+            <span>Agregá un acceso directo a DrHappy en la pantalla de tu celular.</span>
+          </div>
+          <div className="install-app-toast-actions">
+            <button type="button" onClick={() => void handleInstallApp()}>
+              Instalar app
+            </button>
+            <button type="button" className="ghost" onClick={handleDismissInstallToast}>
+              Ahora no
+            </button>
+          </div>
+        </div>
+      ) : null}
     </main>
   )
 }

@@ -8,3 +8,13 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register(`${import.meta.env.BASE_URL}service-worker.js`)
+      .catch(() => {
+        // La app sigue funcionando sin service worker; solo se pierde la instalación offline.
+      })
+  })
+}
