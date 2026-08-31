@@ -1,0 +1,13 @@
+{
+  "users": [
+    {
+      "id": "admin-general",
+      "username": "admin",
+      "password": "admin",
+      "fullName": "Administrador General",
+      "specialty": "Administración Clínica",
+      "licenseNumber": "ADM 0001",
+      "email": "admin@drhappy.local"
+    }
+  ]
+}
