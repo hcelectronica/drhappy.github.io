@@ -902,6 +902,22 @@ button.ghost {
   color: #7a4b08;
 }
 
+.ambulance-result-name {
+  color: #14213a;
+}
+
+.ambulance-result-dni {
+  color: #56687f;
+}
+
+body.theme-night .ambulance-result-name {
+  color: #ffffff;
+}
+
+body.theme-night .ambulance-result-dni {
+  color: #b9cdec;
+}
+
 .install-app-toast {
   position: fixed;
   right: 16px;

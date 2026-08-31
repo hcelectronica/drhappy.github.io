@@ -7192,6 +7192,7 @@ function App() {
                                     index === currentMedicalNewsIndex ? '#1d4ed8' : undefined,
                                   background:
                                     index === currentMedicalNewsIndex ? '#e8f0ff' : undefined,
+                                  color: index === currentMedicalNewsIndex ? '#0b2d6b' : undefined,
                                 }}
                                 onClick={() => setCurrentMedicalNewsIndex(index)}
                               >
@@ -8222,11 +8223,12 @@ function App() {
                           <li key={p.id} style={{ borderBottom: '1px solid #eee' }}>
                             <button
                               type="button"
+                              className="ambulance-result-btn"
                               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.95rem' }}
                               onClick={() => { setAmbulanceSelectedPatientId(p.id); setAmbulancePatientSearch('') }}
                             >
-                              <strong>{p.apellido}, {p.nombre || 'Sin nombre'}</strong>
-                              <span style={{ color: '#666', marginLeft: 8, fontSize: '0.85rem' }}>DNI {p.dni}</span>
+                              <strong className="ambulance-result-name">{p.apellido}, {p.nombre || 'Sin nombre'}</strong>
+                              <span className="ambulance-result-dni" style={{ marginLeft: 8, fontSize: '0.85rem' }}>DNI {p.dni}</span>
                             </button>
                           </li>
                         ))}
