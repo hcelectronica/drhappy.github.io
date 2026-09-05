@@ -12,7 +12,9 @@ import { isSupabaseConfigured, supabase } from './supabaseClient'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import {
   getNotificationPermission,
+  registerPushSubscription,
   requestNotificationPermission,
+  sendServerPushNotification,
   showAppNotification,
 } from './notificationService'
 import type { NotificationPermissionState } from './notificationService'
@@ -2975,6 +2977,14 @@ function App() {
       void showAppNotification('📢 Comunicado publicado', {
         body: `Enviado a ${recipients.length} profesionales registrados.`,
       })
+
+      // Enviar Web Push a todos los celulares registrados
+      void sendServerPushNotification({
+        broadcast: true,
+        title: '📢 Dr Happy: Novedades de la plataforma',
+        body: formattedText.length > 100 ? formattedText.slice(0, 97) + '...' : formattedText,
+        tag: 'drhappy-broadcast',
+      })
     } catch (err) {
       setAppError(`Error al enviar comunicado: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
@@ -3413,6 +3423,9 @@ function App() {
     setNotificationPermission(result)
     if (result === 'granted') {
       localStorage.removeItem(NOTIFICATION_PROMPT_DISMISSED_KEY)
+      if (activeUserId) {
+        void registerPushSubscription(activeUserId)
+      }
       void showAppNotification('🔔 Notificaciones activadas', {
         body: '¡Excelente! Ahora recibirás avisos de mensajes privados y novedades en tu dispositivo.',
       })
@@ -3423,6 +3436,12 @@ function App() {
       )
     }
   }
+
+  useEffect(() => {
+    if (activeUserId && notificationPermission === 'granted') {
+      void registerPushSubscription(activeUserId)
+    }
+  }, [activeUserId, notificationPermission])
 
   function handleDismissNotificationToast(): void {
     setShowNotificationToast(false)
@@ -5694,6 +5713,24 @@ function App() {
     setCommunityDraftFiles([])
     setAppError(null)
     setAppNotice('Mensaje privado enviado.')
+
+    // Disparar Web Push al celular del destinatario (incluso con la app 100% cerrada)
+    const currentSender = seedUsers.find((u) => u.id === activeUserId)
+    const senderName = currentSender?.fullName || 'Un colega'
+    const pushBody = text
+      ? text.length > 90
+        ? text.slice(0, 87) + '...'
+        : text
+      : communityDraftFiles.length > 0
+        ? 'Te ha enviado un archivo adjunto'
+        : 'Nuevo mensaje recibido'
+
+    void sendServerPushNotification({
+      recipientUserId: communityTargetId,
+      title: `${senderName} te ha enviado un mensaje`,
+      body: pushBody,
+      tag: `drhappy-chat-${activeUserId}`,
+    })
   }
 
   async function handleSaveProfile(event: FormEvent<HTMLFormElement>): Promise<void> {

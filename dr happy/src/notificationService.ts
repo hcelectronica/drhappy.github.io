@@ -1,4 +1,20 @@
+import { isSupabaseConfigured, supabase } from './supabaseClient'
+
 export type NotificationPermissionState = 'granted' | 'denied' | 'default' | 'unsupported'
+
+export const VAPID_PUBLIC_KEY =
+  'BG4L8lMhlSk23SK20qTIyTZI2Af4yN_G-zCNkoqXLa75SRnQHsEm74IClL0ywCx3pVLiHECTIiSzibNtst9WXfM'
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  const outputArray = new Uint8Array(new ArrayBuffer(rawData.length))
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray
+}
 
 export function isNotificationSupported(): boolean {
   return typeof window !== 'undefined' && 'Notification' in window
@@ -21,6 +37,84 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   } catch (err) {
     console.warn('Error al solicitar permiso de notificaciones:', err)
     return Notification.permission
+  }
+}
+
+export async function registerPushSubscription(userId: string): Promise<boolean> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+    return false
+  }
+
+  if (Notification.permission !== 'granted') {
+    return false
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.ready
+    let subscription = await registration.pushManager.getSubscription()
+
+    if (!subscription) {
+      const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      })
+    }
+
+    if (subscription && isSupabaseConfigured && supabase) {
+      const subJson = subscription.toJSON()
+      // Guardar en la base de datos Supabase
+      await supabase.from('user_push_subscriptions').upsert(
+        {
+          user_id: userId,
+          endpoint: subJson.endpoint,
+          p256dh: subJson.keys?.p256dh || null,
+          auth: subJson.keys?.auth || null,
+          subscription_json: subJson,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'endpoint' },
+      )
+      return true
+    }
+    return Boolean(subscription)
+  } catch (err) {
+    console.warn('Fallo al registrar suscripción push en el dispositivo:', err)
+    return false
+  }
+}
+
+export interface ServerPushPayload {
+  recipientUserId?: string
+  broadcast?: boolean
+  title: string
+  body: string
+  tag?: string
+  icon?: string
+  badge?: string
+  url?: string
+}
+
+export async function sendServerPushNotification(payload: ServerPushPayload): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) {
+    return false
+  }
+
+  try {
+    const { error } = await supabase.functions.invoke('send-push-notification', {
+      body: {
+        action: 'send',
+        ...payload,
+      },
+    })
+    if (error) {
+      console.warn('Error al disparar push desde el servidor:', error.message)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.warn('Fallo de red al enviar push desde el servidor:', err)
+    return false
   }
 }
 
