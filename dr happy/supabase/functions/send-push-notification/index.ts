@@ -126,10 +126,19 @@ serve(async (request) => {
   let failedCount = 0
   const staleEndpoints: string[] = []
 
+  const pushOptions = {
+    TTL: 86400, // 24 horas de retención en FCM/APNs
+    urgency: 'high' as const, // Prioridad ALTA: fuerza la entrega inmediata incluso con pantalla apagada / Doze mode
+    headers: {
+      'Urgency': 'high',
+      'Topic': tag,
+    },
+  }
+
   await Promise.all(
     subscriptions.map(async (row) => {
       try {
-        await webpush.sendNotification(row.subscription_json, pushPayload)
+        await webpush.sendNotification(row.subscription_json, pushPayload, pushOptions)
         sentCount += 1
       } catch (err: unknown) {
         failedCount += 1

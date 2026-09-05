@@ -63,7 +63,7 @@ export async function registerPushSubscription(userId: string): Promise<boolean>
 
     if (subscription && isSupabaseConfigured && supabase) {
       const subJson = subscription.toJSON()
-      // Guardar en la base de datos Supabase
+      // Guardar en la base de datos Supabase con el origen actual
       await supabase.from('user_push_subscriptions').upsert(
         {
           user_id: userId,
@@ -100,11 +100,17 @@ export async function sendServerPushNotification(payload: ServerPushPayload): Pr
     return false
   }
 
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://drhappy.com.ar'
+  const defaultIcon = `${origin}/icon-192.png`
+
   try {
     const { error } = await supabase.functions.invoke('send-push-notification', {
       body: {
         action: 'send',
         ...payload,
+        icon: payload.icon || defaultIcon,
+        badge: payload.badge || defaultIcon,
+        url: payload.url || `${origin}/`,
       },
     })
     if (error) {

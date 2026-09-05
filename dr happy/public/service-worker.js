@@ -21,7 +21,7 @@ self.addEventListener('activate', (event) => {
 // without intercepting or caching application responses.
 self.addEventListener('fetch', () => {})
 
-// Manejador de notificaciones Push en segundo plano
+// Manejador de notificaciones Push en segundo plano (incluso con la app 100% cerrada)
 self.addEventListener('push', (event) => {
   let data = {}
   try {
@@ -31,14 +31,26 @@ self.addEventListener('push', (event) => {
   }
 
   const title = data.title || 'Dr Happy 😊'
+  const origin = self.location.origin || ''
+  const iconUrl = data.icon
+    ? (data.icon.startsWith('http') ? data.icon : new URL(data.icon, origin).href)
+    : `${origin}/icon-192.png`
+  const badgeUrl = data.badge
+    ? (data.badge.startsWith('http') ? data.badge : new URL(data.badge, origin).href)
+    : `${origin}/icon-192.png`
+
   const options = {
     body: data.body || data.text || 'Nuevo aviso o mensaje recibido.',
-    icon: data.icon || './icon-192.png',
-    badge: data.badge || './icon-192.png',
-    tag: data.tag || 'drhappy-notification',
+    icon: iconUrl,
+    badge: badgeUrl,
+    tag: data.tag || 'drhappy-alert-' + Date.now(),
     renotify: true,
-    vibrate: [200, 100, 200],
-    data: data.data || { url: './' },
+    requireInteraction: true,
+    vibrate: [300, 100, 300, 100, 300],
+    data: {
+      url: data.data?.url || data.url || origin || 'https://drhappy.com.ar',
+      timestamp: Date.now(),
+    },
   }
 
   event.waitUntil(self.registration.showNotification(title, options))
