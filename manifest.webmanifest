@@ -1,7 +1,7 @@
 {
   "name": "DrHappy",
   "short_name": "DrHappy",
-  "description": "Historia clínica digital y herramientas para profesionales de la salud.",
+  "description": "Herramientas para profesionales de la salud e instituciones. Historia clínica digital, turnos y vademécum.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
