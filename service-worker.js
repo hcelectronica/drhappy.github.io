@@ -1,4 +1,4 @@
-const CACHE_NAME = 'drhappy-shell-v3'
+const CACHE_NAME = 'drhappy-shell-v4'
 
 self.addEventListener('install', (event) => {
   self.skipWaiting()
@@ -21,45 +21,67 @@ self.addEventListener('activate', (event) => {
 // without intercepting or caching application responses.
 self.addEventListener('fetch', () => {})
 
-// Manejador de notificaciones Push en segundo plano (incluso con la app 100% cerrada)
+// Manejador ultra-robusto de notificaciones Push en segundo plano (incluso con la app 100% cerrada)
 self.addEventListener('push', (event) => {
-  let data = {}
+  let payload = {}
   try {
-    data = event.data ? event.data.json() : {}
+    if (event.data) {
+      payload = event.data.json()
+    }
   } catch (_err) {
-    data = { body: event.data ? event.data.text() : 'Tienes un nuevo mensaje en Dr Happy' }
+    try {
+      payload = { body: event.data ? event.data.text() : '' }
+    } catch (_e) {
+      payload = {}
+    }
   }
 
-  const title = data.title || 'Dr Happy 😊'
-  const origin = self.location.origin || ''
-  const iconUrl = data.icon
-    ? (data.icon.startsWith('http') ? data.icon : new URL(data.icon, origin).href)
-    : `${origin}/icon-192.png`
-  const badgeUrl = data.badge
-    ? (data.badge.startsWith('http') ? data.badge : new URL(data.badge, origin).href)
-    : `${origin}/icon-192.png`
+  const title = (payload && payload.title) || 'Dr Happy 😊'
+  const body =
+    (payload && (payload.body || payload.text)) || 'Tienes una nueva novedad o mensaje en Dr Happy.'
+  const url =
+    (payload && payload.data && payload.data.url) ||
+    (payload && payload.url) ||
+    'https://drhappy.com.ar/'
+  const tag = (payload && payload.tag) || `drhappy-alert-${Date.now()}`
 
-  const options = {
-    body: data.body || data.text || 'Nuevo aviso o mensaje recibido.',
+  const baseUrl = self.location.origin || 'https://drhappy.com.ar'
+  const iconUrl = `${baseUrl}/icon-192.png`
+  const badgeUrl = `${baseUrl}/icon-192.png`
+
+  // Opciones estándar compatibles con Android, iOS PWA, macOS y Windows
+  const notificationOptions = {
+    body,
     icon: iconUrl,
     badge: badgeUrl,
-    tag: data.tag || 'drhappy-alert-' + Date.now(),
+    tag,
     renotify: true,
-    requireInteraction: true,
-    vibrate: [300, 100, 300, 100, 300],
     data: {
-      url: data.data?.url || data.url || origin || 'https://drhappy.com.ar',
+      url,
       timestamp: Date.now(),
     },
   }
 
-  event.waitUntil(self.registration.showNotification(title, options))
+  const promise = self.registration
+    .showNotification(title, notificationOptions)
+    .catch((err) => {
+      console.warn('[SW] showNotification con opciones completas falló, reintentando con básicas:', err)
+      // Fallback con opciones mínimas garantizadas en caso de que el sistema operativo rechace opciones avanzadas
+      return self.registration.showNotification(title, {
+        body,
+        tag,
+        data: { url },
+      })
+    })
+
+  event.waitUntil(promise)
 })
 
 // Al hacer clic sobre la notificación emergente en el celular o escritorio
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const targetUrl = (event.notification.data && event.notification.data.url) || './'
+  const targetUrl =
+    (event.notification.data && event.notification.data.url) || 'https://drhappy.com.ar/'
 
   event.waitUntil(
     self.clients
@@ -67,6 +89,9 @@ self.addEventListener('notificationclick', (event) => {
       .then((clientList) => {
         for (const client of clientList) {
           if ('focus' in client) {
+            if ('navigate' in client && targetUrl) {
+              client.navigate(targetUrl).catch(() => {})
+            }
             return client.focus()
           }
         }
