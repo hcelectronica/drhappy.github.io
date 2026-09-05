@@ -19,6 +19,13 @@ import {
   showAppNotification,
 } from './notificationService'
 import type { NotificationPermissionState } from './notificationService'
+import {
+  sendWelcomeEmail,
+  sendPasswordRecoveryEmail,
+  sendPasswordChangedEmail,
+  sendAdminBroadcastEmail,
+  sendEmail,
+} from './emailService'
 import { CLINICAL_PROTOCOLS } from './clinicalProtocols'
 import diagnosisCsv from '../cie-10.csv?raw'
 import specialtiesCsv from '../especialidades-medicas.csv?raw'
@@ -2219,6 +2226,9 @@ function App() {
   const [adminBroadcastSubject, setAdminBroadcastSubject] = useState('')
   const [adminBroadcastBody, setAdminBroadcastBody] = useState('')
   const [adminBroadcastSending, setAdminBroadcastSending] = useState(false)
+  const [adminBroadcastSendEmail, setAdminBroadcastSendEmail] = useState(true)
+  const [adminTestEmailAddress, setAdminTestEmailAddress] = useState('')
+  const [adminTestingEmail, setAdminTestingEmail] = useState(false)
 
   // --- Trial / Suscripción ---
   const trialInfo = useMemo(() => {
@@ -3050,13 +3060,26 @@ function App() {
             },
       )
 
+      // Enviar también por Email oficial desde soporte@drhappy.com.ar si está habilitado
+      if (adminBroadcastSendEmail) {
+        const targetEmails = recipients.map((u) => u.email).filter(Boolean)
+        if (targetEmails.length > 0) {
+          void sendAdminBroadcastEmail({
+            to: targetEmails,
+            subject: broadcastTitle,
+            message: adminBroadcastBody.trim(),
+            recipientName: isBroadcast ? 'Estimado/a profesional' : recipients[0].fullName,
+          })
+        }
+      }
+
       setAdminBroadcastSubject('')
       setAdminBroadcastBody('')
       const successNotice = pushRes.success && pushRes.sentCount > 0
-        ? `Comunicado enviado. Notificación push entregada a ${pushRes.sentCount} dispositivo(s).`
-        : `Comunicado publicado exitosamente para ${recipients.length} profesional(es).`
+        ? `Comunicado enviado. Notificación push entregada a ${pushRes.sentCount} dispositivo(s)${adminBroadcastSendEmail ? ' y correos enviados vía soporte@drhappy.com.ar' : ''}.`
+        : `Comunicado publicado exitosamente para ${recipients.length} profesional(es)${adminBroadcastSendEmail ? ' (notificaciones por email emitidas)' : ''}.`
       setAppNotice(successNotice)
-      showSavedFloatingNotice('Comunicado y push enviados')
+      showSavedFloatingNotice('Comunicado enviado')
       void showAppNotification(broadcastTitle, {
         body: `Enviado a ${recipients.length} profesional(es).`,
       })
@@ -3064,6 +3087,38 @@ function App() {
       setAppError(`Error al enviar comunicado: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setAdminBroadcastSending(false)
+    }
+  }
+
+  async function handleTestEmail(): Promise<void> {
+    const target = adminTestEmailAddress.trim() || (activeUser ? activeUser.email : '')
+    if (!target) {
+      setAppError('Ingresa una dirección de correo válida para probar.')
+      return
+    }
+    setAdminTestingEmail(true)
+    setAppError(null)
+    setAppNotice(null)
+    try {
+      const res = await sendEmail({
+        to: target,
+        subject: '🧪 Prueba de envío SMTP - DrHappy',
+        text: '¡El servicio de correo electrónico SMTP de Hostinger (soporte@drhappy.com.ar) está funcionando correctamente!',
+        type: 'custom',
+        templateData: {
+          message: `Hola,\n\nEste es un correo de prueba emitido desde la plataforma DrHappy utilizando el servidor SMTP de Hostinger (soporte@drhappy.com.ar).\n\nTodo el sistema de notificaciones por email (bienvenida, recuperación de contraseñas y turnos) está activo y listo para operar.`,
+        },
+      })
+      if (res.success) {
+        setAppNotice(`¡Correo de prueba enviado con éxito a ${target} desde soporte@drhappy.com.ar! Revisa tu bandeja de entrada.`)
+        showSavedFloatingNotice('Email de prueba enviado')
+      } else {
+        setAppError(`Error al enviar correo: ${res.message || 'Verifica la configuración de SMTP_PASSWORD en Supabase'}`)
+      }
+    } catch (err) {
+      setAppError(`Fallo al enviar correo: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setAdminTestingEmail(false)
     }
   }
 
@@ -4504,7 +4559,19 @@ function App() {
       localStorage.setItem(PASSWORD_RECOVERY_KEY, JSON.stringify(challenge))
     }
     setRecoveryDemoCode(code)
-    setAppNotice('Código de recuperación generado. Tiene una vigencia de 15 minutos.')
+    const emailResult = await sendPasswordRecoveryEmail({
+      to: user.email,
+      fullName: user.fullName,
+      code,
+      expiresMinutes: 15,
+    })
+    if (emailResult.success) {
+      setAppNotice(
+        `Te enviamos el código de recuperación a ${user.email} desde soporte@drhappy.com.ar (vigente por 15 min).`,
+      )
+    } else {
+      setAppNotice('Código de recuperación generado. Tiene una vigencia de 15 minutos.')
+    }
   }
 
   async function handleResetPassword(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -4579,6 +4646,10 @@ function App() {
         entry.id === user.id ? { ...entry, password: recoveryPassword } : entry,
       ),
     )
+    void sendPasswordChangedEmail({
+      to: user.email,
+      fullName: user.fullName,
+    })
     setUsername(user.username)
     setPassword('')
     resetRecoveryForm()
@@ -4939,11 +5010,17 @@ function App() {
     }
 
     setSeedUsers((current) => [...current, nextUser])
+    void sendWelcomeEmail({
+      to: draft.email,
+      fullName,
+      username: draft.username,
+      specialty: draft.specialty,
+    })
     setRegisterOpen(false)
     setRegisterDraft(emptyRegisterDraft)
     setUsername(nextUser.username)
     setPassword(nextUser.password)
-    setAppNotice('Usuario creado. Ya puedes iniciar sesión con el nuevo profesional.')
+    setAppNotice('Usuario creado y correo de bienvenida enviado. Ya puedes iniciar sesión con el nuevo profesional.')
     showSavedFloatingNotice()
   }
 
@@ -6688,16 +6765,18 @@ function App() {
                     />
                   </label>
                   <small>
-                    En la versión publicada recibirás un enlace por correo. Por ahora se usa
-                    un código de prueba.
+                    Te enviaremos un código de seguridad de 6 dígitos a tu casilla de correo desde <strong>soporte@drhappy.com.ar</strong> (vigente por 15 minutos).
                   </small>
-                  <button type="submit">Solicitar código</button>
+                  <button type="submit">Solicitar código por Email</button>
                 </form>
               ) : (
                 <form className="grid" onSubmit={handleResetPassword}>
-                  {recoveryDemoCode ? (
+                  <p style={{ margin: '0 0 10px', fontSize: '0.88rem', color: '#0369a1', background: '#e0f2fe', padding: '8px 12px', borderRadius: 8 }}>
+                    ✉️ Ingresa el código de 6 dígitos que te enviamos a <strong>{recoveryEmail}</strong>.
+                  </p>
+                  {!isSupabaseConfigured && recoveryDemoCode ? (
                     <p className="demo-code">
-                      Código de prueba: <strong>{recoveryDemoCode}</strong>
+                      Código de prueba (modo local): <strong>{recoveryDemoCode}</strong>
                     </p>
                   ) : null}
                   <label>
@@ -7587,6 +7666,15 @@ function App() {
                     rows={3}
                   />
                 </label>
+                <label className="toggle-option" style={{ margin: '4px 0' }}>
+                  <input
+                    type="checkbox"
+                    checked={adminBroadcastSendEmail}
+                    onChange={(e) => setAdminBroadcastSendEmail(e.target.checked)}
+                  />
+                  <span className="toggle-switch" aria-hidden="true" />
+                  <span>📧 Enviar también por correo electrónico institucional desde <strong>soporte@drhappy.com.ar</strong></span>
+                </label>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                   <button
                     type="button"
@@ -7594,10 +7682,10 @@ function App() {
                     onClick={() => void handleSendAdminBroadcast()}
                   >
                     {adminBroadcastSending
-                      ? 'Enviando notificación...'
+                      ? 'Enviando comunicado...'
                       : adminBroadcastTarget === 'all'
-                        ? '🚀 Enviar Notificación Push a Todos'
-                        : '📩 Enviar Notificación Push al Usuario'}
+                        ? '🚀 Enviar Notificación Push y Email a Todos'
+                        : '📩 Enviar Notificación Push y Email al Usuario'}
                   </button>
                   <button
                     type="button"
@@ -7607,6 +7695,34 @@ function App() {
                     title="Envía una notificación push real desde el servidor a este dispositivo"
                   >
                     {adminTestingPush ? 'Enviando prueba push...' : '📲 Probar Push en mi celular/PC'}
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section className="panel" style={{ marginTop: 20 }}>
+              <h3>📧 Servidor de Correo Institucional (soporte@drhappy.com.ar)</h3>
+              <p className="flow-hint">
+                Conexión configurada con el servidor SMTP de Hostinger (<code>smtp.hostinger.com:465</code> con TLS/SSL) para envíos de bienvenida, recuperación de contraseñas y turnos.
+              </p>
+              <div className="grid" style={{ marginTop: 12 }}>
+                <label>
+                  Probar envío de correo a una casilla:
+                  <input
+                    type="email"
+                    value={adminTestEmailAddress}
+                    onChange={(e) => setAdminTestEmailAddress(e.target.value)}
+                    placeholder={activeUser ? activeUser.email : 'tu-correo@ejemplo.com'}
+                  />
+                </label>
+                <div>
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={adminTestingEmail}
+                    onClick={() => void handleTestEmail()}
+                  >
+                    {adminTestingEmail ? 'Enviando correo de prueba...' : '✉️ Enviar correo de prueba con Hostinger SMTP'}
                   </button>
                 </div>
               </div>
