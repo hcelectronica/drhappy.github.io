@@ -9,6 +9,12 @@ import { BrowserPDF417Reader, BrowserQRCodeReader } from '@zxing/browser'
 import * as XLSX from 'xlsx'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  showAppNotification,
+} from './notificationService'
+import type { NotificationPermissionState } from './notificationService'
 import diagnosisCsv from '../cie-10.csv?raw'
 import specialtiesCsv from '../especialidades-medicas.csv?raw'
 
@@ -342,6 +348,8 @@ const DELETED_USER_ARCHIVES_KEY = 'drhappy-deleted-user-archives'
 const INSTALL_PROMPT_DISMISSED_KEY = 'drhappy-install-prompt-dismissed'
 // Cuántos días esperamos antes de volver a ofrecer la instalación tras un "Ahora no".
 const INSTALL_PROMPT_SNOOZE_DAYS = 7
+const NOTIFICATION_PROMPT_DISMISSED_KEY = 'drhappy-notification-prompt-dismissed'
+const NOTIFICATION_PROMPT_SNOOZE_DAYS = 5
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -2184,6 +2192,12 @@ function App() {
     confirmPassword: '',
   })
   const processedCheckoutReturnRef = useRef<string | null>(null)
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermissionState>(() => getNotificationPermission())
+  const [showNotificationToast, setShowNotificationToast] = useState(false)
+  const [adminBroadcastSubject, setAdminBroadcastSubject] = useState('')
+  const [adminBroadcastBody, setAdminBroadcastBody] = useState('')
+  const [adminBroadcastSending, setAdminBroadcastSending] = useState(false)
 
   // --- Trial / Suscripción ---
   const trialInfo = useMemo(() => {
@@ -2907,6 +2921,66 @@ function App() {
     downloadTextFile(buildArchiveFileName(archive), JSON.stringify(archive.archiveData, null, 2))
   }
 
+  async function handleSendAdminBroadcast(): Promise<void> {
+    if (!adminBroadcastBody.trim() || !activeUserId) {
+      return
+    }
+    const recipients = seedUsers.filter((u) => u.id !== activeUserId)
+    if (recipients.length === 0) {
+      setAppError('No hay otros profesionales registrados para recibir el comunicado.')
+      return
+    }
+
+    setAdminBroadcastSending(true)
+    const formattedText = `📢 ${adminBroadcastSubject.trim() ? `[${adminBroadcastSubject.trim()}] ` : ''}${adminBroadcastBody.trim()}`
+    const sentAt = new Date().toISOString()
+
+    try {
+      if (isSupabaseConfigured && supabase) {
+        const rows = recipients.map((r) => ({
+          sender_id: activeUserId,
+          recipient_id: r.id,
+          text: formattedText,
+          attachments_json: [],
+          sent_at: sentAt,
+        }))
+        const { error } = await supabase.from('community_messages').insert(rows)
+        if (error) {
+          throw new Error(error.message)
+        }
+      } else {
+        recipients.forEach((r) => {
+          const key = communityThreadStorageKey(activeUserId, r.id)
+          const currentThread = readJsonStorage<CommunityMessage[]>(key, [])
+          const nextThread = [
+            ...currentThread,
+            {
+              id: crypto.randomUUID(),
+              senderId: activeUserId,
+              recipientId: r.id,
+              text: formattedText,
+              attachments: [],
+              sentAt,
+            },
+          ]
+          localStorage.setItem(key, JSON.stringify(nextThread))
+        })
+      }
+
+      setAdminBroadcastSubject('')
+      setAdminBroadcastBody('')
+      setAppNotice('Comunicado y notificaciones enviadas a todos los profesionales.')
+      showSavedFloatingNotice('Comunicado enviado con éxito')
+      void showAppNotification('📢 Comunicado publicado', {
+        body: `Enviado a ${recipients.length} profesionales registrados.`,
+      })
+    } catch (err) {
+      setAppError(`Error al enviar comunicado: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setAdminBroadcastSending(false)
+    }
+  }
+
   useEffect(() => {
     const loadSeedUsers = async () => {
       try {
@@ -3303,6 +3377,57 @@ function App() {
     localStorage.setItem(
       INSTALL_PROMPT_DISMISSED_KEY,
       String(Date.now() + INSTALL_PROMPT_SNOOZE_DAYS * 24 * 60 * 60 * 1000),
+    )
+  }
+
+  useEffect(() => {
+    if (!profile) {
+      setShowNotificationToast(false)
+      return
+    }
+    const currentPerm = getNotificationPermission()
+    setNotificationPermission(currentPerm)
+    if (currentPerm !== 'default') {
+      setShowNotificationToast(false)
+      return
+    }
+    if (showInstallToast) {
+      setShowNotificationToast(false)
+      return
+    }
+    const dismissedUntilRaw = localStorage.getItem(NOTIFICATION_PROMPT_DISMISSED_KEY)
+    const dismissedUntil = dismissedUntilRaw ? Number(dismissedUntilRaw) : 0
+    if (dismissedUntil && Date.now() < dismissedUntil) {
+      return
+    }
+    const timer = window.setTimeout(() => {
+      setShowNotificationToast(true)
+    }, 2500)
+    return () => window.clearTimeout(timer)
+  }, [profile, showInstallToast])
+
+  async function handleEnableNotifications(): Promise<void> {
+    setShowNotificationToast(false)
+    const result = await requestNotificationPermission()
+    setNotificationPermission(result)
+    if (result === 'granted') {
+      localStorage.removeItem(NOTIFICATION_PROMPT_DISMISSED_KEY)
+      void showAppNotification('🔔 Notificaciones activadas', {
+        body: '¡Excelente! Ahora recibirás avisos de mensajes privados y novedades en tu dispositivo.',
+      })
+      showSavedFloatingNotice('Notificaciones activadas')
+    } else if (result === 'denied') {
+      setAppError(
+        'Las notificaciones están bloqueadas en tu navegador o celular. Podés habilitarlas desde los ajustes del sitio.',
+      )
+    }
+  }
+
+  function handleDismissNotificationToast(): void {
+    setShowNotificationToast(false)
+    localStorage.setItem(
+      NOTIFICATION_PROMPT_DISMISSED_KEY,
+      String(Date.now() + NOTIFICATION_PROMPT_SNOOZE_DAYS * 24 * 60 * 60 * 1000),
     )
   }
 
@@ -3850,11 +3975,13 @@ function App() {
       if (latest && latest.sentAt !== lastCommunityNotifiedAtRef.current) {
         lastCommunityNotifiedAtRef.current = latest.sentAt
         const sender = seedUsers.find((user) => user.id === latest.senderId)
-        setFloatingNotice(
-          sender
+        const isBroadcast = latest.text.startsWith('📢')
+        const noticeText = isBroadcast
+          ? '📢 Novedad del administrador'
+          : sender
             ? `nuevo mensaje de ${sender.fullName}`
-            : 'nuevo mensaje en comunidad',
-        )
+            : 'nuevo mensaje en comunidad'
+        setFloatingNotice(noticeText)
         if (floatingTimerRef.current) {
           window.clearTimeout(floatingTimerRef.current)
         }
@@ -3862,6 +3989,25 @@ function App() {
           setFloatingNotice(null)
           floatingTimerRef.current = null
         }, 3200)
+
+        // Enviar notificación al sistema operativo / celular
+        const notifTitle = isBroadcast
+          ? '📢 Dr Happy: Novedades de la plataforma'
+          : sender
+            ? `${sender.fullName} te ha enviado un mensaje`
+            : 'Nuevo mensaje en Dr Happy'
+        const notifBody = latest.text
+          ? latest.text.length > 90
+            ? latest.text.slice(0, 87) + '...'
+            : latest.text
+          : latest.attachments?.length
+            ? 'Te ha enviado un archivo adjunto'
+            : 'Tienes un nuevo mensaje'
+
+        void showAppNotification(notifTitle, {
+          body: notifBody,
+          tag: `drhappy-chat-${latest.senderId}`,
+        })
       }
     }
 
@@ -7058,6 +7204,41 @@ function App() {
                 </ul>
               )}
             </section>
+
+            <section className="panel" style={{ marginTop: 20 }}>
+              <h3>📢 Enviar comunicado general o novedades</h3>
+              <p className="flow-hint">
+                Envía una notificación y mensaje a todos los profesionales registrados sobre cambios en la plataforma, actualizaciones o avisos urgentes.
+              </p>
+              <div className="grid" style={{ marginTop: 12 }}>
+                <label>
+                  Asunto o título del comunicado (opcional)
+                  <input
+                    value={adminBroadcastSubject}
+                    onChange={(event) => setAdminBroadcastSubject(event.target.value)}
+                    placeholder="Ej: Nueva versión disponible / Mantenimiento programado"
+                  />
+                </label>
+                <label>
+                  Mensaje del comunicado
+                  <textarea
+                    value={adminBroadcastBody}
+                    onChange={(event) => setAdminBroadcastBody(event.target.value)}
+                    placeholder="Escribe el mensaje que recibirán todos los profesionales..."
+                    rows={3}
+                  />
+                </label>
+                <div>
+                  <button
+                    type="button"
+                    disabled={adminBroadcastSending || !adminBroadcastBody.trim()}
+                    onClick={() => void handleSendAdminBroadcast()}
+                  >
+                    {adminBroadcastSending ? 'Enviando comunicado...' : '🚀 Enviar comunicado a todos los médicos'}
+                  </button>
+                </div>
+              </div>
+            </section>
           </section>
         </div>
       ) : null}
@@ -8131,6 +8312,54 @@ function App() {
                 <button type="submit">Actualizar contraseña</button>
               </form>
             </section>
+            <section className="panel">
+              <h3>🔔 Notificaciones en tu dispositivo</h3>
+              <p className="flow-hint">
+                Recibe alertas en pantalla y vibración cuando un colega te envíe un mensaje privado o el administrador publique novedades.
+              </p>
+              <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <strong>Estado:</strong>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color:
+                        notificationPermission === 'granted'
+                          ? '#16a34a'
+                          : notificationPermission === 'denied'
+                            ? '#dc2626'
+                            : '#d97706',
+                    }}
+                  >
+                    {notificationPermission === 'granted'
+                      ? '✅ Notificaciones activas'
+                      : notificationPermission === 'denied'
+                        ? '❌ Bloqueadas en tu navegador'
+                        : '⚠️ Pendiente de activación'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {notificationPermission !== 'granted' ? (
+                    <button type="button" onClick={() => void handleEnableNotifications()}>
+                      🔔 Activar notificaciones en este celular / equipo
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => {
+                        void showAppNotification('🔔 Dr Happy 😊', {
+                          body: '¡La prueba de notificación en tu dispositivo funciona correctamente!',
+                        })
+                        showSavedFloatingNotice('Notificación de prueba enviada')
+                      }}
+                    >
+                      📲 Enviar notificación de prueba
+                    </button>
+                  )}
+                </div>
+              </div>
+            </section>
           </section>
         </div>
       ) : null}
@@ -8517,6 +8746,25 @@ function App() {
               Instalar app
             </button>
             <button type="button" className="ghost" onClick={handleDismissInstallToast}>
+              Ahora no
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {showNotificationToast ? (
+        <div className="install-app-toast" role="status">
+          <div className="install-app-toast-icon" aria-hidden="true">
+            🔔
+          </div>
+          <div className="install-app-toast-copy">
+            <strong>Activar notificaciones</strong>
+            <span>Recibí alertas en tu celular cuando recibas mensajes privados o novedades.</span>
+          </div>
+          <div className="install-app-toast-actions">
+            <button type="button" onClick={() => void handleEnableNotifications()}>
+              Activar
+            </button>
+            <button type="button" className="ghost" onClick={handleDismissNotificationToast}>
               Ahora no
             </button>
           </div>
