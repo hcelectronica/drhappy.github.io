@@ -21,8 +21,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const buildId = env.VITE_BUILD_ID ? env.VITE_BUILD_ID : resolveBuildId()
 
+  // En Hostinger / dominio raíz se usa '/' por defecto.
+  // En GitHub Pages se sobreescribe con --base=/drhappy.github.io/
   return {
-    base: '/drhappy.github.io/',
+    base: './',
     define: {
       'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId),
     },
