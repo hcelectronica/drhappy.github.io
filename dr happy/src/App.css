@@ -1674,8 +1674,8 @@ body.theme-night .file-picker-button {
 }
 
 .protocol-tab-btn {
-  padding: 8px 14px;
-  font-size: 0.9rem;
+  padding: 9px 16px;
+  font-size: 0.92rem;
   font-weight: 600;
   border: none;
   background: transparent;
@@ -1689,54 +1689,112 @@ body.theme-night .file-picker-button {
 .protocol-tab-btn.active {
   color: #1d4ed8;
   border-bottom-color: #1d4ed8;
-  background: rgba(29, 78, 216, 0.06);
-  border-radius: 6px 6px 0 0;
+  background: rgba(29, 78, 216, 0.08);
+  border-radius: 8px 8px 0 0;
 }
 
 .protocol-badge-red {
   background: #fee2e2;
   color: #991b1b;
   border: 1px solid #f87171;
-  padding: 3px 8px;
+  padding: 3px 9px;
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .protocol-badge-yellow {
   background: #fef3c7;
   color: #92400e;
   border: 1px solid #fcd34d;
-  padding: 3px 8px;
+  padding: 3px 9px;
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .protocol-badge-category {
   background: #e0f2fe;
   color: #0369a1;
-  padding: 3px 8px;
+  border: 1px solid #bae6fd;
+  padding: 3px 9px;
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 600;
 }
 
+.protocol-category-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.protocol-category-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.protocol-category-pill:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.protocol-category-pill.active {
+  background: #1d4ed8;
+  color: #ffffff;
+  border-color: #1e40af;
+  box-shadow: 0 2px 6px rgba(29, 78, 216, 0.25);
+}
+
+.protocol-category-pill .pill-count {
+  font-size: 0.75rem;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+}
+
+.protocol-category-pill.active .pill-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.protocol-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
 .protocol-card-item {
-  border: 1px solid rgba(130, 160, 200, 0.35);
+  border: 1px solid #cbd5e1;
   border-radius: 14px;
-  padding: 14px 16px;
+  padding: 16px 18px;
   background: #ffffff;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
 }
 
 .protocol-card-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(29, 78, 216, 0.12);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(29, 78, 216, 0.12);
   border-color: #3b82f6;
 }
 
@@ -1750,15 +1808,16 @@ body.theme-night .file-picker-button {
   background: #f8fbff;
   border: 1px solid #d0e1f9;
   border-radius: 12px;
-  padding: 16px;
+  padding: 18px;
 }
 
 .protocol-section-box h4 {
-  margin: 0 0 10px 0;
+  margin: 0 0 12px 0;
   color: #1e3a8a;
   display: flex;
   align-items: center;
   gap: 8px;
+  font-size: 1.05rem;
 }
 
 .protocol-key-signs-list {
@@ -1771,51 +1830,151 @@ body.theme-night .file-picker-button {
 
 .protocol-key-signs-list li {
   position: relative;
-  padding: 8px 12px 8px 30px;
+  padding: 10px 14px 10px 34px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   font-size: 0.92rem;
-  line-height: 1.45;
+  line-height: 1.5;
+  color: #1e293b;
 }
 
 .protocol-key-signs-list li::before {
   content: '✓';
   position: absolute;
-  left: 10px;
-  top: 8px;
+  left: 12px;
+  top: 10px;
   color: #2563eb;
-  font-weight: bold;
+  font-weight: 800;
 }
 
 .protocol-redflag-box {
   background: #fff5f5;
   border: 1px solid #fed7d7;
-  border-left: 4px solid #e53e3e;
+  border-left: 5px solid #dc2626;
   border-radius: 8px;
-  padding: 12px;
-  margin-top: 12px;
+  padding: 14px 16px;
+  margin-top: 14px;
+}
+
+.protocol-pharma-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
 }
 
 .protocol-pharma-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 8px;
   font-size: 0.9rem;
+  text-align: left;
 }
 
 .protocol-pharma-table th {
-  background: #e2e8f0;
-  padding: 8px;
+  background: #f1f5f9;
+  padding: 12px 14px;
   text-align: left;
-  font-weight: 600;
+  font-weight: 700;
   color: #1e293b;
+  border-bottom: 2px solid #cbd5e1;
+  white-space: nowrap;
 }
 
 .protocol-pharma-table td {
-  padding: 8px;
+  padding: 12px 14px;
   border-bottom: 1px solid #e2e8f0;
-  vertical-align: top;
+  vertical-align: middle;
+  color: #334155;
+}
+
+.protocol-pharma-table tr:last-child td {
+  border-bottom: none;
+}
+
+.protocol-pharma-table tr:hover td {
+  background: #f8fafc;
+}
+
+.pharma-route-tag {
+  display: inline-block;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* Night mode protocols support */
+body.theme-night .protocol-card-item {
+  background: #0f1c30;
+  border-color: rgba(130, 153, 186, 0.28);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+body.theme-night .protocol-card-item:hover {
+  border-color: #60a5fa;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+}
+
+body.theme-night .protocol-category-pill {
+  background: #0f1c30;
+  border-color: rgba(130, 153, 186, 0.35);
+  color: #cbd5e1;
+}
+
+body.theme-night .protocol-category-pill:hover {
+  background: #1e293b;
+  border-color: #60a5fa;
+}
+
+body.theme-night .protocol-category-pill.active {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+body.theme-night .protocol-section-box {
+  background: #0f1c30;
+  border-color: rgba(130, 153, 186, 0.28);
+}
+
+body.theme-night .protocol-section-box h4 {
+  color: #93c5fd;
+}
+
+body.theme-night .protocol-key-signs-list li {
+  background: #132238;
+  border-color: rgba(130, 153, 186, 0.25);
+  color: #e2e8f0;
+}
+
+body.theme-night .protocol-pharma-table-wrapper {
+  background: #0f1c30;
+  border-color: rgba(130, 153, 186, 0.28);
+}
+
+body.theme-night .protocol-pharma-table th {
+  background: #132238;
+  color: #e2e8f0;
+  border-bottom-color: rgba(130, 153, 186, 0.3);
+}
+
+body.theme-night .protocol-pharma-table td {
+  border-bottom-color: rgba(130, 153, 186, 0.2);
+  color: #cbd5e1;
+}
+
+body.theme-night .protocol-pharma-table tr:hover td {
+  background: rgba(30, 58, 138, 0.2);
+}
+
+body.theme-night .protocol-redflag-box {
+  background: rgba(153, 27, 27, 0.2);
+  border-color: #991b1b;
+  border-left-color: #ef4444;
 }
 
 
