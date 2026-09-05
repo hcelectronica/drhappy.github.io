@@ -6437,6 +6437,9 @@ function App() {
             <div className="brand-copy">
               <h1>Dr Happy 😊</h1>
               <p className="slogan">Basta de Papeleo, Hagamos medicina.</p>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280', fontWeight: 500 }}>
+                Herramientas para profesionales de la salud e instituciones
+              </p>
             </div>
           </div>
           {!recoveryOpen ? (
