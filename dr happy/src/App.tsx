@@ -10498,74 +10498,118 @@ function App() {
         </div>
       ) : null}
       {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
+
+      {/* Modal Central de Instalación de la App */}
       {showInstallToast ? (
-        <div className="install-app-toast" role="status">
-          <div className="install-app-toast-icon" aria-hidden="true">
-            📲
-          </div>
-          <div className="install-app-toast-copy">
-            <strong>Instalar DrHappy</strong>
-            <span>Agregá un acceso directo a DrHappy en la pantalla de tu celular.</span>
-          </div>
-          <div className="install-app-toast-actions">
-            <button type="button" onClick={() => void handleInstallApp()}>
-              Instalar app
-            </button>
-            <button type="button" className="ghost" onClick={handleDismissInstallToast}>
-              Ahora no
-            </button>
+        <div className="center-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="install-modal-title">
+          <div className="center-modal-card">
+            <div className="center-modal-icon-bubble" aria-hidden="true">
+              📲
+            </div>
+            <h3 id="install-modal-title" className="center-modal-title">
+              Instalá Dr. Happy en tu dispositivo
+            </h3>
+            <p className="center-modal-description">
+              Agregá Dr. Happy directamente a la pantalla de inicio de tu celular o computadora para abrirla en 1 toque, recibir alertas en tiempo real y trabajar a pantalla completa sin distracciones.
+            </p>
+            <div className="center-modal-actions">
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => void handleInstallApp()}
+              >
+                📲 Instalar Dr. Happy ahora
+              </button>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleDismissInstallToast}
+              >
+                Continuar en el navegador por ahora
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
-      {showNotificationToast && notificationPermission !== 'granted' ? (
+
+      {/* Modal Central de Activación de Notificaciones */}
+      {!showInstallToast && showNotificationToast && notificationPermission !== 'granted' ? (
         <div
-          className={`install-app-toast notification-toast-floating ${notificationPermission === 'denied' ? 'denied' : ''}`}
-          role="status"
+          className="center-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="notification-modal-title"
         >
-          <div className="install-app-toast-icon" aria-hidden="true">
-            {notificationPermission === 'denied' ? '⚠️' : '🔔'}
-          </div>
-          <div className="install-app-toast-copy">
-            <strong>
+          <div className={`center-modal-card ${notificationPermission === 'denied' ? 'denied' : ''}`}>
+            <div className="center-modal-icon-bubble" aria-hidden="true">
+              {notificationPermission === 'denied' ? '⚠️' : '🔔'}
+            </div>
+            <h3 id="notification-modal-title" className="center-modal-title">
               {notificationPermission === 'denied'
                 ? 'Notificaciones bloqueadas en tu navegador'
-                : '🔔 Activá las notificaciones de Dr. Happy'}
-            </strong>
+                : 'Activá las Notificaciones de Dr. Happy'}
+            </h3>
+            
             {notificationPermission === 'denied' ? (
-              <span style={{ color: '#ffe4e6', fontSize: '0.82rem', lineHeight: 1.35 }}>
-                Tocá el <strong>candado 🔒</strong> a la izquierda de <code>drhappy.com.ar</code> en la barra superior ➔ <em>Notificaciones</em> ➔ <strong>Permitir</strong>.
-              </span>
+              <>
+                <p className="center-modal-description">
+                  Las notificaciones están bloqueadas en los ajustes de tu navegador. Para recibir mensajes de colegas, novedades y turnos, desbloquealas en 2 pasos:
+                </p>
+                <div className="center-modal-instructions-box">
+                  <div>📱 <strong>En Celular (Android/Chrome):</strong> Tocá el candado 🔒 junto a <code>drhappy.com.ar</code> en la barra superior ➔ <em>Permisos / Notificaciones</em> ➔ <strong>Permitir</strong>.</div>
+                  <div>🍎 <strong>En iPhone (iOS):</strong> Abrí <em>Ajustes de iOS</em> ➔ <em>Notificaciones</em> ➔ <em>Dr. Happy</em> ➔ <strong>Permitir</strong>.</div>
+                  <div>💻 <strong>En Computadora:</strong> Hacé clic en el candado 🔒 a la izquierda de la URL ➔ <em>Notificaciones</em> ➔ <strong>Permitir</strong>.</div>
+                </div>
+                <div className="center-modal-actions">
+                  <button
+                    type="button"
+                    className="unblock-btn"
+                    onClick={() => {
+                      const p = getNotificationPermission()
+                      setNotificationPermission(p)
+                      if (p === 'granted') {
+                        if (activeUserId) void registerPushSubscription(activeUserId)
+                        setShowNotificationToast(false)
+                        showSavedFloatingNotice('¡Notificaciones activadas con éxito!')
+                      } else {
+                        setAppError('Aún figuran bloqueadas en el navegador. Cambiá el permiso en el candado 🔒 arriba y volvé a presionar este botón.')
+                      }
+                    }}
+                  >
+                    🔄 Ya las desbloqueé (Re-verificar)
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={handleDismissNotificationToast}
+                  >
+                    Continuar sin activar por ahora
+                  </button>
+                </div>
+              </>
             ) : (
-              <span>Recibí alertas instantáneas de mensajes privados de colegas, novedades y turnos en tu pantalla.</span>
+              <>
+                <p className="center-modal-description">
+                  Recibí avisos inmediatos en tu pantalla cuando un colega te envíe un mensaje privado, el administrador publique novedades de guardia o se agende un turno médico.
+                </p>
+                <div className="center-modal-actions">
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={() => void handleEnableNotifications()}
+                  >
+                    🔔 Activar Notificaciones ahora
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={handleDismissNotificationToast}
+                  >
+                    Ahora no
+                  </button>
+                </div>
+              </>
             )}
-          </div>
-          <div className="install-app-toast-actions">
-            {notificationPermission === 'denied' ? (
-              <button
-                type="button"
-                style={{ background: '#22c55e', color: '#0f172a', fontWeight: 700 }}
-                onClick={() => {
-                  const p = getNotificationPermission()
-                  setNotificationPermission(p)
-                  if (p === 'granted') {
-                    if (activeUserId) void registerPushSubscription(activeUserId)
-                    setShowNotificationToast(false)
-                    showSavedFloatingNotice('¡Notificaciones activadas!')
-                  } else {
-                    setAppError('Aún figuran bloqueadas. Hacé clic en el candado 🔒 arriba y cambiá Notificaciones a Permitir.')
-                  }
-                }}
-              >
-                🔄 Ya las desbloqueé
-              </button>
-            ) : (
-              <button type="button" onClick={() => void handleEnableNotifications()}>
-                🔔 Activar
-              </button>
-            )}
-            <button type="button" className="ghost" onClick={handleDismissNotificationToast}>
-              Cerrar por ahora
-            </button>
           </div>
         </div>
       ) : null}
