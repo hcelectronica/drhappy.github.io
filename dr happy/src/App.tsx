@@ -9,6 +9,7 @@ import { BrowserPDF417Reader, BrowserQRCodeReader } from '@zxing/browser'
 import * as XLSX from 'xlsx'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import {
   getNotificationPermission,
   requestNotificationPermission,
@@ -3906,9 +3907,6 @@ function App() {
     }
 
     const scanUnread = async () => {
-      if (typeof document !== 'undefined' && document.hidden) {
-        return
-      }
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         return
       }
@@ -4014,10 +4012,50 @@ function App() {
     void scanUnread()
     const intervalId = window.setInterval(() => {
       void scanUnread()
-    }, 3000)
+    }, 2500)
+
+    let realtimeChannel: RealtimeChannel | null = null
+    if (isSupabaseConfigured && supabase) {
+      realtimeChannel = supabase
+        .channel(`incoming-messages-${activeUserId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'community_messages',
+            filter: `recipient_id=eq.${activeUserId}`,
+          },
+          (payload) => {
+            const newRow = payload.new as RemoteCommunityMessageRow
+            const message = mapRemoteCommunityMessage(newRow)
+            const sender = seedUsers.find((user) => user.id === message.senderId)
+            const isBroadcast = message.text.startsWith('📢')
+            const notifTitle = isBroadcast
+              ? '📢 Dr Happy: Novedades de la plataforma'
+              : sender
+                ? `${sender.fullName} te ha enviado un mensaje`
+                : 'Nuevo mensaje en Dr Happy'
+            const notifBody = message.text
+              ? message.text.length > 90
+                ? message.text.slice(0, 87) + '...'
+                : message.text
+              : message.attachments?.length
+                ? 'Te ha enviado un archivo adjunto'
+                : 'Tienes un nuevo mensaje'
+
+            void showAppNotification(notifTitle, {
+              body: notifBody,
+              tag: `drhappy-chat-${message.senderId}`,
+            })
+            void scanUnread()
+          },
+        )
+        .subscribe()
+    }
 
     const handleVisibilityOrOnline = () => {
-      if (!document.hidden && navigator.onLine) {
+      if (navigator.onLine) {
         void scanUnread()
       }
     }
@@ -4026,6 +4064,9 @@ function App() {
 
     return () => {
       window.clearInterval(intervalId)
+      if (realtimeChannel && supabase) {
+        void supabase.removeChannel(realtimeChannel)
+      }
       document.removeEventListener('visibilitychange', handleVisibilityOrOnline)
       window.removeEventListener('online', handleVisibilityOrOnline)
     }
