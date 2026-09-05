@@ -24,6 +24,7 @@ import {
   sendPasswordRecoveryEmail,
   sendPasswordChangedEmail,
   sendAdminBroadcastEmail,
+  sendAppointmentEmail,
   sendEmail,
 } from './emailService'
 import { CLINICAL_PROTOCOLS } from './clinicalProtocols'
@@ -42,6 +43,7 @@ type WorkspaceLayer =
   | 'protocol-detail'
   | 'ambulance'
   | 'ambulance-history'
+  | 'appointments'
 type SubscriptionPlan = 'monthly' | 'semiannual' | 'annual'
 
 interface AmbulanceDraft {
@@ -270,13 +272,32 @@ interface AppointmentRecord {
   patientId: string
   patientName: string
   patientEmail: string
+  patientDni?: string
   scheduledDate: string
   scheduledTime: string
   scheduledAt?: string
   reason: string
+  notes?: string
+  location?: string
+  status?: 'confirmed' | 'pending' | 'attended' | 'cancelled'
   createdAt: string
   createdByUserId: string
   emailDraftSentAt?: string
+  emailConfirmationSentAt?: string
+}
+
+interface AppointmentDraft {
+  id?: string
+  patientId: string
+  patientName: string
+  patientEmail: string
+  patientDni: string
+  scheduledDate: string
+  scheduledTime: string
+  reason: string
+  notes: string
+  location: string
+  sendEmailConfirmation: boolean
 }
 
 interface SeedPatientsPayload {
@@ -403,6 +424,19 @@ const emptyRegisterDraft: RegisterDraft = {
   username: '',
   password: '',
   networkMemberships: [],
+}
+
+const emptyAppointmentDraft: AppointmentDraft = {
+  patientId: '',
+  patientName: '',
+  patientEmail: '',
+  patientDni: '',
+  scheduledDate: new Date().toISOString().slice(0, 10),
+  scheduledTime: '09:00',
+  reason: 'Control médico general',
+  notes: '',
+  location: 'Consultorio médico',
+  sendEmailConfirmation: true,
 }
 
 const PROFESSIONAL_NETWORK_OPTIONS = [
@@ -2135,6 +2169,13 @@ function App() {
   const [patients, setPatients] = useState<PatientRecord[]>([])
   const [availablePatients, setAvailablePatients] = useState<PatientRecord[]>([])
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
+  const [appointmentSearchQuery, setAppointmentSearchQuery] = useState('')
+  const [appointmentFilterTab, setAppointmentFilterTab] = useState<'today' | 'upcoming' | 'all' | 'past'>('today')
+  const [appointmentDateFilter, setAppointmentDateFilter] = useState('')
+  const [appointmentModalOpen, setAppointmentModalOpen] = useState(false)
+  const [appointmentDraft, setAppointmentDraft] = useState<AppointmentDraft>(emptyAppointmentDraft)
+  const [appointmentSaving, setAppointmentSaving] = useState(false)
+  const [appointmentResendingId, setAppointmentResendingId] = useState<string | null>(null)
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
   const [diagnosisCatalog, setDiagnosisCatalog] = useState<string[]>([])
@@ -2451,6 +2492,58 @@ function App() {
       setProtocolCopiedNotice(null)
     }, 3000)
   }
+
+  const appointmentsMetrics = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10)
+    let todayCount = 0
+    let upcomingCount = 0
+    let emailSentCount = 0
+    let pastCount = 0
+
+    for (const a of appointments) {
+      if (a.scheduledDate === todayStr) {
+        todayCount++
+      } else if (a.scheduledDate > todayStr) {
+        upcomingCount++
+      } else {
+        pastCount++
+      }
+      if (a.emailConfirmationSentAt) {
+        emailSentCount++
+      }
+    }
+
+    return {
+      total: appointments.length,
+      todayCount,
+      upcomingCount,
+      pastCount,
+      emailSentCount,
+    }
+  }, [appointments])
+
+  const filteredAppointments = useMemo(() => {
+    const q = normalizeSearchText(appointmentSearchQuery)
+    const todayStr = new Date().toISOString().slice(0, 10)
+
+    return appointments
+      .filter((item) => {
+        if (appointmentFilterTab === 'today' && item.scheduledDate !== todayStr) return false
+        if (appointmentFilterTab === 'upcoming' && item.scheduledDate < todayStr) return false
+        if (appointmentFilterTab === 'past' && item.scheduledDate >= todayStr) return false
+        if (appointmentDateFilter && item.scheduledDate !== appointmentDateFilter) return false
+
+        if (!q) return true
+        return (
+          normalizeSearchText(item.patientName).includes(q) ||
+          normalizeSearchText(item.patientEmail).includes(q) ||
+          (item.patientDni && normalizeSearchText(item.patientDni).includes(q)) ||
+          normalizeSearchText(item.reason).includes(q) ||
+          (item.location && normalizeSearchText(item.location).includes(q))
+        )
+      })
+      .sort((a, b) => appointmentSortKey(a).localeCompare(appointmentSortKey(b)))
+  }, [appointments, appointmentSearchQuery, appointmentFilterTab, appointmentDateFilter])
 
   function loadAccessiblePatientsForUser(userId: string): {
     patientsList: PatientRecord[]
@@ -5838,6 +5931,239 @@ function App() {
     setAppError(null)
   }
 
+  function handleOpenAppointments(): void {
+    stopDictation()
+    setCommunityOpen(false)
+    setWorkspaceLayer('appointments')
+    setAppError(null)
+  }
+
+  function handleNewAppointmentModal(prefillPatient?: PatientRecord | null): void {
+    if (prefillPatient) {
+      setAppointmentDraft({
+        patientId: prefillPatient.id,
+        patientName: `${prefillPatient.apellido}, ${prefillPatient.nombre}`.trim(),
+        patientEmail: prefillPatient.email || '',
+        patientDni: prefillPatient.dni || '',
+        scheduledDate: new Date().toISOString().slice(0, 10),
+        scheduledTime: '09:00',
+        reason: prefillPatient.diagnosticoPrincipal || 'Control médico general',
+        notes: '',
+        location: 'Consultorio médico',
+        sendEmailConfirmation: Boolean(prefillPatient.email),
+      })
+    } else {
+      setAppointmentDraft(emptyAppointmentDraft)
+    }
+    setAppointmentModalOpen(true)
+  }
+
+  function handleEditAppointment(record: AppointmentRecord): void {
+    setAppointmentDraft({
+      id: record.id,
+      patientId: record.patientId,
+      patientName: record.patientName,
+      patientEmail: record.patientEmail || '',
+      patientDni: record.patientDni || '',
+      scheduledDate: record.scheduledDate,
+      scheduledTime: record.scheduledTime,
+      reason: record.reason,
+      notes: record.notes || '',
+      location: record.location || 'Consultorio médico',
+      sendEmailConfirmation: Boolean(record.patientEmail),
+    })
+    setAppointmentModalOpen(true)
+  }
+
+  async function handleSaveAppointment(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (!activeUserId) return
+    if (!appointmentDraft.patientName.trim() || !appointmentDraft.scheduledDate || !appointmentDraft.scheduledTime) {
+      setAppError('Completa el nombre del paciente, fecha y hora del turno.')
+      return
+    }
+
+    setAppointmentSaving(true)
+    setAppError(null)
+
+    try {
+      const isEdit = Boolean(appointmentDraft.id)
+      let finalPatientId = appointmentDraft.patientId
+
+      if (!finalPatientId) {
+        const existing = patients.find(
+          (p) =>
+            (appointmentDraft.patientDni && p.dni === appointmentDraft.patientDni) ||
+            `${p.apellido}, ${p.nombre}`.toLowerCase().includes(appointmentDraft.patientName.toLowerCase())
+        )
+        if (existing) {
+          finalPatientId = existing.id
+        } else {
+          finalPatientId = crypto.randomUUID()
+          const newPatient: PatientRecord = {
+            id: finalPatientId,
+            ownerUserId: activeUserId,
+            apellido: appointmentDraft.patientName.trim(),
+            nombre: '',
+            dni: appointmentDraft.patientDni.trim(),
+            email: appointmentDraft.patientEmail.trim(),
+            obraSocial: '',
+            numeroAfiliado: '',
+            plan: '',
+            birthDate: '',
+            edad: 0,
+            diagnosticoPrincipal: appointmentDraft.reason.trim(),
+            patologiasConocidas: '',
+            patologiasCronicas: '',
+            ultimaInternacion: '',
+            cirugiasPrevias: '',
+            direccion: '',
+            documents: [],
+            consultations: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+          persistPatient(newPatient)
+        }
+      }
+
+      const scheduledAt = `${appointmentDraft.scheduledDate}T${appointmentDraft.scheduledTime}:00`
+      const nextRecord: AppointmentRecord = {
+        id: appointmentDraft.id || crypto.randomUUID(),
+        patientId: finalPatientId,
+        patientName: appointmentDraft.patientName.trim(),
+        patientEmail: appointmentDraft.patientEmail.trim(),
+        patientDni: appointmentDraft.patientDni.trim(),
+        scheduledDate: appointmentDraft.scheduledDate,
+        scheduledTime: appointmentDraft.scheduledTime,
+        scheduledAt,
+        reason: appointmentDraft.reason.trim() || 'Consulta médica general',
+        notes: appointmentDraft.notes.trim(),
+        location: appointmentDraft.location.trim() || 'Consultorio médico',
+        status: 'confirmed',
+        createdAt: isEdit
+          ? (appointments.find((a) => a.id === appointmentDraft.id)?.createdAt || new Date().toISOString())
+          : new Date().toISOString(),
+        createdByUserId: activeUserId,
+        emailConfirmationSentAt:
+          appointmentDraft.sendEmailConfirmation && appointmentDraft.patientEmail.trim()
+            ? new Date().toISOString()
+            : undefined,
+      }
+
+      const nextAppointments = isEdit
+        ? appointments.map((a) => (a.id === nextRecord.id ? nextRecord : a))
+        : [...appointments, nextRecord].sort((a, b) => appointmentSortKey(a).localeCompare(appointmentSortKey(b)))
+
+      setAppointments(nextAppointments)
+      localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
+      const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
+      if (currentProf) {
+        void persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)
+      }
+
+      if (appointmentDraft.sendEmailConfirmation && appointmentDraft.patientEmail.trim()) {
+        const profName = currentProf?.fullName || (activeUser ? activeUser.fullName : 'Profesional tratante')
+        const profSpecialty = currentProf?.specialty || (activeUser ? activeUser.specialty : 'Medicina General')
+        void sendAppointmentEmail({
+          to: appointmentDraft.patientEmail.trim(),
+          patientName: appointmentDraft.patientName.trim(),
+          professionalName: profName,
+          specialty: profSpecialty,
+          date: appointmentDraft.scheduledDate,
+          time: appointmentDraft.scheduledTime,
+          location: appointmentDraft.location.trim() || 'Consultorio médico',
+          notes: appointmentDraft.notes.trim(),
+        }).then((res) => {
+          if (res.success) {
+            showSavedFloatingNotice('Turno guardado y email enviado al paciente')
+          } else {
+            showSavedFloatingNotice('Turno guardado')
+          }
+        })
+      } else {
+        showSavedFloatingNotice('Turno guardado con éxito')
+      }
+
+      setAppointmentModalOpen(false)
+      setAppointmentDraft(emptyAppointmentDraft)
+      setAppNotice(`Turno para ${nextRecord.patientName} guardado para el ${nextRecord.scheduledDate} a las ${nextRecord.scheduledTime} hs.`)
+    } catch (err) {
+      setAppError(`Error al guardar turno: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setAppointmentSaving(false)
+    }
+  }
+
+  async function handleDeleteAppointment(appointmentId: string): Promise<void> {
+    if (!activeUserId) return
+    const target = appointments.find((a) => a.id === appointmentId)
+    if (!target) return
+    if (!window.confirm(`¿Seguro que deseas cancelar y eliminar el turno de ${target.patientName}?`)) {
+      return
+    }
+    const nextAppointments = appointments.filter((a) => a.id !== appointmentId)
+    setAppointments(nextAppointments)
+    localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
+    const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
+    if (currentProf) {
+      void persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)
+    }
+    showSavedFloatingNotice('Turno cancelado')
+  }
+
+  async function handleResendAppointmentEmail(record: AppointmentRecord): Promise<void> {
+    if (!record.patientEmail?.trim()) {
+      setAppError('El paciente no tiene un correo electrónico registrado en este turno.')
+      return
+    }
+    setAppointmentResendingId(record.id)
+    setAppError(null)
+    const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
+    const profName = currentProf?.fullName || (activeUser ? activeUser.fullName : 'Profesional tratante')
+    const profSpecialty = currentProf?.specialty || (activeUser ? activeUser.specialty : 'Medicina General')
+    try {
+      const res = await sendAppointmentEmail({
+        to: record.patientEmail.trim(),
+        patientName: record.patientName,
+        professionalName: profName,
+        specialty: profSpecialty,
+        date: record.scheduledDate,
+        time: record.scheduledTime,
+        location: record.location || 'Consultorio médico',
+        notes: record.notes || '',
+      })
+      if (res.success) {
+        const nextAppointments = appointments.map((a) =>
+          a.id === record.id ? { ...a, emailConfirmationSentAt: new Date().toISOString() } : a
+        )
+        setAppointments(nextAppointments)
+        if (activeUserId) {
+          localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
+          if (currentProf) {
+            void persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)
+          }
+        }
+        setAppNotice(`Confirmación de turno enviada con éxito a ${record.patientEmail} desde soporte@drhappy.com.ar.`)
+        showSavedFloatingNotice('Email de turno enviado')
+      } else {
+        setAppError(`No se pudo enviar el correo: ${res.message || 'Error SMTP'}`)
+      }
+    } catch (err) {
+      setAppError(`Fallo al enviar correo: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setAppointmentResendingId(null)
+    }
+  }
+
+  function handleStartConsultationFromAppointment(record: AppointmentRecord): void {
+    handleSelectPatient(record.patientId)
+    setConsultationDraft((curr) => ({
+      ...curr,
+      motivoConsulta: record.reason || curr.motivoConsulta,
+    }))
+  }
+
   async function handleCommunityFileInput(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const files = Array.from(event.target.files ?? [])
     if (files.length === 0) {
@@ -6933,21 +7259,6 @@ function App() {
                 </p>
                 <div className="drhappy-contact-options">
                   <a
-                    href={`https://wa.me/5491158580221?text=${encodeURIComponent(
-                      'Hola DrHappy Soporte, me comunico desde la pantalla de acceso de la app DrHappy. Mi consulta es: '
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="drhappy-contact-btn whatsapp"
-                  >
-                    <span className="contact-icon">🟢</span>
-                    <div>
-                      <strong>Chatear por WhatsApp</strong>
-                      <small>Respuesta directa y soporte técnico rápido</small>
-                    </div>
-                  </a>
-
-                  <a
                     href={`mailto:soporte@drhappy.com.ar?subject=${encodeURIComponent(
                       'Soporte DrHappy - Consulta desde acceso'
                     )}&body=${encodeURIComponent(
@@ -6957,10 +7268,29 @@ function App() {
                   >
                     <span className="contact-icon">✉️</span>
                     <div>
-                      <strong>Enviar correo electrónico</strong>
-                      <small>soporte@drhappy.com.ar</small>
+                      <strong>Enviar correo electrónico a Soporte</strong>
+                      <small>soporte@drhappy.com.ar (Canal oficial)</small>
                     </div>
                   </a>
+
+                  <button
+                    type="button"
+                    className="drhappy-contact-btn diagnostic"
+                    onClick={() => {
+                      const info = `=== Diagnóstico DrHappy ===\nFecha: ${new Date().toISOString()}\nUsuario: Pantalla de acceso\nURL: ${window.location.href}\nNavegador: ${navigator.userAgent}\nPWA Instalada / Standalone: ${window.matchMedia('(display-mode: standalone)').matches ? 'Sí' : 'No'}\nPermiso Notificaciones: ${('Notification' in window) ? Notification.permission : 'No soportado'}\nServiceWorker: ${('serviceWorker' in navigator) ? 'Soportado' : 'No soportado'}`
+                      navigator.clipboard.writeText(info).then(() => {
+                        showSavedFloatingNotice('📋 Información técnica copiada al portapapeles')
+                      }).catch(() => {
+                        showSavedFloatingNotice('No se pudo copiar automáticamente')
+                      })
+                    }}
+                  >
+                    <span className="contact-icon">📋</span>
+                    <div>
+                      <strong>Copiar diagnóstico del dispositivo</strong>
+                      <small>Copia detalles técnicos para adjuntar en tu consulta</small>
+                    </div>
+                  </button>
                 </div>
               </div>
               <div className="drhappy-modal-footer">
@@ -7218,6 +7548,14 @@ function App() {
           </button>
           <button type="button" className="ghost" onClick={handleBackToOverview}>
             Inicio
+          </button>
+          <button
+            type="button"
+            className={`ghost ${workspaceLayer === 'appointments' ? 'active' : ''}`}
+            onClick={handleOpenAppointments}
+            title="Turnera médica y citas programadas"
+          >
+            📅 Turnera
           </button>
           <button type="button" className="ghost" onClick={handleOpenProfile}>
             Perfil
@@ -8317,6 +8655,21 @@ function App() {
                   </button>
                   <small>Luego podrás buscar o agregar pacientes desde la ficha.</small>
                 </article>
+                <article className="overview-card">
+                  <h2>📅 Turnera Médica</h2>
+                  <p>Agenda consultas presenciales o virtuales con confirmación por email (soporte@drhappy.com.ar).</p>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                    <button type="button" onClick={handleOpenAppointments}>
+                      Abrir Turnera ({appointmentsMetrics.todayCount} hoy)
+                    </button>
+                    <button type="button" className="ghost" onClick={() => handleNewAppointmentModal()}>
+                      + Agendar turno
+                    </button>
+                  </div>
+                  <small style={{ display: 'block', marginTop: 8, color: '#64748b' }}>
+                    {appointmentsMetrics.upcomingCount} próximos · {appointmentsMetrics.emailSentCount} confirmados por email
+                  </small>
+                </article>
                 <article className="overview-card ambulance-card">
                   <h2>🚑 Modo Ambulancia</h2>
                   <p>Activa el acceso rápido para traslados, guardias y atención prehospitalaria.</p>
@@ -8476,6 +8829,241 @@ function App() {
         </div>
       ) : null}
 
+      {workspaceLayer === 'appointments' ? (
+        <div className="screen-stage">
+          <section className="panel layer-header">
+            <div>
+              <h2>📅 Turnera Médica</h2>
+              <p className="flow-hint">
+                Gestión de turnos clínicos, agenda diaria y recordatorios automáticos por email desde soporte@drhappy.com.ar.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => handleNewAppointmentModal()}>
+                ➕ Nuevo turno
+              </button>
+              <button type="button" className="ghost" onClick={handleBackToOverview}>
+                Volver
+              </button>
+            </div>
+          </section>
+
+          {/* Metrics bar */}
+          <div className="turnera-metrics-grid">
+            <div className="turnera-metric-card">
+              <span className="turnera-metric-icon">📅</span>
+              <div className="turnera-metric-info">
+                <strong>{appointmentsMetrics.todayCount}</strong>
+                <span>Turnos para hoy</span>
+              </div>
+            </div>
+            <div className="turnera-metric-card">
+              <span className="turnera-metric-icon">⏳</span>
+              <div className="turnera-metric-info">
+                <strong>{appointmentsMetrics.upcomingCount}</strong>
+                <span>Próximos turnos</span>
+              </div>
+            </div>
+            <div className="turnera-metric-card">
+              <span className="turnera-metric-icon">✉️</span>
+              <div className="turnera-metric-info">
+                <strong>{appointmentsMetrics.emailSentCount}</strong>
+                <span>Confirmados por email</span>
+              </div>
+            </div>
+            <div className="turnera-metric-card">
+              <span className="turnera-metric-icon">📋</span>
+              <div className="turnera-metric-info">
+                <strong>{appointmentsMetrics.total}</strong>
+                <span>Total agendados</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Toolbar & Filters */}
+          <section className="panel turnera-toolbar-panel">
+            <div className="turnera-filters-row">
+              <div className="turnera-search-box">
+                <input
+                  type="search"
+                  placeholder="Buscar por paciente, DNI, motivo, lugar..."
+                  value={appointmentSearchQuery}
+                  onChange={(e) => setAppointmentSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="turnera-tab-buttons">
+                <button
+                  type="button"
+                  className={`ghost ${appointmentFilterTab === 'today' ? 'active' : ''}`}
+                  onClick={() => setAppointmentFilterTab('today')}
+                >
+                  Hoy ({appointmentsMetrics.todayCount})
+                </button>
+                <button
+                  type="button"
+                  className={`ghost ${appointmentFilterTab === 'upcoming' ? 'active' : ''}`}
+                  onClick={() => setAppointmentFilterTab('upcoming')}
+                >
+                  Próximos ({appointmentsMetrics.upcomingCount})
+                </button>
+                <button
+                  type="button"
+                  className={`ghost ${appointmentFilterTab === 'all' ? 'active' : ''}`}
+                  onClick={() => setAppointmentFilterTab('all')}
+                >
+                  Todos ({appointmentsMetrics.total})
+                </button>
+                <button
+                  type="button"
+                  className={`ghost ${appointmentFilterTab === 'past' ? 'active' : ''}`}
+                  onClick={() => setAppointmentFilterTab('past')}
+                >
+                  Historial ({appointmentsMetrics.pastCount})
+                </button>
+              </div>
+              <div className="turnera-date-filter">
+                <input
+                  type="date"
+                  value={appointmentDateFilter}
+                  onChange={(e) => setAppointmentDateFilter(e.target.value)}
+                  title="Filtrar por fecha específica"
+                />
+                {appointmentDateFilter ? (
+                  <button
+                    type="button"
+                    className="ghost compact"
+                    onClick={() => setAppointmentDateFilter('')}
+                    title="Limpiar filtro de fecha"
+                  >
+                    ✕
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          {/* Appointment list */}
+          <section className="panel">
+            {filteredAppointments.length > 0 ? (
+              <div className="turnera-cards-grid">
+                {filteredAppointments.map((record) => {
+                  const todayStr = new Date().toISOString().slice(0, 10)
+                  const isToday = record.scheduledDate === todayStr
+                  const isPast = record.scheduledDate < todayStr
+                  const dateBadgeClass = isToday
+                    ? 'turnera-badge-today'
+                    : isPast
+                    ? 'turnera-badge-past'
+                    : 'turnera-badge-upcoming'
+
+                  return (
+                    <article key={record.id} className={`turnera-card ${isToday ? 'highlight-today' : ''}`}>
+                      <div className="turnera-card-header">
+                        <span className={`turnera-date-badge ${dateBadgeClass}`}>
+                          {formatDate(record.scheduledDate)} · {record.scheduledTime} hs
+                        </span>
+                        <span className="turnera-status-badge">
+                          {isToday ? '🟢 Hoy' : isPast ? '⚪ Pasado' : '🔵 Confirmado'}
+                        </span>
+                      </div>
+
+                      <div className="turnera-card-body">
+                        <h3 className="turnera-patient-name">
+                          {record.patientName}
+                        </h3>
+                        <div className="turnera-patient-meta">
+                          {record.patientDni ? <span>🆔 DNI: {record.patientDni}</span> : null}
+                          {record.patientEmail ? <span>✉️ {record.patientEmail}</span> : <span style={{ opacity: 0.6 }}>Sin email</span>}
+                        </div>
+
+                        <div className="turnera-reason-box">
+                          <strong>Motivo:</strong> {record.reason || 'Consulta médica'}
+                        </div>
+
+                        {record.location ? (
+                          <div className="turnera-location-box">
+                            <span>📍 {record.location}</span>
+                          </div>
+                        ) : null}
+
+                        {record.notes ? (
+                          <div className="turnera-notes-box">
+                            <small>📝 {record.notes}</small>
+                          </div>
+                        ) : null}
+
+                        {/* Email Confirmation Status */}
+                        <div className="turnera-email-status-bar">
+                          {record.emailConfirmationSentAt ? (
+                            <div className="email-status-sent">
+                              <span>✉️ Confirmado por email</span>
+                              <button
+                                type="button"
+                                className="ghost compact"
+                                disabled={appointmentResendingId === record.id}
+                                onClick={() => void handleResendAppointmentEmail(record)}
+                              >
+                                {appointmentResendingId === record.id ? 'Enviando...' : 'Reenviar email'}
+                              </button>
+                            </div>
+                          ) : record.patientEmail ? (
+                            <div className="email-status-pending">
+                              <span>Sin enviar</span>
+                              <button
+                                type="button"
+                                className="ghost compact"
+                                disabled={appointmentResendingId === record.id}
+                                onClick={() => void handleResendAppointmentEmail(record)}
+                              >
+                                {appointmentResendingId === record.id ? 'Enviando...' : 'Enviar confirmación'}
+                              </button>
+                            </div>
+                          ) : (
+                            <small style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Agregá un email para enviar la confirmación</small>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="turnera-card-actions">
+                        <button
+                          type="button"
+                          onClick={() => handleStartConsultationFromAppointment(record)}
+                          title="Iniciar atención médica para este paciente"
+                        >
+                          🩺 Atender
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => handleEditAppointment(record)}
+                        >
+                          ✏️ Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost"
+                          style={{ color: '#c0392b' }}
+                          onClick={() => void handleDeleteAppointment(record.id)}
+                        >
+                          🗑️ Cancelar
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="turnera-empty-state">
+                <p>No hay turnos agendados con los filtros seleccionados.</p>
+                <button type="button" onClick={() => handleNewAppointmentModal()}>
+                  ➕ Agendar un turno nuevo
+                </button>
+              </div>
+            )}
+          </section>
+        </div>
+      ) : null}
+
       {workspaceLayer === 'patient-search' ? (
         <div className="screen-stage">
           <section className="workspace single-column">
@@ -8566,6 +9154,15 @@ function App() {
             <div className="layer-actions">
               <button type="button" className="ghost" onClick={handleStartAttentionFlow}>
                 Volver a pacientes
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => handleNewAppointmentModal(selectedPatient)}
+                disabled={!selectedPatient}
+                title="Agendar un turno o cita para este paciente"
+              >
+                📅 Agendar turno
               </button>
               <button
                 type="button"
@@ -9867,6 +10464,150 @@ function App() {
           </div>
         </div>
       ) : null}
+      {appointmentModalOpen ? (
+        <div className="drhappy-modal-overlay" onClick={() => setAppointmentModalOpen(false)}>
+          <div
+            className="drhappy-modal-card turnera-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="appointment-modal-title"
+          >
+            <div className="drhappy-modal-header">
+              <h3 id="appointment-modal-title" style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>
+                {appointmentDraft.id ? '✏️ Modificar Turno' : '📅 Agendar Nuevo Turno'}
+              </h3>
+              <button
+                type="button"
+                className="drhappy-modal-close-btn"
+                onClick={() => setAppointmentModalOpen(false)}
+                aria-label="Cerrar ventana"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={(e) => void handleSaveAppointment(e)} className="turnera-modal-form">
+              <div className="turnera-form-group">
+                <label>
+                  Paciente (Apellido y Nombre) *
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: Gómez, Carlos"
+                    value={appointmentDraft.patientName}
+                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, patientName: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div className="turnera-form-row">
+                <label style={{ flex: 1 }}>
+                  DNI
+                  <input
+                    type="text"
+                    placeholder="Ej: 32456789"
+                    value={appointmentDraft.patientDni}
+                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, patientDni: e.target.value }))}
+                  />
+                </label>
+                <label style={{ flex: 1.5 }}>
+                  Email del paciente
+                  <input
+                    type="email"
+                    placeholder="paciente@correo.com"
+                    value={appointmentDraft.patientEmail}
+                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, patientEmail: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div className="turnera-form-row">
+                <label style={{ flex: 1 }}>
+                  Fecha *
+                  <input
+                    type="date"
+                    required
+                    value={appointmentDraft.scheduledDate}
+                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, scheduledDate: e.target.value }))}
+                  />
+                </label>
+                <label style={{ flex: 1 }}>
+                  Hora *
+                  <input
+                    type="time"
+                    required
+                    value={appointmentDraft.scheduledTime}
+                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, scheduledTime: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div className="turnera-form-group">
+                <label>
+                  Lugar / Consultorio
+                  <input
+                    type="text"
+                    placeholder="Ej: Consultorio 3 · Hospital Central / Telemedicina"
+                    value={appointmentDraft.location}
+                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, location: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div className="turnera-form-group">
+                <label>
+                  Motivo de consulta / Diagnóstico presuntivo
+                  <input
+                    type="text"
+                    placeholder="Ej: Control de hipertensión / Examen preocupacional"
+                    value={appointmentDraft.reason}
+                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, reason: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div className="turnera-form-group">
+                <label>
+                  Observaciones e indicaciones previas
+                  <textarea
+                    rows={2}
+                    placeholder="Ej: Concurrir en ayunas de 8 hs con estudios previos..."
+                    value={appointmentDraft.notes}
+                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, notes: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <label className="toggle-option" style={{ marginTop: 4, marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={appointmentDraft.sendEmailConfirmation}
+                  onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, sendEmailConfirmation: e.target.checked }))}
+                />
+                <span className="toggle-switch" />
+                <span>
+                  Enviar confirmación automática por email (<strong>soporte@drhappy.com.ar</strong>)
+                </span>
+              </label>
+
+              <div className="drhappy-modal-footer" style={{ marginTop: 12 }}>
+                <button type="submit" disabled={appointmentSaving}>
+                  {appointmentSaving ? 'Guardando turno...' : appointmentDraft.id ? 'Guardar cambios' : 'Agendar turno'}
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setAppointmentModalOpen(false)}
+                  disabled={appointmentSaving}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
       {contactModalOpen ? (
         <div className="drhappy-modal-overlay" onClick={() => setContactModalOpen(false)}>
           <div
@@ -9895,21 +10636,6 @@ function App() {
               </p>
               <div className="drhappy-contact-options">
                 <a
-                  href={`https://wa.me/5491158580221?text=${encodeURIComponent(
-                    `Hola DrHappy Soporte, me comunico desde la app DrHappy (${activeUser ? activeUser.fullName : 'Usuario invitado'}). Mi consulta es: `
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="drhappy-contact-btn whatsapp"
-                >
-                  <span className="contact-icon">🟢</span>
-                  <div>
-                    <strong>Chatear por WhatsApp</strong>
-                    <small>Respuesta directa y soporte técnico rápido</small>
-                  </div>
-                </a>
-
-                <a
                   href={`mailto:soporte@drhappy.com.ar?subject=${encodeURIComponent(
                     `Soporte DrHappy - ${activeUser ? activeUser.fullName : 'Consulta General'}`
                   )}&body=${encodeURIComponent(
@@ -9919,8 +10645,8 @@ function App() {
                 >
                   <span className="contact-icon">✉️</span>
                   <div>
-                    <strong>Enviar correo electrónico</strong>
-                    <small>soporte@drhappy.com.ar</small>
+                    <strong>Enviar correo electrónico a Soporte</strong>
+                    <small>soporte@drhappy.com.ar (Canal oficial)</small>
                   </div>
                 </a>
 
