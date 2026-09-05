@@ -18,7 +18,18 @@
     <meta name="apple-mobile-web-app-title" content="DrHappy" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-    <script type="module" crossorigin src="./assets/index-DmhF-6cc.js"></script>
+    <script>
+      // Redirección inmediata desde GitHub Pages hacia el dominio oficial unificado drhappy.com.ar
+      (function() {
+        var host = window.location.hostname;
+        if (host.includes('github.io')) {
+          var cleanPath = window.location.pathname.replace(/^\/drhappy\.github\.io/, '');
+          var target = 'https://drhappy.com.ar' + cleanPath + window.location.search + window.location.hash;
+          window.location.replace(target);
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-DNxkfxX6.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-Bxu9_MuL.css">
   </head>
   <body>
