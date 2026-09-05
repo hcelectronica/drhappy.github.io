@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://drhappy.com.ar/sitemap.xml
