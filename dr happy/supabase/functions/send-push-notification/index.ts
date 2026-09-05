@@ -10,7 +10,7 @@ const VAPID_PRIVATE_KEY =
   Deno.env.get('VAPID_PRIVATE_KEY')?.trim() ||
   'mDF415FOiHz-UrNBkqIq-Mi5CgrpunJDR8bpCIu-zJg'
 const VAPID_EMAIL =
-  Deno.env.get('VAPID_EMAIL')?.trim() || 'mailto:soporte@drhappy.app'
+  Deno.env.get('VAPID_EMAIL')?.trim() || 'mailto:soporte@drhappy.com.ar'
 
 webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
 
@@ -131,7 +131,6 @@ serve(async (request) => {
     urgency: 'high' as const, // Prioridad ALTA: fuerza la entrega inmediata incluso con pantalla apagada / Doze mode
     headers: {
       'Urgency': 'high',
-      'Topic': tag,
     },
   }
 
