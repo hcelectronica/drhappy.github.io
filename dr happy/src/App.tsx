@@ -7417,7 +7417,7 @@ function App() {
                     </small>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {['all', 'Cardiovascular', 'Neurológico', 'Respiratorio', 'Trauma', 'Infeccioso / Shock', 'Inmunológico / Alergia', 'Metabólico'].map((cat) => (
+                    {['all', 'Pediatría', 'Cardiovascular', 'Neurológico', 'Respiratorio', 'Trauma', 'Infeccioso / Shock', 'Inmunológico / Alergia', 'Metabólico'].map((cat) => (
                       <button
                         key={cat}
                         type="button"
@@ -7431,7 +7431,7 @@ function App() {
                         }}
                         onClick={() => setProtocolCategoryFilter(cat)}
                       >
-                        {cat === 'all' ? 'Todas las áreas' : cat}
+                        {cat === 'all' ? 'Todas las áreas' : cat === 'Pediatría' ? '👶 Pediatría' : cat}
                       </button>
                     ))}
                   </div>
@@ -7442,7 +7442,7 @@ function App() {
                   <input
                     value={protocolSearchQuery}
                     onChange={(event) => setProtocolSearchQuery(event.target.value)}
-                    placeholder="Ej: infarto, dolor de pecho, stemi, acv, cincinnati, presión alta, eap..."
+                    placeholder="Ej: pediatría, pals, asma, bronquiolitis, crup, sepsis, convulsión, deshidratación, iam, acv..."
                   />
                 </label>
 

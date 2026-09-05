@@ -2,7 +2,7 @@ export interface ClinicalProtocol {
   id: string
   title: string
   shortTitle: string
-  category: 'Cardiovascular' | 'Neurológico' | 'Respiratorio' | 'Trauma' | 'Infeccioso / Shock' | 'Inmunológico / Alergia' | 'Metabólico' | 'Toxicología'
+  category: 'Pediatría' | 'Cardiovascular' | 'Neurológico' | 'Respiratorio' | 'Trauma' | 'Infeccioso / Shock' | 'Inmunológico / Alergia' | 'Metabólico' | 'Toxicología'
   cie10: string
   severity: 'Crítica / Código Rojo' | 'Urgencia / Código Amarillo' | 'Prioritaria'
   summary: string
@@ -1515,5 +1515,1016 @@ export const CLINICAL_PROTOCOLS: ClinicalProtocol[] = [
       ]
     },
     actionCopyTemplate: 'PACIENTE CON DESCOMPENSACIÓN GLUCÉMICA. Glucemia capilar inicial: ___ mg/dl. Cuadro clínico: [Hipoglucemia severa / Cetoacidosis Diabética / Estado Hiperosmolar]. Conducta: [Dextrosa 50% ___ ml EV con normalización de glucemia / Hidratación con SF 0.9% 1000 ml/h + Infusión de Insulina Regular a 0.1 UI/kg/h con monitoreo de Potasio]. Signos vitales estables.'
+  },
+  {
+    "id": "pcr-pals",
+    "title": "Paro Cardiorrespiratorio Pediátrico (Algoritmo PALS Avanzado)",
+    "shortTitle": "PCR Pediátrico / PALS",
+    "category": "Pediatría",
+    "cie10": "I46.9 (Paro cardíaco)",
+    "severity": "Crítica / Código Rojo",
+    "summary": "Cese brusco de la actividad mecánica cardíaca en pediatría. En >80% de los casos es de origen hipóxico/asfíctico secundario a falla respiratoria o shock descompensado. Requiere soporte ventilatorio prioritario, compresiones torácicas 15:2 y acceso vascular o intraóseo inmediato.",
+    "prehospitalManifestations": {
+      "setting": "Hogar, guardería, vía pública o unidad de traslado pediátrico / ambulancia.",
+      "keySigns": [
+        "Inconsciencia / Falta de respuesta absoluta al estímulo táctil y auditivo vigoroso.",
+        "Apnea o respiración agónica espasmódica (\"gasping\") ineficaz.",
+        "Ausencia de pulso central palpable en < 10 segundos (pulso braquial/femoral en lactantes < 1 año; pulso carotídeo/femoral en niños > 1 año).",
+        "Bradicardia severa < 60 lpm persistente con signos de hipoperfusión tisular pese a oxigenación/ventilación adecuada (indicación mandatoria de compresiones en pediatría).",
+        "Palidez cérea terrosa, cianosis central generalizada o livedo reticularis grave con hipotonía muscular total."
+      ],
+      "highSuspicionRedFlags": [
+        "Lactante que no llora, no se mueve y presenta respiración agónica tras asfixia por inmersión o atragantamiento.",
+        "Frecuencia cardíaca < 60 lpm con frialdad distal extrema y letargia profunda.",
+        "Cianosis refractaria a la ventilación con bolsa-válvula-máscara (BVM).",
+        "Retraso en el inicio de compresiones torácicas > 10 segundos por duda diagnóstica (ante la duda, iniciar RCP)."
+      ]
+    },
+    "diagnosticAlgorithm": {
+      "initialSteps": [
+        "1. Seguridad de la escena y verificar respuesta: tocar hombros/planta de los pies y llamar en voz alta.",
+        "2. Pedir ayuda inmediata / Activar \"Código Azul Pediátrico\" y solicitar Desfibrilador (DEA/Monitor bifásico).",
+        "3. Evaluar respiración y pulso central simultáneamente en < 10 segundos (braquial en lactantes, carotídeo en niños).",
+        "4. Si NO respira (o solo boquea) y NO hay pulso (o FC < 60 lpm con mala perfusión): Iniciar RCP inmediata.",
+        "5. Relación Compresiones/Ventilaciones: 15:2 con 2 reanimadores (30:2 si hay 1 solo reanimador). Frecuencia: 100-120 cpm. Profundidad: al menos 1/3 del diámetro anteroposterior del tórax (~4 cm en lactantes con técnica de 2 pulgares abrazando el tórax; ~5 cm en niños mayores con 1 o 2 manos).",
+        "6. Conectar monitor/desfibrilador e identificar ritmo cardíaco en cuanto esté disponible."
+      ],
+      "electrocardiogram": [
+        "Ritmos Desfibrilables (~10-15% en niños, más común en cardiopatías/intoxicaciones): Fibrilación Ventricular (FV) o Taquicardia Ventricular sin Pulso (TVSP).",
+        "Ritmos No Desfibrilables (~85-90% en niños): Asistolia o Actividad Eléctrica sin Pulso (AESP) secundaria a hipoxia/acidosis.",
+        "Verificar derivaciones, ganancia y ausencia de desconexión de cables ante trazo isoeléctrico (asistolia)."
+      ],
+      "biomarkersAndLabs": [
+        "Capnografía cuantitativa continua (ETCO2): ETCO2 < 10-15 mmHg indica compresiones de baja calidad; elevación súbita a > 35-40 mmHg indica Retorno de la Circulación Espontánea (RCE).",
+        "Glucemia capilar urgente (descartar hipoglucemia severa como causa o cofactor).",
+        "Gases en sangre arterial/venosa: acidosis metabólica/respiratoria severa, lactato sérico, déficit de base.",
+        "Ionograma: descartar hiperpotasemia/hipopotasemia, hipocalcemia."
+      ],
+      "differentialDiagnosis": [
+        "Regla de las 6 H: Hipoxia (causa #1), Hipovolemia/deshidratación/hemorragia, Hidrogeniones (acidosis), Hipo/Hiperpotasemia, Hipoglucemia, Hipotermia.",
+        "Regla de las 6 T: Tensión (neumotórax a tensión), Taponamiento cardíaco, Tóxicos/intoxicación, Trombosis pulmonar, Trombosis coronaria (anomalías coronarias), Trauma grave."
+      ]
+    },
+    "management": {
+      "prehospitalAmbulance": [
+        "1. RCP de alta calidad sin interrupciones: minimizar pausas en compresiones a < 10 segundos.",
+        "2. Vía aérea y ventilación: Apertura de vía aérea (posición de olfateo en lactantes con rollo bajo hombros; evitar hiperextensión cervical). Bolsa-válvula-máscara (BVM) conectada a O2 a 15 L/min con reservorio (1 ventilación cada 2-3 segundos / 20-30 ventilaciones por minuto si hay vía aérea avanzada).",
+        "3. Acceso Vascular Urgente: Intentar vía venosa periférica (máximo 60 segundos o 2 intentos). Si falla: COLOCAR ACCESO INTRAÓSEO (IO) INMEDIATO en tuberosidad tibial anterior (1-2 cm distal y medial).",
+        "4. Si Ritmo Desfibrilable (FV/TVSP): Descarga 2 J/kg inicial -> reanudar RCP 2 min -> 2ª descarga 4 J/kg -> Adrenalina tras 2ª descarga -> 3ª descarga ≥ 4 J/kg (máx 10 J/kg) -> Amiodarona o Lidocaína tras 3ª descarga.",
+        "5. Si Ritmo No Desfibrilable (Asistolia/AESP): Adrenalina precoz IV/IO lo antes posible y repetir cada 3-5 minutos + búsqueda y tratamiento de las 6H y 6T."
+      ],
+      "emergencyRoomShockRoom": [
+        "1. Manejo avanzado de la vía aérea: Intubación orotraqueal con tubo endotraqueal (TET) con balón de baja presión (Fórmula tamaño TET: [Edad en años / 4] + 3.5 con balón, o [Edad / 4] + 4 sin balón). Confirmar con capnografía continua.",
+        "2. Continuar ciclos de 2 minutos de RCP con relevo de compresores para evitar fatiga.",
+        "3. Expansión rápida con Cristaloides isotónicos: Bolo de SF 0.9% 10-20 ml/kg IV/IO si sospecha de hipovolemia/shock séptico.",
+        "4. Post-RCE (Cuidados Post-Paro): Control específico de temperatura (evitar fiebre, meta normotermia 36-37.5°C), PaO2 94-98% (evitar hiperoxia), normocapnia (PaCO2 35-45 mmHg), infusión de inotrópicos (adrenalina/noradrenalina) para mantener TAM > percentil 50 para la edad, corrección de glucemia."
+      ],
+      "initialPharmacotherapy": [
+        {
+          "drug": "Adrenalina (Epinefrina)",
+          "dose": "0.01 mg/kg (0.1 ml/kg de dilución 1:10.000)",
+          "route": "IV / Intraósea (IO) en bolo rápido con lavado de 5 ml SF",
+          "notes": "Administrar cada 3 a 5 minutos durante todo el paro. Máximo 1 mg (1 ampolla de 1:10.000) por dosis."
+        },
+        {
+          "drug": "Amiodarona",
+          "dose": "5 mg/kg en bolo rápido IV/IO",
+          "route": "IV / IO",
+          "notes": "Para FV/TVSP refractaria tras la 3ª descarga. Puede repetirse hasta 2 veces (dosis acumulada máx 15 mg/kg o 300 mg)."
+        },
+        {
+          "drug": "Lidocaína 1% o 2%",
+          "dose": "1 mg/kg bolo de carga inicial",
+          "route": "IV / IO",
+          "notes": "Alternativa a amiodarona en FV/TVSP refractaria. Mantenimiento post-RCE: 20-50 mcg/kg/min."
+        },
+        {
+          "drug": "Solución Fisiológica 0.9%",
+          "dose": "10 a 20 ml/kg en bolo rápido",
+          "route": "IV / IO",
+          "notes": "En sospecha de hipovolemia, shock séptico o anafiláctico previo al paro. Reevaluar rales."
+        },
+        {
+          "drug": "Dextrosa al 10%",
+          "dose": "2 a 5 ml/kg en bolo lento",
+          "route": "IV / IO",
+          "notes": "Si glucemia < 60 mg/dl en niños o < 45 mg/dl en neonatos/lactantes."
+        },
+        {
+          "drug": "Bicarbonato de Sodio 1M (8.4%)",
+          "dose": "1 mEq/kg (1 ml/kg)",
+          "route": "IV / IO lento",
+          "notes": "Solo indicado en hiperpotasemia documentada, intoxicación por antidepresivos tricíclicos o paro prolongado con ventilación efectiva previa."
+        },
+        {
+          "drug": "Gluconato de Calcio 10%",
+          "dose": "0.5 ml/kg (60 mg/kg) o Cloruro de Calcio 10% 0.2 ml/kg (20 mg/kg)",
+          "route": "IV / IO lento",
+          "notes": "Indicado únicamente en hipocalcemia documentada, hiperpotasemia severa o sobredosis de bloqueantes cálcicos."
+        }
+      ]
+    },
+    "therapeuticWindow": {
+      "timeframe": "Tiempo crítico inmediato: Reanimación cerebral efectiva depende de compresiones y oxigenación en < 2 minutos. Desfibrilación precoz (< 2 min en FV/TVSP) duplica la sobrevida.",
+      "goldStandard": "RCP de alta calidad con ventilación efectiva, acceso intraóseo en < 60 s y desfibrilación precoz si el ritmo lo requiere.",
+      "alternativeReperfusion": "Soporte Vital Extracorpóreo Pediátrico (E-CPR) en centros de alta complejidad con oxigenación por membrana extracorpórea (ECMO) si PCR intrahospitalario presenciado refractario.",
+      "contraindications": [
+        "Signos indiscutibles de muerte biológica (rigidez cadavérica establecida, livideces fijas, decapitación, maceración en recién nacidos).",
+        "Directivas anticipadas documentadas de No Reanimar (DNR) / Limitación del Esfuerzo Terapéutico en patología terminal."
+      ]
+    },
+    "evidenceAndPrognosis": {
+      "survivalAt6h": "En PCR intrahospitalario: RCE inicial 50-70%. En PCR extrahospitalario: RCE inicial 25-35%. Alto riesgo de disfunción miocárdica post-paro en las primeras 6 horas.",
+      "survivalAt24h": "Sobrevida a las 24 horas en UCIP: 30-45% en intrahospitalario; 15-20% en extrahospitalario.",
+      "survivalAt7d": "Sobrevida al alta hospitalaria: ~35-45% en paro intrahospitalario; ~8-12% en paro extrahospitalario pediátrico.",
+      "survivalAt1y": "Sobrevida al año con estado neurológico favorable (Escala PCPC 1-2): ~25-35% en intrahospitalario; ~6-10% en extrahospitalario.",
+      "immediateComplications": [
+        "Disfunción miocárdica post-resucitación con shock cardiogénico e hipotensión severa.",
+        "Edema cerebral anóxico e hipertensión endocraneana.",
+        "Lesiones por RCP: fracturas costales, neumotórax, laceración hepática o esplénica por mala posición de manos."
+      ],
+      "mediateAndLongTermComplications": [
+        "Encefalopatía hipóxico-isquémica severa con parálisis cerebral, cuadriparesia espástica o estado vegetativo persistente.",
+        "Falla multiorgánica (insuficiencia renal aguda, coagulopatía de consumo, necrosis tubular aguda).",
+        "Convulsiones post-anóxicas y mioclonías rebeldes."
+      ]
+    },
+    "actionCopyTemplate": "PARO CARDIORRESPIRATORIO PEDIÁTRICO (PALS). Peso estimado: ___ kg. Causa probable: [Hipoxia / Asfixia / Shock / Cardiopatía / Intoxicación]. Ritmo inicial: [Asistolia / AESP / FV / TVSP]. Conducta: RCP 15:2 de alta calidad + Oxigenación 100% BVM/TET + Acceso [IV / Intraóseo tibial]. Fármacos: Adrenalina 0.01 mg/kg EV/IO (dosis: ___ mg) x ___ ciclos. [Desfibrilación ___ Joules]. Retorno a Circulación Espontánea (RCE): [Logrado / No logrado]. Traslado / Ingreso inmediato a UCIP."
+  },
+  {
+    "id": "insuf-resp-pediatrica",
+    "title": "Insuficiencia Respiratoria y Obstrucción Laríngea Aguda (Crup Grave / Estridor)",
+    "shortTitle": "Insuficiencia Respiratoria Pediátrica / Crup",
+    "category": "Pediatría",
+    "cie10": "J96.0 (Insuficiencia respiratoria aguda) / J05.0 (Laringotraqueítis aguda)",
+    "severity": "Crítica / Código Rojo",
+    "summary": "Dificultad ventilatoria aguda con riesgo de claudicación respiratoria inminente en niños. Caracterizada por aumento marcado del trabajo respiratorio, estridor inspiratorio en reposo, tiraje universal y alteración del intercambio gaseoso.",
+    "prehospitalManifestations": {
+      "setting": "Hogar, guardería, vía pública o traslado en ambulancia.",
+      "keySigns": [
+        "Estridor inspiratorio rudo y audible en reposo (indica obstrucción de vía aérea superior en glotis/subglotis).",
+        "Tiraje respiratorio universal: supraclavicular, supraesternal, intercostal y subcostal severo.",
+        "Aleteo nasal activo y cabeceo sincronizado con la inspiración (signo de fatiga muscular).",
+        "Quejido espiratorio audible y respiración paradojal toracoabdominal en \"balancín\" (falla ventilatoria inminente).",
+        "Cianosis peribucal / ungueal, palidez cenicienta o bradipnea con somnolencia extrema por hipercapnia/agotamiento diafragmático."
+      ],
+      "highSuspicionRedFlags": [
+        "Niño con estridor que pasa de estar agitado/taquipneico a silencioso, bradipneico y letárgico (agotamiento extremo / parada respiratoria inminente).",
+        "Incapacidad para deglutir saliva con sialorrea profusa y postura en \"trípode\" (sospecha de epiglotitis aguda / absceso retrofaríngeo).",
+        "Saturación de O2 < 90% con aire ambiente refractaria a O2 estándar.",
+        "Silencio auscultatorio pulmonar bilateral tras período de estridor severo."
+      ]
+    },
+    "diagnosticAlgorithm": {
+      "initialSteps": [
+        "1. Aplicar Triángulo de Evaluación Pediátrica (TEP): Evaluar Apariencia (tono, interactividad, mirada, llanto), Trabajo Respiratorio (ruidos anormales, tiraje, aleteo) y Circulación Cutánea (palidez, cianosis, livedo).",
+        "2. NO MOLESTAR NI FORZAR AL NIÑO: Evitar procedimientos dolorosos o llanto intenso (el llanto aumenta el flujo turbulento y colapsa la vía aérea subglótica). Permitir que permanezca en brazos de su madre/padre.",
+        "3. Evaluar Score de Westley en Crup (Estridor: 0-2, Tiraje: 0-3, Entrada de aire: 0-2, Cianosis: 0-5, Sensorio: 0-5. Score ≥ 6 = Crup Moderado/Grave).",
+        "4. Oximetría de pulso continua (SatO2 meta ≥ 94%)."
+      ],
+      "electrocardiogram": [
+        "Taquicardia sinusal compensadora. La aparición de bradicardia en hipoxia severa es un signo pre-paro cardíaco."
+      ],
+      "biomarkersAndLabs": [
+        "Gases en sangre arterial/capilar: evaluar PaCO2 (hipercapnia > 45-50 mmHg indica fatiga ventilatoria) y PaO2/SatO2.",
+        "Radiografía de tórax/cuello frente y perfil (solo si el paciente está clínicamente estabilizado; buscar signo del \"campanario\" o \"punta de lápiz\" en subglotis o \"signo del pulgar\" en epiglotitis)."
+      ],
+      "differentialDiagnosis": [
+        "Laringitis aguda subglótica (Crup viral por Parainfluenza).",
+        "Epiglotitis aguda bacteriana (S. pneumoniae / H. influenzae): fiebre alta, aspecto tóxico, sialorrea, ausencia de tos perruna.",
+        "Aspiración de cuerpo extraño en vía aérea (inicio brusco asfixiante con tos paroxística sin pródromo febril).",
+        "Traqueítis bacteriana o absceso periamigdalino/retrofaríngeo.",
+        "Anafilaxia con angioedema de cuerdas vocales."
+      ]
+    },
+    "management": {
+      "prehospitalAmbulance": [
+        "1. Oxigenoterapia en flujo libre (\"blow-by\") o con máscara con reservorio colocada suavemente cerca de la cara sin sujetar rígidamente.",
+        "2. Nebulización urgente con Adrenalina Corriente (1:1000): 0.5 ml/kg (dosis mínima 2.5 ml, máxima 5 ml sin diluir) nebulizada con O2 a 6-8 L/min.",
+        "3. Dexametasona vía oral o intramuscular temprana: 0.6 mg/kg (máx 16 mg) dosis única.",
+        "4. Mantener al paciente en posición semisentada o fowler en brazos del acompañante.",
+        "5. Traslado urgente con preaviso hospitalario."
+      ],
+      "emergencyRoomShockRoom": [
+        "1. Si persiste estridor en reposo tras 30 min: Repetir nebulización con Adrenalina corriente 1:1000.",
+        "2. Cánula Nasal de Alto Flujo (CAFO) si hipoxemia refractaria con flujo 1.5 - 2 L/kg/min.",
+        "3. Si paro respiratorio o falla inminente: Intubación orotraqueal con TET 0.5 a 1 calibre menor al esperado para la edad debido al edema subglótico, asistida por el médico más experimentado.",
+        "4. Período de observación hospitalaria obligatoria de al menos 3 a 4 horas tras la última nebulización con adrenalina para descartar efecto rebote."
+      ],
+      "initialPharmacotherapy": [
+        {
+          "drug": "Adrenalina corriente 1:1000 (1 mg/ml)",
+          "dose": "0.5 ml/kg (mín 2.5 ml, máx 5 ml) en nebulizador",
+          "route": "Inhalatoria / Nebulizada con flujo de O2 a 6-8 L/min",
+          "notes": "Efecto descongestivo alfa-1 en 10-20 min. Vigilar efecto rebote a las 2-3 horas."
+        },
+        {
+          "drug": "Dexametasona",
+          "dose": "0.15 a 0.6 mg/kg (máx 16 mg) dosis única",
+          "route": "Vía Oral / IM / IV",
+          "notes": "Efecto antiinflamatorio glucocorticoide sistémico a partir de 1-2 horas. Reduce tasas de intubación y reconsulta."
+        },
+        {
+          "drug": "Budesonide para nebulizar",
+          "dose": "2 mg (4 ml de solución para nebulizar)",
+          "route": "Inhalatoria / Nebulizada",
+          "notes": "Alternativa o coadyuvante a dexametasona si vómitos incoercibles y dificultad para acceso IM."
+        },
+        {
+          "drug": "Salbutamol en aerosol con aerocámara",
+          "dose": "2 a 4 puffs",
+          "route": "Inhalatoria con máscara facial sellada",
+          "notes": "Si coexiste sibilancias espiratorias o sospecha de hiperreactividad bronquial asociada."
+        }
+      ]
+    },
+    "therapeuticWindow": {
+      "timeframe": "Nebulización con adrenalina en < 15 minutos; Corticoides en < 30 minutos. La acción descongestiva máxima de la adrenalina ocurre a los 15-30 minutos.",
+      "goldStandard": "Dexametasona 0.6 mg/kg + Nebulización con Adrenalina 1:1000 en todo crup moderado a severo con estridor en reposo.",
+      "alternativeReperfusion": "Ventilación no invasiva / Cánula de Alto Flujo (CAFO) o Intubación con tubo traqueal fino bajo laringoscopía directa / videolaringoscopía.",
+      "contraindications": [
+        "Examen de fauces con bajalenguas si se sospecha epiglotitis aguda (puede desencadenar laringoespasmo fatal inmediato).",
+        "Separación del niño de sus progenitores durante la reanimación inicial."
+      ]
+    },
+    "evidenceAndPrognosis": {
+      "survivalAt6h": "Sobrevida > 99% con tratamiento oportuno con adrenalina y corticoides; remisión del estridor en > 85% de los casos en las primeras 2 horas.",
+      "survivalAt24h": "Sobrevida > 99.5% tras internación en sala de observación pediátrica.",
+      "survivalAt7d": "Resolución completa del cuadro en 48-72 horas sin secuelas.",
+      "survivalAt1y": "Excelente pronóstico; baja tasa de recurrencia en niños mayores de 3-5 años al aumentar el calibre laríngeo.",
+      "immediateComplications": [
+        "Asfixia aguda por obstrucción completa de la vía aérea subglótica o espasmo glótico.",
+        "Edema pulmonar por presión negativa post-obstructivo tras alivio brusco de obstrucción severa.",
+        "Paro cardiorrespiratorio hipóxico."
+      ],
+      "mediateAndLongTermComplications": [
+        "Estenosis subglótica adquirida en caso de intubación traumática o prolongada con tubo sobredimensionado.",
+        "Sobreinfección bacteriana secundaria (traqueítis bacteriana membranosa, neumonía aspirativa)."
+      ]
+    },
+    "actionCopyTemplate": "PACIENTE PEDIÁTRICO CON INSUFICIENCIA RESPIRATORIA / CRUP GRAVE. Edad: ___ meses/años. Peso: ___ kg. Presentación: Estridor inspiratorio en reposo + Tiraje universal [supraesternal/intercostal/subcostal]. SatO2: ___%. Conducta: O2 suplementario + Nebulización con Adrenalina 1:1000 ___ ml + Dexametasona ___ mg [VO/IM/EV]. Respuesta: [Favorable con alivio del estridor / Refractaria con requerimiento de CAFO / Intubación]. Paciente en observación estricta."
+  },
+  {
+    "id": "bronquiolitis-grave",
+    "title": "Bronquiolitis Aguda Grave e Insuficiencia Ventilatoria en Lactantes",
+    "shortTitle": "Bronquiolitis Grave en Lactantes",
+    "category": "Pediatría",
+    "cie10": "J21.0 (Bronquiolitis por VSR) / J21.9 (Bronquiolitis aguda)",
+    "severity": "Urgencia / Código Amarillo",
+    "summary": "Primer episodio sibilante y dificultad respiratoria en lactantes menores de 12-24 meses tras pródromo catarral, predominantemente causado por Virus Sincicial Respiratorio (VSR). En formas graves genera obstrucción bronquiolar por moco, atelectasias, fatiga muscular y apneas.",
+    "prehospitalManifestations": {
+      "setting": "Hogar, sala de espera pediátrica o traslado en ambulancia durante meses de otoño/invierno.",
+      "keySigns": [
+        "Lactante < 1 año con antecedente de rinorrea y tos de 2-4 días que progresa a dificultad respiratoria severa.",
+        "Taquipnea marcada: > 60 rpm en < 2 meses; > 50 rpm en 2-11 meses; > 40 rpm en 1-2 años.",
+        "Tiraje subcostal e intercostal evidente con aleteo nasal y quejido espiratorio.",
+        "Rechazo alimentario marcado: ingesta de leche < 50% de su ración habitual con atragantamiento durante las tomas.",
+        "Episodios de apneas (pausas respiratorias > 20 segundos o < 20 s con cianosis/bradicardia), especialmente en prematuros o < 2 meses."
+      ],
+      "highSuspicionRedFlags": [
+        "Lactante menor de 6 semanas de vida o nacido prematuro (< 37 semanas).",
+        "Antecedente de Cardiopatía Congénita con flujo pulmonar aumentado o Displasia Broncopulmonar.",
+        "Pausas apneicas reiteradas o somnolencia con llanto débil.",
+        "Saturación de O2 < 90% con aire ambiente persistente."
+      ]
+    },
+    "diagnosticAlgorithm": {
+      "initialSteps": [
+        "1. Evaluar signos vitales completos: Frecuencia Respiratoria (contar en 60 segundos completos), Frecuencia Cardíaca, SatO2 y Temperatura.",
+        "2. Aplicar Score de Tal Modificado (FR, Sibilancias, Cianosis, Tiraje: 0-4 Leve, 5-8 Moderada, 9-12 Grave) o Score de Wood-Downes-Ferrés.",
+        "3. Auscultación pulmonar: Rales subcrepitantes bilaterales (\"en velcro\"), sibilancias espiratorias diseminadas y tiempo espiratorio prolongado.",
+        "4. Evaluar hidratación: fontanela, llanto con lágrimas, signo del pliegue y diuresis."
+      ],
+      "electrocardiogram": [
+        "Taquicardia sinusal acorde a la fiebre, estrés y dificultad respiratoria."
+      ],
+      "biomarkersAndLabs": [
+        "Panel viral respiratorio por inmunofluorescencia o PCR en hisopado nasofaríngeo (VSR, Rinovirus, Influenza, Metaneumovirus).",
+        "Gases en sangre capilar/venosa: retención de CO2 (PaCO2 > 45-50 mmHg) en casos de fatiga diafragmática o atelectasias masivas.",
+        "Radiografía de tórax (indicada solo en bronquiolitis grave o sospecha de complicación): signos de hiperinsuflación (aplanamiento diafragmático, aumento de espacios intercostales), infiltrados parahiliares o atelectasias laminares/segmentarias."
+      ],
+      "differentialDiagnosis": [
+        "Crisis asmática / Asma del lactante (en mayores de 1 año con episodios recurrentes previos o atopia familiar).",
+        "Neumonía bacteriana o por gérmenes atípicos (consolidación focal con fiebre persistente elevada).",
+        "Insuficiencia cardíaca congestiva descompensada por cardiopatía congénita acianótica.",
+        "Tos convulsa / Síndrome coqueluchoide (paroxismos de tos con \"estridor inspiratorio\" y cianosis)."
+      ]
+    },
+    "management": {
+      "prehospitalAmbulance": [
+        "1. Posición semisentada en 30° con ligera extensión cervical.",
+        "2. Aspiración suave de secreciones nasales con jeringa y solución fisiológica antes de alimentar o trasladar.",
+        "3. Oxigenoterapia normotérmica humidificada mediante cánula nasal para mantener SatO2 92-94%.",
+        "4. Suspender alimentación oral forzada para evitar broncoaspiración si FR > 60 rpm.",
+        "5. Traslado con calefacción adecuada en ambulancia para prevenir hipotermia."
+      ],
+      "emergencyRoomShockRoom": [
+        "1. Cánula Nasal de Alto Flujo (CAFO): Terapia de elección en bronquiolitis moderada/grave. Iniciar a 1.5 - 2 L/kg/min con aire/O2 tibio y humidificado para reducir trabajo respiratorio y generar PEEP fisiológico.",
+        "2. Nutrición enteral por Sonda Orogástrica a débito continuo fraccionado si tolera, o Hidratación Parenteral IV con Solución Glucosada al 5% + Na+ isotónico al 80% de las necesidades basales (restringido por riesgo de secreción inadecuada de ADH).",
+        "3. Prueba terapéutica con Salbutamol (2 puffs con aerocámara): continuar SOLO si se evidencia mejoría objetiva de ≥ 2 puntos en el Score de Tal a los 15-20 min; de lo contrario suspender.",
+        "4. Si falla ventilatoria refractaria o apneas recurrentes: CPAP / VMNI o Intubación Orotraqueal y pase a UCIP."
+      ],
+      "initialPharmacotherapy": [
+        {
+          "drug": "Solución Salina Hipertónica al 3%",
+          "dose": "3 a 4 ml por nebulizador cada 6-8 horas",
+          "route": "Inhalatoria / Nebulizada",
+          "notes": "Facilita el aclaramiento mucociliar y disminuye el edema submucoso en pacientes internados."
+        },
+        {
+          "drug": "Salbutamol en aerosol con aerocámara valvulada",
+          "dose": "2 puffs con máscara facial",
+          "route": "Inhalatoria",
+          "notes": "Prueba terapéutica única. Continuar solo si hay respuesta clínica medible. No indicado de rutina según guías AAP/SAP."
+        },
+        {
+          "drug": "Solución de Hidratación Parenteral IV",
+          "dose": "60 a 80 ml/kg/día (Holiday-Segar al 80%) con Na+ 77-140 mEq/L",
+          "route": "IV continua",
+          "notes": "En lactantes con dificultad respiratoria severa que no pueden alimentarse por vía oral."
+        },
+        {
+          "drug": "Antitérmicos: Paracetamol",
+          "dose": "10 a 15 mg/kg cada 6 horas vía oral / rectal",
+          "route": "VO / Rectal",
+          "notes": "Si temperatura axilar ≥ 38°C para confort y reducir consumo de O2."
+        }
+      ]
+    },
+    "therapeuticWindow": {
+      "timeframe": "Instauración de soporte ventilatorio no invasivo (CAFO) en las primeras 2 horas de ingreso para evitar fatiga muscular diafragmática.",
+      "goldStandard": "Medidas de soporte: Aspiración de secreciones, Oxigenoterapia/CAFO, adecuada hidratación y nutrición enteral protegida.",
+      "alternativeReperfusion": "Presión positiva continua en vía aérea (CPAP nasal) o Ventilación Mecánica Invasiva en UCIP.",
+      "contraindications": [
+        "Corticoides sistémicos de rutina (no han demostrado eficacia en bronquiolitis típica viral según consenso internacional).",
+        "Antibióticos de rutina (la etiología es viral; solo indicados ante sospecha fundada de sobreinfección bacteriana).",
+        "Kinesioterapia respiratoria con técnicas percusivas forzadas en fase aguda (aumenta el distrés y el broncoespasmo)."
+      ]
+    },
+    "evidenceAndPrognosis": {
+      "survivalAt6h": "Estabilización clínica con CAFO en > 85% de los lactantes sin necesidad de intubación.",
+      "survivalAt24h": "Sobrevida > 99% en centros pediátricos con soporte ventilatorio adecuado.",
+      "survivalAt7d": "Duración media del cuadro agudo: 5 a 7 días. Pico de máxima gravedad entre el 3er y 5to día.",
+      "survivalAt1y": "Sobrevida excelente (> 99.8%). Un 30-40% puede presentar episodios posteriores de hiperreactividad bronquial / sibilancias recurrentes desencadenadas por virus.",
+      "immediateComplications": [
+        "Agotamiento ventilatorio con hipercapnia severa y paro respiratorio.",
+        "Atelectasias lobares masivas (frecuente en lóbulo superior derecho o lóbulo medio).",
+        "Neumotórax / Neumomediastino por hiperinsuflación alveolar y barotrauma."
+      ],
+      "mediateAndLongTermComplications": [
+        "Síndrome de sibilancias recurrentes post-bronquiolitis (asma del lactante).",
+        "Bronquiolitis obliterante (rara secuela tras infección grave por Adenovirus serotipos 7/21)."
+      ]
+    },
+    "actionCopyTemplate": "LACTANTE CON BRONQUIOLITIS AGUDA GRAVE. Edad: ___ meses. Peso: ___ kg. Score de Tal: ___/12 (Grave). SatO2: ___% aire ambiente. Signos: Tiraje universal + FR ___ rpm + Rales y sibilancias bilaterales. Conducta: Aspiración de secreciones + Oxigenoterapia con [Cánula nasal / CAFO a ___ L/min] + SNG / Hidratación parenteral al 80% basal. [Prueba con Salbutamol: respuesta positiva/negativa]. Traslado/ingreso a internación pediátrica."
+  },
+  {
+    "id": "crisis-asmatica-pediatrica",
+    "title": "Crisis Asmática Pediátrica Severa y Status Asmático",
+    "shortTitle": "Crisis Asmática Pediátrica Severa",
+    "category": "Pediatría",
+    "cie10": "J45.9 (Asma severa) / J46 (Estado asmático)",
+    "severity": "Crítica / Código Rojo",
+    "summary": "Exacerbación aguda o subaguda de obstrucción bronquial en pacientes pediátricos, caracterizada por broncoespasmo severo, inflamación de la mucosa y tapones de moco. Requiere broncodilatación intensiva seriada, corticoterapia temprana y sulfato de magnesio IV.",
+    "prehospitalManifestations": {
+      "setting": "Hogar, escuela, club deportivo o traslado en ambulancia.",
+      "keySigns": [
+        "Disnea sibilante de instalación brusca o progresiva refractaria a dosis habituales de salbutamol.",
+        "Incapacidad para pronunciar frases completas o llanto entrecortado monofásico.",
+        "Tiraje subcostal, intercostal y supraesternal con uso intenso de músculos esternocleidomastoideos.",
+        "Tórax hiperinsuflado y \"silente\" a la auscultación (ausencia de sibilancias por flujo espiratorio críticamente bajo: signo de gravedad extrema).",
+        "Agitación psicomotriz extrema inicial que vira a letargia, confusión y somnolencia por retención de CO2 y fatiga diafragmática."
+      ],
+      "highSuspicionRedFlags": [
+        "Tórax silencioso a la auscultación con trabajo respiratorio máximo.",
+        "Paciente que adopta postura fija hacia adelante (\"trípode\") y no tolera el decúbito dorsal.",
+        "Pulso paradójico > 15-20 mmHg (caída palpable de la amplitud del pulso durante la inspiración).",
+        "Falta de respuesta tras la primera hora de broncodilatación reglada con aerocámara."
+      ]
+    },
+    "diagnosticAlgorithm": {
+      "initialSteps": [
+        "1. Evaluar gravedad mediante Score Pulmonary Score (PS) o Pediatric Respiratory Assessment Measure (PRAM).",
+        "2. Oximetría de pulso continua (meta de SatO2: 94-98% con O2 suplementario).",
+        "3. Auscultación pulmonar en 4 cuadrantes: sibilancias espiratorias e inspiratorias generalizadas vs silencio auscultatorio.",
+        "4. Evaluar antecedentes de riesgo de asma potencialmente mortal: intubaciones previas en UCIP, internaciones en el último año, uso frecuente de corticoides orales."
+      ],
+      "electrocardiogram": [
+        "Taquicardia sinusal marcada. En crisis severas con hiperinsuflación: signos de sobrecarga ventricular derecha aguda (S1Q3T3 transitorio, onda P pulmonale)."
+      ],
+      "biomarkersAndLabs": [
+        "Gases en sangre arterial o capilar: en fase inicial hay alcalosis respiratoria con PaCO2 baja (< 35 mmHg); una PaCO2 normal (38-42 mmHg) o elevada (> 45 mmHg) en un niño exhausto indica claudicación respiratoria inminente.",
+        "Ionograma: monitorear potasio sérico (la administración repetida de salbutamol a dosis altas induce hipopotasemia por translocación celular).",
+        "Radiografía de tórax: indicada para descartar complicaciones mecánicas como neumotórax o neumomediastino ante dolor torácico súbito o descompensación brusca."
+      ],
+      "differentialDiagnosis": [
+        "Cuerpo extraño en vía aérea inferior.",
+        "Anafilaxia con broncoespasmo como manifestación predominante.",
+        "Neumonía / Bronconeumonía bacteriana con broncoespasmo reactivo.",
+        "Disfunción de cuerdas vocales o laringomalacia."
+      ]
+    },
+    "management": {
+      "prehospitalAmbulance": [
+        "1. Oxigenoterapia normobárica para mantener SatO2 94-98%.",
+        "2. Salbutamol MDI con aerocámara valvulada: 4 a 8 puffs (1 puff cada 30-60 s con 5-10 respiraciones por puff) cada 20 minutos durante la primera hora (esquema de crisis de 3 dosis).",
+        "3. Bromuro de Ipratropio en aerosol: 2 a 4 puffs asociados al Salbutamol en cada una de las 3 dosis de la primera hora.",
+        "4. Corticoide oral temprano: Meprednisona / Prednisolona 1-2 mg/kg VO de inmediato.",
+        "5. Traslado con preaviso a shock room pediátrico."
+      ],
+      "emergencyRoomShockRoom": [
+        "1. Si la crisis persiste severa tras la 1ª hora (PRAM ≥ 8 / PS ≥ 7): Canalizar vía venosa periférica.",
+        "2. Sulfato de Magnesio IV: Infusión de 25 a 50 mg/kg (máximo 2 g) diluido en Solución Fisiológica a pasar en 20-30 minutos con monitoreo cardíaco y de presión arterial.",
+        "3. Corticoterapia parenteral: Hidrocortisona 4-8 mg/kg IV o Metilprednisolona 1-2 mg/kg IV cada 6 horas.",
+        "4. Cánula Nasal de Alto Flujo (CAFO) o VMNI (BiPAP) con PEEP baja (4-6 cmH2O) y soporte inspiratorio.",
+        "5. Si paro inminente o agotamiento total: Intubación Orotraqueal de secuencia rápida con Ketamina (1-2 mg/kg) por sus propiedades broncodilatadoras + Rocuronio/Succinilcolina, con ventilación protectora a frecuencia respiratoria baja y tiempo espiratorio prolongado (evitar auto-PEEP masivo)."
+      ],
+      "initialPharmacotherapy": [
+        {
+          "drug": "Salbutamol MDI (100 mcg/puff)",
+          "dose": "4 a 8 puffs cada 20 minutos durante 1 hora (o nebulizado 0.15 mg/kg, mín 2.5 mg, máx 5 mg)",
+          "route": "Inhalatoria con aerocámara con válvula",
+          "notes": "Fármaco de 1ª línea para relajación del músculo liso bronquial. Vigilar taquicardia e hipopotasemia."
+        },
+        {
+          "drug": "Bromuro de Ipratropio MDI (20 mcg/puff)",
+          "dose": "2 a 4 puffs cada 20 min en la primera hora (o nebulizado 250 mcg en < 20 kg / 500 mcg en > 20 kg)",
+          "route": "Inhalatoria asociada a salbutamol",
+          "notes": "Bloqueo colinérgico que potencia la broncodilatación en crisis moderadas-severas."
+        },
+        {
+          "drug": "Prednisolona / Meprednisona VO",
+          "dose": "1 a 2 mg/kg/día (máx 60 mg/día) durante 3-5 días",
+          "route": "Vía Oral",
+          "notes": "Administración oral tan eficaz como la IV si el paciente deglute y no vomita."
+        },
+        {
+          "drug": "Hidrocortisona IV",
+          "dose": "4 a 8 mg/kg bolo inicial (luego 2-4 mg/kg c/6h)",
+          "route": "IV lenta",
+          "notes": "Indicada si intolerancia oral, vómitos o crisis asfixiante con riesgo vital."
+        },
+        {
+          "drug": "Sulfato de Magnesio 25%",
+          "dose": "25 a 50 mg/kg (máx 2000 mg) diluido en 100 ml SF en 20-30 min",
+          "route": "IV en bomba de infusión",
+          "notes": "Broncodilatador por antagonismo de canales de calcio. Vigilar hipotensión y arritmias."
+        },
+        {
+          "drug": "Salbutamol IV continuo (en UCIP)",
+          "dose": "0.5 a 2 mcg/kg/min en bomba de infusión",
+          "route": "IV continua",
+          "notes": "En status asmático refractario a terapia inhalatoria y magnesio IV."
+        }
+      ]
+    },
+    "therapeuticWindow": {
+      "timeframe": "\"Hora de Oro del Asma\": La respuesta a las 3 dosis de broncodilatador + corticoide en los primeros 60 minutos define el curso y la necesidad de internación en UCIP vs sala común.",
+      "goldStandard": "Salbutamol + Bromuro de Ipratropio en aerosol con espaciador + Corticoide sistémico oral o IV + Sulfato de Magnesio IV en crisis severas.",
+      "alternativeReperfusion": "Ventilación no invasiva (BiPAP) o infusión continua de salbutamol IV / aminofilina en UCIP.",
+      "contraindications": [
+        "Sedantes o ansiolíticos comunes sin control de vía aérea (deprimen el centro respiratorio y aceleran el paro).",
+        "Nebulizaciones continuas con aire comprimido en lugar de oxígeno al 100% en hipoxémicos."
+      ]
+    },
+    "evidenceAndPrognosis": {
+      "survivalAt6h": "Reversión y estabilización en shock room en > 80% de los pacientes; reducción del 70% de admisiones a UCIP con Sulfato de Magnesio IV temprano.",
+      "survivalAt24h": "Sobrevida > 99.5% con manejo protocolizado.",
+      "survivalAt7d": "Recuperación funcional respiratoria completa en 3 a 5 días con esquema de corticoide corto.",
+      "survivalAt1y": "Sobrevida > 99.9%; requiere seguimiento por neumonología infantil e indicación de corticoide inhalado de mantenimiento (budesonide/fluticasona).",
+      "immediateComplications": [
+        "Neumotórax a tensión o neumomediastino por ruptura de bullas alveolares hiperinsufladas.",
+        "Hipopotasemia sintomática con extrasístoles ventriculares por dosis masivas de salbutamol.",
+        "Agotamiento diafragmático con acidosis respiratoria mixta grave."
+      ],
+      "mediateAndLongTermComplications": [
+        "Remodelado de la vía aérea en pacientes con crisis reiteradas sin tratamiento controlador.",
+        "Crisis asfícticas recurrentes de riesgo vital."
+      ]
+    },
+    "actionCopyTemplate": "PACIENTE PEDIÁTRICO CON CRISIS ASMÁTICA SEVERA / STATUS ASMÁTICO. Edad: ___ años. Peso: ___ kg. Pulmonary Score / PRAM: ___/12. SatO2: ___% con O2. Conducta: Salbutamol + Ipratropio MDI (___ puffs c/20 min x 3 dosis) + [Meprednisona VO / Hidrocortisona EV ___ mg] + Sulfato de Magnesio EV ___ mg en 20 min. Respuesta: [Favorable / Parcial / Refractaria con requerimiento de VMNI / UCIP]."
+  },
+  {
+    "id": "sepsis-pediatrica-shock",
+    "title": "Sepsis Pediátrica y Shock Séptico (Criterios Phoenix / Algoritmo PALS)",
+    "shortTitle": "Sepsis Pediátrica y Shock Séptico",
+    "category": "Pediatría",
+    "cie10": "A41.9 (Sepsis no especificada) / R57.2 (Shock séptico)",
+    "severity": "Crítica / Código Rojo",
+    "summary": "Disfunción orgánica potencialmente mortal causada por una respuesta desregulada del huésped ante una infección (Criterios Phoenix). En pediatría, el shock séptico puede presentarse como \"shock frío\" (vasoconstricción con bajo gasto, >60%) o \"shock caliente\" (vasodilatación periférica). Requiere resucitación con fluidos y antibióticos en la primera hora.",
+    "prehospitalManifestations": {
+      "setting": "Hogar, centro de atención primaria, vía pública o ambulancia.",
+      "keySigns": [
+        "Fiebre alta (> 38.5°C) o HIPOTERMIA (< 36°C, signo de extrema gravedad en lactantes y neonatos).",
+        "Taquicardia severa desproporcionada a la elevación térmica o bradicardia en lactantes.",
+        "Alteración del estado mental: letargia, irritabilidad inconsolable, somnolencia o desconexión del entorno.",
+        "Mala perfusión periférica: Relleno capilar enlentecido > 3 segundos, extremidades frías y moteadas (livedo reticularis) con pulsos débiles (Shock Frío), O relleno capilar instantáneo en < 1 segundo (\"flash\") con pulsos saltones (Shock Caliente).",
+        "Lesiones cutáneas purpúricas / petequiales de rápida aparición y progresión (sospecha de sepsis meningocócica / púrpura fulminans)."
+      ],
+      "highSuspicionRedFlags": [
+        "Aparición de petequias o púrpuras que se extienden en minutos.",
+        "Hipotensión arterial (signo TARDÍO y pre-mortem en niños; la presión se mantiene compensada hasta etapas terminales).",
+        "Lactante que no fija la mirada, no sonríe y presenta quejido espiratorio o respiración acidótica de Kussmaul.",
+        "Oliguria / anuria comprobada (> 4-6 horas sin pañal mojado)."
+      ]
+    },
+    "diagnosticAlgorithm": {
+      "initialSteps": [
+        "1. Reconocimiento rápido mediante \"Código Sepsis Pediátrico\" / Criterios Phoenix (puntaje ≥ 2 puntos de disfunción cardiovascular, respiratoria, neurológica o de coagulación).",
+        "2. Medir signos vitales: FC, FR, TA, SatO2, Temperatura y Glucemia.",
+        "3. Acceso Vascular Inmediato: Intentar 2 vías periféricas en < 60 segundos; SI FALLA -> COLOCAR VÍA INTRAÓSEA (IO) SIN DEMORA.",
+        "4. Tomar Hemocultivos x 2, Urocultivo y muestras de foco infeccioso ANTES del antibiótico (sin demorar el inicio del antimicrobiano > 45-60 min)."
+      ],
+      "electrocardiogram": [
+        "Taquicardia sinusal extrema. Monitoreo continuo de arritmias y signos de isquemia miocárdica en shock cardiogénico secundario."
+      ],
+      "biomarkersAndLabs": [
+        "Lactato sérico urgente (> 2 mmol/L indica hipoperfusión tisular; > 4 mmol/L gravedad extrema).",
+        "Gases en sangre: acidosis metabólica profunda con exceso de base negativo.",
+        "Laboratorio completo: Hemograma (leucocitosis con desviación a la izquierda o leucopenia severa < 4.000/mm3), plaquetopenia (< 100.000), coagulograma (KPTT prolongado, RIN > 1.5, dímero D, fibrinógeno), función renal (urea/creatinina), hepatograma.",
+        "Proteína C Reactiva (PCR) y Procalcitonina (PCT)."
+      ],
+      "differentialDiagnosis": [
+        "Shock hipovolémico no infeccioso (deshidratación severa por GEA, quemaduras).",
+        "Shock anafiláctico.",
+        "Shock cardiogénico (miocarditis viral, arritmias congénitas, miocardiopatía dilatada).",
+        "Errores congénitos del metabolismo o crisis suprarrenal congénita."
+      ]
+    },
+    "management": {
+      "prehospitalAmbulance": [
+        "1. Oxígeno al 100% por máscara con reservorio.",
+        "2. Acceso venoso periférico o INTRAÓSEO (IO) tibial inmediato.",
+        "3. Resucitación con fluidos: Bolo de Solución Fisiológica 0.9% o Ringer Lactato a 10-20 ml/kg a pasar en 10-20 minutos.",
+        "4. Reevaluar signos de respuesta (mejoría de FC y relleno capilar) y signos de sobrecarga (crepitantes pulmonares, hepatomegalia). Repetir bolo hasta 40-60 ml/kg si no hay sobrecarga.",
+        "5. Notificación inmediata de Código Sepsis al centro receptor y traslado urgente."
+      ],
+      "emergencyRoomShockRoom": [
+        "1. Antibioticoterapia de amplio espectro en la primera hora (\"Hora de Oro\").",
+        "2. Soporte Inotrópico / Vasoactivo Temprano: Si el shock persiste tras 40-60 ml/kg de cristaloides (o antes si hay disfunción miocárdica): Iniciar Adrenalina IV/IO (0.05-0.3 mcg/kg/min) en Shock Frío o Noradrenalina IV/IO (0.05-0.3 mcg/kg/min) en Shock Caliente.",
+        "3. Si shock refractario a catecolaminas: Administrar Hidrocortisona en dosis de estrés por sospecha de insuficiencia suprarrenal relativa.",
+        "4. Corregir hipoglucemia e hipocalcemia (el calcio es cofactor miocárdico fundamental en niños).",
+        "5. Ingreso a Unidad de Cuidados Intensivos Pediátricos (UCIP)."
+      ],
+      "initialPharmacotherapy": [
+        {
+          "drug": "Solución Fisiológica 0.9% o Ringer Lactato",
+          "dose": "10 a 20 ml/kg en bolo rápido (10-20 min)",
+          "route": "IV / Intraósea (IO)",
+          "notes": "Repetible hasta 40-60 ml/kg en la 1ª hora guiado por clínica. Suspender si hepatomegalia o rales."
+        },
+        {
+          "drug": "Ceftriaxona",
+          "dose": "100 mg/kg/día (máx 2 g) IV en 1 o 2 dosis",
+          "route": "IV / IO",
+          "notes": "Antibiótico empírico de 1ª línea para bacteriemia / meningitis / sepsis comunitaria."
+        },
+        {
+          "drug": "Vancomicina",
+          "dose": "15 mg/kg cada 6 horas (máx 2 g/día)",
+          "route": "IV en infusión de 60 min",
+          "notes": "Agregar si sospecha de SAMR, neumococo resistente o foco cutáneo/osteoarticular."
+        },
+        {
+          "drug": "Ampicilina + Gentamicina",
+          "dose": "Ampicilina 100 mg/kg c/6h + Genta 5 mg/kg c/24h",
+          "route": "IV / IO",
+          "notes": "Esquema empírico mandatorio en neonatos y lactantes menores de 28-60 días (cubre Listeria y GBS)."
+        },
+        {
+          "drug": "Adrenalina (Epinefrina) en infusión continua",
+          "dose": "0.05 a 0.3 mcg/kg/min en bomba",
+          "route": "IV / IO periférica o central",
+          "notes": "Inotrópico de elección en Shock Frío pediátrico (gasto cardíaco disminuido y vasoconstricción)."
+        },
+        {
+          "drug": "Noradrenalina en infusión continua",
+          "dose": "0.05 a 0.3 mcg/kg/min en bomba",
+          "route": "IV / IO periférica o central",
+          "notes": "Vasopresor de elección en Shock Caliente pediátrico (vasodilatación periférica)."
+        },
+        {
+          "drug": "Hidrocortisona",
+          "dose": "1 a 2 mg/kg cada 6 horas (máx 200 mg/día)",
+          "route": "IV / IO",
+          "notes": "Indicada en shock séptico refractario a catecolaminas a dosis altas."
+        },
+        {
+          "drug": "Dextrosa al 10%",
+          "dose": "2 a 5 ml/kg en bolo",
+          "route": "IV / IO",
+          "notes": "Tratamiento inmediato si glucemia < 60 mg/dl."
+        }
+      ]
+    },
+    "therapeuticWindow": {
+      "timeframe": "\"Hora de Oro\": Antibióticos y fluidos en los primeros 60 minutos de reconocimiento. Cada hora de retraso en antimicrobianos incrementa la mortalidad pediátrica un 8-10%.",
+      "goldStandard": "Acceso vascular/IO precoz + Expansión con cristaloides 10-20 ml/kg + Antibióticos de amplio espectro en < 60 min + Inotrópicos tempranos si shock refractario a fluidos.",
+      "alternativeReperfusion": "Monitoreo invasivo de PAM y saturación venosa central de O2 (ScvO2 > 70%) en UCIP.",
+      "contraindications": [
+        "Sobrecarga masiva de volumen a ciegas sin reevaluación clínica continua (riesgo de edema pulmonar agudo y empeoramiento de oxigenación).",
+        "Demorar el acceso vascular por insistir en punciones venosas periféricas difíciles en lugar de colocar vía intraósea."
+      ]
+    },
+    "evidenceAndPrognosis": {
+      "survivalAt6h": "Reversión del shock en > 80% con resucitación guiada por metas en la primera hora.",
+      "survivalAt24h": "Sobrevida a las 24 horas: 85-92% en centros con UCIP de alta complejidad.",
+      "survivalAt7d": "Sobrevida a los 7 días: 80-88% en sepsis comunitaria tratada precozmente.",
+      "survivalAt1y": "Sobrevida global: 80-85%. Hasta un 20-30% de los sobrevivientes de shock séptico severo presentan secuelas funcionales, cognitivas o amputaciones por necrosis periférica.",
+      "immediateComplications": [
+        "Coagulación Intravascular Diseminada (CID) con trombosis microvascular y sangrado masivo.",
+        "Distrés Respiratorio Agudo Pediátrico (PARDS) por fuga capilar pulmonar.",
+        "Falla Renal Aguda oligúrica que requiere terapia de reemplazo renal (diálisis peritoneal o hemofiltración)."
+      ],
+      "mediateAndLongTermComplications": [
+        "Necrosis acral de dedos y extremidades por isquemia periférica que requiere amputación.",
+        "Déficit neurológico o retraso en el neurodesarrollo post-encefalopatía séptica.",
+        "Inmunoparálisis post-séptica con riesgo elevado de infecciones nosocomiales secundarias."
+      ]
+    },
+    "actionCopyTemplate": "PACIENTE PEDIÁTRICO CON SOSPECHA DE SEPSIS / SHOCK SÉPTICO (CÓDIGO SEPSIS). Edad: ___ meses/años. Peso: ___ kg. Presentación: [Fiebre ___°C / Hipotermia] + Taquicardia + Relleno capilar ___ seg + [Shock frío / Shock caliente]. Conducta: Acceso [IV / IO] + Expansión SF 0.9% ___ ml (___ ml/kg) + Cultivos + Antibiótico: [Ceftriaxona ___ mg / Vancomicina ___ mg] en primera hora. [Inotrópico: Adrenalina / Noradrenalina a ___ mcg/kg/min]. Derivación inmediata a UCIP."
+  },
+  {
+    "id": "convulsion-status-pediatrico",
+    "title": "Crisis Convulsiva Febril y Status Epiléptico Pediátrico",
+    "shortTitle": "Convulsión y Status Epiléptico Pediátrico",
+    "category": "Pediatría",
+    "cie10": "R56.0 (Convulsiones febriles) / G41.9 (Estado de mal epiléptico)",
+    "severity": "Crítica / Código Rojo",
+    "summary": "Emergencia neurológica definida como una crisis convulsiva continua que dura > 5 minutos (tiempo T1) o crisis repetidas sin recuperación de la conciencia entre ellas. En lactantes de 6 meses a 5 años la causa más frecuente son las convulsiones febriles, pero ante crisis prolongadas se debe actuar como status epiléptico para prevenir daño neuronal irreversible (tiempo T2 = 30 min).",
+    "prehospitalManifestations": {
+      "setting": "Hogar, escuela, vía pública o ambulancia.",
+      "keySigns": [
+        "Crisis tónico-clónica generalizada activa con movimientos involuntarios rítmicos de las 4 extremidades y rigidez.",
+        "Pérdida súbita de la conciencia con desviación de la mirada conjugada (hacia arriba o lateral).",
+        "Trismus mandibular, sialorrea espumosa y cianosis peribucal transitoria por apnea/espasmo de la musculatura respiratoria.",
+        "Fiebre elevada en contexto de cuadro infeccioso intercurrente (en convulsión febril simple o compleja).",
+        "Estado postictal prolongado con estupor profundo, hipotonía o déficit focal motor transitorio (Parálisis de Todd)."
+      ],
+      "highSuspicionRedFlags": [
+        "Crisis que supera los 5 minutos de duración (indicación formal de tratamiento farmacológico de rescate).",
+        "Crisis focal o asimétrica (movimientos que inician en un solo hemicuerpo o extremidad).",
+        "Múltiples crisis en un mismo episodio (< 24 horas) sin recuperación interictal del sensorio.",
+        "Lactante menor de 6 meses o niño con signos meníngeos (rigidez de nuca, fontanela abombada, petequias)."
+      ]
+    },
+    "diagnosticAlgorithm": {
+      "initialSteps": [
+        "1. Cronometrar la duración exacta de la crisis desde el inicio.",
+        "2. Vía aérea y soporte: Posición de seguridad (decúbito lateral), aspiración suave de secreciones, O2 al 100% por máscara con reservorio. NUNCA FORZAR LA APERTURA BUCAL NI INTRODUCIR OBJETOS.",
+        "3. Glucemia capilar inmediata: descartar y tratar hipoglucemia (< 60 mg/dl).",
+        "4. Si la crisis dura > 5 minutos (Fase 1): Administrar Benzodiacepina de primera línea por vía no invasiva o IV.",
+        "5. Si la crisis persiste > 10-15 minutos (Fase 2): Administrar anticonvulsivante de segunda línea IV."
+      ],
+      "electrocardiogram": [
+        "Monitoreo cardíaco continuo durante la infusión de anticonvulsivantes (especialmente con fenitoína por riesgo de bradicardia y prolongación del QT)."
+      ],
+      "biomarkersAndLabs": [
+        "Glucemia capilar, ionograma sérico (sodio, potasio, calcio iónico, magnesio).",
+        "Gases en sangre: acidosis láctica transitoria post-ictal.",
+        "Punción Lumbar (PL): indicada en menores de 6-12 meses con fiebre y primera crisis, sospecha de meningitis o estado postictal prolongado no aclarado tras estabilización.",
+        "Tomografía computada de encéfalo (TAC): indicada ante sospecha de traumatismo de cráneo, focalidad neurológica persistente o hipertensión endocraneana."
+      ],
+      "differentialDiagnosis": [
+        "Convulsión febril simple (generalizada, < 15 min, única en 24h, niño de 6m-5a).",
+        "Meningitis bacteriana / Encefalitis viral (herpes simple, enterovirus).",
+        "Intoxicación accidental (antihistamínicos, antidepresivos, monóxido de carbono, hipoglucemiantes).",
+        "Síncope febril o espasmo del sollozo / crisis anóxicas reflejas."
+      ]
+    },
+    "management": {
+      "prehospitalAmbulance": [
+        "1. Garantizar permeabilidad de vía aérea y administrar O2.",
+        "2. Si no hay vía venosa y la crisis dura > 5 min: Administrar MIDAZOLAM INTRANASAL (0.2 mg/kg) con dispositivo atomizador, O Midazolam Bucal (0.2 mg/kg), O DIAZEPAM RECTAL (0.5 mg/kg).",
+        "3. Si hay vía venosa permeable: Diazepam IV 0.2-0.3 mg/kg lento (en 2-3 min) o Lorazepam IV 0.1 mg/kg.",
+        "4. Control térmico: Paracetamol o Ibuprofeno rectal si fiebre alta y medidas físicas (desabrigar).",
+        "5. Traslado urgente monitoreado."
+      ],
+      "emergencyRoomShockRoom": [
+        "1. Si la crisis persiste a los 10-15 min tras la primera dosis de benzodiacepina: Repetir una segunda dosis de benzodiacepina.",
+        "2. Si persiste a los 15-20 min: Iniciar Anticonvulsivante de Segunda Línea IV: LEVETIRACETAM IV (50-60 mg/kg en 10 min) O ÁCIDO VALPROICO IV (40 mg/kg en 10 min) O FENITOÍNA IV (20 mg/kg en 20 min).",
+        "3. Si la crisis persiste > 30-40 min (Status Epiléptico Refractario - Fase 3): Intubación Orotraqueal de secuencia rápida, ventilación mecánica e inducción de coma farmacológico con infusión continua de Midazolam o Propofol en UCIP con monitoreo EEG continuo."
+      ],
+      "initialPharmacotherapy": [
+        {
+          "drug": "Midazolam Intranasal (MAD) o Bucal",
+          "dose": "0.2 mg/kg (máx 10 mg)",
+          "route": "Intranasal con atomizador / Mucosa bucal",
+          "notes": "Fármaco y vía de 1ª elección prehospitalaria: rápida absorción transmucosa sin necesidad de vía venosa."
+        },
+        {
+          "drug": "Diazepam Rectal",
+          "dose": "0.5 mg/kg (5 mg en < 5 años / 10 mg en > 5 años)",
+          "route": "Rectal con cánula",
+          "notes": "Alternativa eficaz si no se dispone de midazolam intranasal."
+        },
+        {
+          "drug": "Diazepam IV",
+          "dose": "0.2 a 0.3 mg/kg (máx 10 mg) lento en 2-3 min",
+          "route": "IV lenta",
+          "notes": "Administrar diluido o puro en vena de buen calibre. Vigilar depresión respiratoria."
+        },
+        {
+          "drug": "Lorazepam IV",
+          "dose": "0.1 mg/kg (máx 4 mg) en 2 minutos",
+          "route": "IV",
+          "notes": "Benzodiacepina de elección hospitalaria por mayor duración de acción anticonvulsiva."
+        },
+        {
+          "drug": "Levetiracetam IV",
+          "dose": "40 a 60 mg/kg (máx 3000 mg) en 10-15 min diluido en SF",
+          "route": "IV en infusión",
+          "notes": "Anticonvulsivante de 2ª línea preferido: excelente perfil de seguridad cardiovascular y neurológica."
+        },
+        {
+          "drug": "Ácido Valproico IV",
+          "dose": "40 mg/kg (máx 3000 mg) en 10 min",
+          "route": "IV en infusión",
+          "notes": "Excelente opción de 2ª línea. Contraindicado en sospecha de hepatopatía o enfermedad mitocondrial."
+        },
+        {
+          "drug": "Fenitoína (Difenilhidantoína) IV",
+          "dose": "20 mg/kg (máx 1000 mg) diluido solo en SF a pasar en 20-30 min",
+          "route": "IV exclusiva (NUNCA en dextrosa por precipitación)",
+          "notes": "Monitoreo estricto de ECG y TA durante toda la infusión por riesgo de arritmias."
+        },
+        {
+          "drug": "Dextrosa al 10%",
+          "dose": "2 a 5 ml/kg en bolo",
+          "route": "IV / IO",
+          "notes": "Si glucemia < 60 mg/dl."
+        }
+      ]
+    },
+    "therapeuticWindow": {
+      "timeframe": "T1 (5 minutos): Iniciar benzodiacepinas. T2 (30 minutos): Inicio de daño neuronal irreversible y refractariedad farmacológica si no se frena la crisis.",
+      "goldStandard": "Midazolam intranasal/IV precoz (< 5 min) + Levetiracetam/Valproato IV si persiste > 15 min.",
+      "alternativeReperfusion": "Anestesia general con infusión de Midazolam / Ketamina / Tiopental en UCIP.",
+      "contraindications": [
+        "Administrar más de 2 dosis de benzodiacepinas consecutivas en el ámbito prehospitalario sin soporte de vía aérea (riesgo crítico de paro respiratorio acumulativo).",
+        "Fenitoína diluida en soluciones glucosadas (precipita inmediatamente)."
+      ]
+    },
+    "evidenceAndPrognosis": {
+      "survivalAt6h": "Control de la crisis en > 90% de los pacientes tratados dentro de los primeros 15 minutos.",
+      "survivalAt24h": "Sobrevida > 98% en status convulsivo febril o idiopático.",
+      "survivalAt7d": "Excelente recuperación neurológica en convulsiones febriles típicas.",
+      "survivalAt1y": "Sobrevida > 99%. Riesgo de epilepsia posterior en convulsión febril simple es similar a la población general (~1-2%); en convulsión febril compleja asciende al 4-10%.",
+      "immediateComplications": [
+        "Depresión respiratoria e hipoxemia severa post-benzodiacepinas que requiere ventilación con BVM o IOT.",
+        "Broncoaspiración de contenido gástrico durante la crisis.",
+        "Rabdomiólisis e hipertermia maligna en crisis continuas > 30-60 min."
+      ],
+      "mediateAndLongTermComplications": [
+        "Daño neuronal selectivo en hipocampo y corteza temporal con esclerosis mesial temporal y epilepsia refractaria.",
+        "Déficit cognitivo o conductual post-status prolongado."
+      ]
+    },
+    "actionCopyTemplate": "PACIENTE PEDIÁTRICO CON CRISIS CONVULSIVA / STATUS EPILÉPTICO. Edad: ___ meses/años. Peso: ___ kg. Tipo de crisis: [Tónico-clónica generalizada / Focal / Febril]. Duración total: ___ minutos. Glucemia: ___ mg/dl. Conducta: O2 + Posición lateral + 1ª Línea: [Midazolam intranasal ___ mg / Diazepam EV ___ mg] a los ___ min. [2ª Línea: Levetiracetam EV ___ mg en 10 min]. Cese de crisis: [Sí / No]. Estado postictal: [En recuperación / Requiere derivación UCIP]."
+  },
+  {
+    "id": "deshidratacion-shock-pediatrico",
+    "title": "Deshidratación Grave y Shock Hipovolémico por Gastroenteritis Aguda",
+    "shortTitle": "Deshidratación Grave y Shock por Diarrea",
+    "category": "Pediatría",
+    "cie10": "E86.0 (Deshidratación) / A09 (Gastroenteritis aguda)",
+    "severity": "Crítica / Código Rojo",
+    "summary": "Pérdida crítica de agua y electrolitos secundaria a diarrea aguda y vómitos profusos, con déficit ponderal > 10% y colapso circulatorio. Constituye una de las principales causas de morbimortalidad infantil prevenible en el mundo. Requiere rescate volumétrico rápido con cristaloides isotónicos.",
+    "prehospitalManifestations": {
+      "setting": "Hogar, sala de primeros auxilios o ambulancia.",
+      "keySigns": [
+        "Historia de diarrea líquida profusa (\"en agua de arroz\" o de alta frecuencia > 5-10/día) y vómitos incoercibles.",
+        "Signo del pliegue cutáneo marcadamente pastoso: el pliegue pellizcado en el abdomen tarda > 2 segundos en desaparecer (\"signo del lienzo húmedo\").",
+        "Ojos profundamente hundidos, mucosas yugales y lengua secas como papel de lija, y llanto totalmente sin lágrimas.",
+        "Fontanela anterior marcadamente deprimida / hundida en lactantes.",
+        "Compromiso circulatorio / shock hipovolémico: pulso radial filiforme o no palpable, taquicardia extrema, extremidades frías, relleno capilar > 3 segundos y anuria comprobada > 6-8 horas."
+      ],
+      "highSuspicionRedFlags": [
+        "Lactante letárgico, comatoso o que no responde a los estímulos de los padres.",
+        "Respiración profunda y rápida sin sibilancias (respiración acidótica de Kussmaul por acidosis metabólica severa).",
+        "Convulsiones en contexto de deshidratación hipernatrémica (Na+ > 150 mEq/L) o hiponatrémica severa (Na+ < 120 mEq/L).",
+        "Llenado capilar > 4 segundos con frialdad hasta codos y rodillas."
+      ]
+    },
+    "diagnosticAlgorithm": {
+      "initialSteps": [
+        "1. Evaluar grado de deshidratación según criterios clínicos de la OMS / AEPED: Leve (< 5%), Moderada (5-10%), Grave con Shock (> 10%).",
+        "2. Medir peso exacto o estimar según edad si no se dispone de balanza: [Edad en años + 4] x 2.",
+        "3. Evaluar sensorio, patrón ventilatorio, pulsos periféricos y centrales, presión arterial y temperatura diferencial.",
+        "4. Distinguir si el paciente está en Shock Hipovolémico (Fase de rescate urgente) o Deshidratación grave sin shock (Plan de rehidratación rápida EV o Plan B de SRO)."
+      ],
+      "electrocardiogram": [
+        "Taquicardia sinusal. Monitorear alteraciones del potasio: Ondas T aplanadas y onda U prominente en hipopotasemia; ondas T picudas y simétricas con QRS ancho en hiperpotasemia por anuria."
+      ],
+      "biomarkersAndLabs": [
+        "Ionograma sérico urgente: Na+, K+, Cl- (fundamental para clasificar en deshidratación Isonatrémica 135-145 mEq/L, Hiponatrémica < 130 mEq/L o Hipernatrémica > 150 mEq/L).",
+        "Estado Ácido-Base (EAB): evaluar pH, bicarbonato y exceso de base (acidosis metabólica con anión gap aumentado).",
+        "Función renal: Urea y Creatinina (diferenciar insuficiencia renal prerrenal por hipovolemia vs daño parenquimatoso intrínseco).",
+        "Glucemia y Densidad urinaria."
+      ],
+      "differentialDiagnosis": [
+        "Cetoacidosis diabética de debut (hiperglucemia, polidipsia/poliuria previa, aliento cetónico, dolor abdominal).",
+        "Sepsis grave / Shock séptico con foco gastrointestinal o peritonitis.",
+        "Invaginación intestinal o abdomen agudo obstructivo (heces en \"jalea de grosella\", vómitos biliares).",
+        "Insuficiencia suprarrenal aguda (crisis addisoniana / hiperplasia suprarrenal congénita con hiponatremia e hiperpotasemia)."
+      ]
+    },
+    "management": {
+      "prehospitalAmbulance": [
+        "1. Si el paciente presenta signos de SHOCK HIPOVOLÉMICO: Canalizar vía venosa periférica o COLOCAR VÍA INTRAÓSEA (IO) TIBIAL INMEDIATA.",
+        "2. Administrar BOLO DE RESCATE con Solución Fisiológica 0.9% o Ringer Lactato: 20 ml/kg IV/IO en 15 a 20 minutos.",
+        "3. Si no hay shock y el paciente deglute sin vómitos incoercibles: Iniciar Sales de Rehidratación Oral (SRO fórmula OMS) a tomas pequeñas con jeringa/cuchara (5 ml cada 2-3 min).",
+        "4. Mantener abrigado para evitar hipotermia durante la reposición de fluidos.",
+        "5. Traslado urgente."
+      ],
+      "emergencyRoomShockRoom": [
+        "1. Fase 1 - Rescate de Shock: Si el shock persiste tras el primer bolo, repetir un 2° o 3° bolo de SF 0.9% a 20 ml/kg hasta recuperar pulsos periféricos y relleno capilar < 2 s (máx 60 ml/kg).",
+        "2. Fase 2 - Rehidratación Rápida Parenteral (Plan OMS/SAP): 100 ml/kg de Solución Polielectrolítica o SF 0.9% con glucosado:\n   - Lactantes < 12 meses: 30 ml/kg en 1 hora + 70 ml/kg en 5 horas.\n   - Niños > 12 meses: 30 ml/kg en 30 minutos + 70 ml/kg en 2.5 horas.",
+        "3. Control de Vómitos: Ondansetrón 0.15 mg/kg VO/IV dosis única si los vómitos impiden el pasaje a SRO.",
+        "4. Pasaje precoz a Vía Oral: En cuanto el paciente recupere la conciencia y se estabilice hemodinámicamente, iniciar SRO por boca y reiniciar lactancia materna / alimentación habitual."
+      ],
+      "initialPharmacotherapy": [
+        {
+          "drug": "Solución Fisiológica 0.9% o Ringer Lactato",
+          "dose": "20 ml/kg en bolo rápido (15-20 min)",
+          "route": "IV / Intraósea (IO)",
+          "notes": "Expansión isotónica obligatoria para restaurar la volemia eficaz y revertir el shock."
+        },
+        {
+          "drug": "Ondansetrón",
+          "dose": "0.15 mg/kg (máx 8 mg) dosis única",
+          "route": "Vía Oral / IV lenta",
+          "notes": "Antiemético de elección: reduce significativamente el fracaso de la rehidratación oral y la necesidad de internación."
+        },
+        {
+          "drug": "Sales de Rehidratación Oral (SRO OMS baja osmolaridad)",
+          "dose": "50 a 100 ml/kg en 4 horas (Plan B)",
+          "route": "Vía Oral fraccionada con jeringa o cuchara",
+          "notes": "Terapia de elección estándar para deshidratación moderada y mantenimiento."
+        },
+        {
+          "drug": "Sulfato de Zinc",
+          "dose": "10 mg/día (< 6 meses) o 20 mg/día (> 6 meses) durante 14 días",
+          "route": "Vía Oral",
+          "notes": "Recomendación OMS para acortar la duración de la diarrea y prevenir nuevos episodios en los meses siguientes."
+        }
+      ]
+    },
+    "therapeuticWindow": {
+      "timeframe": "Reversión del shock en < 30 a 60 minutos para evitar necrosis tubular aguda renal, trombosis venosa de la vena renal y fallo multiorgánico.",
+      "goldStandard": "Bolo de cristaloides isotónicos 20 ml/kg para shock + Transición inmediata a Sales de Rehidratación Oral (SRO) de baja osmolaridad.",
+      "alternativeReperfusion": "Rehidratación por gastroclisis (SRO infundida por sonda nasogástrica a 20 ml/kg/h) si no hay accesos venosos y el shock ha sido compensado.",
+      "contraindications": [
+        "Soluciones hipotónicas sin sodio (como Dextrosa 5% pura) en bolo rápido de rescate (provoca hiponatremia dilucional aguda y edema cerebral convulsivo).",
+        "Antidiarreicos / Antiespasmódicos / Loperamida en niños (contraindicados por riesgo de íleo paralítico, megacolon tóxico y letargia)."
+      ]
+    },
+    "evidenceAndPrognosis": {
+      "survivalAt6h": "Reversión completa del shock y recuperación de la diuresis en > 95% con terapia de fluidos reglada.",
+      "survivalAt24h": "Sobrevida > 99.8% con protocolo de rehidratación oral/parenteral.",
+      "survivalAt7d": "Resolución de la gastroenteritis en 3 a 5 días.",
+      "survivalAt1y": "Sobrevida > 99.9% sin secuelas orgánicas.",
+      "immediateComplications": [
+        "Insuficiencia Renal Aguda prerrenal o necrosis tubular aguda por hipoperfusión prolongada.",
+        "Edema cerebral o mielinólisis póntica por corrección excesivamente rápida de deshidratación hipernatrémica (> 0.5 mEq/L/hora).",
+        "Acidosis metabólica refractaria con hipopotasemia severa."
+      ],
+      "mediateAndLongTermComplications": [
+        "Desnutrición aguda secundaria por suspensión indebida de la alimentación.",
+        "Intolerancia transitoria a la lactosa secundaria al daño del ribete en cepillo del enterocito."
+      ]
+    },
+    "actionCopyTemplate": "PACIENTE PEDIÁTRICO CON DESHIDRATACIÓN GRAVE / SHOCK HIPOVOLÉMICO POR GEA. Edad: ___ meses/años. Peso: ___ kg. Grado de deshidratación: > 10% (Grave con Shock). Signos: Pliegue pastoso > 2s + Ojos hundidos + Taquicardia + Relleno capilar ___ s + Anuria. Conducta: Acceso [IV / IO] + Expansión con SF 0.9% 20 ml/kg (___ ml) en 20 min. Reevaluación: [Pulsos presentes / Requiere 2° bolo]. Pase a Plan de rehidratación rápida EV y SRO."
+  },
+  {
+    "id": "anafilaxia-pediatrica",
+    "title": "Anafilaxia Pediátrica y Shock Anafiláctico",
+    "shortTitle": "Anafilaxia Pediátrica / Shock Alérgico",
+    "category": "Pediatría",
+    "cie10": "T78.2 (Shock anafiláctico) / T78.0 (Anafilaxia por alimentos)",
+    "severity": "Crítica / Código Rojo",
+    "summary": "Reacción alérgica multisistémica grave, aguda y potencialmente mortal que afecta predominantemente la vía aérea, la respiración o la circulación tras la exposición a un alérgeno (alimentos como leche/huevo/maní, picaduras de himenópteros, medicamentos o látex). La ADRENALINA INTRAMUSCULAR INMEDIATA es el único tratamiento salvavidas de primera línea.",
+    "prehospitalManifestations": {
+      "setting": "Hogar, fiesta infantil, comedor escolar, vía pública o ambulancia.",
+      "keySigns": [
+        "Compromiso cutáneo-mucoso agudo de rápida evolución (en minutos): Urticaria generalizada con habones pruriginosos, eritema difuso y angioedema de párpados, labios, lengua o úvula.",
+        "Compromiso respiratorio: Estridor laríngeo, disfonía / voz ronca, broncoespasmo severo con sibilancias espiratorias, tos perruna paroxística o sensación de \"cierre de garganta\".",
+        "Compromiso hemodinámico / cardiovascular: Hipotensión arterial para la edad, síncope, mareos intensos, palidez súbita, diaforesis, hipotonía y colapso circulatorio.",
+        "Síntomas gastrointestinales súbitos: Dolor abdominal cólico intenso, náuseas, vómitos repetidos en chorro o diarrea líquida inmediata tras ingesta del alérgeno.",
+        "Lactantes: Irritabilidad extrema súbita, llanto inconsolable con somnolencia posterior, regurgitación masiva y letargia con hipotonía."
+      ],
+      "highSuspicionRedFlags": [
+        "Disfonía progresiva o estridor tras picadura de abeja/avispa o ingesta de alimento sospechoso.",
+        "Hipotensión arterial o colapso hemodinámico tras administración de antibióticos (betalactámicos) o vacunas.",
+        "Antecedente de anafilaxia previa o asma mal controlada (mayor riesgo de asfixia fatal).",
+        "Retraso en la administración de adrenalina > 10 minutos desde el inicio de los síntomas sistémicos."
+      ]
+    },
+    "diagnosticAlgorithm": {
+      "initialSteps": [
+        "1. Reconocimiento clínico inmediato según criterios de la World Allergy Organization (WAO): Reacción de inicio rápido (minutos a horas) con afectación de piel/mucosas + al menos UN síntoma respiratorio O cardiovascular O gastrointestinal severo; O compromiso respiratorio/cardiovascular aislado tras exposición a alérgeno conocido.",
+        "2. NO DEMORAR EL TRATAMIENTO con pruebas de laboratorio ni esperas observacionales: el diagnóstico es 100% clínico.",
+        "3. Suspender inmediatamente la exposición al alérgeno desencadenante (detener infusión de fármaco, retirar aguijón raspando sin comprimir el saco de veneno).",
+        "4. Posición del paciente: Decúbito supino con elevación de miembros inferiores a 45° (posición de Trendelenburg o de shock). ¡NUNCA PONER AL NIÑO DE PIE NI SENTARLO BRUSCAMENTE! (riesgo de síndrome de la vena cava vacía y paro cardíaco fulminante). Si vomita, colocar en decúbito lateral."
+      ],
+      "electrocardiogram": [
+        "Taquicardia sinusal compensadora. En shock severo: aplanamiento de onda T, infradesnivel del ST por hipoperfusión coronaria o arritmias ventriculares."
+      ],
+      "biomarkersAndLabs": [
+        "No se requieren para la urgencia. En etapa post-estabilización: Triptasa sérica total (tomar muestra entre 30 min y 2 horas del inicio; confirma activación de mastocitos)."
+      ],
+      "differentialDiagnosis": [
+        "Crisis asmática aislada sin componente alérgico cutáneo/gastrointestinal.",
+        "Obstrucción de vía aérea por cuerpo extraño (sin urticaria/angioedema).",
+        "Síncope vasovagal (bradicardia, palidez sin urticaria ni broncoespasmo; recuperación rápida al acostar al paciente).",
+        "Laringitis aguda viral (Crup) o epiglotitis.",
+        "Urticaria aguda aislada sin compromiso respiratorio ni hemodinámico."
+      ]
+    },
+    "management": {
+      "prehospitalAmbulance": [
+        "1. ADRENALINA INTRAMUSCULAR INMEDIATA: 0.01 mg/kg (0.01 ml/kg de ampolla 1:1000 sin diluir) en el tercio medio de la cara anterolateral del muslo (vasto lateral). Máx 0.3 mg en niños < 30 kg; máx 0.5 mg en adolescentes/adultos > 30 kg.",
+        "2. Oxígeno al 100% por máscara con reservorio a 10-15 L/min.",
+        "3. Posición supina con piernas elevadas.",
+        "4. Si no hay mejoría clínica a los 5-15 minutos: REPETIR UNA SEGUNDA DOSIS DE ADRENALINA IM en el otro muslo.",
+        "5. Canalizar vía venosa periférica o IO: Administrar bolo de SF 0.9% 10-20 ml/kg si hay hipotensión o mala perfusión.",
+        "6. Traslado urgente monitoreado."
+      ],
+      "emergencyRoomShockRoom": [
+        "1. Si el shock o el broncoespasmo persisten tras 2 dosis de Adrenalina IM: Iniciar infusión continua de ADRENALINA IV (0.05 a 0.3 mcg/kg/min) en bomba de infusión.",
+        "2. Manejo avanzado de la vía aérea: Si hay estridor progresivo por angioedema de glotis, intubación orotraqueal PRECOZ por el operador más experimentado antes de que el edema cierre totalmente la luz laríngea.",
+        "3. Fármacos de Segunda Línea (coadyuvantes para piel y prevención de bifásica): Antihistamínicos H1 (Difenhidramina 1 mg/kg IV) + Corticoides sistémicos (Hidrocortisona 5-10 mg/kg IV o Metilprednisolona 1-2 mg/kg IV) + Salbutamol inhalado para broncoespasmo.",
+        "4. Observación hospitalaria obligatoria: Mínimo 6 a 12 horas (o hasta 24h en shock severo) por riesgo de Reacción Bifásica (reaparición de síntomas anafilácticos sin nueva exposición al alérgeno en hasta un 15-20% de los pacientes)."
+      ],
+      "initialPharmacotherapy": [
+        {
+          "drug": "Adrenalina (Epinefrina) 1:1000 (1 mg/ml sin diluir)",
+          "dose": "0.01 mg/kg (0.01 ml/kg). Máx: 0.3 mg (< 30 kg) / 0.5 mg (> 30 kg)",
+          "route": "Intramuscular profunda en cara anterolateral del muslo",
+          "notes": "FÁRMACO SALVAVIDAS DE 1ª LÍNEA. Administrar de inmediato. Repetir cada 5-15 min si respuesta insuficiente."
+        },
+        {
+          "drug": "Solución Fisiológica 0.9%",
+          "dose": "10 a 20 ml/kg en bolo rápido",
+          "route": "IV / Intraósea (IO)",
+          "notes": "En hipotensión o colapso circulatorio. Puede repetirse hasta 40 ml/kg."
+        },
+        {
+          "drug": "Difenhidramina (Antihistamínico H1)",
+          "dose": "1 mg/kg (máx 50 mg)",
+          "route": "IV lenta / IM",
+          "notes": "Fármaco de 2ª línea: alivia el prurito y la urticaria. NO revierte la obstrucción de vía aérea ni el shock."
+        },
+        {
+          "drug": "Hidrocortisona IV",
+          "dose": "5 a 10 mg/kg (máx 200 mg)",
+          "route": "IV lenta",
+          "notes": "Fármaco de 2ª línea: inicio de acción tardío (4-6h); ayuda a prevenir reacciones bifásicas tardías."
+        },
+        {
+          "drug": "Metilprednisolona IV",
+          "dose": "1 a 2 mg/kg (máx 60 mg)",
+          "route": "IV lenta",
+          "notes": "Alternativa glucocorticoide a la hidrocortisona."
+        },
+        {
+          "drug": "Salbutamol MDI con aerocámara",
+          "dose": "4 a 8 puffs",
+          "route": "Inhalatoria",
+          "notes": "Tratamiento coadyuvante si persisten sibilancias y broncoespasmo tras la adrenalina."
+        },
+        {
+          "drug": "Adrenalina en infusión continua IV",
+          "dose": "0.05 a 0.3 mcg/kg/min en bomba",
+          "route": "IV / IO continua",
+          "notes": "Indicada en shock anafiláctico refractario a dosis repetidas de adrenalina IM."
+        }
+      ]
+    },
+    "therapeuticWindow": {
+      "timeframe": "TIEMPO CRÍTICO: Adrenalina IM en los primeros 5 a 10 minutos de inicio del cuadro. El retraso en la administración de adrenalina es la causa principal de muerte por anafilaxia.",
+      "goldStandard": "Adrenalina 0.01 mg/kg IM en cara anterolateral del muslo + Posición supina con miembros elevados + Expansión con SF 0.9% en shock.",
+      "alternativeReperfusion": "Adrenalina en infusión IV continua + Intubación endotraqueal precoz o cricotiroidotomía quirúrgica si obstrucción glótica total.",
+      "contraindications": [
+        "NO EXISTEN CONTRAINDICACIONES ABSOLUTAS para la administración de adrenalina en una anafilaxia activa.",
+        "Nunca usar adrenalina subcutánea (absorción lenta y errática) ni adrenalina IV en bolo directo sin diluir (riesgo de arritmias ventriculares y hemorragia cerebral)."
+      ]
+    },
+    "evidenceAndPrognosis": {
+      "survivalAt6h": "Sobrevida > 99% cuando la adrenalina se administra dentro de los primeros 10-15 minutos.",
+      "survivalAt24h": "Sobrevida > 99.8% tras período de observación para vigilar reacción bifásica.",
+      "survivalAt7d": "Recuperación completa sin secuelas orgánicas.",
+      "survivalAt1y": "Excelente pronóstico vital; indicación mandatoria de prescripción y entrenamiento familiar en el uso de autoinyector de adrenalina (EpiPen / Jext).",
+      "immediateComplications": [
+        "Asfixia por edema de glotis y laringoespasmo refractario.",
+        "Paro cardiorrespiratorio hipóxico o por colapso circulatorio distributivo.",
+        "Reacción anafiláctica bifásica en las primeras 4 a 12 horas."
+      ],
+      "mediateAndLongTermComplications": [
+        "Encefalopatía anóxica en caso de parada respiratoria prolongada antes de recibir adrenalina.",
+        "Ansiedad y fobia alimentaria familiar post-evento grave (requiere apoyo psicológico y alergológico)."
+      ]
+    },
+    "actionCopyTemplate": "PACIENTE PEDIÁTRICO CON ANAFILAXIA / SHOCK ANAFILÁCTICO. Edad: ___ años. Peso: ___ kg. Alérgeno sospechoso: [Alimento / Fármaco / Picadura / Desconocido]. Compromiso: [Urticaria generalizada + Angioedema + Estridor / Broncoespasmo / Hipotensión / Vómitos]. Conducta INMEDIATA: Adrenalina IM (1:1000) 0.01 mg/kg = ___ mg en cara anterolateral del muslo a las ___ hs. Posición supina con miembros elevados + O2 100% + [SF 0.9% ___ ml EV]. Fármacos 2ª línea: [Difenhidramina ___ mg + Hidrocortisona ___ mg EV]. Respuesta: [Favorable / Requiere 2ª dosis adrenalina a los 10 min]. Paciente en observación estricta por 6-12h."
   }
-]
+];
