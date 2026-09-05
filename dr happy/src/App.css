@@ -2066,3 +2066,382 @@ body.theme-night .contact-option-btn.diagnostic {
   border-color: #475569;
 }
 
+/* ==========================================================================
+   TURNERA MÉDICA DEDICADA & GESTIÓN DE CITAS
+   ========================================================================== */
+
+.turnera-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.turnera-metric-card {
+  background: var(--surface-bg, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 14px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+body.theme-night .turnera-metric-card {
+  background: #0f1c30;
+  border-color: rgba(130, 153, 186, 0.25);
+}
+
+.turnera-metric-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.turnera-metric-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.turnera-metric-info strong {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #1d4ed8;
+  line-height: 1.1;
+}
+
+body.theme-night .turnera-metric-info strong {
+  color: #60a5fa;
+}
+
+.turnera-metric-info span {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+body.theme-night .turnera-metric-info span {
+  color: #94a3b8;
+}
+
+.turnera-toolbar-panel {
+  padding: 14px 18px;
+  margin-bottom: 16px;
+}
+
+.turnera-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.turnera-search-box {
+  flex: 1 1 240px;
+}
+
+.turnera-search-box input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.turnera-tab-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.turnera-tab-buttons button.active {
+  background: #1d4ed8;
+  color: #ffffff;
+  border-color: #1d4ed8;
+}
+
+body.theme-night .turnera-tab-buttons button.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #3b82f6;
+}
+
+.turnera-date-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.turnera-date-filter input[type="date"] {
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  font-size: 0.88rem;
+  background: var(--surface-bg, #ffffff);
+  color: inherit;
+}
+
+.turnera-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.turnera-card {
+  background: var(--surface-bg, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.turnera-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.turnera-card.highlight-today {
+  border-color: #3b82f6;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.6) 0%, rgba(255, 255, 255, 1) 100%);
+}
+
+body.theme-night .turnera-card {
+  background: #0f1c30;
+  border-color: rgba(130, 153, 186, 0.25);
+}
+
+body.theme-night .turnera-card.highlight-today {
+  background: linear-gradient(180deg, rgba(30, 58, 138, 0.25) 0%, #0f1c30 100%);
+  border-color: #3b82f6;
+}
+
+.turnera-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.turnera-date-badge {
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.turnera-badge-today {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.turnera-badge-upcoming {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.turnera-badge-past {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+body.theme-night .turnera-badge-today {
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+}
+
+body.theme-night .turnera-badge-upcoming {
+  background: rgba(14, 165, 233, 0.25);
+  color: #7dd3fc;
+}
+
+body.theme-night .turnera-badge-past {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.turnera-status-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+body.theme-night .turnera-status-badge {
+  color: #cbd5e1;
+}
+
+.turnera-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.turnera-patient-name {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+body.theme-night .turnera-patient-name {
+  color: #f8fafc;
+}
+
+.turnera-patient-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+body.theme-night .turnera-patient-meta {
+  color: #94a3b8;
+}
+
+.turnera-reason-box {
+  background: #f8fafc;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  color: #1e293b;
+  border: 1px solid #f1f5f9;
+}
+
+body.theme-night .turnera-reason-box {
+  background: #16243b;
+  color: #e2e8f0;
+  border-color: #1e3a5f;
+}
+
+.turnera-location-box {
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+body.theme-night .turnera-location-box {
+  color: #cbd5e1;
+}
+
+.turnera-notes-box {
+  font-size: 0.82rem;
+  color: #64748b;
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+body.theme-night .turnera-notes-box {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.25);
+  color: #fde68a;
+}
+
+.turnera-email-status-bar {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color, #e2e8f0);
+}
+
+body.theme-night .turnera-email-status-bar {
+  border-top-color: rgba(130, 153, 186, 0.2);
+}
+
+.email-status-sent {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  color: #15803d;
+  font-weight: 600;
+  gap: 8px;
+}
+
+body.theme-night .email-status-sent {
+  color: #4ade80;
+}
+
+.email-status-pending {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  color: #b45309;
+  font-weight: 600;
+  gap: 8px;
+}
+
+body.theme-night .email-status-pending {
+  color: #fbbf24;
+}
+
+.turnera-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color, #e2e8f0);
+}
+
+body.theme-night .turnera-card-actions {
+  border-top-color: rgba(130, 153, 186, 0.2);
+}
+
+.turnera-card-actions button {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.turnera-empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: #64748b;
+}
+
+.turnera-modal-card {
+  max-width: 540px;
+}
+
+.turnera-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.turnera-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.turnera-form-group label,
+.turnera-form-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.turnera-form-row {
+  display: flex;
+  gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .turnera-form-row {
+    flex-direction: column;
+  }
+}
+
