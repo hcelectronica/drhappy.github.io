@@ -12,6 +12,7 @@ import { isSupabaseConfigured, supabase } from './supabaseClient'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import {
   getNotificationPermission,
+  getPushSubscriptionsCount,
   registerPushSubscription,
   requestNotificationPermission,
   sendServerPushNotification,
@@ -2211,6 +2212,10 @@ function App() {
   const [notificationPermission, setNotificationPermission] =
     useState<NotificationPermissionState>(() => getNotificationPermission())
   const [showNotificationToast, setShowNotificationToast] = useState(false)
+  const [contactModalOpen, setContactModalOpen] = useState(false)
+  const [adminBroadcastTarget, setAdminBroadcastTarget] = useState<string>('all')
+  const [adminPushCount, setAdminPushCount] = useState<number | null>(null)
+  const [adminTestingPush, setAdminTestingPush] = useState(false)
   const [adminBroadcastSubject, setAdminBroadcastSubject] = useState('')
   const [adminBroadcastBody, setAdminBroadcastBody] = useState('')
   const [adminBroadcastSending, setAdminBroadcastSending] = useState(false)
@@ -2981,13 +2986,18 @@ function App() {
     if (!adminBroadcastBody.trim() || !activeUserId) {
       return
     }
-    const recipients = seedUsers.filter((u) => u.id !== activeUserId)
+    const isBroadcast = adminBroadcastTarget === 'all'
+    const recipients = isBroadcast
+      ? seedUsers.filter((u) => u.id !== activeUserId)
+      : seedUsers.filter((u) => u.id === adminBroadcastTarget)
+
     if (recipients.length === 0) {
-      setAppError('No hay otros profesionales registrados para recibir el comunicado.')
+      setAppError('No se encontraron profesionales destinatarios.')
       return
     }
 
     setAdminBroadcastSending(true)
+    const broadcastTitle = adminBroadcastSubject.trim() || '📢 Novedades de Dr Happy'
     const formattedText = `📢 ${adminBroadcastSubject.trim() ? `[${adminBroadcastSubject.trim()}] ` : ''}${adminBroadcastBody.trim()}`
     const sentAt = new Date().toISOString()
 
@@ -3023,25 +3033,96 @@ function App() {
         })
       }
 
+      // Enviar Web Push en segundo plano para celulares y navegadores registrados
+      const pushRes = await sendServerPushNotification(
+        isBroadcast
+          ? {
+              broadcast: true,
+              title: broadcastTitle,
+              body: adminBroadcastBody.trim(),
+              tag: `drhappy-broadcast-${Date.now()}`,
+            }
+          : {
+              recipientUserId: adminBroadcastTarget,
+              title: broadcastTitle,
+              body: adminBroadcastBody.trim(),
+              tag: `drhappy-admin-${Date.now()}`,
+            },
+      )
+
       setAdminBroadcastSubject('')
       setAdminBroadcastBody('')
-      setAppNotice('Comunicado y notificaciones enviadas a todos los profesionales.')
-      showSavedFloatingNotice('Comunicado enviado con éxito')
-      void showAppNotification('📢 Comunicado publicado', {
-        body: `Enviado a ${recipients.length} profesionales registrados.`,
-      })
-
-      // Enviar Web Push a todos los celulares registrados
-      void sendServerPushNotification({
-        broadcast: true,
-        title: '📢 Dr Happy: Novedades de la plataforma',
-        body: formattedText.length > 100 ? formattedText.slice(0, 97) + '...' : formattedText,
-        tag: 'drhappy-broadcast',
+      const successNotice = pushRes.success && pushRes.sentCount > 0
+        ? `Comunicado enviado. Notificación push entregada a ${pushRes.sentCount} dispositivo(s).`
+        : `Comunicado publicado exitosamente para ${recipients.length} profesional(es).`
+      setAppNotice(successNotice)
+      showSavedFloatingNotice('Comunicado y push enviados')
+      void showAppNotification(broadcastTitle, {
+        body: `Enviado a ${recipients.length} profesional(es).`,
       })
     } catch (err) {
       setAppError(`Error al enviar comunicado: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setAdminBroadcastSending(false)
+    }
+  }
+
+  async function handleTestDevicePush(): Promise<void> {
+    if (!activeUserId) return
+    setAdminTestingPush(true)
+    try {
+      if (notificationPermission !== 'granted') {
+        const res = await requestNotificationPermission()
+        setNotificationPermission(res)
+        if (res !== 'granted') {
+          setAppError('Debes autorizar los permisos de notificación en tu celular o navegador.')
+          return
+        }
+      }
+      await registerPushSubscription(activeUserId)
+      const pushRes = await sendServerPushNotification({
+        recipientUserId: activeUserId,
+        title: '🔔 Notificación de prueba Dr Happy 😊',
+        body: '¡Excelente! Las notificaciones push en segundo plano están funcionando en este dispositivo.',
+        tag: `drhappy-test-${Date.now()}`,
+      })
+      if (pushRes.success && pushRes.sentCount > 0) {
+        showSavedFloatingNotice('¡Push enviada a tu equipo!')
+        setAppNotice(`¡Notificación enviada! Recibida en ${pushRes.sentCount} dispositivo(s) asociado(s) a tu cuenta.`)
+      } else {
+        void showAppNotification('🔔 Notificación en pantalla', {
+          body: 'Prueba de notificación directa en pantalla exitosa.',
+        })
+        showSavedFloatingNotice('Notificación emitida')
+      }
+    } catch (err) {
+      setAppError(`Error en prueba push: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setAdminTestingPush(false)
+    }
+  }
+
+  async function handleShareApp(): Promise<void> {
+    const shareData = {
+      title: 'DrHappy - Herramientas para Profesionales de la Salud e Instituciones',
+      text: '¡Hola! Te recomiendo DrHappy: historia clínica digital, vademécum, escaneo de DNI y protocolos de emergencia.',
+      url: 'https://drhappy.com.ar',
+    }
+    if (typeof navigator !== 'undefined' && 'share' in navigator) {
+      try {
+        await navigator.share(shareData)
+        showSavedFloatingNotice('¡Gracias por compartir DrHappy!')
+        return
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') return
+      }
+    }
+    try {
+      await navigator.clipboard.writeText('https://drhappy.com.ar')
+      showSavedFloatingNotice('¡Enlace www.drhappy.com.ar copiado!')
+      setAppNotice('¡Enlace de DrHappy copiado al portapapeles! Ya podés pegarlo en WhatsApp o mensajes para compartirlo.')
+    } catch {
+      setAppNotice('Visita y comparte https://drhappy.com.ar')
     }
   }
 
@@ -3516,7 +3597,11 @@ function App() {
 
     const user = seedUsers.find((entry) => entry.id === storedUserId)
     if (!user) {
-      localStorage.removeItem(SESSION_USER_KEY)
+      const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
+      const fallbackUser = localUsers.find((entry) => entry.id === storedUserId)
+      if (fallbackUser) {
+        void loadWorkspaceForUser(fallbackUser)
+      }
       return
     }
 
@@ -3534,6 +3619,7 @@ function App() {
       return
     }
     void loadAdminDeletedUserArchives()
+    void getPushSubscriptionsCount().then((res) => setAdminPushCount(res.total))
   }, [workspaceLayer, isAdminSession])
 
   useEffect(() => {
@@ -6566,6 +6652,26 @@ function App() {
               <button type="button" className="ghost theme-toggle" onClick={handleToggleThemeMode}>
                 {themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'}
               </button>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(130, 153, 186, 0.3)' }}>
+                <button
+                  type="button"
+                  className="ghost"
+                  style={{ fontSize: '0.82rem', padding: '6px 10px' }}
+                  onClick={() => void handleShareApp()}
+                  title="Compartir DrHappy con un colega"
+                >
+                  📲 Compartir con un amigo
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  style={{ fontSize: '0.82rem', padding: '6px 10px' }}
+                  onClick={() => setContactModalOpen(true)}
+                  title="Contactar con el equipo de soporte y desarrolladores"
+                >
+                  💬 Contactar desarrolladores
+                </button>
+              </div>
             </form>
           ) : (
             <section className="recovery-form">
@@ -6720,6 +6826,76 @@ function App() {
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
+        {contactModalOpen ? (
+          <div className="drhappy-modal-overlay" onClick={() => setContactModalOpen(false)}>
+            <div
+              className="drhappy-modal-card"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="contact-modal-title-login"
+            >
+              <div className="drhappy-modal-header">
+                <h3 id="contact-modal-title-login" style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>
+                  💬 Contactar con los desarrolladores
+                </h3>
+                <button
+                  type="button"
+                  className="drhappy-modal-close-btn"
+                  onClick={() => setContactModalOpen(false)}
+                  aria-label="Cerrar ventana"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="drhappy-modal-body">
+                <p style={{ margin: '0 0 16px', color: '#475569', fontSize: '0.92rem', lineHeight: 1.5 }}>
+                  Estamos a tu disposición para soporte técnico inmediato, consultas sobre tu cuenta, sugerencias o dudas sobre el funcionamiento de DrHappy.
+                </p>
+                <div className="drhappy-contact-options">
+                  <a
+                    href={`https://wa.me/5491158580221?text=${encodeURIComponent(
+                      'Hola DrHappy Soporte, me comunico desde la pantalla de acceso de la app DrHappy. Mi consulta es: '
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="drhappy-contact-btn whatsapp"
+                  >
+                    <span className="contact-icon">🟢</span>
+                    <div>
+                      <strong>Chatear por WhatsApp</strong>
+                      <small>Respuesta directa y soporte técnico rápido</small>
+                    </div>
+                  </a>
+
+                  <a
+                    href={`mailto:soporte@drhappy.com.ar?subject=${encodeURIComponent(
+                      'Soporte DrHappy - Consulta desde acceso'
+                    )}&body=${encodeURIComponent(
+                      `Dispositivo: ${navigator.userAgent}\nURL: ${window.location.href}\n\nDetalle de la consulta o duda de acceso:\n`
+                    )}`}
+                    className="drhappy-contact-btn email"
+                  >
+                    <span className="contact-icon">✉️</span>
+                    <div>
+                      <strong>Enviar correo electrónico</strong>
+                      <small>soporte@drhappy.com.ar</small>
+                    </div>
+                  </a>
+                </div>
+              </div>
+              <div className="drhappy-modal-footer">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setContactModalOpen(false)}
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </main>
     )
   }
@@ -6988,6 +7164,22 @@ function App() {
           ) : null}
           <button type="button" className="ghost" onClick={handleToggleCommunity}>
             Comunidad {communityUnreadCount > 0 ? `(${communityUnreadCount})` : ''}
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => void handleShareApp()}
+            title="Compartir DrHappy con un colega"
+          >
+            📲 Compartir
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setContactModalOpen(true)}
+            title="Contactar al equipo de soporte y desarrolladores"
+          >
+            💬 Contactar
           </button>
           <button type="button" className="ghost" onClick={handleLogout}>
             Cerrar sesión
@@ -7340,35 +7532,81 @@ function App() {
             </section>
 
             <section className="panel" style={{ marginTop: 20 }}>
-              <h3>📢 Enviar comunicado general o novedades</h3>
-              <p className="flow-hint">
-                Envía una notificación y mensaje a todos los profesionales registrados sobre cambios en la plataforma, actualizaciones o avisos urgentes.
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <h3 style={{ margin: 0 }}>📢 Centro de Notificaciones Push y Comunicados</h3>
+                <span
+                  style={{
+                    background: '#e0f2fe',
+                    color: '#0369a1',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    padding: '4px 10px',
+                    borderRadius: 20,
+                  }}
+                >
+                  📱 Dispositivos suscritos:{' '}
+                  {adminPushCount !== null ? adminPushCount : 'Consultando...'}
+                </span>
+              </div>
+              <p className="flow-hint" style={{ marginTop: 8 }}>
+                Envía alertas push de alta prioridad y mensajes directos a profesionales con sesión iniciada o con la app instalada en su celular (incluso con la app cerrada).
               </p>
               <div className="grid" style={{ marginTop: 12 }}>
                 <label>
-                  Asunto o título del comunicado (opcional)
+                  Destinatarios
+                  <select
+                    value={adminBroadcastTarget}
+                    onChange={(event) => setAdminBroadcastTarget(event.target.value)}
+                  >
+                    <option value="all">📢 Todos los profesionales (Difusión global)</option>
+                    <optgroup label="Usuario específico">
+                      {seedUsers
+                        .filter((u) => u.id !== activeUser.id)
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            👤 {u.fullName} (@{u.username}) · {u.specialty}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </select>
+                </label>
+                <label>
+                  Asunto o título de la notificación
                   <input
                     value={adminBroadcastSubject}
                     onChange={(event) => setAdminBroadcastSubject(event.target.value)}
-                    placeholder="Ej: Nueva versión disponible / Mantenimiento programado"
+                    placeholder="Ej: Novedades DrHappy / Aviso importante de guardia"
                   />
                 </label>
                 <label>
-                  Mensaje del comunicado
+                  Mensaje del comunicado o notificación
                   <textarea
                     value={adminBroadcastBody}
                     onChange={(event) => setAdminBroadcastBody(event.target.value)}
-                    placeholder="Escribe el mensaje que recibirán todos los profesionales..."
+                    placeholder="Escribe el mensaje que llegará como notificación push y en la bandeja de comunidad..."
                     rows={3}
                   />
                 </label>
-                <div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                   <button
                     type="button"
                     disabled={adminBroadcastSending || !adminBroadcastBody.trim()}
                     onClick={() => void handleSendAdminBroadcast()}
                   >
-                    {adminBroadcastSending ? 'Enviando comunicado...' : '🚀 Enviar comunicado a todos los médicos'}
+                    {adminBroadcastSending
+                      ? 'Enviando notificación...'
+                      : adminBroadcastTarget === 'all'
+                        ? '🚀 Enviar Notificación Push a Todos'
+                        : '📩 Enviar Notificación Push al Usuario'}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={adminTestingPush}
+                    onClick={() => void handleTestDevicePush()}
+                    title="Envía una notificación push real desde el servidor a este dispositivo"
+                  >
+                    {adminTestingPush ? 'Enviando prueba push...' : '📲 Probar Push en mi celular/PC'}
                   </button>
                 </div>
               </div>
@@ -8923,18 +9161,23 @@ function App() {
                       🔔 Activar notificaciones en este celular / equipo
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => {
-                        void showAppNotification('🔔 Dr Happy 😊', {
-                          body: '¡La prueba de notificación en tu dispositivo funciona correctamente!',
-                        })
-                        showSavedFloatingNotice('Notificación de prueba enviada')
-                      }}
-                    >
-                      📲 Enviar notificación de prueba
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="ghost"
+                        disabled={adminTestingPush}
+                        onClick={() => void handleTestDevicePush()}
+                      >
+                        {adminTestingPush ? 'Enviando prueba...' : '📲 Probar Notificación Push del Servidor'}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => void handleEnableNotifications()}
+                      >
+                        🔄 Re-sincronizar suscripción
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -9505,6 +9748,95 @@ function App() {
             <button type="button" className="ghost" onClick={handleDismissNotificationToast}>
               Ahora no
             </button>
+          </div>
+        </div>
+      ) : null}
+      {contactModalOpen ? (
+        <div className="drhappy-modal-overlay" onClick={() => setContactModalOpen(false)}>
+          <div
+            className="drhappy-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contact-modal-title"
+          >
+            <div className="drhappy-modal-header">
+              <h3 id="contact-modal-title" style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>
+                💬 Contactar con los desarrolladores
+              </h3>
+              <button
+                type="button"
+                className="drhappy-modal-close-btn"
+                onClick={() => setContactModalOpen(false)}
+                aria-label="Cerrar ventana"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="drhappy-modal-body">
+              <p style={{ margin: '0 0 16px', color: '#475569', fontSize: '0.92rem', lineHeight: 1.5 }}>
+                Estamos a tu disposición para soporte técnico inmediato, sugerencias, reporte de errores o dudas sobre el funcionamiento de DrHappy.
+              </p>
+              <div className="drhappy-contact-options">
+                <a
+                  href={`https://wa.me/5491158580221?text=${encodeURIComponent(
+                    `Hola DrHappy Soporte, me comunico desde la app DrHappy (${activeUser ? activeUser.fullName : 'Usuario invitado'}). Mi consulta es: `
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="drhappy-contact-btn whatsapp"
+                >
+                  <span className="contact-icon">🟢</span>
+                  <div>
+                    <strong>Chatear por WhatsApp</strong>
+                    <small>Respuesta directa y soporte técnico rápido</small>
+                  </div>
+                </a>
+
+                <a
+                  href={`mailto:soporte@drhappy.com.ar?subject=${encodeURIComponent(
+                    `Soporte DrHappy - ${activeUser ? activeUser.fullName : 'Consulta General'}`
+                  )}&body=${encodeURIComponent(
+                    `Usuario: ${activeUser ? activeUser.fullName + ' (@' + activeUser.username + ')' : 'No logueado'}\nDispositivo: ${navigator.userAgent}\nURL: ${window.location.href}\n\nDetalle de la consulta o sugerencia:\n`
+                  )}`}
+                  className="drhappy-contact-btn email"
+                >
+                  <span className="contact-icon">✉️</span>
+                  <div>
+                    <strong>Enviar correo electrónico</strong>
+                    <small>soporte@drhappy.com.ar</small>
+                  </div>
+                </a>
+
+                <button
+                  type="button"
+                  className="drhappy-contact-btn diagnostic"
+                  onClick={() => {
+                    const info = `=== Diagnóstico DrHappy ===\nFecha: ${new Date().toISOString()}\nUsuario: ${activeUser ? activeUser.fullName + ' (@' + activeUser.username + ')' : 'Sin sesión'}\nURL: ${window.location.href}\nNavegador: ${navigator.userAgent}\nPWA Instalada / Standalone: ${window.matchMedia('(display-mode: standalone)').matches ? 'Sí' : 'No'}\nPermiso Notificaciones: ${('Notification' in window) ? Notification.permission : 'No soportado'}\nServiceWorker: ${('serviceWorker' in navigator) ? 'Soportado' : 'No soportado'}`
+                    navigator.clipboard.writeText(info).then(() => {
+                      showSavedFloatingNotice('📋 Información técnica copiada al portapapeles')
+                    }).catch(() => {
+                      showSavedFloatingNotice('No se pudo copiar automáticamente')
+                    })
+                  }}
+                >
+                  <span className="contact-icon">📋</span>
+                  <div>
+                    <strong>Copiar diagnóstico del dispositivo</strong>
+                    <small>Copia detalles técnicos (OS, navegador, PWA) para enviarnos</small>
+                  </div>
+                </button>
+              </div>
+            </div>
+            <div className="drhappy-modal-footer">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setContactModalOpen(false)}
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

@@ -63,8 +63,8 @@ export async function registerPushSubscription(userId: string): Promise<boolean>
 
     if (subscription && isSupabaseConfigured && supabase) {
       const subJson = subscription.toJSON()
-      // Guardar en la base de datos Supabase con el origen actual
-      await supabase.from('user_push_subscriptions').upsert(
+      // Guardar en la base de datos Supabase con el origen y usuario actual
+      const { error } = await supabase.from('user_push_subscriptions').upsert(
         {
           user_id: userId,
           endpoint: subJson.endpoint,
@@ -75,12 +75,33 @@ export async function registerPushSubscription(userId: string): Promise<boolean>
         },
         { onConflict: 'endpoint' },
       )
+      if (error) {
+        console.warn('Error al guardar suscripción en Supabase:', error.message)
+      }
       return true
     }
     return Boolean(subscription)
   } catch (err) {
     console.warn('Fallo al registrar suscripción push en el dispositivo:', err)
     return false
+  }
+}
+
+export async function getPushSubscriptionsCount(): Promise<{ total: number; userIds: string[] }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { total: 0, userIds: [] }
+  }
+  try {
+    const { data, error } = await supabase
+      .from('user_push_subscriptions')
+      .select('user_id')
+    if (error || !data) {
+      return { total: 0, userIds: [] }
+    }
+    const uniqueUsers = Array.from(new Set(data.map((row) => row.user_id)))
+    return { total: data.length, userIds: uniqueUsers }
+  } catch {
+    return { total: 0, userIds: [] }
   }
 }
 
@@ -95,16 +116,25 @@ export interface ServerPushPayload {
   url?: string
 }
 
-export async function sendServerPushNotification(payload: ServerPushPayload): Promise<boolean> {
+export interface SendPushResult {
+  success: boolean
+  sentCount: number
+  failedCount?: number
+  message?: string
+}
+
+export async function sendServerPushNotification(
+  payload: ServerPushPayload,
+): Promise<SendPushResult> {
   if (!isSupabaseConfigured || !supabase) {
-    return false
+    return { success: false, sentCount: 0, message: 'Supabase no está configurado' }
   }
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://drhappy.com.ar'
   const defaultIcon = `${origin}/icon-192.png`
 
   try {
-    const { error } = await supabase.functions.invoke('send-push-notification', {
+    const { data, error } = await supabase.functions.invoke('send-push-notification', {
       body: {
         action: 'send',
         ...payload,
@@ -115,12 +145,22 @@ export async function sendServerPushNotification(payload: ServerPushPayload): Pr
     })
     if (error) {
       console.warn('Error al disparar push desde el servidor:', error.message)
-      return false
+      return { success: false, sentCount: 0, message: error.message }
     }
-    return true
+    const result = (data as { sentCount?: number; failedCount?: number; message?: string }) || {}
+    return {
+      success: true,
+      sentCount: result.sentCount ?? 0,
+      failedCount: result.failedCount ?? 0,
+      message: result.message,
+    }
   } catch (err) {
     console.warn('Fallo de red al enviar push desde el servidor:', err)
-    return false
+    return {
+      success: false,
+      sentCount: 0,
+      message: err instanceof Error ? err.message : String(err),
+    }
   }
 }
 
