@@ -382,8 +382,6 @@ const DELETED_USER_ARCHIVES_KEY = 'drhappy-deleted-user-archives'
 const INSTALL_PROMPT_DISMISSED_KEY = 'drhappy-install-prompt-dismissed'
 // Cuántos días esperamos antes de volver a ofrecer la instalación tras un "Ahora no".
 const INSTALL_PROMPT_SNOOZE_DAYS = 7
-const NOTIFICATION_PROMPT_DISMISSED_KEY = 'drhappy-notification-prompt-dismissed'
-const NOTIFICATION_PROMPT_SNOOZE_DAYS = 5
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -3674,74 +3672,76 @@ function App() {
   }
 
   useEffect(() => {
-    if (!profile) {
+    if (!profile || !activeUserId) {
       setShowNotificationToast(false)
       return
     }
     const currentPerm = getNotificationPermission()
     setNotificationPermission(currentPerm)
-    if (currentPerm !== 'default') {
+    if (currentPerm === 'granted') {
       setShowNotificationToast(false)
-      return
-    }
-    if (showInstallToast) {
-      setShowNotificationToast(false)
-      return
-    }
-    const dismissedUntilRaw = localStorage.getItem(NOTIFICATION_PROMPT_DISMISSED_KEY)
-    const dismissedUntil = dismissedUntilRaw ? Number(dismissedUntilRaw) : 0
-    if (dismissedUntil && Date.now() < dismissedUntil) {
+      void registerPushSubscription(activeUserId)
       return
     }
     const timer = window.setTimeout(() => {
       setShowNotificationToast(true)
-    }, 2500)
+    }, 1500)
     return () => window.clearTimeout(timer)
-  }, [profile, showInstallToast])
+  }, [profile, activeUserId])
 
   async function handleEnableNotifications(): Promise<void> {
-    setShowNotificationToast(false)
     const result = await requestNotificationPermission()
     setNotificationPermission(result)
     if (result === 'granted') {
-      localStorage.removeItem(NOTIFICATION_PROMPT_DISMISSED_KEY)
+      setShowNotificationToast(false)
       if (activeUserId) {
         void registerPushSubscription(activeUserId)
       }
       void showAppNotification('🔔 Notificaciones activadas', {
         body: '¡Excelente! Ahora recibirás avisos de mensajes privados y novedades en tu dispositivo.',
       })
-      showSavedFloatingNotice('Notificaciones activadas')
+      showSavedFloatingNotice('Notificaciones activadas con éxito')
     } else if (result === 'denied') {
+      setShowNotificationToast(true)
       setAppError(
-        'Las notificaciones están bloqueadas en tu navegador o celular. Podés habilitarlas desde los ajustes del sitio.',
+        'Las notificaciones figuran bloqueadas en tu navegador. Tocá el candado 🔒 junto a la URL arriba para permitirlas.',
       )
     }
   }
 
   useEffect(() => {
-    if (activeUserId && notificationPermission === 'granted') {
+    if (!activeUserId) return
+
+    if (notificationPermission === 'granted') {
       void registerPushSubscription(activeUserId)
     }
 
-    function handleWindowFocus(): void {
+    function checkPermissionAndSync(): void {
       const current = getNotificationPermission()
       setNotificationPermission(current)
-      if (current === 'granted' && activeUserId) {
-        void registerPushSubscription(activeUserId)
+      if (current === 'granted') {
+        setShowNotificationToast(false)
+        if (activeUserId) {
+          void registerPushSubscription(activeUserId)
+        }
       }
     }
 
-    window.addEventListener('focus', handleWindowFocus)
-    return () => window.removeEventListener('focus', handleWindowFocus)
+    window.addEventListener('focus', checkPermissionAndSync)
+
+    let interval: number | null = null
+    if (notificationPermission !== 'granted') {
+      interval = window.setInterval(checkPermissionAndSync, 3500)
+    }
+
+    return () => {
+      window.removeEventListener('focus', checkPermissionAndSync)
+      if (interval) window.clearInterval(interval)
+    }
   }, [activeUserId, notificationPermission])
 
   function handleDismissNotificationToast(): void {
     setShowNotificationToast(false)
-    localStorage.setItem(
-      NOTIFICATION_PROMPT_DISMISSED_KEY,
-      String(Date.now() + NOTIFICATION_PROMPT_SNOOZE_DAYS * 24 * 60 * 60 * 1000),
-    )
   }
 
   useEffect(() => {
@@ -10486,21 +10486,54 @@ function App() {
           </div>
         </div>
       ) : null}
-      {showNotificationToast ? (
-        <div className="install-app-toast" role="status">
+      {showNotificationToast && notificationPermission !== 'granted' ? (
+        <div
+          className={`install-app-toast notification-toast-floating ${notificationPermission === 'denied' ? 'denied' : ''}`}
+          role="status"
+        >
           <div className="install-app-toast-icon" aria-hidden="true">
-            🔔
+            {notificationPermission === 'denied' ? '⚠️' : '🔔'}
           </div>
           <div className="install-app-toast-copy">
-            <strong>Activar notificaciones</strong>
-            <span>Recibí alertas en tu celular cuando recibas mensajes privados o novedades.</span>
+            <strong>
+              {notificationPermission === 'denied'
+                ? 'Notificaciones bloqueadas en tu navegador'
+                : '🔔 Activá las notificaciones de Dr. Happy'}
+            </strong>
+            {notificationPermission === 'denied' ? (
+              <span style={{ color: '#ffe4e6', fontSize: '0.82rem', lineHeight: 1.35 }}>
+                Tocá el <strong>candado 🔒</strong> a la izquierda de <code>drhappy.com.ar</code> en la barra superior ➔ <em>Notificaciones</em> ➔ <strong>Permitir</strong>.
+              </span>
+            ) : (
+              <span>Recibí alertas instantáneas de mensajes privados de colegas, novedades y turnos en tu pantalla.</span>
+            )}
           </div>
           <div className="install-app-toast-actions">
-            <button type="button" onClick={() => void handleEnableNotifications()}>
-              Activar
-            </button>
+            {notificationPermission === 'denied' ? (
+              <button
+                type="button"
+                style={{ background: '#22c55e', color: '#0f172a', fontWeight: 700 }}
+                onClick={() => {
+                  const p = getNotificationPermission()
+                  setNotificationPermission(p)
+                  if (p === 'granted') {
+                    if (activeUserId) void registerPushSubscription(activeUserId)
+                    setShowNotificationToast(false)
+                    showSavedFloatingNotice('¡Notificaciones activadas!')
+                  } else {
+                    setAppError('Aún figuran bloqueadas. Hacé clic en el candado 🔒 arriba y cambiá Notificaciones a Permitir.')
+                  }
+                }}
+              >
+                🔄 Ya las desbloqueé
+              </button>
+            ) : (
+              <button type="button" onClick={() => void handleEnableNotifications()}>
+                🔔 Activar
+              </button>
+            )}
             <button type="button" className="ghost" onClick={handleDismissNotificationToast}>
-              Ahora no
+              Cerrar por ahora
             </button>
           </div>
         </div>
