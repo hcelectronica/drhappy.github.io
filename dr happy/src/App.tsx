@@ -3723,6 +3723,17 @@ function App() {
     if (activeUserId && notificationPermission === 'granted') {
       void registerPushSubscription(activeUserId)
     }
+
+    function handleWindowFocus(): void {
+      const current = getNotificationPermission()
+      setNotificationPermission(current)
+      if (current === 'granted' && activeUserId) {
+        void registerPushSubscription(activeUserId)
+      }
+    }
+
+    window.addEventListener('focus', handleWindowFocus)
+    return () => window.removeEventListener('focus', handleWindowFocus)
   }, [activeUserId, notificationPermission])
 
   function handleDismissNotificationToast(): void {
@@ -9869,7 +9880,37 @@ function App() {
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {notificationPermission !== 'granted' ? (
+                  {notificationPermission === 'denied' ? (
+                    <div style={{ display: 'grid', gap: 10, width: '100%', background: 'var(--surface-elevated, #fef2f2)', border: '1px solid #fca5a5', padding: '14px', borderRadius: '8px' }}>
+                      <div style={{ color: '#991b1b', fontSize: '0.92rem', lineHeight: 1.45 }}>
+                        <strong>¿Por qué el botón no abre la ventana?</strong>
+                        <br />
+                        Por normas de seguridad del navegador, cuando las notificaciones están bloqueadas, las páginas web no pueden forzar la ventana emergente. Para habilitarlas, hacelo en 2 pasos:
+                      </div>
+                      <div style={{ fontSize: '0.88rem', color: 'var(--text-muted, #4b5563)', display: 'grid', gap: 6 }}>
+                        <div>📱 <strong>En Celular (Chrome/Android):</strong> Tocá el candado 🔒 o ícono a la izquierda de <code>drhappy.com.ar</code> en la barra superior ➔ <em>Permisos</em> ➔ <em>Notificaciones</em> ➔ <strong>Permitir</strong>.</div>
+                        <div>🍎 <strong>En iPhone/iPad (iOS):</strong> Abrí <em>Ajustes de iOS</em> ➔ <em>Notificaciones</em> ➔ <em>Dr. Happy</em> ➔ <strong>Permitir notificaciones</strong>.</div>
+                        <div>💻 <strong>En PC (Chrome/Edge):</strong> Hacé clic en el candado 🔒 junto a la URL ➔ <em>Notificaciones</em> ➔ <strong>Permitir</strong>.</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const p = getNotificationPermission()
+                            setNotificationPermission(p)
+                            if (p === 'granted') {
+                              if (activeUserId) void registerPushSubscription(activeUserId)
+                              setAppNotice('¡Notificaciones habilitadas con éxito!')
+                            } else {
+                              setAppError('Aún figuran bloqueadas en el navegador. Por favor seguí los pasos arriba y volvé a presionar este botón.')
+                            }
+                          }}
+                        >
+                          🔄 Ya las desbloqueé (Re-verificar)
+                        </button>
+                      </div>
+                    </div>
+                  ) : notificationPermission !== 'granted' ? (
                     <button type="button" onClick={() => void handleEnableNotifications()}>
                       🔔 Activar notificaciones en este celular / equipo
                     </button>
