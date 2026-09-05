@@ -24,3 +24,6 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+.tools/
+*.xlsx
+estructura.txt

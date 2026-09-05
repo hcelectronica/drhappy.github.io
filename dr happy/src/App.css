@@ -1649,6 +1649,162 @@ body.theme-night .file-picker-button {
   color: #1a3561;
 }
 
+/* ── Protocolos y Guías Clínicas ── */
+.protocol-tabs-nav {
+  display: flex;
+  gap: 8px;
+  border-bottom: 2px solid rgba(69, 116, 191, 0.2);
+  margin-bottom: 16px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.protocol-tab-btn {
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: #556987;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.protocol-tab-btn.active {
+  color: #1d4ed8;
+  border-bottom-color: #1d4ed8;
+  background: rgba(29, 78, 216, 0.06);
+  border-radius: 6px 6px 0 0;
+}
+
+.protocol-badge-red {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #f87171;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.protocol-badge-yellow {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.protocol-badge-category {
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.protocol-card-item {
+  border: 1px solid rgba(130, 160, 200, 0.35);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.protocol-card-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(29, 78, 216, 0.12);
+  border-color: #3b82f6;
+}
+
+.protocol-detail-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.protocol-section-box {
+  background: #f8fbff;
+  border: 1px solid #d0e1f9;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.protocol-section-box h4 {
+  margin: 0 0 10px 0;
+  color: #1e3a8a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.protocol-key-signs-list {
+  display: grid;
+  gap: 8px;
+  padding-left: 0;
+  list-style: none;
+  margin: 0;
+}
+
+.protocol-key-signs-list li {
+  position: relative;
+  padding: 8px 12px 8px 30px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.protocol-key-signs-list li::before {
+  content: '✓';
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  color: #2563eb;
+  font-weight: bold;
+}
+
+.protocol-redflag-box {
+  background: #fff5f5;
+  border: 1px solid #fed7d7;
+  border-left: 4px solid #e53e3e;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.protocol-pharma-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 0.9rem;
+}
+
+.protocol-pharma-table th {
+  background: #e2e8f0;
+  padding: 8px;
+  text-align: left;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.protocol-pharma-table td {
+  padding: 8px;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+
+
 /* night mode typeahead */
 body.theme-night .appt-suggestions {
   background: rgba(13, 23, 39, 0.98);

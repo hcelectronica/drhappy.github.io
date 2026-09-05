@@ -18,6 +18,7 @@ import {
   showAppNotification,
 } from './notificationService'
 import type { NotificationPermissionState } from './notificationService'
+import { CLINICAL_PROTOCOLS } from './clinicalProtocols'
 import diagnosisCsv from '../cie-10.csv?raw'
 import specialtiesCsv from '../especialidades-medicas.csv?raw'
 
@@ -30,6 +31,7 @@ type WorkspaceLayer =
   | 'user-admin'
   | 'tools'
   | 'medication-detail'
+  | 'protocol-detail'
   | 'ambulance'
   | 'ambulance-history'
 type SubscriptionPlan = 'monthly' | 'semiannual' | 'annual'
@@ -2136,6 +2138,17 @@ function App() {
   const [vademecumSearchQuery, setVademecumSearchQuery] = useState('')
   const [selectedMedicationId, setSelectedMedicationId] = useState<string | null>(null)
 
+  const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum'>('protocols')
+  const [protocolSearchQuery, setProtocolSearchQuery] = useState('')
+  const [protocolCategoryFilter, setProtocolCategoryFilter] = useState<string>('all')
+  const [selectedProtocolId, setSelectedProtocolId] = useState<string | null>(null)
+  const [selectedProtocolTab, setSelectedProtocolTab] = useState<
+    'prehospital' | 'diagnostic' | 'management' | 'window' | 'prognosis'
+  >('prehospital')
+  const [ambulanceProtocolModalOpen, setAmbulanceProtocolModalOpen] = useState(false)
+  const [ambulanceSelectedProtocolId, setAmbulanceSelectedProtocolId] = useState<string>('iamcest')
+  const [protocolCopiedNotice, setProtocolCopiedNotice] = useState<string | null>(null)
+
   const [patientDraft, setPatientDraft] = useState<PatientDraft>(emptyPatientDraft)
   const [patientFormUnlocked, setPatientFormUnlocked] = useState(true)
   const [consultationDraft, setConsultationDraft] =
@@ -2383,6 +2396,46 @@ function App() {
     () => medicationCatalog.find((entry) => entry.id === selectedMedicationId) ?? null,
     [medicationCatalog, selectedMedicationId],
   )
+
+  const filteredProtocols = useMemo(() => {
+    const q = normalizeSearchText(protocolSearchQuery)
+    return CLINICAL_PROTOCOLS.filter((proto) => {
+      if (protocolCategoryFilter !== 'all' && proto.category !== protocolCategoryFilter) {
+        return false
+      }
+      if (!q) return true
+      return (
+        normalizeSearchText(proto.title).includes(q) ||
+        normalizeSearchText(proto.shortTitle).includes(q) ||
+        normalizeSearchText(proto.cie10).includes(q) ||
+        normalizeSearchText(proto.summary).includes(q) ||
+        proto.prehospitalManifestations.keySigns.some((k) => normalizeSearchText(k).includes(q))
+      )
+    })
+  }, [protocolSearchQuery, protocolCategoryFilter])
+
+  const selectedProtocol = useMemo(
+    () => CLINICAL_PROTOCOLS.find((p) => p.id === selectedProtocolId) ?? null,
+    [selectedProtocolId],
+  )
+
+  const handleCopyProtocolAction = (template: string, toConsultation = false) => {
+    navigator.clipboard?.writeText(template)
+    if (toConsultation) {
+      setConsultationDraft((prev) => ({
+        ...prev,
+        pensamientoMedico: prev.pensamientoMedico
+          ? `${prev.pensamientoMedico}\n\n[Guía Clínica Aplicada]:\n${template}`
+          : `[Guía Clínica Aplicada]:\n${template}`,
+      }))
+      setProtocolCopiedNotice('¡Conducta copiada al pensamiento médico de la consulta!')
+    } else {
+      setProtocolCopiedNotice('¡Conducta clínica copiada al portapapeles!')
+    }
+    setTimeout(() => {
+      setProtocolCopiedNotice(null)
+    }, 3000)
+  }
 
   function loadAccessiblePatientsForUser(userId: string): {
     patientsList: PatientRecord[]
@@ -7328,81 +7381,526 @@ function App() {
         <div className="screen-stage">
           <section className="panel layer-header">
             <div>
-              <h2>Herramientas clínicas</h2>
-              <p className="flow-hint">Consulta rápida de medicamentos y recursos de apoyo.</p>
+              <h2>Herramientas clínicas y protocolos</h2>
+              <p className="flow-hint">Guías de emergencia, conducta terapéutica y vademécum de apoyo médico.</p>
             </div>
             <button type="button" className="ghost" onClick={handleBackToOverview}>
               Volver
             </button>
           </section>
+
+          <div className="protocol-tabs-nav" style={{ padding: '0 10px', marginTop: 12 }}>
+            <button
+              type="button"
+              className={`protocol-tab-btn ${toolsActiveTab === 'protocols' ? 'active' : ''}`}
+              onClick={() => setToolsActiveTab('protocols')}
+            >
+              📖 Guías y Protocolos de Emergencia
+            </button>
+            <button
+              type="button"
+              className={`protocol-tab-btn ${toolsActiveTab === 'vademecum' ? 'active' : ''}`}
+              onClick={() => setToolsActiveTab('vademecum')}
+            >
+              💊 Vademécum farmacológico
+            </button>
+          </div>
+
           <section className="workspace">
-            <section className="panel">
-              <h3>Vademécum</h3>
-              <label>
-                Buscar medicamento
-                <input
-                  value={vademecumSearchQuery}
-                  onChange={(event) => {
-                    setVademecumSearchQuery(event.target.value)
-                    setSelectedMedicationId(null)
-                  }}
-                  placeholder="Escribe al menos 4 letras: ibup, amox, enal"
-                />
-              </label>
-              <small>
-                Escribe 4 letras o más para buscar por aproximación. Se muestran hasta 7 sugerencias.
-              </small>
-              <ul className="admin-user-list" style={{ marginTop: 16 }}>
-                {vademecumSearchQuery.trim().length === 0 ? (
-                  <li>
-                    <div>
-                      <strong>Busca por nombre o droga</strong>
-                      <span>Escribe al menos 4 letras para activar las sugerencias.</span>
-                    </div>
-                  </li>
-                ) : normalizeSearchText(vademecumSearchQuery).length < VADEMECUM_MIN_QUERY_LENGTH ? (
-                  <li>
-                    <div>
-                      <strong>Faltan letras para buscar</strong>
-                      <span>Ingresa 4 letras o más para ver coincidencias aproximadas.</span>
-                    </div>
-                  </li>
-                ) : filteredMedicationCatalog.length === 0 ? (
-                  <li>
-                    <div>
-                      <strong>No hay sugerencias</strong>
-                      <span>Prueba con otra marca, droga o laboratorio.</span>
-                    </div>
-                  </li>
-                ) : (
-                  filteredMedicationCatalog.map((entry) => (
-                    <li key={entry.id}>
+            {toolsActiveTab === 'protocols' ? (
+              <section className="panel">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+                  <div>
+                    <h3 style={{ margin: 0 }}>Protocolos Clínicos de Urgencia</h3>
+                    <small style={{ color: '#64748b' }}>
+                      Algoritmos de decisión rápida, ventanas terapéuticas, dosis y pronóstico basado en evidencia.
+                    </small>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {['all', 'Cardiovascular', 'Neurológico', 'Respiratorio', 'Trauma', 'Infeccioso / Shock', 'Inmunológico / Alergia', 'Metabólico'].map((cat) => (
                       <button
+                        key={cat}
                         type="button"
-                        className="ghost"
+                        className="ghost compact"
                         style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          justifyContent: 'flex-start',
-                          borderColor: selectedMedication?.id === entry.id ? '#1d4ed8' : undefined,
+                          fontSize: '0.8rem',
+                          background: protocolCategoryFilter === cat ? '#dbeafe' : undefined,
+                          borderColor: protocolCategoryFilter === cat ? '#2563eb' : undefined,
+                          color: protocolCategoryFilter === cat ? '#1e40af' : undefined,
+                          fontWeight: protocolCategoryFilter === cat ? 700 : 500,
                         }}
+                        onClick={() => setProtocolCategoryFilter(cat)}
+                      >
+                        {cat === 'all' ? 'Todas las áreas' : cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <label>
+                  Buscar patología, código CIE-10 o signo de sospecha
+                  <input
+                    value={protocolSearchQuery}
+                    onChange={(event) => setProtocolSearchQuery(event.target.value)}
+                    placeholder="Ej: infarto, dolor de pecho, stemi, acv, cincinnati, presión alta, eap..."
+                  />
+                </label>
+
+                {protocolCopiedNotice ? (
+                  <div style={{ background: '#dcfce7', border: '1px solid #86efac', color: '#166534', padding: '8px 12px', borderRadius: 8, marginTop: 10, fontSize: '0.9rem', fontWeight: 600 }}>
+                    {protocolCopiedNotice}
+                  </div>
+                ) : null}
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginTop: 16 }}>
+                  {filteredProtocols.length === 0 ? (
+                    <p style={{ gridColumn: '1 / -1', color: '#64748b' }}>No se encontraron protocolos con ese criterio de búsqueda.</p>
+                  ) : (
+                    filteredProtocols.map((protocol) => (
+                      <article
+                        key={protocol.id}
+                        className="protocol-card-item"
                         onClick={() => {
-                          setSelectedMedicationId(entry.id)
-                          setWorkspaceLayer('medication-detail')
+                          setSelectedProtocolId(protocol.id)
+                          setSelectedProtocolTab('prehospital')
+                          setWorkspaceLayer('protocol-detail')
                         }}
                       >
-                        <span>
-                          <strong>{entry.brand || entry.drug}</strong>
-                          <br />
-                          <small>{[entry.drug, entry.presentation].filter(Boolean).join(' · ') || 'Sin detalle adicional'}</small>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                          <span className="protocol-badge-category">{protocol.category}</span>
+                          <span className={protocol.severity.includes('Roja') || protocol.severity.includes('Crítica') ? 'protocol-badge-red' : 'protocol-badge-yellow'}>
+                            {protocol.severity}
+                          </span>
+                        </div>
+                        <h4 style={{ margin: '4px 0 0', color: '#1e3a8a', fontSize: '1.05rem', lineHeight: 1.3 }}>
+                          {protocol.title}
+                        </h4>
+                        <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                          CIE-10: {protocol.cie10}
                         </span>
-                      </button>
+                        <p style={{ margin: '4px 0', fontSize: '0.87rem', color: '#334155', lineHeight: 1.45, flex: 1 }}>
+                          {protocol.summary}
+                        </p>
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', fontSize: '0.82rem', color: '#475569' }}>
+                          <strong style={{ color: '#0f172a' }}>🚨 Sospecha prehospitalaria clave:</strong>
+                          <div style={{ marginTop: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            {protocol.prehospitalManifestations.keySigns[0]}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                          <span style={{ fontSize: '0.85rem', color: '#2563eb', fontWeight: 700 }}>
+                            Ver protocolo completo & Conducta →
+                          </span>
+                        </div>
+                      </article>
+                    ))
+                  )}
+                </div>
+              </section>
+            ) : (
+              <section className="panel">
+                <h3>Vademécum</h3>
+                <label>
+                  Buscar medicamento
+                  <input
+                    value={vademecumSearchQuery}
+                    onChange={(event) => {
+                      setVademecumSearchQuery(event.target.value)
+                      setSelectedMedicationId(null)
+                    }}
+                    placeholder="Escribe al menos 4 letras: ibup, amox, enal"
+                  />
+                </label>
+                <small>
+                  Escribe 4 letras o más para buscar por aproximación. Se muestran hasta 7 sugerencias.
+                </small>
+                <ul className="admin-user-list" style={{ marginTop: 16 }}>
+                  {vademecumSearchQuery.trim().length === 0 ? (
+                    <li>
+                      <div>
+                        <strong>Busca por nombre o droga</strong>
+                        <span>Escribe al menos 4 letras para activar las sugerencias.</span>
+                      </div>
                     </li>
-                  ))
-                )}
-              </ul>
-            </section>
+                  ) : normalizeSearchText(vademecumSearchQuery).length < VADEMECUM_MIN_QUERY_LENGTH ? (
+                    <li>
+                      <div>
+                        <strong>Faltan letras para buscar</strong>
+                        <span>Ingresa 4 letras o más para ver coincidencias aproximadas.</span>
+                      </div>
+                    </li>
+                  ) : filteredMedicationCatalog.length === 0 ? (
+                    <li>
+                      <div>
+                        <strong>No hay sugerencias</strong>
+                        <span>Prueba con otra marca, droga o laboratorio.</span>
+                      </div>
+                    </li>
+                  ) : (
+                    filteredMedicationCatalog.map((entry) => (
+                      <li key={entry.id}>
+                        <button
+                          type="button"
+                          className="ghost"
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            justifyContent: 'flex-start',
+                            borderColor: selectedMedication?.id === entry.id ? '#1d4ed8' : undefined,
+                          }}
+                          onClick={() => {
+                            setSelectedMedicationId(entry.id)
+                            setWorkspaceLayer('medication-detail')
+                          }}
+                        >
+                          <span>
+                            <strong>{entry.brand || entry.drug}</strong>
+                            <br />
+                            <small>{[entry.drug, entry.presentation].filter(Boolean).join(' · ') || 'Sin detalle adicional'}</small>
+                          </span>
+                        </button>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </section>
+            )}
           </section>
+        </div>
+      ) : null}
+
+      {workspaceLayer === 'protocol-detail' ? (
+        <div className="screen-stage">
+          <section className="panel layer-header">
+            <div>
+              <h2>Protocolo y Conducta Clínica</h2>
+              <p className="flow-hint">Algoritmo de guardia, manejo de emergencias y sobrevida.</p>
+            </div>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                setWorkspaceLayer('tools')
+                setToolsActiveTab('protocols')
+              }}
+            >
+              Volver a Protocolos
+            </button>
+          </section>
+
+          {selectedProtocol ? (
+            <section className="panel protocol-detail-container">
+              {/* Header card */}
+              <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 14, padding: 18 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span className="protocol-badge-category">{selectedProtocol.category}</span>
+                    <span className={selectedProtocol.severity.includes('Roja') || selectedProtocol.severity.includes('Crítica') ? 'protocol-badge-red' : 'protocol-badge-yellow'}>
+                      {selectedProtocol.severity}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>
+                    CIE-10: {selectedProtocol.cie10}
+                  </span>
+                </div>
+                <h1 style={{ margin: '0 0 8px 0', fontSize: '1.5rem', color: '#0f172a' }}>
+                  {selectedProtocol.title}
+                </h1>
+                <p style={{ margin: 0, fontSize: '0.95rem', color: '#334155', lineHeight: 1.5 }}>
+                  {selectedProtocol.summary}
+                </p>
+
+                {/* Action buttons */}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14, paddingTop: 14, borderTop: '1px solid #e2e8f0' }}>
+                  <button
+                    type="button"
+                    style={{ background: '#1d4ed8', color: '#fff', fontSize: '0.88rem', padding: '8px 14px', borderRadius: 8, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+                    onClick={() => handleCopyProtocolAction(selectedProtocol.actionCopyTemplate, false)}
+                  >
+                    📋 Copiar conducta médica al portapapeles
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    style={{ fontSize: '0.88rem' }}
+                    onClick={() => handleCopyProtocolAction(selectedProtocol.actionCopyTemplate, true)}
+                  >
+                    📝 Aplicar al Pensamiento Médico de la consulta activa
+                  </button>
+                </div>
+
+                {protocolCopiedNotice ? (
+                  <div style={{ background: '#dcfce7', border: '1px solid #86efac', color: '#166534', padding: '8px 12px', borderRadius: 8, marginTop: 10, fontSize: '0.9rem', fontWeight: 600 }}>
+                    {protocolCopiedNotice}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Sub-tabs */}
+              <div className="protocol-tabs-nav">
+                <button
+                  type="button"
+                  className={`protocol-tab-btn ${selectedProtocolTab === 'prehospital' ? 'active' : ''}`}
+                  onClick={() => setSelectedProtocolTab('prehospital')}
+                >
+                  🚨 1. Sospecha Prehospitalaria (5 Claves)
+                </button>
+                <button
+                  type="button"
+                  className={`protocol-tab-btn ${selectedProtocolTab === 'diagnostic' ? 'active' : ''}`}
+                  onClick={() => setSelectedProtocolTab('diagnostic')}
+                >
+                  📈 2. Algoritmo Diagnóstico
+                </button>
+                <button
+                  type="button"
+                  className={`protocol-tab-btn ${selectedProtocolTab === 'management' ? 'active' : ''}`}
+                  onClick={() => setSelectedProtocolTab('management')}
+                >
+                  🚑 3. Manejo Guardia / Ambulancia
+                </button>
+                <button
+                  type="button"
+                  className={`protocol-tab-btn ${selectedProtocolTab === 'window' ? 'active' : ''}`}
+                  onClick={() => setSelectedProtocolTab('window')}
+                >
+                  ⏱️ 4. Ventana Terapéutica & Reperfusión
+                </button>
+                <button
+                  type="button"
+                  className={`protocol-tab-btn ${selectedProtocolTab === 'prognosis' ? 'active' : ''}`}
+                  onClick={() => setSelectedProtocolTab('prognosis')}
+                >
+                  📊 5. Pronóstico & Sobrevida
+                </button>
+              </div>
+
+              {/* Tab 1: Sospecha Prehospitalaria */}
+              {selectedProtocolTab === 'prehospital' ? (
+                <div style={{ display: 'grid', gap: 14 }}>
+                  <div className="protocol-section-box">
+                    <h4>📍 Escenario y Contexto de Inicio</h4>
+                    <p style={{ margin: 0, fontSize: '0.93rem', color: '#334155', lineHeight: 1.5 }}>
+                      {selectedProtocol.prehospitalManifestations.setting}
+                    </p>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>🚨 5 Manifestaciones Clínicas Cardinales de Alta Sospecha</h4>
+                    <p style={{ margin: '0 0 10px', fontSize: '0.88rem', color: '#64748b' }}>
+                      Criterios clave para identificar el cuadro en domicilio, vía pública o primer contacto:
+                    </p>
+                    <ul className="protocol-key-signs-list">
+                      {selectedProtocol.prehospitalManifestations.keySigns.map((sign, idx) => (
+                        <li key={idx}>
+                          <strong>Signo {idx + 1}:</strong> {sign}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {selectedProtocol.prehospitalManifestations.highSuspicionRedFlags.length > 0 ? (
+                    <div className="protocol-redflag-box">
+                      <strong style={{ color: '#991b1b', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.95rem' }}>
+                        ⚠️ Banderas Rojas Prehospitalarias (Riesgo Inminente de Paro / Shock):
+                      </strong>
+                      <ul style={{ margin: '8px 0 0', paddingLeft: 20, color: '#7f1d1d', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                        {selectedProtocol.prehospitalManifestations.highSuspicionRedFlags.map((flag, idx) => (
+                          <li key={idx} style={{ marginTop: 4 }}>{flag}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Tab 2: Algoritmo Diagnóstico */}
+              {selectedProtocolTab === 'diagnostic' ? (
+                <div style={{ display: 'grid', gap: 14 }}>
+                  <div className="protocol-section-box">
+                    <h4>⏱️ Pasos Iniciales y Tiempos de Atención</h4>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#334155', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                      {selectedProtocol.diagnosticAlgorithm.initialSteps.map((step, idx) => (
+                        <li key={idx} style={{ marginBottom: 6 }}>{step}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>📈 Criterios Electrocardiográficos / Neuroimagen</h4>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#334155', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                      {selectedProtocol.diagnosticAlgorithm.electrocardiogram.map((ecg, idx) => (
+                        <li key={idx} style={{ marginBottom: 6 }}>{ecg}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>🧪 Biomarcadores y Laboratorio Crítico</h4>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#334155', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                      {selectedProtocol.diagnosticAlgorithm.biomarkersAndLabs.map((lab, idx) => (
+                        <li key={idx} style={{ marginBottom: 6 }}>{lab}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="protocol-section-box" style={{ background: '#f1f5f9', borderColor: '#cbd5e1' }}>
+                    <h4 style={{ color: '#334155' }}>⚖️ Diagnósticos Diferenciales a Descartar</h4>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#475569', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                      {selectedProtocol.diagnosticAlgorithm.differentialDiagnosis.map((diff, idx) => (
+                        <li key={idx} style={{ marginBottom: 4 }}>{diff}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Tab 3: Manejo Guardia / Ambulancia */}
+              {selectedProtocolTab === 'management' ? (
+                <div style={{ display: 'grid', gap: 14 }}>
+                  <div className="protocol-section-box" style={{ background: '#fef2f2', borderColor: '#fecaca' }}>
+                    <h4 style={{ color: '#991b1b' }}>🚑 Medidas Inmediatas en Ambulancia / Prehospitalario</h4>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#7f1d1d', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                      {selectedProtocol.management.prehospitalAmbulance.map((step, idx) => (
+                        <li key={idx} style={{ marginBottom: 6 }}>{step}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>🏥 Manejo en Shock Room y Guardia Hospitalaria</h4>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#334155', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                      {selectedProtocol.management.emergencyRoomShockRoom.map((step, idx) => (
+                        <li key={idx} style={{ marginBottom: 6 }}>{step}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>💊 Esquema Farmacológico Inicial y Dosis de Carga</h4>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="protocol-pharma-table">
+                        <thead>
+                          <tr>
+                            <th>Fármaco</th>
+                            <th>Dosis</th>
+                            <th>Vía</th>
+                            <th>Consideraciones y Notas</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedProtocol.management.initialPharmacotherapy.map((pharma, idx) => (
+                            <tr key={idx}>
+                              <td><strong style={{ color: '#1e3a8a' }}>{pharma.drug}</strong></td>
+                              <td><span style={{ fontWeight: 600, color: '#0f172a' }}>{pharma.dose}</span></td>
+                              <td><span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600 }}>{pharma.route}</span></td>
+                              <td style={{ fontSize: '0.85rem', color: '#475569' }}>{pharma.notes}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Tab 4: Ventana Terapéutica */}
+              {selectedProtocolTab === 'window' ? (
+                <div style={{ display: 'grid', gap: 14 }}>
+                  <div className="protocol-section-box" style={{ background: '#eff6ff', borderColor: '#bfdbfe' }}>
+                    <h4 style={{ color: '#1e40af' }}>⏱️ Tiempo es Tejido (Ventana Terapéutica)</h4>
+                    <p style={{ margin: 0, fontSize: '0.95rem', color: '#1e3a8a', lineHeight: 1.55, fontWeight: 600 }}>
+                      {selectedProtocol.therapeuticWindow.timeframe}
+                    </p>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>🏆 Gold Standard de Reperfusión / Tratamiento Definitivo</h4>
+                    <p style={{ margin: 0, fontSize: '0.93rem', color: '#334155', lineHeight: 1.55 }}>
+                      {selectedProtocol.therapeuticWindow.goldStandard}
+                    </p>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>💉 Estrategia Alternativa (ej. Fibrinolisis o Farmacológica)</h4>
+                    <p style={{ margin: 0, fontSize: '0.93rem', color: '#334155', lineHeight: 1.55 }}>
+                      {selectedProtocol.therapeuticWindow.alternativeReperfusion}
+                    </p>
+                  </div>
+
+                  {selectedProtocol.therapeuticWindow.contraindications.length > 0 ? (
+                    <div className="protocol-redflag-box">
+                      <strong style={{ color: '#991b1b', fontSize: '0.95rem' }}>
+                        🚫 Contraindicaciones Críticas a Considerar:
+                      </strong>
+                      <ul style={{ margin: '8px 0 0', paddingLeft: 20, color: '#7f1d1d', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                        {selectedProtocol.therapeuticWindow.contraindications.map((contra, idx) => (
+                          <li key={idx} style={{ marginTop: 4 }}>{contra}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Tab 5: Pronóstico y Sobrevida */}
+              {selectedProtocolTab === 'prognosis' ? (
+                <div style={{ display: 'grid', gap: 14 }}>
+                  <div className="protocol-section-box">
+                    <h4>📊 Curvas de Sobrevida Basadas en Evidencia</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 10 }}>
+                      <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: 12 }}>
+                        <strong style={{ color: '#065f46', fontSize: '0.85rem' }}>⏳ A las 6 Horas:</strong>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.88rem', color: '#047857' }}>
+                          {selectedProtocol.evidenceAndPrognosis.survivalAt6h}
+                        </p>
+                      </div>
+                      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: 12 }}>
+                        <strong style={{ color: '#166534', fontSize: '0.85rem' }}>⏳ A las 24 Horas:</strong>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.88rem', color: '#15803d' }}>
+                          {selectedProtocol.evidenceAndPrognosis.survivalAt24h}
+                        </p>
+                      </div>
+                      <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 10, padding: 12 }}>
+                        <strong style={{ color: '#334155', fontSize: '0.85rem' }}>⏳ A los 7 Días:</strong>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.88rem', color: '#475569' }}>
+                          {selectedProtocol.evidenceAndPrognosis.survivalAt7d}
+                        </p>
+                      </div>
+                      <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 10, padding: 12 }}>
+                        <strong style={{ color: '#334155', fontSize: '0.85rem' }}>⏳ Al 1 Año:</strong>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.88rem', color: '#475569' }}>
+                          {selectedProtocol.evidenceAndPrognosis.survivalAt1y}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="protocol-section-box" style={{ background: '#fff1f2', borderColor: '#fecdd3' }}>
+                    <h4 style={{ color: '#9f1239' }}>⚡ Complicaciones Inmediatas (Primeras 24 a 48 hs)</h4>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#881337', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                      {selectedProtocol.evidenceAndPrognosis.immediateComplications.map((comp, idx) => (
+                        <li key={idx} style={{ marginBottom: 4 }}>{comp}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>🔄 Consecuencias Mediatas y a Largo Plazo</h4>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#334155', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                      {selectedProtocol.evidenceAndPrognosis.mediateAndLongTermComplications.map((comp, idx) => (
+                        <li key={idx} style={{ marginBottom: 4 }}>{comp}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+          ) : (
+            <section className="panel">
+              <p className="flow-hint">El protocolo no fue encontrado. Vuelve al listado de herramientas.</p>
+            </section>
+          )}
         </div>
       ) : null}
 
@@ -8482,6 +8980,165 @@ function App() {
             </div>
 
             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: 600, margin: '0 auto' }}>
+
+              {/* Botón destacado Protocolos de Emergencia */}
+              <button
+                type="button"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: '#1e3a8a',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 8,
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  boxShadow: '0 4px 12px rgba(30, 58, 138, 0.25)',
+                }}
+                onClick={() => setAmbulanceProtocolModalOpen(true)}
+              >
+                ⚡ Guías y Protocolos de Emergencia (IAM, PCR, ACV, Trauma, Shock, Sepsis...)
+              </button>
+
+              {ambulanceProtocolModalOpen ? (
+                <div
+                  style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 9999,
+                    background: 'rgba(15, 23, 42, 0.75)',
+                    backdropFilter: 'blur(4px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 16,
+                  }}
+                >
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: 16,
+                      maxWidth: 680,
+                      width: '100%',
+                      maxHeight: '90vh',
+                      overflowY: 'auto',
+                      padding: 20,
+                      boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                      <h3 style={{ margin: 0, color: '#1e3a8a' }}>⚡ Protocolos Rápidos de Guardia y Ambulancia</h3>
+                      <button
+                        type="button"
+                        className="ghost compact"
+                        onClick={() => setAmbulanceProtocolModalOpen(false)}
+                      >
+                        ✕ Cerrar
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 6, marginBottom: 14 }}>
+                      {CLINICAL_PROTOCOLS.map((proto) => (
+                        <button
+                          key={proto.id}
+                          type="button"
+                          className="ghost compact"
+                          style={{
+                            flex: '0 0 auto',
+                            background: ambulanceSelectedProtocolId === proto.id ? '#dbeafe' : undefined,
+                            borderColor: ambulanceSelectedProtocolId === proto.id ? '#2563eb' : undefined,
+                            color: ambulanceSelectedProtocolId === proto.id ? '#1e40af' : undefined,
+                            fontWeight: ambulanceSelectedProtocolId === proto.id ? 700 : 500,
+                          }}
+                          onClick={() => setAmbulanceSelectedProtocolId(proto.id)}
+                        >
+                          {proto.shortTitle}
+                        </button>
+                      ))}
+                    </div>
+
+                    {(() => {
+                      const proto = CLINICAL_PROTOCOLS.find((p) => p.id === ambulanceSelectedProtocolId) ?? CLINICAL_PROTOCOLS[0]
+                      return (
+                        <div style={{ display: 'grid', gap: 12 }}>
+                          <div style={{ background: '#f8fafc', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <strong style={{ color: '#0f172a', fontSize: '1.05rem' }}>{proto.title}</strong>
+                              <span className={proto.severity.includes('Roja') || proto.severity.includes('Crítica') ? 'protocol-badge-red' : 'protocol-badge-yellow'}>
+                                {proto.severity}
+                              </span>
+                            </div>
+                            <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: '#475569' }}>{proto.summary}</p>
+                          </div>
+
+                          <div className="protocol-section-box" style={{ padding: 12 }}>
+                            <h4 style={{ margin: '0 0 6px', fontSize: '0.95rem' }}>🚨 5 Manifestaciones prehospitalarias</h4>
+                            <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem', color: '#334155', lineHeight: 1.4 }}>
+                              {proto.prehospitalManifestations.keySigns.map((s, idx) => (
+                                <li key={idx} style={{ marginBottom: 3 }}>{s}</li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <div className="protocol-section-box" style={{ padding: 12, background: '#fef2f2', borderColor: '#fecaca' }}>
+                            <h4 style={{ margin: '0 0 6px', fontSize: '0.95rem', color: '#991b1b' }}>🚑 Manejo inmediato en Ambulancia</h4>
+                            <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem', color: '#7f1d1d', lineHeight: 1.4 }}>
+                              {proto.management.prehospitalAmbulance.map((s, idx) => (
+                                <li key={idx} style={{ marginBottom: 3 }}>{s}</li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <div className="protocol-section-box" style={{ padding: 12 }}>
+                            <h4 style={{ margin: '0 0 6px', fontSize: '0.95rem' }}>💊 Dosis de carga</h4>
+                            <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem', color: '#1e293b', lineHeight: 1.4 }}>
+                              {proto.management.initialPharmacotherapy.map((ph, idx) => (
+                                <li key={idx} style={{ marginBottom: 3 }}>
+                                  <strong>{ph.drug}:</strong> {ph.dose} ({ph.route}) — <span style={{ color: '#64748b' }}>{ph.notes}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                            <button
+                              type="button"
+                              style={{ flex: 1, padding: '10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}
+                              onClick={() => {
+                                setAmbulanceDraft((prev) => ({
+                                  ...prev,
+                                  diagnosticoFinal: prev.diagnosticoFinal
+                                    ? `${prev.diagnosticoFinal} · [Conducta]: ${proto.actionCopyTemplate}`
+                                    : `[Conducta]: ${proto.actionCopyTemplate}`,
+                                }))
+                                setAmbulanceProtocolModalOpen(false)
+                                showSavedFloatingNotice('Protocolo insertado en diagnóstico final')
+                              }}
+                            >
+                              📋 Insertar conducta en ficha de traslado
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(proto.actionCopyTemplate)
+                                showSavedFloatingNotice('Copiado al portapapeles')
+                              }}
+                            >
+                              Copiar texto
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                </div>
+              ) : null}
 
               {/* Bloque paciente */}
               <section className="panel" style={{ padding: '14px' }}>
