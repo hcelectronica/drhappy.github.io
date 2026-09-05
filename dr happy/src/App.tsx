@@ -2432,17 +2432,21 @@ function App() {
     if (!isSupabaseConfigured || !supabase) {
       return
     }
-    const { error } = await supabase.from('user_workspaces').upsert(
-      {
-        user_id: userId,
-        profile_json: nextProfile,
-        patients_json: nextPatients,
-        appointments_json: nextAppointments,
-      },
-      { onConflict: 'user_id' },
-    )
-    if (error) {
-      setAppError(`No se pudo guardar la base personal en la nube: ${error.message}`)
+    try {
+      const { error } = await supabase.from('user_workspaces').upsert(
+        {
+          user_id: userId,
+          profile_json: nextProfile,
+          patients_json: nextPatients,
+          appointments_json: nextAppointments,
+        },
+        { onConflict: 'user_id' },
+      )
+      if (error) {
+        console.warn('No se pudo guardar la base personal en la nube:', error.message)
+      }
+    } catch (err) {
+      console.warn('Fallo de conexión al sincronizar workspace en la nube:', err)
     }
   }
 
@@ -3702,22 +3706,33 @@ function App() {
     }
 
     const readThread = async () => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        return
+      }
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        return
+      }
+
       if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase
-          .from('community_messages')
-          .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
-          .or(
-            `and(sender_id.eq.${activeUserId},recipient_id.eq.${communityTargetId}),and(sender_id.eq.${communityTargetId},recipient_id.eq.${activeUserId})`,
+        try {
+          const { data, error } = await supabase
+            .from('community_messages')
+            .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
+            .or(
+              `and(sender_id.eq.${activeUserId},recipient_id.eq.${communityTargetId}),and(sender_id.eq.${communityTargetId},recipient_id.eq.${activeUserId})`,
+            )
+            .order('sent_at', { ascending: true })
+          if (error) {
+            console.warn('Error leyendo chat de comunidad:', error.message)
+            return
+          }
+          const ordered = (data ?? []).map((row) =>
+            mapRemoteCommunityMessage(row as RemoteCommunityMessageRow),
           )
-          .order('sent_at', { ascending: true })
-        if (error) {
-          setAppError(`No se pudo cargar el chat de comunidad: ${error.message}`)
-          return
+          setCommunityMessages(ordered)
+        } catch (err) {
+          console.warn('Fallo de conexión al cargar chat de comunidad:', err)
         }
-        const ordered = (data ?? []).map((row) =>
-          mapRemoteCommunityMessage(row as RemoteCommunityMessageRow),
-        )
-        setCommunityMessages(ordered)
         return
       }
 
@@ -3734,9 +3749,20 @@ function App() {
     void readThread()
     const intervalId = window.setInterval(() => {
       void readThread()
-    }, 1500)
+    }, 2000)
+
+    const handleVisibilityOrOnline = () => {
+      if (!document.hidden && navigator.onLine) {
+        void readThread()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityOrOnline)
+    window.addEventListener('online', handleVisibilityOrOnline)
+
     return () => {
       window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityOrOnline)
+      window.removeEventListener('online', handleVisibilityOrOnline)
     }
   }, [activeUserId, communityTargetId])
 
@@ -3755,27 +3781,39 @@ function App() {
     }
 
     const scanUnread = async () => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        return
+      }
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        return
+      }
+
       const seenIds = new Set(communitySeenIds)
       const incoming: CommunityMessage[] = []
       const byMember: Record<string, number> = {}
 
       if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase
-          .from('community_messages')
-          .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
-          .eq('recipient_id', activeUserId)
-          .order('sent_at', { ascending: true })
-        if (error) {
-          setAppError(`No se pudieron escanear mensajes nuevos: ${error.message}`)
-          return
-        }
-        for (const row of data ?? []) {
-          const message = mapRemoteCommunityMessage(row as RemoteCommunityMessageRow)
-          if (seenIds.has(message.id)) {
-            continue
+        try {
+          const { data, error } = await supabase
+            .from('community_messages')
+            .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
+            .eq('recipient_id', activeUserId)
+            .order('sent_at', { ascending: true })
+          if (error) {
+            console.warn('No se pudieron escanear mensajes nuevos en Supabase:', error.message)
+            return
           }
-          incoming.push(message)
-          byMember[message.senderId] = (byMember[message.senderId] ?? 0) + 1
+          for (const row of data ?? []) {
+            const message = mapRemoteCommunityMessage(row as RemoteCommunityMessageRow)
+            if (seenIds.has(message.id)) {
+              continue
+            }
+            incoming.push(message)
+            byMember[message.senderId] = (byMember[message.senderId] ?? 0) + 1
+          }
+        } catch (err) {
+          console.warn('Fallo de red temporal al escanear mensajes:', err)
+          return
         }
       } else {
         for (const member of seedUsers) {
@@ -3830,9 +3868,20 @@ function App() {
     void scanUnread()
     const intervalId = window.setInterval(() => {
       void scanUnread()
-    }, 1600)
+    }, 3000)
+
+    const handleVisibilityOrOnline = () => {
+      if (!document.hidden && navigator.onLine) {
+        void scanUnread()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityOrOnline)
+    window.addEventListener('online', handleVisibilityOrOnline)
+
     return () => {
       window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityOrOnline)
+      window.removeEventListener('online', handleVisibilityOrOnline)
     }
   }, [activeUserId, communitySeenIds, seedUsers])
 
@@ -3890,19 +3939,24 @@ function App() {
     const markSeen = async () => {
       let incomingForMember: CommunityMessage[] = []
       if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase
-          .from('community_messages')
-          .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
-          .eq('sender_id', memberId)
-          .eq('recipient_id', activeUserId)
-          .order('sent_at', { ascending: true })
-        if (error) {
-          setAppError(`No se pudieron actualizar mensajes vistos: ${error.message}`)
+        try {
+          const { data, error } = await supabase
+            .from('community_messages')
+            .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
+            .eq('sender_id', memberId)
+            .eq('recipient_id', activeUserId)
+            .order('sent_at', { ascending: true })
+          if (error) {
+            console.warn('No se pudieron actualizar mensajes vistos:', error.message)
+            return
+          }
+          incomingForMember = (data ?? []).map((row) =>
+            mapRemoteCommunityMessage(row as RemoteCommunityMessageRow),
+          )
+        } catch (err) {
+          console.warn('Fallo de red al marcar mensajes vistos:', err)
           return
         }
-        incomingForMember = (data ?? []).map((row) =>
-          mapRemoteCommunityMessage(row as RemoteCommunityMessageRow),
-        )
       } else {
         const thread: CommunityMessage[] = readJsonStorage<CommunityMessage[]>(
           communityThreadStorageKey(activeUserId, memberId),
