@@ -1,0 +1,286 @@
+/* ==========================================================================
+   FONDO ANIMADO DE INGRESO — ECG + partículas + escena de guardia ilustrada
+   ========================================================================== */
+
+.auth-bg {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* --- Trazado ECG latiendo --- */
+.auth-bg-ecg {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 120px;
+  opacity: 0.5;
+}
+
+.auth-bg-ecg--top {
+  top: 6%;
+}
+
+.auth-bg-ecg--mid {
+  top: 46%;
+  opacity: 0.3;
+  transform: scaleX(-1);
+}
+
+.auth-bg-ecg-path {
+  stroke: rgba(37, 99, 235, 0.55);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1600;
+  animation: ecg-flow 6s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(37, 99, 235, 0.35));
+}
+
+@keyframes ecg-flow {
+  0% {
+    stroke-dashoffset: 1600;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+/* --- Partículas de cruces médicas --- */
+.auth-bg-cross {
+  position: absolute;
+  bottom: -40px;
+  color: rgba(37, 99, 235, 0.16);
+  animation: cross-float linear infinite;
+  filter: blur(0.2px);
+}
+
+.auth-bg-cross svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+@keyframes cross-float {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate3d(var(--drift, 20px), -108vh, 0) rotate(38deg);
+    opacity: 0;
+  }
+}
+
+/* --- Escena de guardia ilustrada --- */
+.auth-bg-scene {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(920px, 110vw);
+  height: auto;
+  opacity: 0.34;
+}
+
+.scene-floor {
+  fill: rgba(30, 58, 138, 0.18);
+}
+
+.scene-wall rect {
+  fill: rgba(37, 99, 235, 0.10);
+  stroke: rgba(37, 99, 235, 0.28);
+  stroke-width: 2;
+}
+
+.scene-wall path {
+  stroke: rgba(220, 38, 38, 0.42);
+  stroke-width: 12;
+}
+
+.scene-monitor rect {
+  fill: #1e293b;
+  opacity: 0.85;
+}
+
+.monitor-screen {
+  fill: #0f172a;
+}
+
+.monitor-trace {
+  stroke: #34d399;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 210;
+  animation: monitor-beat 2.4s linear infinite;
+}
+
+@keyframes monitor-beat {
+  from {
+    stroke-dashoffset: 210;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.scene-cart rect {
+  fill: #64748b;
+}
+
+.scene-cart circle {
+  fill: #475569;
+}
+
+.scene-cart .cart-tray {
+  fill: #94a3b8;
+}
+
+.scene-bed > rect {
+  fill: #475569;
+}
+
+.scene-bed > circle {
+  fill: #334155;
+}
+
+.patient-head {
+  fill: #fcd9b8;
+}
+
+.patient-body {
+  fill: #475569;
+}
+
+.patient-arm {
+  fill: #fcd9b8;
+}
+
+.patient-blanket {
+  fill: #3b82f6;
+  opacity: 0.8;
+}
+
+.medic-head {
+  fill: #fcd9b8;
+}
+
+.medic-coat {
+  fill: #f8fafc;
+  stroke: rgba(100, 116, 139, 0.6);
+  stroke-width: 1.5;
+}
+
+.medic-arm {
+  stroke: #f8fafc;
+  stroke-width: 9;
+  fill: none;
+}
+
+.medic-leg {
+  fill: #1e3a8a;
+}
+
+.medic-stetho {
+  stroke: #dc2626;
+  stroke-width: 2.4;
+}
+
+.medic-clipboard {
+  fill: #fbbf24;
+  stroke: #92400e;
+  stroke-width: 1;
+}
+
+.medic-tray {
+  fill: #94a3b8;
+}
+
+.medic-c {
+  opacity: 0.75;
+}
+
+/* Movimiento sutil de la escena (respiración / actividad) */
+.medic-b {
+  animation: medic-lean 4s ease-in-out infinite;
+  transform-origin: 596px 226px;
+}
+
+@keyframes medic-lean {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-2.4deg) translateY(1px);
+  }
+}
+
+.medic-c {
+  animation: medic-walk 9s ease-in-out infinite;
+}
+
+@keyframes medic-walk {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(14px);
+  }
+}
+
+/* --- Modo nocturno --- */
+body.theme-night .auth-bg-ecg-path {
+  stroke: rgba(96, 165, 250, 0.5);
+  filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.4));
+}
+
+body.theme-night .auth-bg-cross {
+  color: rgba(147, 197, 253, 0.14);
+}
+
+body.theme-night .auth-bg-scene {
+  opacity: 0.28;
+}
+
+body.theme-night .scene-floor {
+  fill: rgba(96, 165, 250, 0.14);
+}
+
+body.theme-night .medic-coat,
+body.theme-night .medic-arm {
+  fill: #cbd5e1;
+  stroke: rgba(226, 232, 240, 0.4);
+}
+
+body.theme-night .medic-arm {
+  stroke: #cbd5e1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-bg-ecg-path,
+  .monitor-trace,
+  .auth-bg-cross,
+  .medic-b,
+  .medic-c {
+    animation: none;
+  }
+}

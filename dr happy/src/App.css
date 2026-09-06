@@ -25,6 +25,7 @@
   position: relative;
   overflow: hidden;
   backdrop-filter: blur(12px);
+  z-index: 1;
 }
 
 .auth-card::before {
