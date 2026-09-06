@@ -303,6 +303,16 @@ body.theme-night .medic-arm {
   transition: opacity 0.55s ease, visibility 0.55s ease;
 }
 
+/* La escena de guardia dentro del splash ocupa el tercio inferior completo */
+.splash-screen .auth-bg-scene {
+  opacity: 0.5;
+  width: min(1100px, 130vw);
+}
+
+.splash-screen .auth-bg-ecg--mid {
+  top: 68%;
+}
+
 body.theme-night .splash-screen {
   background:
     radial-gradient(circle at 15% 12%, rgba(35, 67, 107, 0.28), transparent 34%),
