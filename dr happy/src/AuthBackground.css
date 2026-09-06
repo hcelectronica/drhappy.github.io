@@ -284,3 +284,181 @@ body.theme-night .medic-arm {
     animation: none;
   }
 }
+
+/* ==========================================================================
+   SPLASH DE BIENVENIDA (3s) → LOGIN
+   ========================================================================== */
+
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(34, 63, 98, 0.2), transparent 34%),
+    radial-gradient(circle at 88% 2%, rgba(31, 90, 74, 0.16), transparent 32%),
+    linear-gradient(145deg, #f6f9fe 0%, #e9eff8 100%);
+  transition: opacity 0.55s ease, visibility 0.55s ease;
+}
+
+body.theme-night .splash-screen {
+  background:
+    radial-gradient(circle at 15% 12%, rgba(35, 67, 107, 0.28), transparent 34%),
+    radial-gradient(circle at 86% 8%, rgba(31, 90, 74, 0.25), transparent 30%),
+    linear-gradient(145deg, #071122 0%, #0d1a31 100%);
+}
+
+.splash-screen--leaving {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.splash-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 24px;
+  animation: splash-content-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes splash-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.splash-brand-mark {
+  width: 92px;
+  height: 92px;
+  display: block;
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 16px 34px rgba(29, 78, 216, 0.3);
+  animation: splash-brand-pulse 2.2s ease-in-out infinite;
+}
+
+.splash-brand-mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+@keyframes splash-brand-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 16px 34px rgba(29, 78, 216, 0.3);
+  }
+  50% {
+    transform: scale(1.045);
+    box-shadow: 0 20px 44px rgba(29, 78, 216, 0.42);
+  }
+}
+
+.splash-title {
+  margin: 18px 0 6px;
+  font-size: clamp(2.1rem, 6vw, 3rem);
+  font-weight: 800;
+  color: #112d4e;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+body.theme-night .splash-title {
+  color: #dbeafe;
+}
+
+.splash-title-emoji {
+  font-size: 0.85em;
+}
+
+.splash-slogan {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+body.theme-night .splash-slogan {
+  color: #94a3b8;
+}
+
+.splash-subtitle {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+body.theme-night .splash-subtitle {
+  color: #64748b;
+}
+
+.splash-loader {
+  margin-top: 26px;
+  width: 190px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.14);
+  overflow: hidden;
+}
+
+.splash-loader-bar {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1d4ed8, #38bdf8);
+  animation: splash-loader-run 1.4s ease-in-out infinite;
+}
+
+@keyframes splash-loader-run {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(500%);
+  }
+}
+
+/* Entrada animada de la tarjeta de login tras el splash */
+.auth-card--entering {
+  animation: auth-card-enter 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes auth-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.965);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-content,
+  .splash-brand-mark,
+  .splash-loader-bar,
+  .auth-card--entering {
+    animation: none;
+  }
+
+  .splash-screen--leaving {
+    transition: none;
+  }
+}

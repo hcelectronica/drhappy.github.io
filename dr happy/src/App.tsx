@@ -29,6 +29,7 @@ import {
 } from './emailService'
 import { CLINICAL_PROTOCOLS } from './clinicalProtocols'
 import AuthBackground from './AuthBackground'
+import SplashScreen from './SplashScreen'
 import diagnosisCsv from '../cie-10.csv?raw'
 import specialtiesCsv from '../especialidades-medicas.csv?raw'
 
@@ -2139,6 +2140,23 @@ function App() {
   const [appError, setAppError] = useState<string | null>(null)
   const [appNotice, setAppNotice] = useState<string | null>(null)
   const [floatingNotice, setFloatingNotice] = useState<string | null>(null)
+  const [splashVisible, setSplashVisible] = useState(true)
+  const [splashLeaving, setSplashLeaving] = useState(false)
+
+  useEffect(() => {
+    if (loadingUsers) {
+      return
+    }
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const holdMs = reduceMotion ? 600 : 3000
+    const fadeMs = reduceMotion ? 0 : 550
+    const leaveTimer = window.setTimeout(() => setSplashLeaving(true), holdMs)
+    const hideTimer = window.setTimeout(() => setSplashVisible(false), holdMs + fadeMs)
+    return () => {
+      window.clearTimeout(leaveTimer)
+      window.clearTimeout(hideTimer)
+    }
+  }, [loadingUsers])
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(
     null,
   )
@@ -6985,14 +7003,22 @@ function App() {
   }
 
   if (loadingUsers) {
-    return <main className="loading">Cargando modelo clínico...</main>
+    return (
+      <main className="loading">
+        {splashVisible ? <SplashScreen leaving={false} /> : null}
+        <span style={{ position: 'absolute', bottom: 24, opacity: 0.6, fontSize: '0.8rem' }}>
+          Cargando modelo clínico...
+        </span>
+      </main>
+    )
   }
 
   if (!activeUser || !profile) {
     return (
       <main className="auth-layout">
+        {splashVisible ? <SplashScreen leaving={splashLeaving} /> : null}
         <AuthBackground />
-        <section className="auth-card">
+        <section className={`auth-card ${splashVisible ? '' : 'auth-card--entering'}`}>
           <div className="brand-block">
             <span className="brand-mark" aria-hidden="true">
               <svg viewBox="0 0 64 64" role="presentation">
