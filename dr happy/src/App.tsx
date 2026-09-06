@@ -28,6 +28,7 @@ import {
   sendEmail,
 } from './emailService'
 import { CLINICAL_PROTOCOLS } from './clinicalProtocols'
+import AuthBackground from './AuthBackground'
 import diagnosisCsv from '../cie-10.csv?raw'
 import specialtiesCsv from '../especialidades-medicas.csv?raw'
 
@@ -6990,6 +6991,7 @@ function App() {
   if (!activeUser || !profile) {
     return (
       <main className="auth-layout">
+        <AuthBackground />
         <section className="auth-card">
           <div className="brand-block">
             <span className="brand-mark" aria-hidden="true">
