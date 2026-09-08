@@ -28,6 +28,14 @@ import {
   sendEmail,
 } from './emailService'
 import {
+  createPublicBookingLink,
+  listPublicBookingLinks,
+  cancelPublicBookingLink,
+  buildPublicBookingUrl,
+  buildWhatsAppShareUrl,
+} from './publicBookingService'
+import type { PublicBookingLinkSummary } from './publicBookingService'
+import {
   registerProfessional,
   loginProfessional,
   changeProfessionalPassword,
@@ -2231,6 +2239,23 @@ function App() {
   const [appointmentDraft, setAppointmentDraft] = useState<AppointmentDraft>(emptyAppointmentDraft)
   const [appointmentSaving, setAppointmentSaving] = useState(false)
   const [appointmentResendingId, setAppointmentResendingId] = useState<string | null>(null)
+  // NUEVA función "Turnos libres" — no modifica nada de la Turnera existente.
+  // Permite generar enlaces públicos para que pacientes no registrados
+  // elijan un horario habilitado por el profesional y se auto-agenden.
+  const [freeSlotModalOpen, setFreeSlotModalOpen] = useState(false)
+  const [freeSlotDraft, setFreeSlotDraft] = useState({
+    slotDate: '',
+    startTime: '09:00',
+    endTime: '17:00',
+    slotCount: 5,
+    location: '',
+    reason: '',
+  })
+  const [freeSlotSaving, setFreeSlotSaving] = useState(false)
+  const [freeSlotError, setFreeSlotError] = useState<string | null>(null)
+  const [freeSlotLinks, setFreeSlotLinks] = useState<PublicBookingLinkSummary[]>([])
+  const [freeSlotLinksLoading, setFreeSlotLinksLoading] = useState(false)
+  const [freeSlotGeneratedUrl, setFreeSlotGeneratedUrl] = useState<string | null>(null)
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
   const [diagnosisCatalog, setDiagnosisCatalog] = useState<string[]>([])
@@ -6231,6 +6256,83 @@ function App() {
     showSavedFloatingNotice('Turno cancelado')
   }
 
+  // --- NUEVA función "Turnos libres" (independiente de la Turnera) ---
+  function handleOpenFreeSlotModal(): void {
+    setFreeSlotError(null)
+    setFreeSlotGeneratedUrl(null)
+    setFreeSlotDraft({
+      slotDate: new Date().toISOString().slice(0, 10),
+      startTime: '09:00',
+      endTime: '17:00',
+      slotCount: 5,
+      location: '',
+      reason: '',
+    })
+    setFreeSlotModalOpen(true)
+    void refreshFreeSlotLinks()
+  }
+
+  async function refreshFreeSlotLinks(): Promise<void> {
+    if (!activeUserId) return
+    setFreeSlotLinksLoading(true)
+    try {
+      const result = await listPublicBookingLinks(activeUserId)
+      if (result.success && result.links) {
+        setFreeSlotLinks(result.links)
+      }
+    } finally {
+      setFreeSlotLinksLoading(false)
+    }
+  }
+
+  async function handleCreateFreeSlotLink(): Promise<void> {
+    if (!activeUserId) return
+    if (!freeSlotDraft.slotDate || !freeSlotDraft.startTime || !freeSlotDraft.endTime || !freeSlotDraft.slotCount) {
+      setFreeSlotError('Completa fecha, horario y cantidad de turnos.')
+      return
+    }
+    setFreeSlotSaving(true)
+    setFreeSlotError(null)
+    setFreeSlotGeneratedUrl(null)
+    try {
+      const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
+      const result = await createPublicBookingLink({
+        professionalId: activeUserId,
+        professionalName: currentProf?.fullName || activeUser?.fullName,
+        slotDate: freeSlotDraft.slotDate,
+        startTime: freeSlotDraft.startTime,
+        endTime: freeSlotDraft.endTime,
+        slotCount: Number(freeSlotDraft.slotCount),
+        location: freeSlotDraft.location.trim(),
+        reason: freeSlotDraft.reason.trim(),
+      })
+      if (!result.success || !result.token) {
+        setFreeSlotError(result.message || 'No se pudo generar el enlace de turnos libres.')
+        return
+      }
+      const url = buildPublicBookingUrl(result.token)
+      setFreeSlotGeneratedUrl(url)
+      void refreshFreeSlotLinks()
+    } catch (err) {
+      setFreeSlotError(`Error al generar el enlace: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setFreeSlotSaving(false)
+    }
+  }
+
+  async function handleCancelFreeSlotLink(linkId: string): Promise<void> {
+    if (!activeUserId) return
+    if (!window.confirm('¿Cancelar este enlace de turnos libres? Ya no podrá usarse.')) return
+    await cancelPublicBookingLink({ linkId, professionalId: activeUserId })
+    void refreshFreeSlotLinks()
+  }
+
+  function handleShareFreeSlotLink(url: string): void {
+    const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
+    const professionalName = currentProf?.fullName || activeUser?.fullName
+    window.open(buildWhatsAppShareUrl(url, professionalName), '_blank', 'noopener,noreferrer')
+  }
+
   async function handleResendAppointmentEmail(record: AppointmentRecord): Promise<void> {
     if (!record.patientEmail?.trim()) {
       setAppError('El paciente no tiene un correo electrónico registrado en este turno.')
@@ -8999,6 +9101,9 @@ function App() {
               <button type="button" onClick={() => handleNewAppointmentModal()}>
                 ➕ Nuevo turno
               </button>
+              <button type="button" className="ghost" onClick={handleOpenFreeSlotModal}>
+                📲 Enviar turnera libre al paciente
+              </button>
               <button type="button" className="ghost" onClick={handleBackToOverview}>
                 Volver
               </button>
@@ -10879,6 +10984,177 @@ function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+      {freeSlotModalOpen ? (
+        <div className="drhappy-modal-overlay" onClick={() => setFreeSlotModalOpen(false)}>
+          <div
+            className="drhappy-modal-card turnera-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="free-slot-modal-title"
+          >
+            <div className="drhappy-modal-header">
+              <h3 id="free-slot-modal-title" style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>
+                📲 Enviar turnera libre al paciente
+              </h3>
+              <button
+                type="button"
+                className="drhappy-modal-close-btn"
+                onClick={() => setFreeSlotModalOpen(false)}
+                aria-label="Cerrar ventana"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="flow-hint" style={{ marginTop: 0 }}>
+              Generá un enlace para compartir por WhatsApp. El paciente elige un horario dentro del rango que
+              vos habilites y se auto-agenda; el turno queda cargado automáticamente en tu Turnera.
+            </p>
+
+            <div className="turnera-form-row">
+              <label style={{ flex: 1 }}>
+                Fecha *
+                <input
+                  type="date"
+                  required
+                  value={freeSlotDraft.slotDate}
+                  onChange={(e) => setFreeSlotDraft((prev) => ({ ...prev, slotDate: e.target.value }))}
+                />
+              </label>
+              <label style={{ flex: 1 }}>
+                Cantidad de turnos libres *
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  required
+                  value={freeSlotDraft.slotCount}
+                  onChange={(e) => setFreeSlotDraft((prev) => ({ ...prev, slotCount: Number(e.target.value) }))}
+                />
+              </label>
+            </div>
+
+            <div className="turnera-form-row">
+              <label style={{ flex: 1 }}>
+                Desde *
+                <input
+                  type="time"
+                  required
+                  value={freeSlotDraft.startTime}
+                  onChange={(e) => setFreeSlotDraft((prev) => ({ ...prev, startTime: e.target.value }))}
+                />
+              </label>
+              <label style={{ flex: 1 }}>
+                Hasta *
+                <input
+                  type="time"
+                  required
+                  value={freeSlotDraft.endTime}
+                  onChange={(e) => setFreeSlotDraft((prev) => ({ ...prev, endTime: e.target.value }))}
+                />
+              </label>
+            </div>
+
+            <div className="turnera-form-group">
+              <label>
+                Lugar / Consultorio
+                <input
+                  type="text"
+                  placeholder="Ej: Consultorio 3 · Hospital Central"
+                  value={freeSlotDraft.location}
+                  onChange={(e) => setFreeSlotDraft((prev) => ({ ...prev, location: e.target.value }))}
+                />
+              </label>
+            </div>
+
+            <div className="turnera-form-group">
+              <label>
+                Motivo (opcional)
+                <input
+                  type="text"
+                  placeholder="Ej: Primera consulta"
+                  value={freeSlotDraft.reason}
+                  onChange={(e) => setFreeSlotDraft((prev) => ({ ...prev, reason: e.target.value }))}
+                />
+              </label>
+            </div>
+
+            {freeSlotError ? (
+              <p style={{ color: '#c62828', fontSize: '0.9rem' }}>{freeSlotError}</p>
+            ) : null}
+
+            {freeSlotGeneratedUrl ? (
+              <div className="turnera-form-group" style={{ background: '#e9f8f0', borderRadius: 10, padding: 12 }}>
+                <p style={{ margin: '0 0 8px', fontWeight: 600 }}>✅ Enlace generado</p>
+                <p style={{ margin: '0 0 10px', wordBreak: 'break-all', fontSize: '0.85rem' }}>{freeSlotGeneratedUrl}</p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => handleShareFreeSlotLink(freeSlotGeneratedUrl)}>
+                    💬 Compartir por WhatsApp
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(freeSlotGeneratedUrl)
+                      showSavedFloatingNotice('Enlace copiado al portapapeles')
+                    }}
+                  >
+                    📋 Copiar enlace
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="drhappy-modal-footer" style={{ marginTop: 12 }}>
+              <button type="button" onClick={() => void handleCreateFreeSlotLink()} disabled={freeSlotSaving}>
+                {freeSlotSaving ? 'Generando enlace...' : 'Generar enlace de turnos libres'}
+              </button>
+              <button type="button" className="ghost" onClick={() => setFreeSlotModalOpen(false)}>
+                Cerrar
+              </button>
+            </div>
+
+            {freeSlotLinks.length > 0 ? (
+              <div style={{ marginTop: 18 }}>
+                <h4 style={{ margin: '0 0 8px', fontSize: '1rem' }}>Enlaces activos</h4>
+                {freeSlotLinksLoading ? <p className="flow-hint">Cargando...</p> : null}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {freeSlotLinks
+                    .filter((l) => l.status === 'active')
+                    .map((l) => (
+                      <div
+                        key={l.id}
+                        style={{
+                          border: '1px solid #d8e2ee',
+                          borderRadius: 10,
+                          padding: '8px 12px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: 8,
+                        }}
+                      >
+                        <span style={{ fontSize: '0.88rem' }}>
+                          📅 {l.slot_date} · {l.start_time}–{l.end_time} hs · {l.bookedSlots}/{l.totalSlots} reservados
+                        </span>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button type="button" className="ghost" onClick={() => handleShareFreeSlotLink(buildPublicBookingUrl(l.token))}>
+                            💬
+                          </button>
+                          <button type="button" className="ghost" onClick={() => void handleCancelFreeSlotLink(l.id)}>
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
