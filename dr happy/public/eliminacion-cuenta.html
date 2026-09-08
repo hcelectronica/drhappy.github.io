@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eliminación de cuenta y datos — Dr Happy</title>
+  <meta name="description" content="Cómo solicitar la eliminación de tu cuenta y datos asociados en Dr Happy." />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <style>
+    :root {
+      --ink: #1f2d3d;
+      --muted: #52627a;
+      --accent: #1d4ed8;
+      --line: #d8e2ee;
+      --card: #ffffff;
+      --bg: #f6f9fe;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background:
+        radial-gradient(circle at 10% 10%, rgba(34, 63, 98, 0.12), transparent 34%),
+        radial-gradient(circle at 88% 2%, rgba(31, 90, 74, 0.10), transparent 32%),
+        var(--bg);
+      color: var(--ink);
+      line-height: 1.65;
+    }
+    main { max-width: 780px; margin: 0 auto; padding: 32px 20px 64px; }
+    header { display: flex; align-items: center; gap: 14px; margin-bottom: 26px; }
+    header img { width: 52px; height: 52px; }
+    header h1 { margin: 0; font-size: 1.55rem; color: #112d4e; }
+    header p { margin: 2px 0 0; color: var(--muted); font-size: 0.9rem; }
+    article {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 30px 34px;
+      box-shadow: 0 14px 32px rgba(32, 74, 130, 0.10);
+    }
+    h2 { color: #112d4e; font-size: 1.12rem; margin: 26px 0 10px; }
+    h2:first-child { margin-top: 0; }
+    p, li { font-size: 0.95rem; }
+    ul, ol { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+    a { color: var(--accent); }
+    .highlight {
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin: 16px 0;
+    }
+    footer { margin-top: 26px; text-align: center; color: var(--muted); font-size: 0.85rem; }
+    footer a { text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <img src="./icon-192.png" alt="Dr Happy" />
+      <div>
+        <h1>Eliminación de cuenta y datos — Dr Happy</h1>
+        <p>Herramientas para profesionales de la salud e instituciones</p>
+      </div>
+    </header>
+
+    <article>
+      <h2>Cómo solicitar la eliminación de tu cuenta</h2>
+      <p>
+        Si sos profesional registrado en <strong>Dr Happy</strong> y querés solicitar la eliminación de tu
+        cuenta y de los datos asociados, podés hacerlo por cualquiera de estas dos vías:
+      </p>
+      <ol>
+        <li>
+          <strong>Desde la aplicación:</strong> contactá al administrador desde la sección
+          <em>"Contactar desarrolladores"</em> dentro de la app e indicá tu solicitud de baja.
+        </li>
+        <li>
+          <strong>Por correo electrónico:</strong> escribinos a
+          <a href="mailto:soporte@drhappy.com.ar?subject=Solicitud%20de%20eliminaci%C3%B3n%20de%20cuenta">soporte@drhappy.com.ar</a>
+          con el asunto <em>"Solicitud de eliminación de cuenta"</em> desde el correo con el que te registraste,
+          indicando tu nombre de usuario y DNI.
+        </li>
+      </ol>
+      <p>Procesamos las solicitudes de baja dentro de los <strong>7 días hábiles</strong> de recibida la solicitud.</p>
+
+      <h2>Qué datos se eliminan</h2>
+      <p>Al procesar la baja se eliminan de forma permanente:</p>
+      <ul>
+        <li>Tu cuenta de profesional (usuario, correo electrónico, credenciales).</li>
+        <li>Tu perfil profesional (nombre, especialidad, matrícula).</li>
+        <li>Las historias clínicas, pacientes y turnos que hayas registrado en tu espacio de trabajo.</li>
+        <li>Las suscripciones de notificaciones asociadas a tus dispositivos.</li>
+      </ul>
+
+      <div class="highlight">
+        <h2 style="margin-top:0">Datos que se conservan y por qué</h2>
+        <p>
+          Por obligaciones legales y de trazabilidad sanitaria, al momento de la baja se genera un
+          <strong>archivo legal</strong> (respaldo de la información clínica que gestionaste) que se envía:
+        </p>
+        <ul>
+          <li>A tu casilla de correo registrada, para que conserves tu propia documentación.</li>
+          <li>A la casilla institucional <strong>archivolegal@drhappy.com.ar</strong>, identificado con tu
+              nombre, apellido y DNI, con fines exclusivamente legales y de resguardo documental.</li>
+        </ul>
+        <p>
+          Este archivo se conserva por el período que exija la legislación sanitaria argentina aplicable
+          a la documentación clínica y no se utiliza con ningún otro fin. La responsabilidad sobre los
+          datos clínicos de los pacientes corresponde al profesional tratante.
+        </p>
+      </div>
+
+      <h2>Contacto</h2>
+      <p>
+        Ante cualquier duda sobre el tratamiento o la eliminación de tus datos, escribinos a
+        <a href="mailto:soporte@drhappy.com.ar">soporte@drhappy.com.ar</a>.
+      </p>
+      <p>
+        También podés consultar nuestra
+        <a href="./privacidad.html">Política de Privacidad</a> completa.
+      </p>
+    </article>
+
+    <footer>
+      <p>© Dr Happy · <a href="./">Volver al inicio</a></p>
+    </footer>
+  </main>
+</body>
+</html>
