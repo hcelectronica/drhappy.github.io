@@ -38,6 +38,7 @@ import type { PublicBookingLinkSummary } from './publicBookingService'
 import { fetchAdminUserStats } from './adminStatsService'
 import type { AdminUserStats } from './adminStatsService'
 import { selfDeleteAccount } from './selfDeleteService'
+import { buildSignatureSeal } from './signatureSeal'
 import {
   registerProfessional,
   loginProfessional,
@@ -184,6 +185,7 @@ interface ConsultationEntry {
     signatureText: string
     signatureImageDataUrl?: string
   }
+  signatureSeal?: import('./signatureSeal').SignatureSeal
 }
 
 interface PatientRecord {
@@ -6733,7 +6735,7 @@ function App() {
     }
   }
 
-  function handleSaveConsultation(event: FormEvent<HTMLFormElement>): void {
+  async function handleSaveConsultation(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     stopDictation()
     if (!selectedPatient || !profile) {
@@ -6752,6 +6754,24 @@ function App() {
     }
 
     setAppError(null)
+    const signatureImageDataUrl = profile.signatureImage?.dataUrl
+    // Refuerzo de firma (Nivel 1): sello con hash SHA-256 del contenido +
+    // timestamp + datos del firmante, para que el documento firmado sea
+    // verificable y no alterable sin que se note.
+    const signatureSeal = await buildSignatureSeal({
+      contentToSign: {
+        patientId: selectedPatient.id,
+        patientDni: selectedPatient.dni,
+        motivoConsulta: nextMotivo,
+        detalleAtencion: consultationDraft.detalleAtencion,
+        pensamientoMedico: consultationDraft.pensamientoMedico,
+        signatureImageDataUrl: signatureImageDataUrl ?? '',
+      },
+      signerUserId: activeUserId ?? '',
+      signerFullName: profile.fullName,
+      signerLicense: profile.licenseNumber,
+      signerDni: activeUser?.dni,
+    })
     const entry: ConsultationEntry = {
       id: crypto.randomUUID(),
       date: new Date().toISOString(),
@@ -6765,6 +6785,7 @@ function App() {
         signatureText: profile.signatureText,
         signatureImageDataUrl: profile.signatureImage?.dataUrl,
       },
+      signatureSeal,
     }
 
     const record: PatientRecord = {
@@ -6783,7 +6804,7 @@ function App() {
     }
     persistPatient(record)
     setConsultationDraft(emptyConsultationDraft)
-    setAppNotice('Consulta clínica guardada con firma digital.')
+    setAppNotice('Consulta guardada con firma electrónica (sello de integridad incluido).')
     showSavedFloatingNotice()
   }
 
@@ -7100,6 +7121,9 @@ function App() {
               const signatureImage = entry.professionalSignature.signatureImageDataUrl
                 ? `<img src="${entry.professionalSignature.signatureImageDataUrl}" alt="Firma digital" style="max-width:160px; max-height:70px; display:block; margin-top:6px;" />`
                 : ''
+              const sealMarkup = entry.signatureSeal
+                ? `<p style="font-size:11px; color:#166534; margin-top:6px;">🔏 Firmado electrónicamente el ${escapeHtml(formatDate(entry.signatureSeal.signedAt))} · Sello de integridad SHA-256: <span style="font-family:monospace;">${escapeHtml(entry.signatureSeal.hashSha256)}</span></p>`
+                : ''
               return `
                 <article style="border:1px solid #d8e2ee; border-radius:8px; padding:10px; margin-bottom:10px;">
                   <h3 style="margin:0 0 6px; font-size:15px;">Atención ${index + 1} - ${escapeHtml(formatDate(entry.date))}</h3>
@@ -7110,6 +7134,7 @@ function App() {
                   <p><strong>Firma:</strong> ${escapeHtml(entry.professionalSignature.fullName)} - Matrícula ${escapeHtml(entry.professionalSignature.licenseNumber)}</p>
                   <p>${escapeHtml(entry.professionalSignature.signatureText)}</p>
                   ${signatureImage}
+                  ${sealMarkup}
                 </article>
               `
             })
@@ -10048,6 +10073,27 @@ function App() {
                         {entry.professionalSignature.licenseNumber})
                       </p>
                       <p>{entry.professionalSignature.signatureText}</p>
+                      {entry.signatureSeal ? (
+                        <p
+                          style={{
+                            fontSize: '0.78rem',
+                            color: '#15803d',
+                            background: '#f0fdf4',
+                            border: '1px solid #bbf7d0',
+                            borderRadius: 8,
+                            padding: '6px 10px',
+                            marginTop: 6,
+                            wordBreak: 'break-all',
+                          }}
+                          title={`Documento firmado electrónicamente el ${formatDate(entry.signatureSeal.signedAt)}. El hash SHA-256 garantiza que el contenido no fue alterado desde la firma.`}
+                        >
+                          🔏 Firma electrónica con sello de integridad · {formatDate(entry.signatureSeal.signedAt)}
+                          <br />
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#166534' }}>
+                            SHA-256: {entry.signatureSeal.hashSha256.slice(0, 32)}…
+                          </span>
+                        </p>
+                      ) : null}
                       <button
                         type="button"
                         className="ghost consultation-print-button"
