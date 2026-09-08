@@ -37,6 +37,7 @@ import {
 import type { PublicBookingLinkSummary } from './publicBookingService'
 import { fetchAdminUserStats } from './adminStatsService'
 import type { AdminUserStats } from './adminStatsService'
+import { selfDeleteAccount } from './selfDeleteService'
 import {
   registerProfessional,
   loginProfessional,
@@ -2342,6 +2343,10 @@ function App() {
     newPassword: '',
     confirmPassword: '',
   })
+  // Auto-eliminación de cuenta (requisito de Google Play) — con archivo legal.
+  const [selfDeletePassword, setSelfDeletePassword] = useState('')
+  const [selfDeleteConfirm, setSelfDeleteConfirm] = useState(false)
+  const [selfDeleteBusy, setSelfDeleteBusy] = useState(false)
   const processedCheckoutReturnRef = useRef<string | null>(null)
   const [notificationPermission, setNotificationPermission] =
     useState<NotificationPermissionState>(() => getNotificationPermission())
@@ -6596,6 +6601,54 @@ function App() {
     showSavedFloatingNotice()
   }
 
+  // Auto-eliminación de la propia cuenta (requisito de Google Play).
+  // Dispara el flujo completo: archivo legal + emails + baja definitiva.
+  async function handleSelfDeleteAccount(): Promise<void> {
+    if (!activeUser || !activeUserId) {
+      setAppError('No hay una sesión activa.')
+      return
+    }
+    if (isAdminUser(activeUser)) {
+      setAppError('La cuenta de administrador no puede auto-eliminarse.')
+      return
+    }
+    if (!selfDeleteConfirm) {
+      setAppError('Marcá la casilla de confirmación para continuar con la baja.')
+      return
+    }
+    if (!selfDeletePassword) {
+      setAppError('Ingresá tu contraseña actual para confirmar la baja.')
+      return
+    }
+
+    const finalConfirm = window.confirm(
+      '⚠️ ÚLTIMA CONFIRMACIÓN\n\nSe eliminará tu cuenta de forma permanente junto con tus pacientes, turnos y archivos. Antes de borrarla, se generará y enviará el archivo legal a tu correo y al resguardo institucional.\n\nEsta acción NO se puede deshacer. ¿Confirmás la baja definitiva?',
+    )
+    if (!finalConfirm) {
+      return
+    }
+
+    setSelfDeleteBusy(true)
+    setAppError(null)
+    try {
+      const result = await selfDeleteAccount({ userId: activeUserId, password: selfDeletePassword })
+      if (!result.success) {
+        setAppError(result.message || 'No se pudo procesar la baja.')
+        return
+      }
+      setAppNotice('Tu cuenta fue eliminada. Recibiste el archivo legal en tu correo.')
+      setSelfDeletePassword('')
+      setSelfDeleteConfirm(false)
+      await handleLogout()
+    } catch (error) {
+      setAppError(
+        error instanceof Error ? `No se pudo eliminar la cuenta: ${error.message}` : 'No se pudo eliminar la cuenta.',
+      )
+    } finally {
+      setSelfDeleteBusy(false)
+    }
+  }
+
   function handleSavePatient(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     if (!activeUserId) {
@@ -10271,6 +10324,66 @@ function App() {
                 </div>
               </div>
             </section>
+
+            {/* Zona de auto-eliminación de cuenta (requisito de Google Play).
+                Dispara el flujo completo: archivo legal + emails + baja. */}
+            {!isAdminSession ? (
+              <section
+                className="panel"
+                style={{ border: '1px solid #fca5a5', background: 'var(--surface-elevated, #fff5f5)' }}
+              >
+                <h3 style={{ color: '#b91c1c' }}>🗑️ Eliminar mi cuenta</h3>
+                <p className="flow-hint">
+                  Podés eliminar tu cuenta de forma permanente desde acá. Antes de borrarla, el sistema genera
+                  automáticamente tu <strong>archivo legal</strong> (respaldo de tu información registrada) y lo envía
+                  a tu correo electrónico y al resguardo institucional de Dr Happy, conforme a la legislación vigente.
+                </p>
+                <p className="flow-hint" style={{ color: '#991b1b', fontWeight: 600 }}>
+                  ⚠️ Esta acción es irreversible: se eliminan tu cuenta, tus pacientes, turnos y archivos.
+                </p>
+                <div style={{ display: 'grid', gap: 12, marginTop: 12, maxWidth: 420 }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.9rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={selfDeleteConfirm}
+                      onChange={(e) => setSelfDeleteConfirm(e.target.checked)}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>
+                      Entiendo que la eliminación es permanente y que recibiré una copia del archivo legal en mi
+                      correo registrado.
+                    </span>
+                  </label>
+                  <label style={{ display: 'grid', gap: 4, fontSize: '0.9rem' }}>
+                    Contraseña actual (para confirmar tu identidad)
+                    <input
+                      type="password"
+                      value={selfDeletePassword}
+                      onChange={(e) => setSelfDeletePassword(e.target.value)}
+                      placeholder="Tu contraseña"
+                      autoComplete="current-password"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={selfDeleteBusy || !selfDeleteConfirm || !selfDeletePassword}
+                    onClick={() => void handleSelfDeleteAccount()}
+                    style={{
+                      background: '#b91c1c',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '12px 16px',
+                      fontWeight: 700,
+                      cursor: selfDeleteBusy || !selfDeleteConfirm || !selfDeletePassword ? 'not-allowed' : 'pointer',
+                      opacity: selfDeleteBusy || !selfDeleteConfirm || !selfDeletePassword ? 0.6 : 1,
+                    }}
+                  >
+                    {selfDeleteBusy ? 'Procesando baja y archivo legal...' : 'Eliminar mi cuenta definitivamente'}
+                  </button>
+                </div>
+              </section>
+            ) : null}
           </section>
         </div>
       ) : null}
