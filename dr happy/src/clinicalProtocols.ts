@@ -2,7 +2,7 @@ export interface ClinicalProtocol {
   id: string
   title: string
   shortTitle: string
-  category: 'Pediatría' | 'Cardiovascular' | 'Neurológico' | 'Respiratorio' | 'Trauma' | 'Infeccioso / Shock' | 'Inmunológico / Alergia' | 'Metabólico' | 'Toxicología'
+  category: 'Pediatría' | 'Cardiovascular' | 'Neurológico' | 'Respiratorio' | 'Trauma' | 'Infeccioso / Shock' | 'Inmunológico / Alergia' | 'Metabólico' | 'Toxicología' | 'Psiquiátrico'
   cie10: string
   severity: 'Crítica / Código Rojo' | 'Urgencia / Código Amarillo' | 'Prioritaria'
   summary: string
@@ -2526,5 +2526,639 @@ export const CLINICAL_PROTOCOLS: ClinicalProtocol[] = [
       ]
     },
     "actionCopyTemplate": "PACIENTE PEDIÁTRICO CON ANAFILAXIA / SHOCK ANAFILÁCTICO. Edad: ___ años. Peso: ___ kg. Alérgeno sospechoso: [Alimento / Fármaco / Picadura / Desconocido]. Compromiso: [Urticaria generalizada + Angioedema + Estridor / Broncoespasmo / Hipotensión / Vómitos]. Conducta INMEDIATA: Adrenalina IM (1:1000) 0.01 mg/kg = ___ mg en cara anterolateral del muslo a las ___ hs. Posición supina con miembros elevados + O2 100% + [SF 0.9% ___ ml EV]. Fármacos 2ª línea: [Difenhidramina ___ mg + Hidrocortisona ___ mg EV]. Respuesta: [Favorable / Requiere 2ª dosis adrenalina a los 10 min]. Paciente en observación estricta por 6-12h."
+  },
+  {
+    id: 'brote-psicotico',
+    title: 'Brote Psicótico Agudo',
+    shortTitle: 'Brote Psicótico',
+    category: 'Psiquiátrico',
+    cie10: 'F23 (Trastorno psicótico agudo y transitorio) / F20 (Esquizofrenia)',
+    severity: 'Prioritaria',
+    summary: 'Irrupción súbita de síntomas psicóticos (alucinaciones, delirios, desorganización del pensamiento y conducta). Prioridad absoluta: seguridad del paciente y terceros, descartar causa orgánica/tóxica ("psicosis no es diagnóstico de exclusión en guardia").',
+    prehospitalManifestations: {
+      setting: 'Domicilio, vía pública o consulta traído por familiares/policía por conducta bizarra, autorreferencia o agresividad.',
+      keySigns: [
+        'Alucinaciones (auditivas las más frecuentes: voces que ordenan o insultan) a las que el paciente responde o dialoga.',
+        'Ideas delirantes (persecutorias, de grandeza, de daño) con convicción absoluta y no modificables por la lógica.',
+        'Lenguaje y pensamiento desorganizados (incoherencia, tangencialidad, neologismos).',
+        'Conducta desorganizada o catatónica; descuido marcado de higiene y aspecto.',
+        'Insomnio previo de días, inquietud, hostilidad o retraimiento como pródromos.'
+      ],
+      highSuspicionRedFlags: [
+        'Contenido alucinatorio o delirante de mandato/autolesión o heterolesión (voces que ordenan hacerse daño o dañar).',
+        'Fiebre, confusión fluctuante o antecedente de consumo de sustancias (descartar delirium/intoxicación antes de etiquetar como psiquiátrico).',
+        'Rigidez muscular + hipertermia + alteración de conciencia en paciente medicado con antipsicóticos: SÍNDROME NEUROLÉPTICO MALIGNO (emergencia vital).',
+        'Primer episodio psicótico de inicio brusco en paciente > 40 años sin antecedentes: alto pesaje de causa orgánica (tumor, epilepsia, endocrino).'
+      ]
+    },
+    diagnosticAlgorithm: {
+      initialSteps: [
+        'ABCDE + signos vitales completos (la psicosis NO descarta compromiso físico).',
+        'Evaluación de conciencia (Glasgow) y orientación temporo-espacial: si está desorientado, pensar en DELIRIUM (causa médica), no en psicosis.',
+        'Anamnesis con familiares/acompañantes: tiempo de evolución, antecedentes psiquiátricos, consumo de sustancias, medicación habitual y abandono de tratamiento.',
+        'Evaluar riesgo suicida y heteroagresivo de forma directa y explícita.'
+      ],
+      electrocardiogram: [
+        'ECG basal antes de antipsicóticos parenterales: evaluar QTc (Haloperidol lo prolonga; riesgo de torsades de pointes si QTc > 500 ms).'
+      ],
+      biomarkersAndLabs: [
+        'Glucemia capilar (hipoglucemia simula cuadro psicótico/confusional).',
+        'Toxicología en orina/sangre si se sospecha consumo (cannabis, cocaína, anfetaminas, alucinógenos).',
+        'Hemograma, ionograma, función hepática y renal, TSH (descartar causas endocrinas/infecciosas/metabólicas).',
+        'Prueba de embarazo en mujeres en edad fértil antes de medicar.'
+      ],
+      differentialDiagnosis: [
+        'Delirium (causa médica: infección, hipoxia, metabólica) — conciencia fluctuante y desorientación son la clave.',
+        'Intoxicación o abstinencia de sustancias (alcohol, benzodiacepinas, estimulantes, cannabis).',
+        'Episodio maníaco (euforia, expansividad, disminución de necesidad de sueño).',
+        'Trastornos neurológicos: epilepsia del lóbulo temporal, tumor cerebral, encefalitis autoinmune.',
+        'Trastorno esquizoafectivo o depresión grave con síntomas psicóticos.'
+      ]
+    },
+    management: {
+      prehospitalAmbulance: [
+        'Prioridad 1: SEGURIDAD. Retirar objetos potencialmente peligrosos del entorno; nunca dar la espalda al paciente agitado; mantener salida libre.',
+        'Técnica de contención VERBAL: tono calmo, frases cortas, no confrontar el contenido delirante ("entiendo que estás asustado" en vez de "eso es falso").',
+        'Reducir estímulos: pocas personas alrededor, luz tenue, voz única (una sola persona habla).',
+        'Sedación si hay agitación con riesgo: Midazolam 5-10 mg IM/IV o Haloperidol 5 mg IM (nunca ambos de entrada sin monitorización).',
+        'Contención mecánica SOLO como último recurso, con personal entrenado, por el menor tiempo posible y con monitorización continua.',
+        'Traslado a centro con guardia de salud mental.'
+      ],
+      emergencyRoomShockRoom: [
+        'Sala tranquila y segura, bajo observación visual constante.',
+        'Completar descarte orgánico (laboratorio, imágenes si hay indicación neurológica).',
+        'Sedación guiada: Benzodiacepina (Lorazepam 2-4 mg VO/IM/IV) y/o antipsicótico (Haloperidol 5 mg IM/VO). En paciente naïve o joven preferir atípicos VO (Olanzapina 10 mg, Risperidona 2 mg).',
+        'Hidratación y corrección de trastornos metabólicos asociados.',
+        'Vigilar efectos adversos: distonía aguda (tratar con Biperideno 2-5 mg IM/IV), hipotensión, síndrome neuroléptico maligno.',
+        'Definir destino: internación en salud mental si riesgo auto/heteroagresivo, primer brote sin diagnóstico claro, o falta de apoyo familiar; externación con seguimiento precoz si está compensado y contenido.'
+      ],
+      initialPharmacotherapy: [
+        { drug: 'Haloperidol', dose: '2.5 - 5 mg (repetible a la hora si persiste agitación)', route: 'IM / VO', notes: 'Antipsicótico clásico de referencia. Controlar QTc. Vigilar distonía aguda y acatisia.' },
+        { drug: 'Lorazepam', dose: '2 - 4 mg', route: 'VO / IM / IV lenta', notes: 'Benzodiacepina de elección por vía IM confiable. Cuidado con depresión respiratoria si hay consumo de alcohol.' },
+        { drug: 'Midazolam', dose: '5 - 10 mg', route: 'IM / IV', notes: 'Sedación rápida en ambulancia/CR; vida media corta. Requiere monitorización respiratoria.' },
+        { drug: 'Olanzapina', dose: '10 mg', route: 'VO (comprimido o velotab)', notes: 'Opción atípica con menos efectos extrapiramidales. Evitar Olanzapina IM + benzodiacepina parenteral juntas (riesgo cardiorespiratorio).' },
+        { drug: 'Biperideno (antiparkinsoniano)', dose: '2 - 5 mg', route: 'IM / IV lenta', notes: 'Rescate para distonía aguda inducida por antipsicóticos (torticolis, risus sardonicus, crisis oculógiras).' }
+      ]
+    },
+    therapeuticWindow: {
+      timeframe: 'No hay ventana de reperfusión, pero la contención precoz (primeras horas) evita escalada de agitación, daño físico y cronificación. El tratamiento temprano del primer episodio mejora el pronóstico funcional a largo plazo.',
+      goldStandard: 'Contención verbal y ambiental + sedación farmacológica titulada (antipsicótico ± benzodiacepina) + descarte sistemático de causa orgánica/tóxica.',
+      alternativeReperfusion: 'En este contexto no aplica reperfusión; la alternativa a la sedación parenteral es la sedación oral en paciente colaborador (Olanzapina/Risperidona VO) y las medidas de contención no farmacológicas.',
+      contraindications: [
+        'No administrar Haloperidol sin ECG previo si hay antecedente de arritmia o QTc prolongado.',
+        'Evitar benzodiacepinas en intoxicación alcohólica aguda o depresión respiratoria.',
+        'No confrontar ni discutir el contenido delirante: aumenta la agitación y rompe la alianza terapéutica.',
+        'No usar contención mecánica sin personal entrenado ni como primera medida.'
+      ]
+    },
+    evidenceAndPrognosis: {
+      survivalAt6h: 'El riesgo vital inmediato es bajo si se descarta causa orgánica; la mortalidad se concentra en complicaciones (suicidio, síndrome neuroléptico maligno, delirium no detectado).',
+      survivalAt24h: 'Con sedación adecuada y descarte orgánico, la gran mayoría se estabiliza en 12-24 h.',
+      survivalAt7d: 'La evolución depende del diagnóstico subyacente: el trastorno psicótico breve resuelve en días-semanas; la esquizofrenia requiere tratamiento sostenido.',
+      survivalAt1y: 'Primer episodio tratado precozmente: mejor respuesta funcional. Abandono de tratamiento y consumo de sustancias son los principales predictores de recaída.',
+      immediateComplications: [
+        'Agresión heteroagresiva o autolesión durante la agitación no contenida.',
+        'Distonía aguda y acatisia por antipsicóticos de alta potencia.',
+        'Síndrome neuroléptico maligno (raro pero potencialmente fatal).',
+        'Depresión respiratoria por sedación combinada excesiva.'
+      ],
+      mediateAndLongTermComplications: [
+        'Recaída psicótica por abandono de medicación (principal causa).',
+        'Estigma y deterioro socio-laboral si no hay seguimiento y rehabilitación.',
+        'Riesgo suicida aumentado en los primeros años del trastorno psicótico.'
+      ]
+    },
+    actionCopyTemplate: 'PACIENTE CON BROTE PSICÓTICO AGUDO. Síntomas: [Alucinaciones (tipo: ___) / Delirios (contenido: ___) / Desorganización conductual]. Tiempo de evolución: ___. Antecedentes psiquiátricos: [Sí ___ / No / Desconocido]. Consumo de sustancias: [Sí ___ / No]. Medicación habitual: ___. Signos vitales y conciencia: [Conservados / Alterados: descartar delirium]. Riesgo evaluado: [Suicida: Sí/No · Heteroagresivo: Sí/No]. Conducta: Contención verbal y ambiental. [Sedación: Haloperidol ___ mg IM / Lorazepam ___ mg ___ vía / Otro: ___]. ECG (QTc): ___ ms. Laboratorio y toxicología: [Solicitados / Normales / Pendientes]. Destino: [Internación en salud mental / Observación / Externación con seguimiento a las ___ hs].'
+  },
+  {
+    id: 'excitacion-psicomotriz',
+    title: 'Excitación Psicomotriz / Agitación Grave',
+    shortTitle: 'Excitación Psicomotriz',
+    category: 'Psiquiátrico',
+    cie10: 'F30.1-F31.2 (Manía) / F23 / R45.1 (Agitación)',
+    severity: 'Urgencia / Código Amarillo',
+    summary: 'Estado de hiperactividad motora y psíquica con desorganización conductual y potencial riesgo para el paciente y terceros. La contención rápida y segura es la prioridad; siempre descartar causa orgánica o tóxica.',
+    prehospitalManifestations: {
+      setting: 'Vía pública, domicilio, comisarías o traslado forzado por fuerzas de seguridad ante alteración del orden público o agresiones.',
+      keySigns: [
+        'Hiperactividad motora intensa: deambulación continua, imposibilidad de permanecer quieto, forcejeo.',
+        'Lenguaje acelerado, verborrea incoherente, gritos, amenazas o insultos.',
+        'Agresividad verbal o física hacia objetos o personas.',
+        'Insensible al dolor y sin noción del peligro (puede autolesionarse sin intención).',
+        'Frecuente asociación con consumo de estimulantes (cocaína, anfetaminas) o abandono de medicación psiquiátrica.'
+      ],
+      highSuspicionRedFlags: [
+        'Agitación + hipertermia + rigidez + diaforesis profusa tras consumo de estimulantes: riesgo de EXCITED DELIRIUM / rabdomiólisis y muerte súbita. Máxima prioridad médica.',
+        'Signos de trauma asociado (caídas, peleas, policía): descartar TEC y lesiones internas.',
+        'Agitación súbita en diabético (hipoglucemia) o en paciente con EPOC/hipoxia.',
+        'Intento de fuga con riesgo vital (correr hacia el tránsito, saltar).'
+      ]
+    },
+    diagnosticAlgorithm: {
+      initialSteps: [
+        'ABCDE y signos vitales (temperatura incluida) en cuanto la situación lo permita.',
+        'Evaluar Glasgow y orientación: conciencia alterada = pensar en delirium/tóxico/metabólico, no solo psiquiátrico.',
+        'Interrogar a acompañantes/fuerzas de seguridad: consumo de sustancias, medicación psiquiátrica, antecedentes, trauma durante la contención.',
+        'Una vez contenido: examen físico completo buscando lesiones traumáticas inadvertidas.'
+      ],
+      electrocardiogram: [
+        'ECG si se prevé sedación con antipsicóticos parenterales (QTc) o si hay antecedente cardíaco.',
+        'Monitorización continua si se sospecha consumo de estimulantes (arritmias, hipertensión grave).'
+      ],
+      biomarkersAndLabs: [
+        'Glucemia capilar inmediata.',
+        'Toxicología (orina/sangre) ante sospecha de consumo.',
+        'CK (creatinfosfoquinasa) si hay forcejeo prolongado o sospecha de rabdomiólisis.',
+        'Ionograma, función renal, lactato y temperatura si se sospecha excited delirium.'
+      ],
+      differentialDiagnosis: [
+        'Intoxicación por estimulantes (cocaína, anfetaminas, "bath salts") o alucinógenos.',
+        'Abstinencia alcohólica o de benzodiacepinas (delirium tremens).',
+        'Hipoglucemia, hipoxia, hipertiroidismo, encefalitis.',
+        'Episodio maníaco o brote psicótico con agitación.',
+        'Epilepsia (estado no convulsivo, automatismos post-crisis).',
+        'Dolor agudo no expresado en pacientes con discapacidad intelectual o demencia.'
+      ]
+    },
+    management: {
+      prehospitalAmbulance: [
+        'SEGURIDAD DEL EQUIPO PRIMERO: no acercarse en solitario; coordinar con fuerzas de seguridad si es necesario.',
+        'Desescalada verbal: hablar en tono bajo y calmo, ofrecer opciones, no dar órdenes bruscas, no discutir.',
+        'Reducir estímulos y el número de personas rodeando al paciente.',
+        'Sedación de rescate si la desescalada falla y hay riesgo: Midazolam 5-10 mg IM (vía preferida en prehospitalario por rapidez).',
+        'Contención mecánica (4 puntos) solo si es imprescindible, por el menor tiempo, con monitorización de vía aérea, circulación y extremidades (color, pulsos distales).',
+        'NO contención en decúbito prono prolongada (riesgo de asfixia posicional). Trasladar en decúbito lateral o semisentado.'
+      ],
+      emergencyRoomShockRoom: [
+        'Área de observación segura y despejada; retirar objetos peligrosos y elementos personales (cinturones, cordones, objetos punzantes).',
+        'Sedación guiada según etiología probable: agitación psicótica/maníaca → Haloperidol 5 mg IM ± Lorazepam 2 mg IM; agitación por alcohol/abstinencia → Benzodiacepinas como primera línea (evitar antipsicóticos como monoterapia).',
+        'Revaluar tras la sedación: una vez calmado, completar examen físico, glucemia, ECG y laboratorio.',
+        'Hidratación EV si hipertermia o sospecha de rabdomiólisis; enfriamiento externo si temperatura elevada.',
+        'Vigilar nivel de sedación y vía aérea; nunca dejar solo a un paciente sedado sin monitorización.',
+        'Definir destino según causa: internación (salud mental o clínica), observación hasta resolución de intoxicación, o externación con plan de seguimiento.'
+      ],
+      initialPharmacotherapy: [
+        { drug: 'Midazolam', dose: '5 - 10 mg', route: 'IM (preferida prehospitalario) / IV', notes: 'Sedación rápida de la agitación. Inicio 2-5 min IM. Monitorizar respiración.' },
+        { drug: 'Haloperidol', dose: '5 mg', route: 'IM / VO', notes: 'Agitación psicótica o maníaca. Combinar con Lorazepam reduce dosis necesaria. Vigilar QTc y extrapiramidalismo.' },
+        { drug: 'Lorazepam', dose: '2 - 4 mg', route: 'VO / IM / IV', notes: 'Primera línea en abstinencia alcohólica. Útil en combinación con antipsicótico en agitación psicótica.' },
+        { drug: 'Olanzapina', dose: '10 mg', route: 'VO', notes: 'Si el paciente colabora por vía oral. No asociar con benzodiacepina parenteral por riesgo cardiorespiratorio.' },
+        { drug: 'Prometazina', dose: '25 - 50 mg', route: 'IM / VO', notes: 'Alternativa sedante-antihistamínica cuando se busca evitar antipsicóticos o benzodiacepinas.' }
+      ]
+    },
+    therapeuticWindow: {
+      timeframe: 'La desescalada verbal precoz (primeros minutos) evita la escalada y reduce la necesidad de sedación forzada y contención mecánica. En excited delirium, cada minuto cuenta: hipertermia y rabdomiólisis son tiempo-dependientes.',
+      goldStandard: 'Desescalada verbal + reducción de estímulos + sedación farmacológica titulada (Midazolam IM en prehospitalario; antipsicótico ± benzodiacepina en guardia) + descarte de causa orgánica/tóxica.',
+      alternativeReperfusion: 'No aplica reperfusión. La alternativa a la sedación parenteral es la medicación oral en paciente colaborador y las medidas físicas de contención ambiental.',
+      contraindications: [
+        'No usar contención mecánica sin sedación complementaria ni sin monitorización (riesgo de asfixia posicional y rabdomiólisis).',
+        'Evitar benzodiacepinas como monoterapia en intoxicación alcohólica aguda (depresión respiratoria).',
+        'Evitar antipsicóticos como monoterapia en abstinencia alcohólica (pueden precipitar convulsiones).',
+        'No confrontar, gritar ni dar órdenes: aumenta la agitación.'
+      ]
+    },
+    evidenceAndPrognosis: {
+      survivalAt6h: 'La mortalidad inmediata es baja con manejo adecuado; el riesgo mayor es el excited delirium no reconocido (hipertermia + estimulantes) que puede ser fatal en horas.',
+      survivalAt24h: 'La mayoría de las agitaciones se resuelven en horas con sedación y corrección de la causa subyacente.',
+      survivalAt7d: 'Depende de la etiología: la intoxicación resuelve sin secuelas; los trastornos psiquiátricos requieren tratamiento de fondo para evitar recurrencia.',
+      survivalAt1y: 'Los episodios recurrentes se asocian a abandono de tratamiento y consumo de sustancias; el abordaje integral mejora el pronóstico.',
+      immediateComplications: [
+        'Lesiones traumáticas durante la agitación o la contención (propias y del personal).',
+        'Asfixia posicional y muerte súbita en contención prono prolongada o excited delirium.',
+        'Rabdomiólisis con falla renal aguda por forcejeo sostenido e hipertermia.',
+        'Depresión respiratoria por sedación excesiva o combinaciones inadecuadas.'
+      ],
+      mediateAndLongTermComplications: [
+        'Secuelas renales por rabdomiólisis no tratada a tiempo.',
+        'Trauma psicológico post-contención y deterioro de la alianza terapéutica.',
+        'Reincidencia de episodios por consumo persistente de sustancias o abandono de medicación.'
+      ]
+    },
+    actionCopyTemplate: 'PACIENTE CON EXCITACIÓN PSICOMOTRIZ / AGITACIÓN GRAVE. Presentación: [Hiperactividad / Verborrea / Agresividad verbal-física]. Consumo de sustancias: [Sí ___ / No / Sospechado]. Antecedentes psiquiátricos y medicación: ___. Signos vitales (T° incluida): T° ___ °C · FC ___ · TA ___ · SatO2 ___ %. Glasgow: ___. Conducta: Desescalada verbal y ambiental. [Sedación: Midazolam ___ mg IM / Haloperidol ___ mg IM / Lorazepam ___ mg ___ / Otro: ___]. Contención mecánica: [No / Sí — posición ___, monitorización continua]. Descarte orgánico: [Glucemia ___ / Toxicología ___ / CK ___ / ECG QTc ___ ms]. Evolución post-sedación: ___. Destino: [Internación / Observación / Externación con seguimiento].'
+  },
+  {
+    id: 'ataque-panico',
+    title: 'Ataque de Pánico / Crisis de Ansiedad Aguda',
+    shortTitle: 'Ataque de Pánico',
+    category: 'Psiquiátrico',
+    cie10: 'F41.0 (Trastorno de pánico) / F40 (Fobias)',
+    severity: 'Prioritaria',
+    summary: 'Episodio súbito de miedo intenso con síntomas autonómicos floridos (palpitaciones, disnea, mareo, temor a morir o enloquecer). REGLA DE ORO: es un diagnóstico de EXCLUSIÓN — primero descartar causas médicas que lo simulan (IAM, arritmia, TEP, hipoglucemia, hipertiroidismo).',
+    prehospitalManifestations: {
+      setting: 'Domicilio, trabajo, vía pública o transporte; frecuentemente en situaciones de estrés o sin desencadenante aparente.',
+      keySigns: [
+        'Inicio brusco de miedo intenso o sensación de catástrofe inminente, alcanzando el pico en ≤ 10 minutos.',
+        'Palpitaciones, taquicardia, dolor o molestia torácica atípica.',
+        'Disnea, sensación de ahogo o hiperventilación (con parestesias peribucales y en extremidades).',
+        'Mareo, inestabilidad, temblores, sudoración, náuseas.',
+        'Temor a perder el control, "enloquecer" o morir; desrealización o despersonalización.'
+      ],
+      highSuspicionRedFlags: [
+        'Primer episodio en paciente > 45 años, con factores de riesgo cardiovascular o dolor torácico opresivo: DESCARTAR IAM/angina antes de etiquetar como ansiedad.',
+        'Disnea + dolor pleurítico + taquicardia + antecedente de inmovilización/cirugía reciente/etnia trombofílica: descartar TEP.',
+        'Síncope verdadero, palpitaciones irregulares sostenidas o antecedente de muerte súbita familiar: descartar arritmia.',
+        'Signos neurológicos focales, fiebre, cefalea intensa o confusión: NO es un ataque de pánico simple.'
+      ]
+    },
+    diagnosticAlgorithm: {
+      initialSteps: [
+        'Signos vitales completos y ABCDE (la taquicardia y la disnea también aparecen en emergencias médicas reales).',
+        'Anamnesis dirigida: episodios previos, diagnóstico previo de trastorno de ansiedad, desencadenantes, consumo de cafeína/estimulantes/sustancias, medicación.',
+        'Evaluar si el cuadro cumple patrón típico de pánico (pico ≤ 10 min, miedo a morir/enloquecer) o si hay atipias que sugieran causa médica.',
+        'ECG de 12 derivaciones SIEMPRE que haya dolor torácico, palpitaciones o factores de riesgo.'
+      ],
+      electrocardiogram: [
+        'Descartar arritmias (TV, TSV paroxística), isquemia o infarto (elevación/depresión del ST, ondas T), y QTc largo.',
+        'La taquicardia sinusal es frecuente en el pánico, pero debe interpretarse en contexto clínico completo.'
+      ],
+      biomarkersAndLabs: [
+        'Glucemia capilar (la hipoglucemia simula ansiedad con sudoración, temblor y palpitaciones).',
+        'Troponinas si hay dolor torácico con factores de riesgo.',
+        'TSH si episodios recurrentes sin diagnóstico (hipertiroidismo simula trastorno de pánico).',
+        'Ionograma si hiperventilación intensa (hipopotasemia e hipocalcemia por alcalosis respiratoria).'
+      ],
+      differentialDiagnosis: [
+        'Síndrome coronario agudo (la presentación puede ser casi idéntica).',
+        'Arritmias paroxísticas (TSV, fibrilación auricular).',
+        'Tromboembolismo pulmonar.',
+        'Hipoglucemia, hipertiroidismo, feocromocitoma.',
+        'Intoxicación por estimulantes (cocaína, anfetaminas, cafeína en exceso) o abstinencia de benzodiacepinas.',
+        'Crisis parciales del lóbulo temporal (epilepsia).'
+      ]
+    },
+    management: {
+      prehospitalAmbulance: [
+        'Actitud calmada, empática y reasegurante: transmitir que no corre peligro de muerte y que el episodio va a pasar.',
+        'Llevar al paciente a un ambiente tranquilo y con pocos estímulos.',
+        'Guía de respiración lenta: inspiración nasal 4 segundos, espiración por boca 6-8 segundos (reduce la alcalosis por hiperventilación). NO usar bolsas de papel (riesgo de hipoxia).',
+        'Signos vitales y ECG si está disponible en el móvil, para descartar causa cardiovascular.',
+        'Si los síntomas no ceden con medidas de contención o hay mucha angustia: Benzodiacepina VO/SL (Lorazepam 1-2 mg).',
+        'Traslado si hay banderas rojas, primer episodio sin diagnóstico, o si el paciente no se tranquiliza.'
+      ],
+      emergencyRoomShockRoom: [
+        'Confirmar el descarte de causa médica (ECG, glucemia, ± troponinas y laboratorio según el caso).',
+        'Psicoeducación inmediata: explicar qué es un ataque de pánico, su naturaleza benigna (aunque angustiante) y su buen pronóstico.',
+        'Si persiste la angustia intensa: Lorazepam 1-2 mg VO/SL o Clonazepam 0.5-1 mg VO. Evitar sedación excesiva.',
+        'NO iniciar tratamiento crónico desde la guardia sin plan de seguimiento; la indicación de ISRS/antidepresivos es del tratamiento ambulatorio.',
+        'Derrotar el círculo: dar pautas de alarma claras para reconsulta y derivar a salud mental ambulatoria.',
+        'Evaluar riesgo suicida en pacientes con ataques recurrentes o comorbilidad depresiva.'
+      ],
+      initialPharmacotherapy: [
+        { drug: 'Lorazepam', dose: '1 - 2 mg', route: 'VO / SL', notes: 'Alivio rápido de la crisis. Uso puntual, no crónico. Explicar riesgo de dependencia si se repite.' },
+        { drug: 'Clonazepam', dose: '0.5 - 1 mg', route: 'VO (comprimido o gotas)', notes: 'Alternativa de acción más prolongada para la crisis de ansiedad.' },
+        { drug: 'Alprazolam', dose: '0.25 - 0.5 mg', route: 'VO', notes: 'Opción de rescate puntual. Alto potencial de dependencia: evitar uso repetido.' }
+      ]
+    },
+    therapeuticWindow: {
+      timeframe: 'El ataque de pánico alcanza su pico en ≤ 10 minutos y se autolimita en 20-30 minutos. La intervención temprana (contención + respiración guiada) acorta la crisis y evita la escalada de angustia y las consultas repetidas.',
+      goldStandard: 'Descarte de causa médica (ECG, glucemia) + contención verbal reasegurante + respiración guiada + benzodiacepina puntual si persiste la angustia intensa.',
+      alternativeReperfusion: 'No aplica. La alternativa a la medicación es la intervención psicológica inmediata (respiración, grounding, reaseguro) que suele ser suficiente en la mayoría de los episodios.',
+      contraindications: [
+        'No etiquetar como "ansiedad" sin descartar causa médica en primer episodio, paciente mayor o con factores de riesgo cardiovascular.',
+        'No usar la técnica de la bolsa de papel para la hiperventilación (riesgo de hipoxia si el diagnóstico es incorrecto).',
+        'Evitar benzodiacepinas en intoxicación alcohólica, EPOC grave o antecedente de abuso de sustancias (valorar riesgo-beneficio).',
+        'No iniciar ISRS desde la guardia sin plan de seguimiento ambulatorio.'
+      ]
+    },
+    evidenceAndPrognosis: {
+      survivalAt6h: 'El ataque de pánico no compromete la vida. La mortalidad asociada es cero una vez descartadas las causas médicas que lo simulan.',
+      survivalAt24h: 'Resolución completa del episodio en minutos a pocas horas. El riesgo es la "ansiedad anticipatoria" (miedo a un nuevo ataque).',
+      survivalAt7d: 'Sin complicaciones físicas. El pronóstico empeora si se instaura la evitación fóbica (agorafobia) por miedo a los ataques.',
+      survivalAt1y: 'Con tratamiento ambulatorio (TCC ± ISRS), la mayoría logra control sostenido. Sin tratamiento, puede cronificarse con gran deterioro funcional.',
+      immediateComplications: [
+        'Diagnóstico erróneo por no descartar IAM, arritmia o TEP (la verdadera "complicación" del ataque de pánico).',
+        'Hiperventilación intensa con tetania (calambres, carpopedal) por alcalosis respiratoria.',
+        'Accidentes por desrealización/mareo si el paciente conduce o se expone durante la crisis.'
+      ],
+      mediateAndLongTermComplications: [
+        'Trastorno de pánico recurrente con agorafobia y limitación de la vida diaria.',
+        'Consultas repetidas a guardias y "shopping de médicos" por falta de diagnóstico y tratamiento de fondo.',
+        'Dependencia a benzodiacepinas si se usan como solución crónica en lugar de puntual.',
+        'Comorbilidad con depresión mayor y aumento del riesgo suicida en casos no tratados.'
+      ]
+    },
+    actionCopyTemplate: 'PACIENTE CON ATAQUE DE PÁNICO / CRISIS DE ANSIEDAD AGUDA. Síntomas: [Palpitaciones / Disnea-hiperventilación / Mareo / Temblor / Temor a morir-enloquecer]. Pico máximo: ___ minutos. Episodios previos: [Sí ___ / No — primer episodio]. Desencadenante: ___. Signos vitales: FC ___ · TA ___ · SatO2 ___ %. Descarte médico: [ECG: normal/___ · Glucemia: ___ · Troponinas: ___ / TSH: ___]. Conducta: Contención verbal, ambiente tranquilo, respiración guiada. [Benzodiacepina: Lorazepam ___ mg VO/SL / Otro: ___]. Evolución: [Resolución espontánea / Post-medicación a los ___ min]. Se explicó la naturaleza benigna del cuadro y pautas de alarma. Derivación a salud mental ambulatoria: [Sí / No].'
+  },
+  {
+    id: 'ideacion-suicida',
+    title: 'Ideación Suicida / Riesgo de Autolesión',
+    shortTitle: 'Ideación Suicida',
+    category: 'Psiquiátrico',
+    cie10: 'R45.8 (Ideación suicida) / X60-X84 (Autolesión autoinfligida intencionalmente)',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Presencia de pensamientos, plan o intento de autoeliminación. EMERGENCIA PSIQUIÁTRICA MAYOR. Toda ideación suicida expresada debe tomarse en serio, evaluarse directamente y nunca minimizarse. La prioridad absoluta es la protección del paciente.',
+    prehospitalManifestations: {
+      setting: 'Domicilio (llamado de familiares), vía pública (intentos), centros de salud o tras detección por terceros (escuela, trabajo, redes sociales).',
+      keySigns: [
+        'Expresión verbal directa ("quiero morirme", "sería mejor no estar") o indirecta ("todo va a terminar pronto", despedidas, regalar pertenencias).',
+        'Plan estructurado con método, lugar y momento pensados (mayor riesgo cuanto más elaborado).',
+        'Acceso a medios letales (armas de fuego, medicación acumulada, lugares altos).',
+        'Intento suicida reciente o antecedente de intentos previos.',
+        'Desesperanza intensa, aislamiento social, consumo de sustancias, trastorno mental conocido (depresión, psicosis, bipolaridad, trastorno límite).',
+        'Calma súbita tras un período de gran angustia (puede indicar que ya tomó la decisión).'
+      ],
+      highSuspicionRedFlags: [
+        'Intento suicida en curso o consumado (prioridad médica: evaluar lesiones e intoxicación asociadas).',
+        'Plan suicida concreto + acceso a medios letales + desesperanza = RIESGO INMINENTE.',
+        'Paciente psicótico con alucinaciones de mandato suicida.',
+        'Intoxicación alcohólica o por sustancias (desinhibición y aumento de impulsividad).',
+        'Negación rotunda a responder o conducta evasiva tras conducta autolesiva reciente.'
+      ]
+    },
+    diagnosticAlgorithm: {
+      initialSteps: [
+        'ABCDE y evaluación médica: si hubo intento, tratar las lesiones/intoxicación PRIMERO (la emergencia médica precede a la psiquiátrica).',
+        'Entrevista directa, privada y sin juicio: PREGUNTAR EXPLÍCITAMENTE sobre ideas de muerte, plan, intención y acceso a medios. Preguntar no aumenta el riesgo; al contrario, alivia.',
+        'Evaluar factores de riesgo (intentos previos, trastorno mental, sustancias, desesperanza, aislamiento, eventos vitales recientes) y factores protectores (hijos, apoyo, creencias, mascotas, planes futuros).',
+        'Recabar información de familiares/acompañantes SIEMPRE (el paciente puede minimizar).',
+        'NUNCA dejar solo al paciente con riesgo alto.'
+      ],
+      electrocardiogram: [
+        'ECG si hubo intento por intoxicación medicamentosa (muchos fármacos son cardiotóxicos: antidepresivos tricíclicos, antipsicóticos).'
+      ],
+      biomarkersAndLabs: [
+        'Toxicología si hubo ingesta o sospecha de consumo de sustancias.',
+        'Laboratorio de urgencia según el método del intento (función hepática en paracetamol, CK en caídas, etc.).',
+        'Glucemia y evaluación médica completa del intento (lesiones ocultas, trauma interno).'
+      ],
+      differentialDiagnosis: [
+        'Depresión mayor (la causa más frecuente de riesgo suicida).',
+        'Trastorno bipolar (fase depresiva o mixta), esquizofrenia, trastorno límite de personalidad.',
+        'Intoxicación o abstinencia de alcohol/sustancias.',
+        'Trastorno por estrés postraumático, duelo complicado.',
+        'Enfermedad médica terminal o dolor crónico con desesperanza.',
+        'Crisis situacional aguda (pérdida, humillación, problema legal/económico) sin trastorno mental subyacente.'
+      ]
+    },
+    management: {
+      prehospitalAmbulance: [
+        'PRIORIDAD 1: SEGURIDAD. Retirar o asegurar medios letales del entorno (armas, medicamentos, objetos punzantes).',
+        'No dejar solo al paciente en ningún momento; acompañamiento constante y vigilancia directa.',
+        'Actitud empática, directa y sin juicio: validar el sufrimiento sin minimizarlo ("veo que estás pasando por algo muy doloroso").',
+        'No hacer "pactos de silencio" ni prometer confidencialidad absoluta: la seguridad manda.',
+        'Si hubo intento: manejo médico de la emergencia (intoxicación, trauma, asfixia) + traslado inmediato.',
+        'Traslado SIEMPRE a un centro con evaluación de salud mental, incluso si el paciente "ya está tranquilo".'
+      ],
+      emergencyRoomShockRoom: [
+        'Sala segura, sin elementos potencialmente lesivos; vigilancia visual constante (observación 1:1 si riesgo alto).',
+        'Tratamiento médico del intento si lo hubo (lavado, antídotos, soporte vital, cirugía).',
+        'Evaluación psiquiátrica formal: estratificación del riesgo (bajo / moderado / alto / inminente).',
+        'RIESGO ALTO O INMINENTE → INTERNACIÓN (voluntaria o involuntaria según legislación de salud mental vigente).',
+        'Riesgo moderado → considerar internación breve u observación prolongada + plan de seguridad + seguimiento precoz.',
+        'Restricción de medios letales en el hogar (instruir a la familia: armas, medicación, pesticidas bajo llave).',
+        'Sedación SOLO si hay agitación asociada (Lorazepam 1-2 mg); la sedación no reemplaza la internación ni la vigilancia.',
+        'Elaborar con el paciente un PLAN DE SEGURIDAD escrito: señales de alarma, estrategias de afrontamiento, contactos de ayuda, línea de crisis.'
+      ],
+      initialPharmacotherapy: [
+        { drug: 'Lorazepam', dose: '1 - 2 mg', route: 'VO / IM', notes: 'Solo para ansiedad/agitación intensa asociada. No trata la ideación suicida en sí; es coadyuvante de la contención.' },
+        { drug: 'Antidepresivos / estabilizadores (tratamiento de fondo)', dose: 'Según diagnóstico', route: 'VO', notes: 'NUNCA iniciar ni ajustar desde la guardia sin seguimiento asegurado. Los ISRS tardan semanas; el riesgo inicial requiere internación/observación, no solo medicación.' }
+      ]
+    },
+    therapeuticWindow: {
+      timeframe: 'TIEMPO CRÍTICO: el riesgo suicida es dinámico y puede escalar en minutos-horas. La evaluación y las medidas de protección deben ser INMEDIATAS. Nunca "dejar para mañana" ni derivar sin asegurar la seguridad actual.',
+      goldStandard: 'Evaluación directa del riesgo + remoción de medios letales + vigilancia constante + internación si riesgo alto + plan de seguridad + tratamiento del trastorno subyacente.',
+      alternativeReperfusion: 'No aplica. La alternativa a la internación (solo en riesgo bajo) es la externación con plan de seguridad escrito, compromiso familiar de supervisión 24/7 y seguimiento psiquiátrico en 24-72 horas.',
+      contraindications: [
+        'NUNCA minimizar, ridiculizar o culpabilizar al paciente ("¿cómo vas a hacer eso a tu familia?").',
+        'NUNCA externar a un paciente con riesgo alto o inminente por más que prometa "no hacerlo".',
+        'NUNCA dejar al paciente solo, ni siquiera para "buscar algo" o firmar papeles.',
+        'No confiar la seguridad solo a la medicación: la vigilancia y la remoción de medios son lo esencial.'
+      ]
+    },
+    evidenceAndPrognosis: {
+      survivalAt6h: 'Con contención inmediata y remoción de medios, la supervivencia inmediata se acerca al 100%. El período post-intento es de altísimo riesgo de reintento.',
+      survivalAt24h: 'La internación en riesgo alto reduce drásticamente la mortalidad en las primeras 24-72 h (período de máxima vulnerabilidad).',
+      survivalAt7d: 'El primer intento es el mayor predictor de muerte futura; el tratamiento psiquiátrico precoz y el seguimiento estrecho modifican el pronóstico.',
+      survivalAt1y: 'El riesgo suicida se concentra en el primer año tras un intento. El tratamiento sostenido del trastorno de base + apoyo social reducen la mortalidad a largo plazo.',
+      immediateComplications: [
+        'Reintento suicida en las primeras horas-días si no hay internación ni vigilancia.',
+        'Secuelas médicas del intento (daño hepático por paracetamol, secuelas neurológicas por asfixia, etc.).',
+        'Fuga del dispositivo asistencial si el paciente queda sin supervisión.'
+      ],
+      mediateAndLongTermComplications: [
+        'Suicidio consumado en los meses siguientes (principal riesgo a largo plazo en no tratados).',
+        'Intentos repetidos y cronificación del comportamiento autolesivo.',
+        'Impacto traumático en familiares y red de apoyo (que también requieren contención).'
+      ]
+    },
+    actionCopyTemplate: 'EVALUACIÓN POR IDEACIÓN SUICIDA / RIESGO DE AUTOLESIÓN. Motivo: [Ideación expresada / Intento suicida — método: ___]. Evaluación directa: Plan [Sí — detallar: ___ / No] · Intención [Alta/Baja] · Acceso a medios letales [Sí/No — retirados: Sí/No]. Factores de riesgo: [Intentos previos ___ / Trastorno mental: ___ / Sustancias: ___ / Desesperanza / Aislamiento]. Factores protectores: ___. Estratificación de riesgo: [BAJO / MODERADO / ALTO / INMINENTE]. Conducta: [Vigilancia constante 1:1 / Internación salud mental / Plan de seguridad escrito / Restricción de medios letales indicada a familia]. Sedación si agitación: [No / Lorazepam ___ mg]. Familia/acompañante informado y comprometido: [Sí/No]. Derivación: [Internación / Seguimiento a las ___ hs / Línea de crisis entregada].'
+  },
+  {
+    id: 'delirium-tremens',
+    title: 'Delirium Tremens / Abstinencia Alcohólica Grave',
+    shortTitle: 'Delirium Tremens',
+    category: 'Psiquiátrico',
+    cie10: 'F10.4 (Abstinencia con delirium) / F10.3 (Abstinencia)',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Complicación grave de la abstinencia alcohólica en bebedores crónicos intensos: confusión, alucinaciones, agitación, temblor grueso e hiperactividad autonómica (fiebre, taquicardia, hipertensión). EMERGENCIA MÉDICA con mortalidad del 1-5% con tratamiento (hasta 15-35% sin él). Benzodiacepinas son la base del tratamiento.',
+    prehospitalManifestations: {
+      setting: 'Domicilio, vía pública o internación por otra causa; típicamente a las 48-96 horas de la última ingesta de alcohol (o reducción brusca) en paciente con dependencia alcohólica severa.',
+      keySigns: [
+        'Confusión y desorientación temporo-espacial con conciencia fluctuante.',
+        'Alucinaciones visuales vívidas (animales pequeños, insectos, figuras) y/o táctiles, con gran angustia.',
+        'Temblor grueso generalizado, agitación psicomotriz intensa.',
+        'Hiperactividad autonómica: fiebre, taquicardia, hipertensión, diaforesis profusa, midriasis.',
+        'Insomnio total, deshidratación, náuseas/vómitos.',
+        'Pródromo de abstinencia simple: temblor matutino, ansiedad, náuseas, 6-24 h post-última ingesta.'
+      ],
+      highSuspicionRedFlags: [
+        'Convulsiones de abstinencia (12-48 h post-ingesta): pueden preceder al delirium tremens.',
+        'Fiebre alta + confusión: descartar también infección (neumonía, meningitis) o traumatismo (hematoma subdural por caídas en alcohólico).',
+        'Hipoglucemia severa (frecuente en alcohólico crónico malnutrido).',
+        'Signos de encefalopatía de Wernicke (oftalmoplejía + ataxia + confusión): administrar Tiamina ANTES de la glucosa.'
+      ]
+    },
+    diagnosticAlgorithm: {
+      initialSteps: [
+        'ABCDE + signos vitales con temperatura. Evaluar Glasgow y revaluar frecuente (conciencia fluctuante).',
+        'Glucemia capilar inmediata.',
+        'Anamnesis con familiares: cantidad y duración del consumo, última ingesta, abstinencias previas, convulsiones previas, otras sustancias, medicación.',
+        'Escala CIWA-Ar para graduar la severidad de la abstinencia.',
+        'Examen físico: buscar hepatopatía, signos de trauma (caídas), foco infeccioso, signos de Wernicke.'
+      ],
+      electrocardiogram: [
+        'ECG: la hipopotasemia e hipomagnesemia (frecuentes) prolongan el QTc y predisponen a arritmias.'
+      ],
+      biomarkersAndLabs: [
+        'Glucemia, ionograma completo (K+, Na+, Mg2+, Ca2+, PO4-), función hepática (GOT/GPT/GGT, bilirrubina, albúmina) y coagulograma.',
+        'Hemograma (anemia macrocítica, plaquetopenia), urea/creatinina, amilasa/lipasa.',
+        'EAB si hay compromiso ventilatorio o shock.',
+        'Cultivos y estudios de imágenes según sospecha (el alcohólico tiene alta prevalencia de infección y trauma concomitantes).'
+      ],
+      differentialDiagnosis: [
+        'Encefalopatía de Wernicke (tiamina deficiente): oftalmoplejía + ataxia + confusión. Dar Tiamina IV.',
+        'Hematoma subdural / trauma craneoencefálico por caídas (pupilas asimétricas, déficit focal).',
+        'Meningoencefalitis infecciosa (fiebre + rigidez de nuca).',
+        'Encefalopatía hepática (cirrosis descompensada: asterixis, hiperamonemia).',
+        'Hipoglucemia, sepsis, intoxicación por otras sustancias.',
+        'Abstinencia de benzodiacepinas (clínica similar).'
+      ]
+    },
+    management: {
+      prehospitalAmbulance: [
+        'ABCDE: la prioridad es la vía aérea y la estabilización hemodinámica; la agitación dificulta la evaluación.',
+        'Ambiente calmado, bien iluminado (reduce las alucinaciones visuales), reloj/calendario visible para reorientar.',
+        'Contención verbal constante; una sola persona habla, tono firme y calmado.',
+        'Vía venosa periférica y toma de muestras si es posible.',
+        'Sedación de la agitación grave: Diazepam 5-10 mg IV lenta o Lorazepam 2-4 mg IM/IV. Titular.',
+        'SIEMPRE administrar Tiamina 100 mg IV/IM ANTES de cualquier solución glucosada (previene el desencadenamiento de la encefalopatía de Wernicke).',
+        'Traslado urgente a centro con internación (el delirium tremens NO se maneja ambulatoriamente).'
+      ],
+      emergencyRoomShockRoom: [
+        'Internación en área de observación estrecha o UCI según gravedad (CIWA-Ar).',
+        'BENZODIACEPINAS como base: esquema de dosis fijas (Diazepam 10-20 mg VO/IV c/6-8h) o guiado por síntomas (CIWA-Ar). La meta es sedación leve (paciente dormido pero despertable).',
+        'Tiamina (Vitamina B1) 100-300 mg/día IV/IM durante varios días + complejo B. Continuar antes de la glucosa.',
+        'Hidratación EV generosa + corrección de electrolitos: K+, Mg2+ y PO4- (su déficit prolonga el QTc y predispone a convulsiones y arritmias).',
+        'Si hay convulsiones de abstinencia: Benzodiacepinas (Diazepam 10 mg IV). Los anticonvulsivantes clásicos NO previenen las convulsiones de abstinencia.',
+        'Buscar y tratar complicaciones concomitantes: infección, trauma, hepatopatía, pancreatitis, sangrado digestivo.',
+        'Nutrición precoz y reorientación constante; retirar objetos peligrosos y prevenir caídas.',
+        'Haloperidol SOLO como coadyuvante de alucinaciones/agitación refractaria a benzodiacepinas (baja el umbral convulsivo: no usar como monoterapia).'
+      ],
+      initialPharmacotherapy: [
+        { drug: 'Diazepam', dose: '10 - 20 mg (titular según sedación y CIWA-Ar)', route: 'VO / IV lenta', notes: 'Base del tratamiento de la abstinencia grave. Larga vida media = auto-descenso suave. Titular a sedación leve.' },
+        { drug: 'Lorazepam', dose: '2 - 4 mg', route: 'VO / IM / IV', notes: 'Preferido si hay hepatopatía grave (metabolismo no oxidativo) o en ancianos.' },
+        { drug: 'Tiamina (Vitamina B1)', dose: '100 - 300 mg', route: 'IV / IM', notes: 'OBLIGATORIA antes de la glucosa. Previene/trata la encefalopatía de Wernicke.' },
+        { drug: 'Clormetiazol o Midazolam en infusión', dose: 'Según protocolo de UCI', route: 'IV continua', notes: 'Solo en abstinencia refractaria grave con ventilación asistida disponible en UCI.' },
+        { drug: 'Haloperidol (coadyuvante)', dose: '0.5 - 2 mg', route: 'IM / IV', notes: 'SOLO para alucinaciones/agitación refractaria junto a benzodiacepinas. Monoterapia contraindicada (baja umbral convulsivo).' }
+      ]
+    },
+    therapeuticWindow: {
+      timeframe: 'El delirium tremens aparece típicamente a las 48-96 h de la última ingesta. El tratamiento precoz de la abstinencia simple (primeras 6-24 h) con benzodiacepinas PUEDE PREVENIR la progresión al delirium tremens. Una vez instalado, requiere internación inmediata.',
+      goldStandard: 'Benzodiacepinas (Diazepam o Lorazepam, guiado por CIWA-Ar) + Tiamina IV antes de glucosa + hidratación y corrección electrolítica + búsqueda y tratamiento de complicaciones concomitantes.',
+      alternativeReperfusion: 'No aplica reperfusión. La "alternativa" es el tratamiento precoz de la abstinencia simple para prevenir la progresión, y el soporte de UCI en casos refractarios.',
+      contraindications: [
+        'NUNCA administrar soluciones glucosadas sin Tiamina previa (desencadena encefalopatía de Wernicke).',
+        'NO usar antipsicóticos (Haloperidol) como monoterapia: bajan el umbral convulsivo y aumentan la mortalidad.',
+        'NO usar anticonvulsivantes clásicos (Fenitoína) para las convulsiones de abstinencia: son ineficaces; las benzodiacepinas son el tratamiento.',
+        'No manejar el delirium tremens de forma ambulatoria ni externar al paciente: requiere internación.'
+      ]
+    },
+    evidenceAndPrognosis: {
+      survivalAt6h: 'Con tratamiento precoz, la estabilización inicial es frecuente. El riesgo inmediato son las convulsiones y la descompensación autonómica.',
+      survivalAt24h: 'Mortalidad 1-5% con tratamiento adecuado. El shock, la hipertermia y las arritmias son las causas de muerte temprana.',
+      survivalAt7d: 'El cuadro suele resolverse en 3-7 días con tratamiento. Las complicaciones (neumonía, Wernicke, trauma) determinan el pronóstico.',
+      survivalAt1y: 'La abstinencia sostenida con tratamiento de la dependencia mejora el pronóstico. Sin tratamiento de fondo, la recaída en el consumo es la regla y las abstinencias futuras pueden ser más graves (kindling).',
+      immediateComplications: [
+        'Convulsiones tónico-clónicas generalizadas (12-48 h).',
+        'Hipertermia, deshidratación y colapso cardiovascular.',
+        'Arritmias por trastornos electrolíticos (QTc prolongado).',
+        'Encefalopatía de Wernicke si no se administra Tiamina precozmente.',
+        'Traumatismos durante la agitación y las alucinaciones.'
+      ],
+      mediateAndLongTermComplications: [
+        'Síndrome de Korsakoff (amnesia anterógrada grave e irreversible) si la encefalopatía de Wernicke no se trata.',
+        'Neumonía aspirativa y otras infecciones durante la internación.',
+        'Kindling: cada abstinencia sucesiva es más grave que la anterior.',
+        'Deterioro cognitivo progresivo por neurotoxicidad alcohólica crónica.'
+      ]
+    },
+    actionCopyTemplate: 'PACIENTE CON DELIRIUM TREMENS / ABSTINENCIA ALCOHÓLICA GRAVE. Dependencia alcohólica: [___ años, ___ g/día]. Última ingesta: hace ___ hs. Clínica: [Confusión / Alucinaciones visuales / Temblor grueso / Agitación / Convulsiones: Sí/No]. Signos vitales: T° ___ · FC ___ · TA ___ · Glasgow ___. CIWA-Ar: ___ puntos. Conducta INMEDIATA: [Tiamina 100 mg IV ANTES de glucosa] + [Diazepam ___ mg IV / Lorazepam ___ mg ___] + Hidratación EV + Corrección K+/Mg2+. ECG (QTc): ___ ms. Descartado: [Trauma / Infección / Hipoglucemia / Wernicke]. Destino: [UCI / Internación clínica con observación estrecha]. Plan: tratamiento de la dependencia alcohólica al alta.'
+  },
+  {
+    id: 'shock-medular',
+    title: 'Shock Medular (Neurogénico) / Lesión Medular Aguda',
+    shortTitle: 'Shock Medular',
+    category: 'Neurológico',
+    cie10: 'G95.9 / S14-S34 (Lesiones medulares) / T09.3',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Pérdida súbita del tono simpático por lesión medular (habitualmente cervical o dorsal alta) que produce hipotensión + bradicardia (en vez de taquicardia) + piel caliente y seca. DIFERENCIA CLAVE con el shock hipovolémico: bradicardia paradójica con extremidades calientes. Emergencia tiempo-dependiente: la inmovilización y la perfusión medular precoz modifican el pronóstico neurológico.',
+    prehospitalManifestations: {
+      setting: 'Accidentes de tránsito, caídas de altura, zambullidas en aguas poco profundas, lesiones deportivas, heridas por arma de fuego o arma blanca en columna.',
+      keySigns: [
+        'Déficit neurológico por debajo del nivel de la lesión: pérdida de fuerza (paraparesia/cuadriparesia), sensibilidad y reflejos.',
+        'HIPOTENSIÓN (PAS < 90 mmHg) + BRADICARDIA (< 60 lpm): el dúo patognomónico que lo diferencia de otros shocks.',
+        'Piel CALIENTE y SECA (no fría y sudorosa como en el hipovolémico) por vasodilatación periférica.',
+        'Pérdida de control de esfínteres y priapismo (lesión medular alta).',
+        'Dificultad respiratoria si la lesión es cervical alta (C3-C5: compromiso del diafragma).'
+      ],
+      highSuspicionRedFlags: [
+        'Lesión cervical alta (por encima de C5): riesgo de PARO RESPIRATORIO por parálisis diafragmática — prioridad de vía aérea.',
+        'Hipotensión + bradicardia en un traumatizado = pensar shock neurogénico, NO asumir hipovolemia (aunque pueden coexistir).',
+        'Empeoramiento neurológico progresivo: sugiere hematoma epidural medular o edema progresivo (quirúrgico).',
+        'Priapismo + déficit motor en traumatizado: lesión medular hasta demostrar lo contrario.'
+      ]
+    },
+    diagnosticAlgorithm: {
+      initialSteps: [
+        'ABCDE con INMOVILIZACIÓN ESPINAL COMPLETA desde el primer contacto (collar cervical rígido, tabla rígida, rolado en bloque). Nunca mover la columna.',
+        'Examen neurológico rápido y seriado: nivel de la lesión, fuerza y sensibilidad por dermatomas, reflejos, signo de Babinski, control esfinteriano, priapismo.',
+        'Signos vitales completos: la combinación hipotensión + bradicardia orienta a shock neurogénico.',
+        'Buscar lesiones asociadas (TEC, trauma torácico/abdominal, fracturas) — el trauma que lesiona la médula rara vez es aislado.',
+        'Descartar shock hipovolémico concomitante (hemorragia interna): pueden coexistir y la bradicardia no excluye sangrado.'
+      ],
+      electrocardiogram: [
+        'ECG y monitorización continua: bradicardia sinusal, posibles arritmias por pérdida del tono simpático e hipertonía vagal.',
+        'Vigilar bloqueos AV y pausas en lesiones cervicales altas (descargas vagales masivas).'
+      ],
+      biomarkersAndLabs: [
+        'Laboratorio de trauma: hemograma seriado, coagulograma, ionograma, función renal, grupo y reserva de sangre.',
+        'Lactato y EAB para evaluar perfusión tisular.',
+        'Troponinas si se sospecha contusión miocárdica asociada.',
+        'Tomografía computada (TC) de columna completa y de cráneo/tórax/abdomen según mecanismo; resonancia magnética para evaluar la médula.'
+      ],
+      differentialDiagnosis: [
+        'Shock hipovolémico/hemorrágico (piel fría + taquicardia: puede coexistir con el neurogénico).',
+        'Shock obstructivo (taponamiento cardíaco, neumotórax a tensión) en el politraumatizado.',
+        'Shock cardiogénico por contusión miocárdica.',
+        'Lesión medular isquémica (síndrome de la arteria espinal anterior) sin trauma franco.',
+        'Mielitis transversa aguda, Guillain-Barré, botulismo (causas no traumáticas de parálisis flácida).'
+      ]
+    },
+    management: {
+      prehospitalAmbulance: [
+        'INMOVILIZACIÓN ESPINAL ABSOLUTA: collar cervical rígido, tabla rígida de rescate, traslado en bloque con eje cefalocaudal alineado. La movilización inadecuada agrava la lesión medular.',
+        'ABCDE con especial atención a la vía aérea: lesión cervical alta → intubación precoz con estabilización manual en línea (sin hiperextender el cuello).',
+        'Vía venosa gruesa y monitorización (TA, FC, SatO2) continua.',
+        'Tratar la hipotensión: expansión cuidadosa con cristaloides (SF 0.9%) para mantener PAM ≥ 85-90 mmHg (perfusión medular). Si persiste, iniciar vasopresores (Noradrenalina).',
+        'Tratar la bradicardia sintomática: Atropina 0.5-1 mg IV si hay hipotensión o inestabilidad.',
+        'Evitar la hipotermia (la vasodilatación pierde calor): mantener abrigado.',
+        'Traslado URGENTE a un centro de trauma con neurocirugía.'
+      ],
+      emergencyRoomShockRoom: [
+        'Revaluar ABCDE con inmovilización mantenida. Vía aérea definitiva si compromiso respiratorio.',
+        'OBJETIVO DE PERFUSIÓN MEDULAR: mantener Presión Arterial Media (PAM) entre 85-90 mmHg durante los primeros 5-7 días con cristaloides + vasopresores (Noradrenalina o Fenilefrina) para preservar la médula lesionada.',
+        'Bradicardia: Atropina IV; marcapasos temporal si bloqueos de alto grado.',
+        'Corticoides en altas dosis (Metilprednisolona): su uso es CONTROVERTIDO y ya NO es estándar universal por riesgos infecciosos; seguir protocolo institucional (la mayoría de las guías actuales lo desaconsejan de rutina).',
+        'Sonda vesical (retención urinaria por atonía) y sonda gástrica (íleo paralítico frecuente).',
+        'Prevención de tromboembolismo venoso y úlceras por presión desde el ingreso.',
+        'Neurocirugía URGENTE: descompresión y estabilización quirúrgica precoz (< 24 h) en lesiones con compresión medular documentada o deterioro neurológico progresivo.',
+        'Definir destino: UCI de trauma o unidad de lesados medulares.'
+      ],
+      initialPharmacotherapy: [
+        { drug: 'Noradrenalina (vasopresor)', dose: '0.05 - 0.5 mcg/kg/min en infusión continua', route: 'IV (bomba de infusión, vía central preferida)', notes: 'Primera línea para mantener PAM 85-90 mmHg y perfundir la médula. La Fenilefrina es alternativa si hay bradicardia marcada.' },
+        { drug: 'Atropina', dose: '0.5 - 1 mg (repetible cada 3-5 min, máx 3 mg)', route: 'IV', notes: 'Bradicardia sintomática con hipotensión por hipertonía vagal en lesiones cervicales/dorsales altas.' },
+        { drug: 'Solución Fisiológica 0.9% / Ringer Lactato', dose: 'Bolos de 250-500 ml titulados a PAM', route: 'IV', notes: 'Expansión inicial cuidadosa: en shock neurogénico la vasodilatación es el problema, no la falta de volumen; evitar sobrecarga hídrica.' },
+        { drug: 'Fenilefrina (alternativa)', dose: '10 - 100 mcg/min en infusión', route: 'IV continua', notes: 'Vasopresor alfa-1 puro, útil si predomina la bradicardia (no la agrava como la Noradrenalina puede hacerlo).' }
+      ]
+    },
+    therapeuticWindow: {
+      timeframe: 'TIEMPO CRÍTICO: la descompresión quirúrgica precoz (< 24 horas) y la mantención de la PAM ≥ 85-90 mmHg en los primeros 5-7 días son los factores que más influyen en la recuperación neurológica. La ventana de "neuroprotección" es las primeras horas.',
+      goldStandard: 'Inmovilización espinal absoluta + manejo de vía aérea sin movilizar el cuello + PAM 85-90 mmHg con vasopresores + descompresión quirúrgica precoz por neurocirugía.',
+      alternativeReperfusion: 'No aplica reperfusión vascular. La "alternativa" al manejo quirúrgico es la estabilización ortésica y el tratamiento conservador en lesiones estables sin compresión medular, siempre con PAM controlada.',
+      contraindications: [
+        'NUNCA movilizar la columna ni hiperextender el cuello durante el manejo de la vía aérea (agrava la lesión medular).',
+        'NO asumir que la hipotensión es solo hipovolémica y sobre-hidratar: en shock neurogénico la expansión excesiva causa edema pulmonar sin corregir la vasodilatación.',
+        'NO usar corticoides en altas dosis de rutina: riesgo de infección y complicaciones sin beneficio probado (controvertido, seguir protocolo local).',
+        'Evitar la hipotermia: la pérdida de termorregulación es frecuente y agrava el pronóstico.'
+      ]
+    },
+    evidenceAndPrognosis: {
+      survivalAt6h: 'La mortalidad inmediata depende del nivel de la lesión: las cervicales altas (C1-C4) amenazan la respiración; el manejo precoz de la vía aérea es vital.',
+      survivalAt24h: 'Con PAM controlada y descompresión precoz, la estabilización es frecuente. El riesgo temprano es la falla respiratoria y la inestabilidad cardiovascular.',
+      survivalAt7d: 'La fase aguda (5-7 días) define la recuperación neurológica inicial; las complicaciones son pulmonares (atelectasia, neumonía) y tromboembólicas.',
+      survivalAt1y: 'El pronóstico funcional a 1 año depende del nivel y la completitud de la lesión (ASIA): las lesiones incompletas tratadas precozmente tienen mejor recuperación. La rehabilitación integral es la clave.',
+      immediateComplications: [
+        'Falla respiratoria por parálisis diafragmática en lesiones cervicales altas.',
+        'Bradicardia extrema, bloqueos AV y paro por hipertonía vagal.',
+        'Hipotermia por pérdida de la termorregulación simpática.',
+        'Coexistencia de hemorragia interna (shock hipovolémico superpuesto).'
+      ],
+      mediateAndLongTermComplications: [
+        'Tromboembolismo venoso y tromboembolismo pulmonar (muy frecuente: profilaxis obligatoria).',
+        'Neumonía y complicaciones pulmonares por hipoventilación.',
+        'Úlceras por presión, infecciones urinarias, disreflexia autonómica (emergencia hipertensiva en lesiones sobre T6).',
+        'Espasticidad, dolor neuropático crónico y gran carga funcional y psicosocial.'
+      ]
+    },
+    actionCopyTemplate: 'PACIENTE CON SHOCK MEDULAR / LESIÓN MEDULAR AGUDA. Mecanismo: [Tránsito / Caída ___ m / Zambullida / Arma ___ / Otro: ___]. Nivel de lesión estimado: ___ · Déficit: [Paraparesia / Cuadriparesia / ASIA ___]. Signos vitales: PAS ___ · FC ___ (¿hipotensión + bradicardia?) · SatO2 ___ %. Conducta INMEDIATA: Inmovilización espinal completa [collar + tabla]. Vía aérea: [Conservada / Intubación con estabilización manual]. Perfusión medular: [SF bolos ___ ml + Noradrenalina ___ mcg/kg/min → PAM objetivo 85-90]. Bradicardia: [Atropina ___ mg IV / No]. ECG: ___. TC columna: ___. Neurocirugía: [Notificada / Descompresión indicada]. Destino: [UCI trauma / Centro de lesados medulares]. Profilaxis TEV: [Sí].'
   }
 ];
