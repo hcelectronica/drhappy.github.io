@@ -35,6 +35,8 @@ import {
   buildWhatsAppShareUrl,
 } from './publicBookingService'
 import type { PublicBookingLinkSummary } from './publicBookingService'
+import { fetchAdminUserStats } from './adminStatsService'
+import type { AdminUserStats } from './adminStatsService'
 import {
   registerProfessional,
   loginProfessional,
@@ -2256,6 +2258,9 @@ function App() {
   const [freeSlotLinks, setFreeSlotLinks] = useState<PublicBookingLinkSummary[]>([])
   const [freeSlotLinksLoading, setFreeSlotLinksLoading] = useState(false)
   const [freeSlotGeneratedUrl, setFreeSlotGeneratedUrl] = useState<string | null>(null)
+  // Métricas de uso por usuario (solo conteos y fechas, sin datos clínicos).
+  const [adminUserStats, setAdminUserStats] = useState<AdminUserStats[]>([])
+  const [adminUserStatsLoading, setAdminUserStatsLoading] = useState(false)
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
   const [diagnosisCatalog, setDiagnosisCatalog] = useState<string[]>([])
@@ -2752,6 +2757,7 @@ function App() {
           dni: user.dni ?? null,
           email: user.email,
           network_memberships_json: user.networkMemberships ?? [],
+          last_seen_at: new Date().toISOString(),
         },
         { onConflict: 'id' },
       )
@@ -3904,7 +3910,18 @@ function App() {
     }
     void loadAdminDeletedUserArchives()
     void getPushSubscriptionsCount().then((res) => setAdminPushCount(res.total))
-  }, [workspaceLayer, isAdminSession])
+    // Carga métricas de uso por usuario (conteos y fechas, sin datos clínicos).
+    if (activeUserId) {
+      setAdminUserStatsLoading(true)
+      void fetchAdminUserStats(activeUserId)
+        .then((res) => {
+          if (res.success && res.users) {
+            setAdminUserStats(res.users)
+          }
+        })
+        .finally(() => setAdminUserStatsLoading(false))
+    }
+  }, [workspaceLayer, isAdminSession, activeUserId])
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -8065,6 +8082,63 @@ function App() {
                 <div style={{ fontSize: '1.4rem', marginTop: 6 }}>{adminArchivedUsers.length}</div>
               </div>
             </div>
+
+            {/* Métricas de uso por usuario — solo conteos y fechas, sin datos clínicos */}
+            <section style={{ marginBottom: 24 }}>
+              <div className="panel-header" style={{ marginBottom: 12 }}>
+                <div>
+                  <h3>Actividad de usuarios</h3>
+                  <p className="flow-hint">
+                    Estadísticas de uso por profesional. Solo conteos y fechas — sin datos clínicos ni de pacientes.
+                  </p>
+                </div>
+              </div>
+              {adminUserStatsLoading ? (
+                <p>Cargando métricas...</p>
+              ) : adminUserStats.length === 0 ? (
+                <p className="flow-hint">No hay métricas disponibles todavía.</p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: '2px solid #d8e2ee' }}>
+                        <th style={{ padding: '8px 6px' }}>Profesional</th>
+                        <th style={{ padding: '8px 6px' }}>Email</th>
+                        <th style={{ padding: '8px 6px' }}>Especialidad</th>
+                        <th style={{ padding: '8px 6px' }}>Pacientes</th>
+                        <th style={{ padding: '8px 6px' }}>Turnos</th>
+                        <th style={{ padding: '8px 6px' }}>Último acceso</th>
+                        <th style={{ padding: '8px 6px' }}>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...adminUserStats]
+                        .sort((a, b) => (b.patientsCount + b.appointmentsCount) - (a.patientsCount + a.appointmentsCount))
+                        .map((u) => (
+                          <tr key={u.id} style={{ borderBottom: '1px solid #eef2f7' }}>
+                            <td style={{ padding: '8px 6px' }}>
+                              <strong>{u.fullName}</strong>
+                              <span style={{ display: 'block', fontSize: '0.78rem', color: '#667' }}>@{u.username}</span>
+                            </td>
+                            <td style={{ padding: '8px 6px' }}>{u.email}</td>
+                            <td style={{ padding: '8px 6px' }}>{u.specialty || '—'}</td>
+                            <td style={{ padding: '8px 6px', textAlign: 'center' }}>{u.patientsCount}</td>
+                            <td style={{ padding: '8px 6px', textAlign: 'center' }}>{u.appointmentsCount}</td>
+                            <td style={{ padding: '8px 6px' }}>
+                              {u.lastSeenAt ? formatDate(u.lastSeenAt) : 'Nunca'}
+                            </td>
+                            <td style={{ padding: '8px 6px' }}>
+                              <span className={u.active === false ? 'status-off' : 'status-on'}>
+                                {u.active === false ? 'Inactivo' : 'Activo'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
 
             <ul className="admin-user-list">
               {[...seedUsers]
