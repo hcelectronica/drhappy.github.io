@@ -7,8 +7,13 @@ interface EmailPayload {
   subject: string
   text?: string
   html?: string
-  type?: 'welcome' | 'password_recovery' | 'password_changed' | 'admin_broadcast' | 'appointment' | 'custom'
+  type?: 'welcome' | 'password_recovery' | 'password_changed' | 'admin_broadcast' | 'appointment' | 'custom' | 'legal_archive'
   templateData?: Record<string, unknown>
+  attachments?: Array<{
+    filename: string
+    content: string
+    contentType?: string
+  }>
 }
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
@@ -238,7 +243,7 @@ serve(async (request) => {
     return jsonResponse(400, { message: 'Cuerpo JSON inválido.' })
   }
 
-  const { to, subject, text, html, type, templateData } = payload
+  const { to, subject, text, html, type, templateData, attachments } = payload
 
   if (!to || (!Array.isArray(to) && !String(to).trim()) || !subject) {
     return jsonResponse(400, { message: 'Campos "to" y "subject" son requeridos.' })
@@ -277,13 +282,20 @@ serve(async (request) => {
       subject: subject,
       text: text || subject,
       html: finalHtml,
+      attachments: attachments?.map((attachment) => ({
+        filename: attachment.filename,
+        content: attachment.content,
+        contentType: attachment.contentType || 'application/octet-stream',
+      })),
     })
 
-    return jsonResponse(200, {
-      success: true,
+    const rejected = Array.isArray(info.rejected) ? info.rejected : []
+    return jsonResponse(rejected.length > 0 ? 502 : 200, {
+      success: rejected.length === 0,
       messageId: info.messageId,
       accepted: info.accepted,
-      rejected: info.rejected,
+      rejected,
+      message: rejected.length > 0 ? 'Uno o más destinatarios fueron rechazados por el servidor SMTP.' : undefined,
     })
   } catch (error) {
     console.error('Error enviando email vía SMTP Hostinger:', error)

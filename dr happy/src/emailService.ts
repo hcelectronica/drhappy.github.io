@@ -5,8 +5,13 @@ export interface SendEmailOptions {
   subject: string
   text?: string
   html?: string
-  type?: 'welcome' | 'password_recovery' | 'password_changed' | 'admin_broadcast' | 'appointment' | 'custom'
+  type?: 'welcome' | 'password_recovery' | 'password_changed' | 'admin_broadcast' | 'appointment' | 'custom' | 'legal_archive'
   templateData?: Record<string, unknown>
+  attachments?: Array<{
+    filename: string
+    content: string
+    contentType?: string
+  }>
 }
 
 export interface SendEmailResult {
