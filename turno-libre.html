@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Turnos disponibles — Dr Happy</title>
+  <meta name="description" content="Elegí tu turno disponible y completá tus datos para confirmarlo." />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <style>
+    :root {
+      --ink: #1f2d3d;
+      --muted: #52627a;
+      --accent: #1d4ed8;
+      --accent-dark: #1741a6;
+      --line: #d8e2ee;
+      --card: #ffffff;
+      --bg: #f6f9fe;
+      --ok: #1b8a5a;
+      --err: #c62828;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background:
+        radial-gradient(circle at 10% 10%, rgba(34, 63, 98, 0.12), transparent 34%),
+        radial-gradient(circle at 88% 2%, rgba(31, 90, 74, 0.10), transparent 32%),
+        var(--bg);
+      color: var(--ink);
+      line-height: 1.55;
+      min-height: 100vh;
+    }
+    main {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 28px 18px 56px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    header img { width: 44px; height: 44px; }
+    header h1 { font-size: 1.15rem; margin: 0; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 12px 30px rgba(31, 45, 61, 0.06);
+      margin-bottom: 16px;
+    }
+    .card h2 { margin: 0 0 6px; font-size: 1.05rem; }
+    .card p { margin: 4px 0; color: var(--muted); font-size: 0.94rem; }
+    .slots {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .slot-btn {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 10px;
+      padding: 10px 6px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--ink);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .slot-btn:hover { border-color: var(--accent); }
+    .slot-btn.selected {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .slot-btn:disabled {
+      background: #eef1f6;
+      color: #a6b0c0;
+      cursor: not-allowed;
+      text-decoration: line-through;
+    }
+    label { display: block; font-size: 0.88rem; font-weight: 600; margin: 12px 0 4px; }
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+    button.primary {
+      width: 100%;
+      margin-top: 18px;
+      padding: 13px 16px;
+      border: none;
+      border-radius: 12px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button.primary:disabled { background: #a9bce0; cursor: not-allowed; }
+    button.primary:hover:not(:disabled) { background: var(--accent-dark); }
+    .msg { font-size: 0.92rem; margin-top: 12px; padding: 10px 12px; border-radius: 10px; }
+    .msg.err { background: #fdecec; color: var(--err); }
+    .msg.ok { background: #e9f8f0; color: var(--ok); }
+    .hidden { display: none !important; }
+    .spinner { text-align: center; color: var(--muted); padding: 30px 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <img src="./favicon.svg" alt="Dr Happy" />
+      <h1>Turnos disponibles</h1>
+    </header>
+
+    <div id="loading" class="card spinner">Cargando turnos disponibles…</div>
+
+    <div id="content" class="hidden">
+      <div class="card" id="link-info">
+        <h2 id="professional-name">Turno médico</h2>
+        <p id="link-date"></p>
+        <p id="link-location"></p>
+        <div class="slots" id="slots"></div>
+      </div>
+
+      <div class="card" id="form-card" style="display:none;">
+        <h2>Completá tus datos</h2>
+        <label for="patientName">Nombre y apellido *</label>
+        <input id="patientName" type="text" required />
+        <label for="patientDni">DNI *</label>
+        <input id="patientDni" type="text" inputmode="numeric" required />
+        <label for="patientPhone">Teléfono (WhatsApp)</label>
+        <input id="patientPhone" type="tel" />
+        <label for="patientEmail">Email</label>
+        <input id="patientEmail" type="email" />
+        <button class="primary" id="confirm-btn">Confirmar turno</button>
+        <div id="form-msg"></div>
+      </div>
+    </div>
+
+    <div id="error-card" class="card hidden">
+      <h2>No pudimos cargar este enlace</h2>
+      <p id="error-msg">El enlace no es válido o ya expiró.</p>
+    </div>
+  </main>
+
+  <script>
+    var SUPABASE_URL = 'https://stzsobirxdivbgqxwkhc.supabase.co';
+    var SUPABASE_ANON_KEY = 'sb_publishable_jZQuKg9OtpDPTVHbccWpGQ_2BD66W6I';
+    var FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/public-booking';
+
+    var token = new URLSearchParams(window.location.search).get('t');
+    var selectedTime = null;
+
+    function el(id) { return document.getElementById(id); }
+
+    function callFunction(body) {
+      return fetch(FUNCTIONS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(body),
+      }).then(function (res) {
+        return res.json().then(function (data) { return { status: res.status, data: data }; });
+      });
+    }
+
+    function showError(message) {
+      el('loading').classList.add('hidden');
+      el('content').classList.add('hidden');
+      el('error-card').classList.remove('hidden');
+      el('error-msg').textContent = message || 'El enlace no es válido o ya expiró.';
+    }
+
+    function formatDate(dateStr) {
+      try {
+        var parts = dateStr.split('-');
+        var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      } catch (e) {
+        return dateStr;
+      }
+    }
+
+    function renderSlots(slots) {
+      var container = el('slots');
+      container.innerHTML = '';
+      slots.forEach(function (slot) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'slot-btn';
+        btn.textContent = slot.time;
+        btn.disabled = !slot.available;
+        btn.addEventListener('click', function () {
+          selectedTime = slot.time;
+          Array.prototype.forEach.call(container.querySelectorAll('.slot-btn'), function (b) {
+            b.classList.remove('selected');
+          });
+          btn.classList.add('selected');
+          el('form-card').style.display = 'block';
+          el('form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        container.appendChild(btn);
+      });
+    }
+
+    function loadLink() {
+      if (!token) {
+        showError('Falta el código del enlace de turnos.');
+        return;
+      }
+      callFunction({ action: 'get-link', token: token }).then(function (result) {
+        if (!result.data.success) {
+          showError(result.data.message);
+          return;
+        }
+        var link = result.data.link;
+        el('professional-name').textContent = link.professionalName
+          ? 'Turnos de ' + link.professionalName
+          : 'Turno médico disponible';
+        el('link-date').textContent = '📅 ' + formatDate(link.slotDate);
+        el('link-location').textContent = link.location ? '📍 ' + link.location : '';
+        renderSlots(result.data.slots);
+        el('loading').classList.add('hidden');
+        el('content').classList.remove('hidden');
+      }).catch(function () {
+        showError('No pudimos conectar con el servidor. Probá de nuevo en unos minutos.');
+      });
+    }
+
+    el('confirm-btn').addEventListener('click', function () {
+      var patientName = el('patientName').value.trim();
+      var patientDni = el('patientDni').value.trim();
+      var patientPhone = el('patientPhone').value.trim();
+      var patientEmail = el('patientEmail').value.trim();
+      var msgBox = el('form-msg');
+      msgBox.className = 'msg';
+      msgBox.textContent = '';
+
+      if (!selectedTime) {
+        msgBox.className = 'msg err';
+        msgBox.textContent = 'Elegí un horario disponible antes de confirmar.';
+        return;
+      }
+      if (!patientName || !patientDni) {
+        msgBox.className = 'msg err';
+        msgBox.textContent = 'Completá nombre y DNI para confirmar el turno.';
+        return;
+      }
+
+      el('confirm-btn').disabled = true;
+      el('confirm-btn').textContent = 'Confirmando…';
+
+      callFunction({
+        action: 'book-slot',
+        token: token,
+        slotTime: selectedTime,
+        patientName: patientName,
+        patientDni: patientDni,
+        patientPhone: patientPhone,
+        patientEmail: patientEmail,
+      }).then(function (result) {
+        if (!result.data.success) {
+          msgBox.className = 'msg err';
+          msgBox.textContent = result.data.message || 'No pudimos confirmar el turno.';
+          el('confirm-btn').disabled = false;
+          el('confirm-btn').textContent = 'Confirmar turno';
+          if (result.status === 409) {
+            loadLink();
+          }
+          return;
+        }
+        msgBox.className = 'msg ok';
+        msgBox.textContent = '¡Turno confirmado para las ' + result.data.appointment.time + ' hs! Guardá este mensaje como comprobante.';
+        el('confirm-btn').classList.add('hidden');
+        Array.prototype.forEach.call(document.querySelectorAll('#form-card input'), function (input) {
+          input.disabled = true;
+        });
+      }).catch(function () {
+        msgBox.className = 'msg err';
+        msgBox.textContent = 'No pudimos conectar con el servidor. Probá de nuevo en unos minutos.';
+        el('confirm-btn').disabled = false;
+        el('confirm-btn').textContent = 'Confirmar turno';
+      });
+    });
+
+    loadLink();
+  </script>
+</body>
+</html>
