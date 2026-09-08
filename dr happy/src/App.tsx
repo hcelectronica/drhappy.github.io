@@ -27,6 +27,13 @@ import {
   sendAppointmentEmail,
   sendEmail,
 } from './emailService'
+import {
+  registerProfessional,
+  loginProfessional,
+  changeProfessionalPassword,
+  setProfessionalPassword,
+} from './authService'
+import type { AuthProfessionalPublic } from './authService'
 import { CLINICAL_PROTOCOLS } from './clinicalProtocols'
 import AuthBackground from './AuthBackground'
 import SplashScreen from './SplashScreen'
@@ -118,10 +125,11 @@ declare global {
 interface SeedUser {
   id: string
   username: string
-  password: string
+  password?: string
   fullName: string
   specialty: string
   licenseNumber: string
+  dni?: string
   email: string
   networkMemberships?: string[]
   isAdmin?: boolean
@@ -232,6 +240,7 @@ interface CommunityMessage {
 interface RegisterDraft {
   firstName: string
   lastName: string
+  dni: string
   specialty: string
   licenseNumber: string
   email: string
@@ -309,10 +318,10 @@ interface SeedPatientsPayload {
 interface RemoteProfessionalRow {
   id: string
   username: string
-  password: string
   full_name: string
   specialty: string
   license_number: string
+  dni?: string | null
   email: string
   network_memberships_json?: unknown
   is_admin?: boolean | null
@@ -350,6 +359,7 @@ interface RemoteDeletedUserArchiveRow {
   deleted_username: string
   deleted_full_name: string
   deleted_email: string
+  deleted_dni?: string | null
   deleted_at: string
   deleted_by_user_id: string
   deleted_by_user_name: string
@@ -364,6 +374,7 @@ interface DeletedUserArchiveRecord {
   deletedUsername: string
   deletedFullName: string
   deletedEmail: string
+  deletedDni: string
   deletedAt: string
   deletedByUserId: string
   deletedByUserName: string
@@ -418,6 +429,7 @@ const emptyConsultationDraft: ConsultationDraft = {
 const emptyRegisterDraft: RegisterDraft = {
   firstName: '',
   lastName: '',
+  dni: '',
   specialty: '',
   licenseNumber: '',
   email: '',
@@ -930,10 +942,32 @@ function mapRemoteProfessional(row: RemoteProfessionalRow): SeedUser {
   return {
     id: row.id,
     username: row.username,
-    password: row.password,
     fullName: row.full_name,
     specialty: row.specialty,
     licenseNumber: row.license_number,
+    dni: row.dni ?? undefined,
+    email: row.email,
+    networkMemberships: normalizeProfessionalNetworks(row.network_memberships_json),
+    isAdmin: isAdminUser({
+      id: row.id,
+      username: row.username,
+      isAdmin: Boolean(row.is_admin),
+    }),
+    active: row.active ?? true,
+    trialStartedAt: row.trial_started_at ?? undefined,
+    subscriptionStatus: (row.subscription_status as SeedUser['subscriptionStatus']) ?? undefined,
+    subscriptionExpiresAt: row.subscription_expires_at ?? undefined,
+  }
+}
+
+function mapAuthProfessionalPublic(row: AuthProfessionalPublic): SeedUser {
+  return {
+    id: row.id,
+    username: row.username,
+    fullName: row.full_name,
+    specialty: row.specialty,
+    licenseNumber: row.license_number,
+    dni: row.dni ?? undefined,
     email: row.email,
     networkMemberships: normalizeProfessionalNetworks(row.network_memberships_json),
     isAdmin: isAdminUser({
@@ -955,6 +989,7 @@ function mapRemoteDeletedUserArchive(row: RemoteDeletedUserArchiveRow): DeletedU
     deletedUsername: row.deleted_username,
     deletedFullName: row.deleted_full_name,
     deletedEmail: row.deleted_email,
+    deletedDni: row.deleted_dni ?? '',
     deletedAt: row.deleted_at,
     deletedByUserId: row.deleted_by_user_id,
     deletedByUserName: row.deleted_by_user_name,
@@ -1153,10 +1188,13 @@ function buildSubscriptionExpiryIso(plan: SubscriptionPlan, baseIso = new Date()
   return new Date(new Date(baseIso).getTime() + durationDays * DAY_IN_MS).toISOString()
 }
 
-function buildArchiveFileName(record: Pick<DeletedUserArchiveRecord, 'deletedUsername' | 'deletedFullName' | 'deletedAt'>): string {
-  const preferredSegment = slugifyFileSegment(record.deletedUsername || record.deletedFullName || 'usuario')
+function buildArchiveFileName(
+  record: Pick<DeletedUserArchiveRecord, 'deletedUsername' | 'deletedFullName' | 'deletedAt'> & { deletedDni?: string },
+): string {
+  const preferredSegment = slugifyFileSegment(record.deletedFullName || record.deletedUsername || 'usuario')
+  const dniSegment = slugifyFileSegment(record.deletedDni || 'sin-dni')
   const dateSegment = record.deletedAt.slice(0, 10)
-  return `archivo-legal-${preferredSegment || 'usuario'}-${dateSegment}.json`
+  return `archivo-legal-${preferredSegment || 'usuario'}-${dniSegment}-${dateSegment}.json`
 }
 
 function patientToDraft(patient: PatientRecord): PatientDraft {
@@ -2270,6 +2308,7 @@ function App() {
   const [adminArchivedUsers, setAdminArchivedUsers] = useState<DeletedUserArchiveRecord[]>([])
   const [loadingAdminArchives, setLoadingAdminArchives] = useState(false)
   const [passwordChangeDraft, setPasswordChangeDraft] = useState({
+    currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   })
@@ -2682,10 +2721,10 @@ function App() {
         {
           id: user.id,
           username: user.username,
-          password: user.password,
           full_name: user.fullName,
           specialty: user.specialty,
           license_number: user.licenseNumber,
+          dni: user.dni ?? null,
           email: user.email,
           network_memberships_json: user.networkMemberships ?? [],
         },
@@ -2878,6 +2917,7 @@ function App() {
             id: targetUser.id,
             username: targetUser.username,
             fullName: targetUser.fullName,
+            dni: targetUser.dni ?? '',
             specialty: targetUser.specialty,
             licenseNumber: targetUser.licenseNumber,
             email: targetUser.email,
@@ -2902,6 +2942,7 @@ function App() {
             deleted_username: targetUser.username,
             deleted_full_name: targetUser.fullName,
             deleted_email: targetUser.email,
+            deleted_dni: targetUser.dni ?? null,
             deleted_at: new Date().toISOString(),
             deleted_by_user_id: activeUser.id,
             deleted_by_user_name: activeUser.fullName,
@@ -2916,12 +2957,32 @@ function App() {
           throw new Error(`No se pudo guardar el archivo legal del usuario: ${archiveError.message}`)
         }
 
+        const archiveRecord = mapRemoteDeletedUserArchive(archiveInsert as RemoteDeletedUserArchiveRow)
+        const archiveContent = JSON.stringify(archiveRecord.archiveData, null, 2)
+        const archiveFileName = buildArchiveFileName(archiveRecord)
+        const archiveEmailResult = await sendEmail({
+          to: [targetUser.email, 'archivolegal@drhappy.com.ar'],
+          subject: `Archivo legal - ${targetUser.fullName} - DNI ${targetUser.dni ?? 'no informado'}`,
+          text: `Se adjunta el archivo legal correspondiente a la eliminación del usuario ${targetUser.fullName} (DNI ${targetUser.dni ?? 'no informado'}).`,
+          type: 'legal_archive',
+          attachments: [
+            {
+              filename: archiveFileName,
+              content: archiveContent,
+              contentType: 'application/json',
+            },
+          ],
+        })
+        if (!archiveEmailResult.success) {
+          throw new Error(`No se pudo enviar el archivo legal por correo: ${archiveEmailResult.message ?? 'error desconocido'}`)
+        }
+
         const { error: deleteError } = await supabase.from('professionals').delete().eq('id', targetUser.id)
         if (deleteError) {
           throw new Error(`No se pudo eliminar el usuario: ${deleteError.message}`)
         }
 
-        const nextArchive = mapRemoteDeletedUserArchive(archiveInsert as RemoteDeletedUserArchiveRow)
+        const nextArchive = archiveRecord
         const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
         localStorage.setItem(
           CREATED_USERS_KEY,
@@ -2947,6 +3008,7 @@ function App() {
           deletedUsername: targetUser.username,
           deletedFullName: targetUser.fullName,
           deletedEmail: targetUser.email,
+          deletedDni: targetUser.dni ?? '',
           deletedAt: new Date().toISOString(),
           deletedByUserId: activeUser.id,
           deletedByUserName: activeUser.fullName,
@@ -2964,6 +3026,7 @@ function App() {
               id: targetUser.id,
               username: targetUser.username,
               fullName: targetUser.fullName,
+              dni: targetUser.dni ?? '',
               specialty: targetUser.specialty,
               licenseNumber: targetUser.licenseNumber,
               email: targetUser.email,
@@ -4758,12 +4821,9 @@ function App() {
     }
 
     if (isSupabaseConfigured && supabase) {
-      const { error: updateError } = await supabase
-        .from('professionals')
-        .update({ password: recoveryPassword })
-        .eq('id', user.id)
-      if (updateError) {
-        setAuthError(`No se pudo actualizar la contraseña: ${updateError.message}`)
+      const result = await setProfessionalPassword({ userId: user.id, newPassword: recoveryPassword })
+      if (!result.success) {
+        setAuthError(result.message || 'No se pudo actualizar la contraseña.')
         return
       }
       const { error: deleteError } = await supabase
@@ -4784,7 +4844,7 @@ function App() {
     }
     setSeedUsers((current) =>
       current.map((entry) =>
-        entry.id === user.id ? { ...entry, password: recoveryPassword } : entry,
+        entry.id === user.id ? { ...entry, password: undefined } : entry,
       ),
     )
     void sendPasswordChangedEmail({
@@ -4955,29 +5015,21 @@ function App() {
 
     let nextUser: SeedUser
     const trialStartedAt = new Date().toISOString()
-    if (isSupabaseConfigured && supabase) {
-      const { data: inserted, error } = await supabase
-        .from('professionals')
-        .insert({
-          username: draft.username,
-          password: draft.password,
-          full_name: draft.fullName,
-          specialty: draft.specialty,
-          license_number: draft.licenseNumber,
-          email: draft.email,
-          network_memberships_json: draft.networkMemberships,
-          trial_started_at: trialStartedAt,
-          subscription_status: 'trial',
-        })
-        .select(
-          'id, username, password, full_name, specialty, license_number, email, network_memberships_json, trial_started_at, subscription_status',
-        )
-        .single()
-      if (error) {
-        setAuthError(`No se pudo crear el usuario con Google: ${error.message}`)
+    if (isSupabaseConfigured) {
+      const result = await registerProfessional({
+        username: draft.username,
+        password: draft.password,
+        fullName: draft.fullName,
+        specialty: draft.specialty,
+        licenseNumber: draft.licenseNumber,
+        email: draft.email,
+        networkMemberships: draft.networkMemberships,
+      })
+      if (!result.success || !result.professional) {
+        setAuthError(result.message || 'No se pudo crear el usuario con Google.')
         return
       }
-      nextUser = mapRemoteProfessional(inserted as RemoteProfessionalRow)
+      nextUser = mapAuthProfessionalPublic(result.professional)
       await persistWorkspaceRemote(nextUser.id, profileFromSeed(nextUser), [], [])
     } else {
       nextUser = {
@@ -5022,13 +5074,37 @@ function App() {
     event.preventDefault()
     setAuthError(null)
     setAppNotice(null)
+
+    if (isSupabaseConfigured) {
+      const result = await loginProfessional({ username: username.trim(), password })
+      if (!result.success || !result.professional) {
+        setAuthError(result.message || 'Usuario o contraseña inválidos o usuario inactivo.')
+        return
+      }
+      const user = mapAuthProfessionalPublic(result.professional)
+      try {
+        localStorage.setItem(SESSION_USER_KEY, user.id)
+        await loadWorkspaceForUser(user)
+        setWorkspaceLayer('overview')
+        setSelectedPatientId(null)
+        setPassword('')
+      } catch (error) {
+        setAppError(
+          error instanceof Error
+            ? `No se pudieron cargar datos del profesional: ${error.message}`
+            : 'No se pudieron cargar datos del profesional.',
+        )
+      }
+      return
+    }
+
+    // Modo local (sin Supabase configurado): sólo para demo/desarrollo sin backend.
     const passwordOverrides = readJsonStorage<Record<string, string>>(PASSWORD_OVERRIDES_KEY, {})
     const user = seedUsers.find(
       (entry) =>
         entry.active !== false &&
         entry.username === username.trim() &&
-        (isSupabaseConfigured ? entry.password : passwordOverrides[entry.id] ?? entry.password) ===
-          password,
+        (passwordOverrides[entry.id] ?? entry.password) === password,
     )
     if (!user) {
       setAuthError('Usuario o contraseña inválidos o usuario inactivo.')
@@ -5075,6 +5151,7 @@ function App() {
     const draft = {
       firstName: registerDraft.firstName.trim(),
       lastName: registerDraft.lastName.trim(),
+      dni: registerDraft.dni.trim(),
       specialty: registerDraft.specialty.trim(),
       licenseNumber: registerDraft.licenseNumber.trim(),
       email: registerDraft.email.trim(),
@@ -5087,6 +5164,7 @@ function App() {
     if (
       !draft.firstName ||
       !draft.lastName ||
+      !draft.dni ||
       !draft.specialty ||
       !draft.licenseNumber ||
       !draft.email ||
@@ -5106,30 +5184,22 @@ function App() {
     }
 
     let nextUser: SeedUser
-    if (isSupabaseConfigured && supabase) {
-      const trialStartedAt = new Date().toISOString()
-      const { data, error } = await supabase
-        .from('professionals')
-        .insert({
-          username: draft.username,
-          password: draft.password,
-          full_name: fullName,
-          specialty: draft.specialty,
-          license_number: draft.licenseNumber,
-          email: draft.email,
-          network_memberships_json: draft.networkMemberships,
-          trial_started_at: trialStartedAt,
-          subscription_status: 'trial',
-        })
-        .select(
-          'id, username, password, full_name, specialty, license_number, email, network_memberships_json, active, trial_started_at, subscription_status, subscription_expires_at',
-        )
-        .single()
-      if (error) {
-        setAuthError(`No se pudo crear el usuario en la base remota: ${error.message}`)
+    if (isSupabaseConfigured) {
+      const result = await registerProfessional({
+        username: draft.username,
+        password: draft.password,
+        fullName,
+        specialty: draft.specialty,
+        licenseNumber: draft.licenseNumber,
+        dni: draft.dni,
+        email: draft.email,
+        networkMemberships: draft.networkMemberships,
+      })
+      if (!result.success || !result.professional) {
+        setAuthError(result.message || 'No se pudo crear el usuario en la base remota.')
         return
       }
-      nextUser = mapRemoteProfessional(data as RemoteProfessionalRow)
+      nextUser = mapAuthProfessionalPublic(result.professional)
       await persistWorkspaceRemote(nextUser.id, profileFromSeed(nextUser), [], [])
     } else {
       nextUser = {
@@ -5139,6 +5209,7 @@ function App() {
         fullName,
         specialty: draft.specialty,
         licenseNumber: draft.licenseNumber,
+        dni: draft.dni,
         email: draft.email,
         networkMemberships: draft.networkMemberships,
         isAdmin: false,
@@ -5160,7 +5231,7 @@ function App() {
     setRegisterOpen(false)
     setRegisterDraft(emptyRegisterDraft)
     setUsername(nextUser.username)
-    setPassword(nextUser.password)
+    setPassword('')
     setAppNotice('Usuario creado y correo de bienvenida enviado. Ya puedes iniciar sesión con el nuevo profesional.')
     showSavedFloatingNotice()
   }
@@ -6347,6 +6418,10 @@ function App() {
     if (!activeUserId) {
       return
     }
+    if (isSupabaseConfigured && !passwordChangeDraft.currentPassword) {
+      setAppError('Ingresa tu contraseña actual para confirmar el cambio.')
+      return
+    }
     if (!passwordChangeDraft.newPassword || !passwordChangeDraft.confirmPassword) {
       setAppError('Ingresa la nueva contraseña en ambos campos.')
       return
@@ -6361,13 +6436,14 @@ function App() {
     }
 
     setAppError(null)
-    if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase
-        .from('professionals')
-        .update({ password: passwordChangeDraft.newPassword })
-        .eq('id', activeUserId)
-      if (error) {
-        setAppError(`No se pudo actualizar la contraseña: ${error.message}`)
+    if (isSupabaseConfigured) {
+      const result = await changeProfessionalPassword({
+        userId: activeUserId,
+        currentPassword: passwordChangeDraft.currentPassword,
+        newPassword: passwordChangeDraft.newPassword,
+      })
+      if (!result.success) {
+        setAppError(result.message || 'No se pudo actualizar la contraseña.')
         return
       }
     } else {
@@ -6381,7 +6457,7 @@ function App() {
     setSeedUsers((current) =>
       current.map((user) =>
         user.id === activeUserId
-          ? { ...user, password: passwordChangeDraft.newPassword }
+          ? { ...user, password: isSupabaseConfigured ? undefined : passwordChangeDraft.newPassword }
           : user,
       ),
     )
@@ -6396,7 +6472,7 @@ function App() {
         ),
       ),
     )
-    setPasswordChangeDraft({ newPassword: '', confirmPassword: '' })
+    setPasswordChangeDraft({ currentPassword: '', newPassword: '', confirmPassword: '' })
     setAppNotice('Contraseña actualizada correctamente.')
     showSavedFloatingNotice()
   }
@@ -7210,6 +7286,17 @@ function App() {
                   name="lastName"
                   value={registerDraft.lastName}
                   onChange={handleRegisterFieldChange}
+                  required
+                />
+              </label>
+              <label>
+                DNI
+                <input
+                  name="dni"
+                  value={registerDraft.dni}
+                  onChange={handleRegisterFieldChange}
+                  inputMode="numeric"
+                  pattern="[0-9. -]+"
                   required
                 />
               </label>
@@ -9887,6 +9974,16 @@ function App() {
             <section className="panel">
               <h3>Cambiar contraseña</h3>
               <form className="grid" onSubmit={handleSaveOwnPassword}>
+                <label>
+                  Contraseña actual
+                  <input
+                    type="password"
+                    name="currentPassword"
+                    value={passwordChangeDraft.currentPassword}
+                    onChange={handlePasswordChangeField}
+                    required={isSupabaseConfigured}
+                  />
+                </label>
                 <label>
                   Nueva contraseña
                   <input
