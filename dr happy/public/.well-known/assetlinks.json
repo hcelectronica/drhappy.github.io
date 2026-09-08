@@ -4,7 +4,7 @@
     "target": {
       "namespace": "android_app",
       "package_name": "ar.com.drhappy.app",
-      "sha256_cert_fingerprints": ["REEMPLAZAR_CON_FINGERPRINT_SHA256_DEL_KEYSTORE"]
+      "sha256_cert_fingerprints": ["C2:45:7F:31:51:36:FB:E4:17:DE:A1:67:E6:BC:8B:B5:92:1C:D2:F3:C8:81:77:6E:65:02:4B:3B:C3:0D:BD:4D"]
     }
   }
 ]
