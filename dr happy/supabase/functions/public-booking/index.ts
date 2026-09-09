@@ -134,6 +134,8 @@ serve(async (request) => {
         }
 
         const token = generateToken()
+        const rawAmount = Number(body.amountToCharge)
+        const hasAmount = Number.isFinite(rawAmount) && rawAmount > 0
         const { data: link, error: linkError } = await admin
           .from('public_booking_links')
           .insert({
@@ -146,6 +148,9 @@ serve(async (request) => {
             slot_count: slotCount,
             location: body.location?.trim() ?? null,
             reason: body.reason?.trim() ?? null,
+            amount_to_charge: hasAmount ? rawAmount : null,
+            amount_concept: hasAmount ? (body.amountConcept === 'sena' ? 'sena' : 'consulta') : null,
+            payment_link: hasAmount ? (body.paymentLink?.trim() || null) : null,
             status: 'active',
           })
           .select('id, token')
@@ -235,7 +240,7 @@ serve(async (request) => {
         }
         const { data: link, error } = await admin
           .from('public_booking_links')
-          .select('id, professional_name, slot_date, start_time, end_time, location, reason, status')
+          .select('id, professional_name, slot_date, start_time, end_time, location, reason, status, amount_to_charge, amount_concept, payment_link')
           .eq('token', token)
           .maybeSingle()
         if (error) {
@@ -261,6 +266,9 @@ serve(async (request) => {
             slotDate: link.slot_date,
             location: link.location,
             reason: link.reason,
+            amountToCharge: link.amount_to_charge,
+            amountConcept: link.amount_concept,
+            paymentLink: link.payment_link,
           },
           slots: (slots ?? []).map((s) => ({ id: s.id, time: s.slot_time, available: !s.is_booked })),
         })
@@ -283,7 +291,7 @@ serve(async (request) => {
 
         const { data: link, error: linkError } = await admin
           .from('public_booking_links')
-          .select('id, professional_id, slot_date, location, reason, status')
+          .select('id, professional_id, slot_date, location, reason, status, amount_to_charge, amount_concept, payment_link')
           .eq('token', token)
           .maybeSingle()
         if (linkError) {
@@ -357,6 +365,12 @@ serve(async (request) => {
           status: 'pending',
           createdAt: nowIso,
           createdByUserId: link.professional_id,
+          ...(link.amount_to_charge
+            ? {
+                amountToCharge: Number(link.amount_to_charge),
+                amountConcept: link.amount_concept === 'sena' ? 'sena' : 'consulta',
+              }
+            : {}),
         }
 
         const nextAppointments = [...currentAppointments, newAppointment]
@@ -375,6 +389,9 @@ serve(async (request) => {
             date: link.slot_date,
             time: slotTime,
             location: link.location,
+            amountToCharge: link.amount_to_charge ? Number(link.amount_to_charge) : null,
+            amountConcept: link.amount_concept ?? null,
+            paymentLink: link.payment_link ?? null,
           },
         })
       }

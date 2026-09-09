@@ -463,6 +463,34 @@ const emptyRegisterDraft: RegisterDraft = {
   networkMemberships: [],
 }
 
+/**
+ * Fecha de hoy en horario local (YYYY-MM-DD).
+ * toISOString() devuelve UTC: en Argentina (UTC-3) después de las 21 hs
+ * adelantaba la fecha un día.
+ */
+function todayLocalISO(): string {
+  const now = new Date()
+  const offsetMs = now.getTimezoneOffset() * 60 * 1000
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10)
+}
+
+function buildEmptyAppointmentDraft(): AppointmentDraft {
+  return {
+    patientId: '',
+    patientName: '',
+    patientEmail: '',
+    patientDni: '',
+    scheduledDate: todayLocalISO(),
+    scheduledTime: '09:00',
+    reason: 'Control médico general',
+    notes: '',
+    location: 'Consultorio médico',
+    sendEmailConfirmation: true,
+    amountToCharge: '',
+    amountConcept: 'consulta',
+  }
+}
+
 const emptyAppointmentDraft: AppointmentDraft = {
   patientId: '',
   patientName: '',
@@ -2302,6 +2330,8 @@ function App() {
     durationMinutes: 30,
     location: '',
     reason: '',
+    amountToCharge: '',
+    amountConcept: 'consulta' as 'sena' | 'consulta',
   })
   const [freeSlotSaving, setFreeSlotSaving] = useState(false)
   const [freeSlotError, setFreeSlotError] = useState<string | null>(null)
@@ -6344,7 +6374,7 @@ function App() {
         patientName: `${prefillPatient.apellido}, ${prefillPatient.nombre}`.trim(),
         patientEmail: prefillPatient.email || '',
         patientDni: prefillPatient.dni || '',
-        scheduledDate: new Date().toISOString().slice(0, 10),
+        scheduledDate: todayLocalISO(),
         scheduledTime: '09:00',
         reason: prefillPatient.diagnosticoPrincipal || 'Control médico general',
         notes: '',
@@ -6354,7 +6384,7 @@ function App() {
         amountConcept: 'consulta',
       })
     } else {
-      setAppointmentDraft(emptyAppointmentDraft)
+      setAppointmentDraft(buildEmptyAppointmentDraft())
     }
     setAppointmentModalOpen(true)
   }
@@ -6393,6 +6423,20 @@ function App() {
     const parsedAmount = rawAmount ? Number(rawAmount.replace(',', '.')) : null
     if (rawAmount && (!Number.isFinite(parsedAmount) || (parsedAmount as number) <= 0)) {
       setAppError('El monto a cobrar debe ser un número mayor a cero.')
+      return
+    }
+
+    const conflict = appointments.find(
+      (a) =>
+        a.id !== appointmentDraft.id &&
+        a.status !== 'cancelled' &&
+        a.scheduledDate === appointmentDraft.scheduledDate &&
+        a.scheduledTime === appointmentDraft.scheduledTime
+    )
+    if (conflict) {
+      setAppError(
+        `Ya tenés un turno con ${conflict.patientName} el ${appointmentDraft.scheduledDate} a las ${appointmentDraft.scheduledTime} hs. Elegí otro horario.`
+      )
       return
     }
 
@@ -6535,13 +6579,15 @@ function App() {
     setFreeSlotError(null)
     setFreeSlotGeneratedUrl(null)
     setFreeSlotDraft({
-      slotDate: new Date().toISOString().slice(0, 10),
+      slotDate: todayLocalISO(),
       startTime: '09:00',
       endTime: '17:00',
       slotCount: 5,
       durationMinutes: 30,
       location: '',
       reason: '',
+      amountToCharge: '',
+      amountConcept: 'consulta' as 'sena' | 'consulta',
     })
     setFreeSlotModalOpen(true)
     void refreshFreeSlotLinks()
@@ -6579,6 +6625,12 @@ function App() {
       )
       return
     }
+    const rawFreeAmount = freeSlotDraft.amountToCharge.trim()
+    const parsedFreeAmount = rawFreeAmount ? Number(rawFreeAmount.replace(',', '.')) : null
+    if (rawFreeAmount && (!Number.isFinite(parsedFreeAmount) || (parsedFreeAmount as number) <= 0)) {
+      setFreeSlotError('El monto a cobrar debe ser un número mayor a cero.')
+      return
+    }
     setFreeSlotSaving(true)
     setFreeSlotError(null)
     setFreeSlotGeneratedUrl(null)
@@ -6594,6 +6646,9 @@ function App() {
         intervalMinutes: Number(freeSlotDraft.durationMinutes),
         location: freeSlotDraft.location.trim(),
         reason: freeSlotDraft.reason.trim(),
+        amountToCharge: parsedFreeAmount ?? undefined,
+        amountConcept: parsedFreeAmount ? freeSlotDraft.amountConcept : undefined,
+        paymentLink: parsedFreeAmount ? currentProf?.paymentLink?.trim() || undefined : undefined,
       })
       if (!result.success || !result.token) {
         setFreeSlotError(result.message || 'No se pudo generar el enlace de turnos libres.')
@@ -12310,10 +12365,71 @@ function App() {
               </label>
             </div>
 
+            <div className="turnera-form-row">
+              <label style={{ flex: 1 }}>
+                Monto a cobrar (opcional)
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Ej: 25000"
+                  value={freeSlotDraft.amountToCharge}
+                  onChange={(e) =>
+                    setFreeSlotDraft((prev) => ({
+                      ...prev,
+                      amountToCharge: e.target.value.replace(/[^\d.,]/g, ''),
+                    }))
+                  }
+                />
+              </label>
+              <label style={{ flex: 1 }}>
+                Concepto
+                <select
+                  value={freeSlotDraft.amountConcept}
+                  onChange={(e) =>
+                    setFreeSlotDraft((prev) => ({
+                      ...prev,
+                      amountConcept: e.target.value as 'sena' | 'consulta',
+                    }))
+                  }
+                  disabled={!freeSlotDraft.amountToCharge.trim()}
+                >
+                  <option value="consulta">Valor de la consulta</option>
+                  <option value="sena">Seña para reservar</option>
+                </select>
+              </label>
+            </div>
+
+            {freeSlotDraft.amountToCharge.trim() ? (
+              (() => {
+                const link = profile?.paymentLink?.trim() || ''
+                if (!link) {
+                  return (
+                    <p className="payment-info-note warn">
+                      ⚠️ El paciente va a ver el monto, pero sin botón de pago. Cargá tu link de cobro en{' '}
+                      <strong>Perfil</strong> para que pueda pagarte online.
+                    </p>
+                  )
+                }
+                if (!isNavigablePaymentLink(link)) {
+                  return (
+                    <p className="payment-info-note warn">
+                      ⚠️ Guardaste <strong>{link}</strong> como alias. El paciente lo verá para transferir, pero sin
+                      botón. Para el botón <strong>Pagar ahora</strong>, pegá en <strong>Perfil</strong> el link
+                      completo de Mercado Pago.
+                    </p>
+                  )
+                }
+                return (
+                  <p className="payment-info-note ok">
+                    ✅ El paciente verá el monto y tu botón de pago al elegir su turno.
+                  </p>
+                )
+              })()
+            ) : null}
+
             {freeSlotError ? (
               <p style={{ color: '#c62828', fontSize: '0.9rem' }}>{freeSlotError}</p>
             ) : null}
-
             {freeSlotGeneratedUrl ? (
               <div className="turnera-form-group" style={{ background: '#e9f8f0', borderRadius: 10, padding: 12 }}>
                 <p style={{ margin: '0 0 8px', fontWeight: 600 }}>✅ Enlace generado</p>
