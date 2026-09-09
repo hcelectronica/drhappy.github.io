@@ -1236,6 +1236,14 @@ function patientToDraft(patient: PatientRecord): PatientDraft {
   }
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function isValidEmail(value: string): boolean {
+  return EMAIL_REGEX.test(value.trim())
+}
+
+const MAX_COMMUNITY_FILE_SIZE_BYTES = 10 * 1024 * 1024
+
 async function fileToStoredFile(file: File): Promise<StoredFile> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
@@ -2265,6 +2273,7 @@ function App() {
     startTime: '09:00',
     endTime: '17:00',
     slotCount: 5,
+    durationMinutes: 30,
     location: '',
     reason: '',
   })
@@ -2470,6 +2479,9 @@ function App() {
     [seedUsers, activeUserId],
   )
   const isAdminSession = isAdminUser(activeUser)
+  // Acceso a la Turnera Premium (calendario de ocupación + estadísticas): solo suscripción activa,
+  // no incluye usuarios en período de prueba (trial) ni vencidos.
+  const hasPremiumTurneraAccess = Boolean(isAdminSession || activeUser?.subscriptionStatus === 'active')
   const ambulanceRecentPatients = useMemo(() => {
     const normalizedLicense = profile?.licenseNumber.trim().toLowerCase() ?? ''
     const normalizedFullName = profile?.fullName.trim().toLowerCase() ?? ''
@@ -6302,6 +6314,10 @@ function App() {
       setAppError('Completa el nombre del paciente, fecha y hora del turno.')
       return
     }
+    if (appointmentDraft.patientEmail.trim() && !isValidEmail(appointmentDraft.patientEmail.trim())) {
+      setAppError('El email del paciente no tiene un formato válido.')
+      return
+    }
 
     setAppointmentSaving(true)
     setAppError(null)
@@ -6441,6 +6457,7 @@ function App() {
       startTime: '09:00',
       endTime: '17:00',
       slotCount: 5,
+      durationMinutes: 30,
       location: '',
       reason: '',
     })
@@ -6479,6 +6496,7 @@ function App() {
         startTime: freeSlotDraft.startTime,
         endTime: freeSlotDraft.endTime,
         slotCount: Number(freeSlotDraft.slotCount),
+        intervalMinutes: Number(freeSlotDraft.durationMinutes),
         location: freeSlotDraft.location.trim(),
         reason: freeSlotDraft.reason.trim(),
       })
@@ -6566,10 +6584,23 @@ function App() {
     if (files.length === 0) {
       return
     }
+    const oversized = files.filter((file) => file.size > MAX_COMMUNITY_FILE_SIZE_BYTES)
+    const validFiles = files.filter((file) => file.size <= MAX_COMMUNITY_FILE_SIZE_BYTES)
+    if (oversized.length > 0) {
+      setAppError(
+        `${oversized.length === 1 ? 'El archivo supera' : 'Algunos archivos superan'} el límite de 10MB y no ${oversized.length === 1 ? 'fue' : 'fueron'} adjuntado${oversized.length === 1 ? '' : 's'}: ${oversized.map((f) => f.name).join(', ')}`
+      )
+    }
+    if (validFiles.length === 0) {
+      event.target.value = ''
+      return
+    }
     try {
-      const converted = await Promise.all(files.map((file) => fileToStoredFile(file)))
+      const converted = await Promise.all(validFiles.map((file) => fileToStoredFile(file)))
       setCommunityDraftFiles((current) => [...current, ...converted])
-      setAppError(null)
+      if (oversized.length === 0) {
+        setAppError(null)
+      }
     } catch {
       setAppError('No se pudo adjuntar uno o más archivos al chat.')
     } finally {
@@ -6584,10 +6615,22 @@ function App() {
     if (files.length === 0) {
       return
     }
+    const oversized = files.filter((file) => file.size > MAX_COMMUNITY_FILE_SIZE_BYTES)
+    const validFiles = files.filter((file) => file.size <= MAX_COMMUNITY_FILE_SIZE_BYTES)
+    if (oversized.length > 0) {
+      setAppError(
+        `${oversized.length === 1 ? 'El archivo supera' : 'Algunos archivos superan'} el límite de 10MB y no ${oversized.length === 1 ? 'fue' : 'fueron'} adjuntado${oversized.length === 1 ? '' : 's'}: ${oversized.map((f) => f.name).join(', ')}`
+      )
+    }
+    if (validFiles.length === 0) {
+      return
+    }
     try {
-      const converted = await Promise.all(files.map((file) => fileToStoredFile(file)))
+      const converted = await Promise.all(validFiles.map((file) => fileToStoredFile(file)))
       setCommunityDraftFiles((current) => [...current, ...converted])
-      setAppError(null)
+      if (oversized.length === 0) {
+        setAppError(null)
+      }
     } catch {
       setAppError('No se pudieron adjuntar archivos arrastrados.')
     }
@@ -9717,24 +9760,46 @@ function App() {
             </button>
             <button
               type="button"
-              className={`ghost ${turneraViewMode === 'calendar' ? 'active' : ''}`}
-              onClick={() => setTurneraViewMode('calendar')}
+              className={`ghost ${turneraViewMode === 'calendar' ? 'active' : ''} ${!hasPremiumTurneraAccess ? 'locked' : ''}`}
+              onClick={() => {
+                if (!hasPremiumTurneraAccess) {
+                  setAppError('El Calendario de ocupación es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
+                  return
+                }
+                setTurneraViewMode('calendar')
+              }}
             >
-              🗓️ Calendario de ocupación
+              🗓️ Calendario de ocupación{!hasPremiumTurneraAccess ? ' 🔒' : ''}
             </button>
             <button
               type="button"
-              className={`ghost ${turneraViewMode === 'stats' ? 'active' : ''}`}
-              onClick={() => setTurneraViewMode('stats')}
+              className={`ghost ${turneraViewMode === 'stats' ? 'active' : ''} ${!hasPremiumTurneraAccess ? 'locked' : ''}`}
+              onClick={() => {
+                if (!hasPremiumTurneraAccess) {
+                  setAppError('Las Estadísticas son exclusivas para suscriptores con plan activo. Activá tu suscripción para desbloquearlas.')
+                  return
+                }
+                setTurneraViewMode('stats')
+              }}
             >
-              📊 Estadísticas
+              📊 Estadísticas{!hasPremiumTurneraAccess ? ' 🔒' : ''}
             </button>
-            <span className="turnera-view-switch-badge" title="Prueba piloto — candidata a función premium">
-              ✨ Piloto
+            <span className="turnera-view-switch-badge" title="Función premium — incluida en planes con suscripción activa">
+              ⭐ Premium
             </span>
           </div>
 
-          {turneraViewMode === 'calendar' ? (
+          {turneraViewMode === 'calendar' && !hasPremiumTurneraAccess ? (
+            <section className="panel turnera-premium-locked">
+              <h3 style={{ marginTop: 0 }}>🔒 Calendario de ocupación — función Premium</h3>
+              <p className="flow-hint">
+                Esta herramienta está disponible para profesionales con suscripción activa (mensual, semestral o anual).
+                Activá o renová tu suscripción para acceder al calendario de ocupación y las estadísticas de atención.
+              </p>
+            </section>
+          ) : null}
+
+          {turneraViewMode === 'calendar' && hasPremiumTurneraAccess ? (
             <section className="panel turnera-calendar-panel">
               <div className="turnera-calendar-header">
                 <button
@@ -9819,7 +9884,17 @@ function App() {
             </section>
           ) : null}
 
-          {turneraViewMode === 'stats' ? (
+          {turneraViewMode === 'stats' && !hasPremiumTurneraAccess ? (
+            <section className="panel turnera-premium-locked">
+              <h3 style={{ marginTop: 0 }}>🔒 Estadísticas — función Premium</h3>
+              <p className="flow-hint">
+                Esta herramienta está disponible para profesionales con suscripción activa (mensual, semestral o anual).
+                Activá o renová tu suscripción para acceder al calendario de ocupación y las estadísticas de atención.
+              </p>
+            </section>
+          ) : null}
+
+          {turneraViewMode === 'stats' && hasPremiumTurneraAccess ? (
             <section className="panel turnera-stats-panel">
               <h3 style={{ marginTop: 0 }}>📊 Pacientes atendidos por semana</h3>
               {attendanceWeeklyStats.length > 0 ? (
@@ -11773,9 +11848,13 @@ function App() {
                   DNI
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     placeholder="Ej: 32456789"
                     value={appointmentDraft.patientDni}
-                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, patientDni: e.target.value }))}
+                    onChange={(e) =>
+                      setAppointmentDraft((prev) => ({ ...prev, patientDni: e.target.value.replace(/\D/g, '') }))
+                    }
                   />
                 </label>
                 <label style={{ flex: 1.5 }}>
@@ -11786,6 +11865,9 @@ function App() {
                     value={appointmentDraft.patientEmail}
                     onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, patientEmail: e.target.value }))}
                   />
+                  {appointmentDraft.patientEmail.trim() && !isValidEmail(appointmentDraft.patientEmail.trim()) ? (
+                    <span className="field-error-hint">Ingresá un email con formato válido (ej: nombre@dominio.com)</span>
+                  ) : null}
                 </label>
               </div>
 
@@ -11944,6 +12026,21 @@ function App() {
                   value={freeSlotDraft.endTime}
                   onChange={(e) => setFreeSlotDraft((prev) => ({ ...prev, endTime: e.target.value }))}
                 />
+              </label>
+            </div>
+
+            <div className="turnera-form-row">
+              <label style={{ flex: 1 }}>
+                Duración de cada consulta *
+                <select
+                  value={freeSlotDraft.durationMinutes}
+                  onChange={(e) => setFreeSlotDraft((prev) => ({ ...prev, durationMinutes: Number(e.target.value) }))}
+                >
+                  <option value={15}>15 minutos</option>
+                  <option value={30}>30 minutos</option>
+                  <option value={45}>45 minutos</option>
+                  <option value={60}>60 minutos</option>
+                </select>
               </label>
             </div>
 

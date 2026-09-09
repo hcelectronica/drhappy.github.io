@@ -2380,6 +2380,26 @@ body.theme-night .contact-option-btn.diagnostic {
   margin-bottom: 16px;
 }
 
+.turnera-view-switch button.ghost.locked {
+  opacity: 0.65;
+}
+
+.turnera-premium-locked {
+  margin-bottom: 16px;
+  text-align: center;
+  border: 1px dashed #d97706;
+  background: linear-gradient(180deg, rgba(254, 243, 199, 0.6) 0%, rgba(255, 255, 255, 1) 100%);
+}
+
+body.theme-night .turnera-premium-locked {
+  border-color: #d97706;
+  background: linear-gradient(180deg, rgba(120, 53, 15, 0.25) 0%, #0f1c30 100%);
+}
+
+body.theme-night .turnera-premium-locked h3 {
+  color: #fbbf24;
+}
+
 .turnera-calendar-header {
   display: flex;
   align-items: center;
@@ -2847,8 +2867,8 @@ body.theme-night .turnera-badge-upcoming {
 }
 
 body.theme-night .turnera-badge-past {
-  background: rgba(148, 163, 184, 0.15);
-  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.28);
+  color: #e2e8f0;
 }
 
 .turnera-status-badge {
@@ -2859,6 +2879,18 @@ body.theme-night .turnera-badge-past {
 
 body.theme-night .turnera-status-badge {
   color: #cbd5e1;
+}
+
+.field-error-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #b91c1c;
+}
+
+body.theme-night .field-error-hint {
+  color: #fca5a5;
 }
 
 .turnera-card-body {
