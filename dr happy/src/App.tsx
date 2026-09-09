@@ -10576,10 +10576,30 @@ function App() {
                             </ul>
                           </div>
 
+                          {proto.prehospitalManifestations.highSuspicionRedFlags.length > 0 ? (
+                            <div className="protocol-section-box" style={{ padding: 12, background: '#fff7ed', borderColor: '#fed7aa' }}>
+                              <h4 style={{ margin: '0 0 6px', fontSize: '0.95rem', color: '#9a3412' }}>⚠️ Banderas rojas / no perder tiempo</h4>
+                              <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem', color: '#7c2d12', lineHeight: 1.4 }}>
+                                {proto.prehospitalManifestations.highSuspicionRedFlags.map((s, idx) => (
+                                  <li key={idx} style={{ marginBottom: 3 }}>{s}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+
                           <div className="protocol-section-box" style={{ padding: 12, background: '#fef2f2', borderColor: '#fecaca' }}>
                             <h4 style={{ margin: '0 0 6px', fontSize: '0.95rem', color: '#991b1b' }}>🚑 Manejo inmediato en Ambulancia</h4>
                             <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem', color: '#7f1d1d', lineHeight: 1.4 }}>
                               {proto.management.prehospitalAmbulance.map((s, idx) => (
+                                <li key={idx} style={{ marginBottom: 3 }}>{s}</li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <div className="protocol-section-box" style={{ padding: 12, background: '#eff6ff', borderColor: '#bfdbfe' }}>
+                            <h4 style={{ margin: '0 0 6px', fontSize: '0.95rem', color: '#1e40af' }}>🏥 Recepción en guardia / shock room</h4>
+                            <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem', color: '#1e3a8a', lineHeight: 1.4 }}>
+                              {proto.management.emergencyRoomShockRoom.map((s, idx) => (
                                 <li key={idx} style={{ marginBottom: 3 }}>{s}</li>
                               ))}
                             </ul>
@@ -10592,6 +10612,21 @@ function App() {
                                 <li key={idx} style={{ marginBottom: 3 }}>
                                   <strong>{ph.drug}:</strong> {ph.dose} ({ph.route}) — <span style={{ color: '#64748b' }}>{ph.notes}</span>
                                 </li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <div className="protocol-section-box" style={{ padding: 12, background: '#f0fdf4', borderColor: '#bbf7d0' }}>
+                            <h4 style={{ margin: '0 0 6px', fontSize: '0.95rem', color: '#166534' }}>⏱️ Ventana crítica y errores a evitar</h4>
+                            <p style={{ margin: '0 0 8px', fontSize: '0.85rem', color: '#166534', lineHeight: 1.4 }}>
+                              <strong>Ventana:</strong> {proto.therapeuticWindow.timeframe}
+                            </p>
+                            <p style={{ margin: '0 0 8px', fontSize: '0.85rem', color: '#166534', lineHeight: 1.4 }}>
+                              <strong>Estándar:</strong> {proto.therapeuticWindow.goldStandard}
+                            </p>
+                            <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem', color: '#14532d', lineHeight: 1.4 }}>
+                              {proto.therapeuticWindow.contraindications.map((s, idx) => (
+                                <li key={idx} style={{ marginBottom: 3 }}>{s}</li>
                               ))}
                             </ul>
                           </div>
