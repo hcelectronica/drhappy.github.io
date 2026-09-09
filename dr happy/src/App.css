@@ -2355,6 +2355,278 @@ body.theme-night .contact-option-btn.diagnostic {
   margin-bottom: 16px;
 }
 
+/* Prueba piloto: selector de vista Lista / Calendario / Estadísticas */
+.turnera-view-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.turnera-view-switch-badge {
+  margin-left: auto;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.turnera-calendar-panel,
+.turnera-stats-panel {
+  margin-bottom: 16px;
+}
+
+.turnera-view-switch button.ghost.locked {
+  opacity: 0.65;
+}
+
+.turnera-premium-locked {
+  margin-bottom: 16px;
+  text-align: center;
+  border: 1px dashed #d97706;
+  background: linear-gradient(180deg, rgba(254, 243, 199, 0.6) 0%, rgba(255, 255, 255, 1) 100%);
+}
+
+body.theme-night .turnera-premium-locked {
+  border-color: #d97706;
+  background: linear-gradient(180deg, rgba(120, 53, 15, 0.25) 0%, #0f1c30 100%);
+}
+
+body.theme-night .turnera-premium-locked h3 {
+  color: #fbbf24;
+}
+
+.turnera-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.turnera-calendar-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.turnera-calendar-title strong {
+  font-size: 1.05rem;
+  color: var(--text-primary, #0f172a);
+}
+
+.turnera-calendar-title span {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.turnera-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 6px;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary, #64748b);
+}
+
+.turnera-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.turnera-calendar-cell {
+  aspect-ratio: 1 / 1;
+  min-height: 46px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--surface-bg, #ffffff);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  color: var(--text-primary, #0f172a);
+}
+
+.turnera-calendar-cell:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+}
+
+.turnera-calendar-cell.empty {
+  background: transparent;
+  border: none;
+  cursor: default;
+}
+
+.turnera-calendar-cell.empty:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.turnera-calendar-day-number {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.turnera-calendar-day-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.15);
+  color: #1d4ed8;
+}
+
+.turnera-calendar-cell.is-today {
+  border: 2px solid #2563eb;
+}
+
+.turnera-calendar-cell.is-selected {
+  outline: 2px solid #16a34a;
+  outline-offset: 1px;
+}
+
+.turnera-calendar-cell.occupancy-none {
+  background: var(--surface-bg, #ffffff);
+}
+
+.turnera-calendar-cell.occupancy-low {
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.turnera-calendar-cell.occupancy-mid {
+  background: rgba(245, 158, 11, 0.18);
+}
+
+.turnera-calendar-cell.occupancy-high {
+  background: rgba(220, 38, 38, 0.18);
+}
+
+.turnera-calendar-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.turnera-calendar-legend .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.turnera-calendar-legend .occupancy-none {
+  background: #cbd5e1;
+}
+
+.turnera-calendar-legend .occupancy-low {
+  background: #3b82f6;
+}
+
+.turnera-calendar-legend .occupancy-mid {
+  background: #f59e0b;
+}
+
+.turnera-calendar-legend .occupancy-high {
+  background: #dc2626;
+}
+
+.turnera-calendar-day-detail {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--text-primary, #0f172a);
+}
+
+.turnera-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 180px;
+  padding: 10px 4px 0;
+  overflow-x: auto;
+}
+
+.turnera-bar-chart-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 42px;
+}
+
+.turnera-bar-chart-bar-wrap {
+  height: 140px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.turnera-bar-chart-bar {
+  width: 28px;
+  border-radius: 8px 8px 3px 3px;
+  background: linear-gradient(180deg, #60a5fa, #2563eb);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding-top: 4px;
+  transition: height 0.25s ease;
+}
+
+.turnera-bar-chart-bar.month-bar {
+  background: linear-gradient(180deg, #34d399, #059669);
+}
+
+.turnera-bar-chart-col small {
+  font-size: 0.72rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.turnera-trend-note {
+  margin-top: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 10px;
+  display: inline-block;
+}
+
+.turnera-trend-note.up {
+  color: #166534;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.turnera-trend-note.down {
+  color: #9a3412;
+  background: rgba(249, 115, 22, 0.12);
+}
+
 .turnera-metric-card {
   background: var(--surface-bg, #ffffff);
   border: 1px solid var(--border-color, #e2e8f0);
@@ -2401,6 +2673,65 @@ body.theme-night .turnera-metric-info strong {
 
 body.theme-night .turnera-metric-info span {
   color: #94a3b8;
+}
+
+/* Prueba piloto: overrides de modo oscuro para calendario de ocupación y estadísticas */
+body.theme-night .turnera-view-switch-badge {
+  color: #1e1108;
+}
+
+body.theme-night .turnera-calendar-title strong,
+body.theme-night .turnera-calendar-day-detail strong {
+  color: #e2e8f0;
+}
+
+body.theme-night .turnera-calendar-title span,
+body.theme-night .turnera-calendar-weekdays,
+body.theme-night .turnera-calendar-legend,
+body.theme-night .turnera-bar-chart-col small {
+  color: #94a3b8;
+}
+
+body.theme-night .turnera-calendar-cell {
+  background: #0f1c30;
+  border-color: rgba(130, 153, 186, 0.25);
+  color: #e2e8f0;
+}
+
+body.theme-night .turnera-calendar-cell.occupancy-none {
+  background: #0f1c30;
+}
+
+body.theme-night .turnera-calendar-cell.occupancy-low {
+  background: rgba(59, 130, 246, 0.28);
+}
+
+body.theme-night .turnera-calendar-cell.occupancy-mid {
+  background: rgba(245, 158, 11, 0.3);
+}
+
+body.theme-night .turnera-calendar-cell.occupancy-high {
+  background: rgba(220, 38, 38, 0.32);
+}
+
+body.theme-night .turnera-calendar-day-count {
+  background: rgba(96, 165, 250, 0.25);
+  color: #93c5fd;
+}
+
+body.theme-night .turnera-calendar-day-detail {
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(96, 165, 250, 0.35);
+}
+
+body.theme-night .turnera-trend-note.up {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.18);
+}
+
+body.theme-night .turnera-trend-note.down {
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.18);
 }
 
 .turnera-toolbar-panel {
@@ -2536,8 +2867,8 @@ body.theme-night .turnera-badge-upcoming {
 }
 
 body.theme-night .turnera-badge-past {
-  background: rgba(148, 163, 184, 0.15);
-  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.28);
+  color: #e2e8f0;
 }
 
 .turnera-status-badge {
@@ -2548,6 +2879,18 @@ body.theme-night .turnera-badge-past {
 
 body.theme-night .turnera-status-badge {
   color: #cbd5e1;
+}
+
+.field-error-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #b91c1c;
+}
+
+body.theme-night .field-error-hint {
+  color: #fca5a5;
 }
 
 .turnera-card-body {

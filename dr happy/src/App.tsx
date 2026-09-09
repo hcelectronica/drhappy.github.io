@@ -1236,6 +1236,14 @@ function patientToDraft(patient: PatientRecord): PatientDraft {
   }
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function isValidEmail(value: string): boolean {
+  return EMAIL_REGEX.test(value.trim())
+}
+
+const MAX_COMMUNITY_FILE_SIZE_BYTES = 10 * 1024 * 1024
+
 async function fileToStoredFile(file: File): Promise<StoredFile> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
@@ -2244,6 +2252,14 @@ function App() {
   const [appointmentSearchQuery, setAppointmentSearchQuery] = useState('')
   const [appointmentFilterTab, setAppointmentFilterTab] = useState<'today' | 'upcoming' | 'all' | 'past'>('today')
   const [appointmentDateFilter, setAppointmentDateFilter] = useState('')
+  // Prueba piloto: vista alternativa de la Turnera con calendario mensual de ocupación
+  // y estadísticas de pacientes atendidos por semana/mes (candidata a feature premium anual).
+  const [turneraViewMode, setTurneraViewMode] = useState<'list' | 'calendar' | 'stats'>('list')
+  const [calendarMonthCursor, setCalendarMonthCursor] = useState(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 1)
+  })
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<string | null>(null)
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false)
   const [appointmentDraft, setAppointmentDraft] = useState<AppointmentDraft>(emptyAppointmentDraft)
   const [appointmentSaving, setAppointmentSaving] = useState(false)
@@ -2257,6 +2273,7 @@ function App() {
     startTime: '09:00',
     endTime: '17:00',
     slotCount: 5,
+    durationMinutes: 30,
     location: '',
     reason: '',
   })
@@ -2462,6 +2479,9 @@ function App() {
     [seedUsers, activeUserId],
   )
   const isAdminSession = isAdminUser(activeUser)
+  // Acceso a la Turnera Premium (calendario de ocupación + estadísticas): solo suscripción activa,
+  // no incluye usuarios en período de prueba (trial) ni vencidos.
+  const hasPremiumTurneraAccess = Boolean(isAdminSession || activeUser?.subscriptionStatus === 'active')
   const ambulanceRecentPatients = useMemo(() => {
     const normalizedLicense = profile?.licenseNumber.trim().toLowerCase() ?? ''
     const normalizedFullName = profile?.fullName.trim().toLowerCase() ?? ''
@@ -2665,6 +2685,127 @@ function App() {
       })
       .sort((a, b) => appointmentSortKey(a).localeCompare(appointmentSortKey(b)))
   }, [appointments, appointmentSearchQuery, appointmentFilterTab, appointmentDateFilter])
+
+  // Prueba piloto: conteo de turnos por día para pintar el calendario mensual de ocupación.
+  const appointmentCountByDate = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const a of appointments) {
+      map.set(a.scheduledDate, (map.get(a.scheduledDate) ?? 0) + 1)
+    }
+    return map
+  }, [appointments])
+
+  const calendarWeeks = useMemo(() => {
+    const year = calendarMonthCursor.getFullYear()
+    const month = calendarMonthCursor.getMonth()
+    const firstOfMonth = new Date(year, month, 1)
+    // Lunes = 0 ... Domingo = 6
+    const firstWeekday = (firstOfMonth.getDay() + 6) % 7
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    const todayStr = new Date().toISOString().slice(0, 10)
+
+    const cells: Array<{ dateStr: string | null; day: number | null; count: number; isToday: boolean } > = []
+    for (let i = 0; i < firstWeekday; i++) {
+      cells.push({ dateStr: null, day: null, count: 0, isToday: false })
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      cells.push({
+        dateStr,
+        day,
+        count: appointmentCountByDate.get(dateStr) ?? 0,
+        isToday: dateStr === todayStr,
+      })
+    }
+    while (cells.length % 7 !== 0) {
+      cells.push({ dateStr: null, day: null, count: 0, isToday: false })
+    }
+
+    const weeks: typeof cells[] = []
+    for (let i = 0; i < cells.length; i += 7) {
+      weeks.push(cells.slice(i, i + 7))
+    }
+    return weeks
+  }, [calendarMonthCursor, appointmentCountByDate])
+
+  const calendarMonthLabel = useMemo(() => {
+    return calendarMonthCursor.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+  }, [calendarMonthCursor])
+
+  const calendarMonthTotal = useMemo(() => {
+    const year = calendarMonthCursor.getFullYear()
+    const month = calendarMonthCursor.getMonth()
+    const prefix = `${year}-${String(month + 1).padStart(2, '0')}`
+    let total = 0
+    for (const [dateStr, count] of appointmentCountByDate.entries()) {
+      if (dateStr.startsWith(prefix)) total += count
+    }
+    return total
+  }, [calendarMonthCursor, appointmentCountByDate])
+
+  // Prueba piloto: estadística de pacientes atendidos por semana (últimas 8) y por mes (últimos 6),
+  // usando estado "attended" cuando existe, o el total de turnos agendados por fecha si no está marcado.
+  const attendanceWeeklyStats = useMemo(() => {
+    const relevant = appointments.filter((a) => !a.status || a.status === 'attended' || a.status === 'confirmed')
+
+    function isoWeekKey(dateStr: string): { key: string; label: string; sortKey: string } {
+      const d = new Date(`${dateStr}T00:00:00`)
+      const day = (d.getDay() + 6) % 7
+      const monday = new Date(d)
+      monday.setDate(d.getDate() - day)
+      const key = monday.toISOString().slice(0, 10)
+      const label = `${String(monday.getDate()).padStart(2, '0')}/${String(monday.getMonth() + 1).padStart(2, '0')}`
+      return { key, label, sortKey: key }
+    }
+
+    const buckets = new Map<string, { label: string; count: number; sortKey: string }>()
+    for (const a of relevant) {
+      const { key, label, sortKey } = isoWeekKey(a.scheduledDate)
+      const bucket = buckets.get(key)
+      if (bucket) {
+        bucket.count++
+      } else {
+        buckets.set(key, { label, count: 1, sortKey })
+      }
+    }
+
+    return Array.from(buckets.values())
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .slice(-8)
+  }, [appointments])
+
+  const attendanceMonthlyStats = useMemo(() => {
+    const relevant = appointments.filter((a) => !a.status || a.status === 'attended' || a.status === 'confirmed')
+    const buckets = new Map<string, { label: string; count: number }>()
+    const monthNames = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+    for (const a of relevant) {
+      const [yearStr, monthStr] = a.scheduledDate.split('-')
+      const key = `${yearStr}-${monthStr}`
+      const bucket = buckets.get(key)
+      if (bucket) {
+        bucket.count++
+      } else {
+        const label = `${monthNames[Number(monthStr) - 1] ?? monthStr} ${yearStr.slice(2)}`
+        buckets.set(key, { label, count: 1 })
+      }
+    }
+
+    return Array.from(buckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-6)
+      .map(([, value]) => value)
+  }, [appointments])
+
+  const attendanceTrend = useMemo(() => {
+    if (attendanceMonthlyStats.length < 2) return null
+    const last = attendanceMonthlyStats[attendanceMonthlyStats.length - 1]
+    const prev = attendanceMonthlyStats[attendanceMonthlyStats.length - 2]
+    if (prev.count === 0) return null
+    const diff = last.count - prev.count
+    const pct = Math.round((diff / prev.count) * 100)
+    return { diff, pct, improving: diff >= 0 }
+  }, [attendanceMonthlyStats])
 
   function loadAccessiblePatientsForUser(userId: string): {
     patientsList: PatientRecord[]
@@ -6173,6 +6314,10 @@ function App() {
       setAppError('Completa el nombre del paciente, fecha y hora del turno.')
       return
     }
+    if (appointmentDraft.patientEmail.trim() && !isValidEmail(appointmentDraft.patientEmail.trim())) {
+      setAppError('El email del paciente no tiene un formato válido.')
+      return
+    }
 
     setAppointmentSaving(true)
     setAppError(null)
@@ -6312,6 +6457,7 @@ function App() {
       startTime: '09:00',
       endTime: '17:00',
       slotCount: 5,
+      durationMinutes: 30,
       location: '',
       reason: '',
     })
@@ -6350,6 +6496,7 @@ function App() {
         startTime: freeSlotDraft.startTime,
         endTime: freeSlotDraft.endTime,
         slotCount: Number(freeSlotDraft.slotCount),
+        intervalMinutes: Number(freeSlotDraft.durationMinutes),
         location: freeSlotDraft.location.trim(),
         reason: freeSlotDraft.reason.trim(),
       })
@@ -6437,10 +6584,23 @@ function App() {
     if (files.length === 0) {
       return
     }
+    const oversized = files.filter((file) => file.size > MAX_COMMUNITY_FILE_SIZE_BYTES)
+    const validFiles = files.filter((file) => file.size <= MAX_COMMUNITY_FILE_SIZE_BYTES)
+    if (oversized.length > 0) {
+      setAppError(
+        `${oversized.length === 1 ? 'El archivo supera' : 'Algunos archivos superan'} el límite de 10MB y no ${oversized.length === 1 ? 'fue' : 'fueron'} adjuntado${oversized.length === 1 ? '' : 's'}: ${oversized.map((f) => f.name).join(', ')}`
+      )
+    }
+    if (validFiles.length === 0) {
+      event.target.value = ''
+      return
+    }
     try {
-      const converted = await Promise.all(files.map((file) => fileToStoredFile(file)))
+      const converted = await Promise.all(validFiles.map((file) => fileToStoredFile(file)))
       setCommunityDraftFiles((current) => [...current, ...converted])
-      setAppError(null)
+      if (oversized.length === 0) {
+        setAppError(null)
+      }
     } catch {
       setAppError('No se pudo adjuntar uno o más archivos al chat.')
     } finally {
@@ -6455,10 +6615,22 @@ function App() {
     if (files.length === 0) {
       return
     }
+    const oversized = files.filter((file) => file.size > MAX_COMMUNITY_FILE_SIZE_BYTES)
+    const validFiles = files.filter((file) => file.size <= MAX_COMMUNITY_FILE_SIZE_BYTES)
+    if (oversized.length > 0) {
+      setAppError(
+        `${oversized.length === 1 ? 'El archivo supera' : 'Algunos archivos superan'} el límite de 10MB y no ${oversized.length === 1 ? 'fue' : 'fueron'} adjuntado${oversized.length === 1 ? '' : 's'}: ${oversized.map((f) => f.name).join(', ')}`
+      )
+    }
+    if (validFiles.length === 0) {
+      return
+    }
     try {
-      const converted = await Promise.all(files.map((file) => fileToStoredFile(file)))
+      const converted = await Promise.all(validFiles.map((file) => fileToStoredFile(file)))
       setCommunityDraftFiles((current) => [...current, ...converted])
-      setAppError(null)
+      if (oversized.length === 0) {
+        setAppError(null)
+      }
     } catch {
       setAppError('No se pudieron adjuntar archivos arrastrados.')
     }
@@ -9577,6 +9749,212 @@ function App() {
             </div>
           </section>
 
+          {/* Prueba piloto: selector de vista Lista / Calendario de ocupación / Estadísticas */}
+          <div className="turnera-view-switch">
+            <button
+              type="button"
+              className={`ghost ${turneraViewMode === 'list' ? 'active' : ''}`}
+              onClick={() => setTurneraViewMode('list')}
+            >
+              📋 Lista de turnos
+            </button>
+            <button
+              type="button"
+              className={`ghost ${turneraViewMode === 'calendar' ? 'active' : ''} ${!hasPremiumTurneraAccess ? 'locked' : ''}`}
+              onClick={() => {
+                if (!hasPremiumTurneraAccess) {
+                  setAppError('El Calendario de ocupación es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
+                  return
+                }
+                setTurneraViewMode('calendar')
+              }}
+            >
+              🗓️ Calendario de ocupación{!hasPremiumTurneraAccess ? ' 🔒' : ''}
+            </button>
+            <button
+              type="button"
+              className={`ghost ${turneraViewMode === 'stats' ? 'active' : ''} ${!hasPremiumTurneraAccess ? 'locked' : ''}`}
+              onClick={() => {
+                if (!hasPremiumTurneraAccess) {
+                  setAppError('Las Estadísticas son exclusivas para suscriptores con plan activo. Activá tu suscripción para desbloquearlas.')
+                  return
+                }
+                setTurneraViewMode('stats')
+              }}
+            >
+              📊 Estadísticas{!hasPremiumTurneraAccess ? ' 🔒' : ''}
+            </button>
+            <span className="turnera-view-switch-badge" title="Función premium — incluida en planes con suscripción activa">
+              ⭐ Premium
+            </span>
+          </div>
+
+          {turneraViewMode === 'calendar' && !hasPremiumTurneraAccess ? (
+            <section className="panel turnera-premium-locked">
+              <h3 style={{ marginTop: 0 }}>🔒 Calendario de ocupación — función Premium</h3>
+              <p className="flow-hint">
+                Esta herramienta está disponible para profesionales con suscripción activa (mensual, semestral o anual).
+                Activá o renová tu suscripción para acceder al calendario de ocupación y las estadísticas de atención.
+              </p>
+            </section>
+          ) : null}
+
+          {turneraViewMode === 'calendar' && hasPremiumTurneraAccess ? (
+            <section className="panel turnera-calendar-panel">
+              <div className="turnera-calendar-header">
+                <button
+                  type="button"
+                  className="ghost compact"
+                  onClick={() =>
+                    setCalendarMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
+                  }
+                >
+                  ← Mes anterior
+                </button>
+                <div className="turnera-calendar-title">
+                  <strong style={{ textTransform: 'capitalize' }}>{calendarMonthLabel}</strong>
+                  <span>{calendarMonthTotal} turnos este mes</span>
+                </div>
+                <button
+                  type="button"
+                  className="ghost compact"
+                  onClick={() =>
+                    setCalendarMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
+                  }
+                >
+                  Mes siguiente →
+                </button>
+              </div>
+
+              <div className="turnera-calendar-weekdays">
+                {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((wd) => (
+                  <span key={wd}>{wd}</span>
+                ))}
+              </div>
+
+              <div className="turnera-calendar-grid">
+                {calendarWeeks.flatMap((week, weekIdx) =>
+                  week.map((cell, cellIdx) => {
+                    if (!cell.dateStr) {
+                      return <div key={`${weekIdx}-${cellIdx}`} className="turnera-calendar-cell empty" />
+                    }
+                    const occupancyLevel =
+                      cell.count === 0 ? 'none' : cell.count <= 2 ? 'low' : cell.count <= 5 ? 'mid' : 'high'
+                    return (
+                      <button
+                        type="button"
+                        key={cell.dateStr}
+                        className={`turnera-calendar-cell occupancy-${occupancyLevel} ${cell.isToday ? 'is-today' : ''} ${selectedCalendarDay === cell.dateStr ? 'is-selected' : ''}`}
+                        onClick={() => setSelectedCalendarDay(cell.dateStr)}
+                      >
+                        <span className="turnera-calendar-day-number">{cell.day}</span>
+                        {cell.count > 0 ? <span className="turnera-calendar-day-count">{cell.count}</span> : null}
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+
+              <div className="turnera-calendar-legend">
+                <span><i className="dot occupancy-none" /> Sin turnos</span>
+                <span><i className="dot occupancy-low" /> 1-2 turnos</span>
+                <span><i className="dot occupancy-mid" /> 3-5 turnos</span>
+                <span><i className="dot occupancy-high" /> 6+ turnos</span>
+              </div>
+
+              {selectedCalendarDay ? (
+                <div className="turnera-calendar-day-detail">
+                  <strong>
+                    {formatDate(selectedCalendarDay)}: {appointmentCountByDate.get(selectedCalendarDay) ?? 0} paciente(s) agendado(s)
+                  </strong>
+                  <button
+                    type="button"
+                    className="ghost compact"
+                    onClick={() => {
+                      setAppointmentDateFilter(selectedCalendarDay)
+                      setTurneraViewMode('list')
+                    }}
+                  >
+                    Ver ese día en la lista →
+                  </button>
+                </div>
+              ) : (
+                <p className="flow-hint">Tocá un día para ver cuántos pacientes tenés agendados.</p>
+              )}
+            </section>
+          ) : null}
+
+          {turneraViewMode === 'stats' && !hasPremiumTurneraAccess ? (
+            <section className="panel turnera-premium-locked">
+              <h3 style={{ marginTop: 0 }}>🔒 Estadísticas — función Premium</h3>
+              <p className="flow-hint">
+                Esta herramienta está disponible para profesionales con suscripción activa (mensual, semestral o anual).
+                Activá o renová tu suscripción para acceder al calendario de ocupación y las estadísticas de atención.
+              </p>
+            </section>
+          ) : null}
+
+          {turneraViewMode === 'stats' && hasPremiumTurneraAccess ? (
+            <section className="panel turnera-stats-panel">
+              <h3 style={{ marginTop: 0 }}>📊 Pacientes atendidos por semana</h3>
+              {attendanceWeeklyStats.length > 0 ? (
+                <div className="turnera-bar-chart">
+                  {attendanceWeeklyStats.map((week) => {
+                    const max = Math.max(...attendanceWeeklyStats.map((w) => w.count), 1)
+                    const heightPct = Math.max(6, Math.round((week.count / max) * 100))
+                    return (
+                      <div className="turnera-bar-chart-col" key={week.sortKey}>
+                        <div className="turnera-bar-chart-bar-wrap">
+                          <div className="turnera-bar-chart-bar" style={{ height: `${heightPct}%` }}>
+                            <span>{week.count}</span>
+                          </div>
+                        </div>
+                        <small>{week.label}</small>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="flow-hint">Todavía no hay turnos suficientes para graficar por semana.</p>
+              )}
+
+              <h3>📈 Comparación mensual</h3>
+              {attendanceMonthlyStats.length > 0 ? (
+                <>
+                  <div className="turnera-bar-chart">
+                    {attendanceMonthlyStats.map((month, idx) => {
+                      const max = Math.max(...attendanceMonthlyStats.map((m) => m.count), 1)
+                      const heightPct = Math.max(6, Math.round((month.count / max) * 100))
+                      return (
+                        <div className="turnera-bar-chart-col" key={`${month.label}-${idx}`}>
+                          <div className="turnera-bar-chart-bar-wrap">
+                            <div className="turnera-bar-chart-bar month-bar" style={{ height: `${heightPct}%` }}>
+                              <span>{month.count}</span>
+                            </div>
+                          </div>
+                          <small style={{ textTransform: 'capitalize' }}>{month.label}</small>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {attendanceTrend ? (
+                    <p className={`turnera-trend-note ${attendanceTrend.improving ? 'up' : 'down'}`}>
+                      {attendanceTrend.improving ? '📈' : '📉'} Este mes{' '}
+                      {attendanceTrend.improving ? 'llevás' : 'llevás'}{' '}
+                      {Math.abs(attendanceTrend.diff)} paciente(s) {attendanceTrend.improving ? 'más' : 'menos'} que el mes
+                      anterior ({attendanceTrend.pct >= 0 ? '+' : ''}
+                      {attendanceTrend.pct}%).
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <p className="flow-hint">Todavía no hay turnos suficientes para comparar meses.</p>
+              )}
+            </section>
+          ) : null}
+
+          {turneraViewMode === 'list' ? (
+          <>
           {/* Metrics bar */}
           <div className="turnera-metrics-grid">
             <div className="turnera-metric-card">
@@ -9790,6 +10168,8 @@ function App() {
               </div>
             )}
           </section>
+          </>
+          ) : null}
         </div>
       ) : null}
 
@@ -11468,9 +11848,13 @@ function App() {
                   DNI
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     placeholder="Ej: 32456789"
                     value={appointmentDraft.patientDni}
-                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, patientDni: e.target.value }))}
+                    onChange={(e) =>
+                      setAppointmentDraft((prev) => ({ ...prev, patientDni: e.target.value.replace(/\D/g, '') }))
+                    }
                   />
                 </label>
                 <label style={{ flex: 1.5 }}>
@@ -11481,6 +11865,9 @@ function App() {
                     value={appointmentDraft.patientEmail}
                     onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, patientEmail: e.target.value }))}
                   />
+                  {appointmentDraft.patientEmail.trim() && !isValidEmail(appointmentDraft.patientEmail.trim()) ? (
+                    <span className="field-error-hint">Ingresá un email con formato válido (ej: nombre@dominio.com)</span>
+                  ) : null}
                 </label>
               </div>
 
@@ -11639,6 +12026,21 @@ function App() {
                   value={freeSlotDraft.endTime}
                   onChange={(e) => setFreeSlotDraft((prev) => ({ ...prev, endTime: e.target.value }))}
                 />
+              </label>
+            </div>
+
+            <div className="turnera-form-row">
+              <label style={{ flex: 1 }}>
+                Duración de cada consulta *
+                <select
+                  value={freeSlotDraft.durationMinutes}
+                  onChange={(e) => setFreeSlotDraft((prev) => ({ ...prev, durationMinutes: Number(e.target.value) }))}
+                >
+                  <option value={15}>15 minutos</option>
+                  <option value={30}>30 minutos</option>
+                  <option value={45}>45 minutos</option>
+                  <option value={60}>60 minutos</option>
+                </select>
               </label>
             </div>
 
