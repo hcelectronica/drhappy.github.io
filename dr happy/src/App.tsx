@@ -406,8 +406,10 @@ const USER_ACTIVE_OVERRIDES_KEY = 'drhappy-user-active-overrides'
 const CUSTOM_DIAGNOSIS_STORAGE_KEY = 'drhappy-custom-diagnosis-catalog'
 const DELETED_USER_ARCHIVES_KEY = 'drhappy-deleted-user-archives'
 const INSTALL_PROMPT_DISMISSED_KEY = 'drhappy-install-prompt-dismissed'
+const NOTIFICATION_PROMPT_DISMISSED_KEY = 'drhappy-notification-prompt-dismissed'
 // Cuántos días esperamos antes de volver a ofrecer la instalación tras un "Ahora no".
 const INSTALL_PROMPT_SNOOZE_DAYS = 7
+const NOTIFICATION_PROMPT_SNOOZE_DAYS = 7
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -3818,7 +3820,13 @@ function App() {
     setNotificationPermission(currentPerm)
     if (currentPerm === 'granted') {
       setShowNotificationToast(false)
+      localStorage.removeItem(NOTIFICATION_PROMPT_DISMISSED_KEY)
       void registerPushSubscription(activeUserId)
+      return
+    }
+    const dismissedUntil = Number(localStorage.getItem(NOTIFICATION_PROMPT_DISMISSED_KEY) || '0')
+    if (dismissedUntil > Date.now()) {
+      setShowNotificationToast(false)
       return
     }
     const timer = window.setTimeout(() => {
@@ -3832,6 +3840,7 @@ function App() {
     setNotificationPermission(result)
     if (result === 'granted') {
       setShowNotificationToast(false)
+      localStorage.removeItem(NOTIFICATION_PROMPT_DISMISSED_KEY)
       if (activeUserId) {
         void registerPushSubscription(activeUserId)
       }
@@ -3844,6 +3853,8 @@ function App() {
       setAppError(
         'Las notificaciones figuran bloqueadas en tu navegador. Tocá el candado 🔒 junto a la URL arriba para permitirlas.',
       )
+    } else {
+      setAppNotice('El navegador no mostró el permiso o lo dejaste pendiente. Podés activarlo más tarde desde el candado 🔒 de la barra de direcciones.')
     }
   }
 
@@ -3880,6 +3891,10 @@ function App() {
 
   function handleDismissNotificationToast(): void {
     setShowNotificationToast(false)
+    localStorage.setItem(
+      NOTIFICATION_PROMPT_DISMISSED_KEY,
+      String(Date.now() + NOTIFICATION_PROMPT_SNOOZE_DAYS * 24 * 60 * 60 * 1000),
+    )
   }
 
   useEffect(() => {
@@ -11051,10 +11066,10 @@ function App() {
             {notificationPermission === 'denied' ? (
               <>
                 <p className="center-modal-description">
-                  Las notificaciones están bloqueadas en los ajustes de tu navegador. Para recibir mensajes de colegas, novedades y turnos, desbloquealas en 2 pasos:
+                  Las notificaciones ya fueron bloqueadas por el navegador. Por seguridad, Dr. Happy no puede volver a abrir el permiso automáticamente: hay que desbloquearlo una vez desde el candado o desde ajustes del sistema.
                 </p>
                 <div className="center-modal-instructions-box">
-                  <div>📱 <strong>En Celular (Android/Chrome):</strong> Tocá el candado 🔒 junto a <code>drhappy.com.ar</code> en la barra superior ➔ <em>Permisos / Notificaciones</em> ➔ <strong>Permitir</strong>.</div>
+                  <div>📱 <strong>Android/Chrome:</strong> Tocá el candado 🔒 junto a <code>drhappy.com.ar</code> ➔ <em>Permisos / Notificaciones</em> ➔ <strong>Permitir</strong>. Si no aparece, entrá a <em>Ajustes del sitio</em>.</div>
                   <div>🍎 <strong>En iPhone (iOS):</strong> Abrí <em>Ajustes de iOS</em> ➔ <em>Notificaciones</em> ➔ <em>Dr. Happy</em> ➔ <strong>Permitir</strong>.</div>
                   <div>💻 <strong>En Computadora:</strong> Hacé clic en el candado 🔒 a la izquierda de la URL ➔ <em>Notificaciones</em> ➔ <strong>Permitir</strong>.</div>
                 </div>
@@ -11081,14 +11096,14 @@ function App() {
                     className="secondary-btn"
                     onClick={handleDismissNotificationToast}
                   >
-                    Continuar sin activar por ahora
+                    Entendido, no volver a mostrar por 7 días
                   </button>
                 </div>
               </>
             ) : (
               <>
                 <p className="center-modal-description">
-                  Recibí avisos inmediatos en tu pantalla cuando un colega te envíe un mensaje privado, el administrador publique novedades de guardia o se agende un turno médico.
+                  Recibí avisos inmediatos cuando un colega te envíe un mensaje privado, el administrador publique novedades de guardia o se agende un turno médico. Si el navegador muestra una ventana de permiso, elegí <strong>Permitir</strong>.
                 </p>
                 <div className="center-modal-actions">
                   <button
@@ -11096,14 +11111,14 @@ function App() {
                     className="primary-btn"
                     onClick={() => void handleEnableNotifications()}
                   >
-                    🔔 Activar Notificaciones ahora
+                    🔔 Abrir permiso del navegador
                   </button>
                   <button
                     type="button"
                     className="secondary-btn"
                     onClick={handleDismissNotificationToast}
                   >
-                    Ahora no
+                    Ahora no, recordar en 7 días
                   </button>
                 </div>
               </>
