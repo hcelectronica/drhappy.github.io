@@ -162,6 +162,9 @@ export async function sendAppointmentEmail(params: {
   time: string
   location?: string
   notes?: string
+  amountToCharge?: number
+  amountConcept?: 'sena' | 'consulta'
+  paymentLink?: string
 }): Promise<SendEmailResult> {
   return sendEmail({
     to: params.to,
@@ -175,6 +178,9 @@ export async function sendAppointmentEmail(params: {
       time: params.time,
       location: params.location || 'Consultorio médico',
       notes: params.notes || '',
+      amountToCharge: params.amountToCharge ?? '',
+      amountConcept: params.amountConcept ?? '',
+      paymentLink: params.paymentLink || '',
     },
   })
 }
