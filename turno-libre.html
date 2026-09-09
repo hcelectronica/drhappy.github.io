@@ -109,6 +109,11 @@
     .msg { font-size: 0.92rem; margin-top: 12px; padding: 10px 12px; border-radius: 10px; }
     .msg.err { background: #fdecec; color: var(--err); }
     .msg.ok { background: #e9f8f0; color: var(--ok); }
+    .pay-box { background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 10px; padding: 14px; margin: 12px 0; }
+    .pay-title { margin: 0 0 8px; color: #065f46; font-weight: 700; }
+    .pay-btn { display: inline-block; background: #059669; color: #fff; text-decoration: none; padding: 11px 24px; border-radius: 8px; font-weight: 700; }
+    .pay-alias { margin: 6px 0; color: #065f46; font-family: monospace; font-size: 15px; }
+    .pay-note { margin: 8px 0 0; color: #065f46; font-size: 12px; }
     .hidden { display: none !important; }
     .spinner { text-align: center; color: var(--muted); padding: 30px 0; }
   </style>
@@ -127,6 +132,7 @@
         <h2 id="professional-name">Turno médico</h2>
         <p id="link-date"></p>
         <p id="link-location"></p>
+        <div id="link-payment" class="pay-box hidden"></div>
         <div class="slots" id="slots"></div>
       </div>
 
@@ -230,12 +236,37 @@
           : 'Turno médico disponible';
         el('link-date').textContent = '📅 ' + formatDate(link.slotDate);
         el('link-location').textContent = link.location ? '📍 ' + link.location : '';
+        renderPayment(link);
         renderSlots(result.data.slots);
         el('loading').classList.add('hidden');
         el('content').classList.remove('hidden');
       }).catch(function () {
         showError('No pudimos conectar con el servidor. Probá de nuevo en unos minutos.');
       });
+    }
+
+    function renderPayment(link) {
+      var box = el('link-payment');
+      var amount = Number(link.amountToCharge);
+      if (!isFinite(amount) || amount <= 0) {
+        box.classList.add('hidden');
+        return;
+      }
+      var label = link.amountConcept === 'sena' ? 'Seña para reservar' : 'Valor de la consulta';
+      var formatted = amount.toLocaleString('es-AR');
+      var raw = (link.paymentLink || '').trim();
+      // Un alias/CBU no es navegable: sólo generamos botón si es una URL real.
+      var isUrl = /^https?:\/\//i.test(raw) || /^[\w-]+(\.[\w-]+)+\//.test(raw);
+      var href = isUrl ? (/^https?:\/\//i.test(raw) ? raw : 'https://' + raw) : '';
+      var html = '<p class="pay-title">💳 ' + label + ': $' + formatted + '</p>';
+      if (href) {
+        html += '<a class="pay-btn" href="' + href + '" target="_blank" rel="noopener">Pagar ahora</a>';
+      } else if (raw) {
+        html += '<p class="pay-alias">Podés transferir a: <strong>' + raw + '</strong></p>';
+      }
+      html += '<p class="pay-note">El pago se realiza directamente al profesional. Dr Happy no participa de la transacción.</p>';
+      box.innerHTML = html;
+      box.classList.remove('hidden');
     }
 
     el('confirm-btn').addEventListener('click', function () {
@@ -281,7 +312,13 @@
           return;
         }
         msgBox.className = 'msg ok';
-        msgBox.textContent = '¡Turno confirmado para las ' + result.data.appointment.time + ' hs! Guardá este mensaje como comprobante.';
+        var okText = '¡Turno confirmado para las ' + result.data.appointment.time + ' hs! Guardá este mensaje como comprobante.';
+        var apptAmount = Number(result.data.appointment.amountToCharge);
+        if (isFinite(apptAmount) && apptAmount > 0) {
+          var apptLabel = result.data.appointment.amountConcept === 'sena' ? 'la seña' : 'la consulta';
+          okText += ' Recordá que ' + apptLabel + ' es de $' + apptAmount.toLocaleString('es-AR') + '.';
+        }
+        msgBox.textContent = okText;
         el('confirm-btn').classList.add('hidden');
         Array.prototype.forEach.call(document.querySelectorAll('#form-card input'), function (input) {
           input.disabled = true;
