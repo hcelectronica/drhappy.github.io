@@ -47,6 +47,7 @@ import {
 } from './authService'
 import type { AuthProfessionalPublic } from './authService'
 import { CLINICAL_PROTOCOLS } from './clinicalProtocols'
+import { CONSULT_PATHOLOGIES } from './consultPathologies'
 import AuthBackground from './AuthBackground'
 import SplashScreen from './SplashScreen'
 import diagnosisCsv from '../cie-10.csv?raw'
@@ -62,6 +63,7 @@ type WorkspaceLayer =
   | 'tools'
   | 'medication-detail'
   | 'protocol-detail'
+  | 'consult-pathology-detail'
   | 'ambulance'
   | 'ambulance-history'
   | 'appointments'
@@ -2277,10 +2279,11 @@ function App() {
   const [vademecumSearchQuery, setVademecumSearchQuery] = useState('')
   const [selectedMedicationId, setSelectedMedicationId] = useState<string | null>(null)
 
-  const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum'>('protocols')
+  const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult'>('protocols')
   const [protocolSearchQuery, setProtocolSearchQuery] = useState('')
   const [protocolCategoryFilter, setProtocolCategoryFilter] = useState<string>('all')
   const [selectedProtocolId, setSelectedProtocolId] = useState<string | null>(null)
+  const [selectedConsultPathologyId, setSelectedConsultPathologyId] = useState<string | null>(null)
   const [selectedProtocolTab, setSelectedProtocolTab] = useState<
     'prehospital' | 'diagnostic' | 'management' | 'window' | 'prognosis'
   >('prehospital')
@@ -2586,6 +2589,11 @@ function App() {
   const selectedProtocol = useMemo(
     () => CLINICAL_PROTOCOLS.find((p) => p.id === selectedProtocolId) ?? null,
     [selectedProtocolId],
+  )
+
+  const selectedConsultPathology = useMemo(
+    () => CONSULT_PATHOLOGIES.find((entry) => entry.id === selectedConsultPathologyId) ?? null,
+    [selectedConsultPathologyId],
   )
 
   const handleCopyProtocolAction = (template: string, toConsultation = false) => {
@@ -8509,6 +8517,13 @@ function App() {
             >
               💊 Vademécum farmacológico
             </button>
+            <button
+              type="button"
+              className={`protocol-tab-btn ${toolsActiveTab === 'consult' ? 'active' : ''}`}
+              onClick={() => setToolsActiveTab('consult')}
+            >
+              🩺 Patologías en consultorio
+            </button>
           </div>
 
           <section className="workspace single-column">
@@ -8613,6 +8628,62 @@ function App() {
                   )}
                 </div>
               </section>
+            ) : toolsActiveTab === 'consult' ? (
+              <section className="panel">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 16 }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-heading, #1e3a8a)' }}>
+                      Patologías en consultorio, diagnóstico y tratamiento
+                    </h3>
+                    <small style={{ color: '#64748b' }}>
+                      Fichas prácticas para consultorio: sospecha, confirmación, tratamiento, seguimiento y derivación.
+                    </small>
+                  </div>
+                  <span className="protocol-badge-category">
+                    Prototipo · {CONSULT_PATHOLOGIES.length} ficha
+                  </span>
+                </div>
+
+                <div className="protocol-cards-grid">
+                  {CONSULT_PATHOLOGIES.map((entry) => (
+                    <article
+                      key={entry.id}
+                      className="protocol-card-item"
+                      onClick={() => {
+                        setSelectedConsultPathologyId(entry.id)
+                        setWorkspaceLayer('consult-pathology-detail')
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                        <span className="protocol-badge-category">{entry.specialty}</span>
+                        <span className={entry.priority === 'Alta' ? 'protocol-badge-red' : 'protocol-badge-yellow'}>
+                          Prioridad {entry.priority}
+                        </span>
+                      </div>
+                      <h4 style={{ margin: '2px 0 0', color: '#1e3a8a', fontSize: '1.05rem', lineHeight: 1.35 }}>
+                        {entry.title}
+                      </h4>
+                      <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                        CIE-10: {entry.cie10}
+                      </span>
+                      <p style={{ margin: '2px 0', fontSize: '0.87rem', color: '#334155', lineHeight: 1.45, flex: 1 }}>
+                        {entry.summary}
+                      </p>
+                      <div style={{ background: 'var(--surface-muted, #f8fafc)', border: '1px solid var(--border, #e2e8f0)', borderRadius: 8, padding: '8px 10px', fontSize: '0.82rem', color: '#475569' }}>
+                        <strong style={{ color: 'var(--text-heading, #0f172a)' }}>🧭 Clave de consultorio:</strong>
+                        <div style={{ marginTop: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {entry.suspicion.keyClues[0]}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                        <span style={{ fontSize: '0.85rem', color: '#2563eb', fontWeight: 700 }}>
+                          Ver ficha completa →
+                        </span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
             ) : (
               <section className="panel">
                 <h3>Vademécum Farmacológico</h3>
@@ -8682,6 +8753,201 @@ function App() {
               </section>
             )}
           </section>
+        </div>
+      ) : null}
+
+      {workspaceLayer === 'consult-pathology-detail' ? (
+        <div className="screen-stage">
+          <section className="panel layer-header">
+            <div>
+              <h2>Patología en Consultorio</h2>
+              <p className="flow-hint">Diagnóstico, tratamiento, seguimiento y criterios de derivación.</p>
+            </div>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                setWorkspaceLayer('tools')
+                setToolsActiveTab('consult')
+              }}
+            >
+              Volver a Patologías
+            </button>
+          </section>
+
+          {selectedConsultPathology ? (
+            <section className="workspace single-column">
+              <section className="panel">
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)', border: '1px solid #bfdbfe', borderRadius: 16, padding: 18 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                      <span className="protocol-badge-category">{selectedConsultPathology.specialty}</span>
+                      <span className={selectedConsultPathology.priority === 'Alta' ? 'protocol-badge-red' : 'protocol-badge-yellow'}>
+                        Prioridad {selectedConsultPathology.priority}
+                      </span>
+                    </div>
+                    <h1 style={{ margin: '0 0 6px', color: '#0f172a', fontSize: '1.55rem' }}>
+                      {selectedConsultPathology.title}
+                    </h1>
+                    <p style={{ margin: 0, color: '#475569', fontWeight: 700 }}>CIE-10: {selectedConsultPathology.cie10}</p>
+                    <p style={{ margin: '10px 0 0', color: '#334155', lineHeight: 1.55 }}>
+                      {selectedConsultPathology.summary}
+                    </p>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>🧭 Cuándo sospecharla en consultorio</h4>
+                    <p style={{ marginTop: 0, color: '#475569', lineHeight: 1.5 }}>
+                      {selectedConsultPathology.suspicion.typicalContext}
+                    </p>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#334155', lineHeight: 1.55 }}>
+                      {selectedConsultPathology.suspicion.keyClues.map((item, idx) => (
+                        <li key={idx} style={{ marginBottom: 5 }}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="protocol-redflag-box">
+                    <strong style={{ color: '#991b1b', display: 'block', marginBottom: 8 }}>
+                      ⚠️ Banderas rojas: derivar o actuar hoy
+                    </strong>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#7f1d1d', lineHeight: 1.55 }}>
+                      {selectedConsultPathology.suspicion.redFlags.map((item, idx) => (
+                        <li key={idx} style={{ marginBottom: 5 }}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+                    <div className="protocol-section-box">
+                      <h4>🔎 Confirmación diagnóstica</h4>
+                      <ul style={{ margin: 0, paddingLeft: 20, color: '#334155', lineHeight: 1.55 }}>
+                        {selectedConsultPathology.diagnosis.officeConfirmation.map((item, idx) => (
+                          <li key={idx} style={{ marginBottom: 5 }}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="protocol-section-box">
+                      <h4>🧪 Estudios iniciales</h4>
+                      <ul style={{ margin: 0, paddingLeft: 20, color: '#334155', lineHeight: 1.55 }}>
+                        {selectedConsultPathology.diagnosis.initialStudies.map((item, idx) => (
+                          <li key={idx} style={{ marginBottom: 5 }}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>💚 Tratamiento no farmacológico</h4>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#334155', lineHeight: 1.55 }}>
+                      {selectedConsultPathology.treatment.nonPharmacological.map((item, idx) => (
+                        <li key={idx} style={{ marginBottom: 5 }}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="protocol-section-box" style={{ background: '#f0fdf4', borderColor: '#bbf7d0' }}>
+                    <h4 style={{ color: '#166534' }}>💊 Tratamiento farmacológico inicial</h4>
+                    <ul style={{ margin: '0 0 12px', paddingLeft: 20, color: '#14532d', lineHeight: 1.55 }}>
+                      {selectedConsultPathology.treatment.firstLine.map((item, idx) => (
+                        <li key={idx} style={{ marginBottom: 5 }}>{item}</li>
+                      ))}
+                    </ul>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="protocol-med-table">
+                        <thead>
+                          <tr>
+                            <th>Fármaco</th>
+                            <th>Dosis orientativa</th>
+                            <th>Perla clínica</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedConsultPathology.treatment.pharmacologicalOptions.map((item) => (
+                            <tr key={item.drug}>
+                              <td><strong>{item.drug}</strong></td>
+                              <td>{item.dose}</td>
+                              <td>{item.notes}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+                    <div className="protocol-section-box" style={{ background: '#fff7ed', borderColor: '#fed7aa' }}>
+                      <h4 style={{ color: '#9a3412' }}>🚫 Errores frecuentes / precauciones</h4>
+                      <ul style={{ margin: 0, paddingLeft: 20, color: '#7c2d12', lineHeight: 1.55 }}>
+                        {selectedConsultPathology.treatment.avoidOrUseWithCaution.map((item, idx) => (
+                          <li key={idx} style={{ marginBottom: 5 }}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="protocol-section-box">
+                      <h4>📌 Diagnósticos diferenciales</h4>
+                      <ul style={{ margin: 0, paddingLeft: 20, color: '#334155', lineHeight: 1.55 }}>
+                        {selectedConsultPathology.diagnosis.differentialDiagnosis.map((item, idx) => (
+                          <li key={idx} style={{ marginBottom: 5 }}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>📅 Seguimiento, objetivos y derivación</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+                      {[
+                        ['Objetivos', selectedConsultPathology.followUp.goals],
+                        ['Monitoreo', selectedConsultPathology.followUp.monitoring],
+                        ['Derivar si', selectedConsultPathology.followUp.referralCriteria],
+                      ].map(([title, items]) => (
+                        <div key={title as string} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 12 }}>
+                          <strong style={{ color: '#0f172a' }}>{title as string}</strong>
+                          <ul style={{ margin: '8px 0 0', paddingLeft: 18, color: '#334155', lineHeight: 1.5 }}>
+                            {(items as string[]).map((item, idx) => (
+                              <li key={idx} style={{ marginBottom: 4 }}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="protocol-section-box" style={{ background: '#eef2ff', borderColor: '#c7d2fe' }}>
+                    <h4 style={{ color: '#3730a3' }}>🗣️ Mensaje breve para el paciente</h4>
+                    <p style={{ margin: 0, color: '#312e81', lineHeight: 1.55 }}>
+                      “{selectedConsultPathology.patientMessage}”
+                    </p>
+                  </div>
+
+                  <div className="protocol-section-box">
+                    <h4>📚 Base de fuentes internacionales</h4>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: '#475569', lineHeight: 1.5 }}>
+                      {selectedConsultPathology.sourceBasis.map((item, idx) => (
+                        <li key={idx} style={{ marginBottom: 4 }}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <button
+                    type="button"
+                    style={{ justifySelf: 'start', background: '#1d4ed8', color: '#fff', fontSize: '0.92rem', padding: '10px 14px', borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                    onClick={() => {
+                      navigator.clipboard?.writeText(selectedConsultPathology.actionCopyTemplate)
+                      showSavedFloatingNotice('Conducta de consultorio copiada')
+                    }}
+                  >
+                    📋 Copiar conducta para historia clínica
+                  </button>
+                </div>
+              </section>
+            </section>
+          ) : (
+            <section className="panel">
+              <p className="flow-hint">La ficha ya no está disponible. Vuelve al listado de patologías.</p>
+            </section>
+          )}
         </div>
       ) : null}
 
