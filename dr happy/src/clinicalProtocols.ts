@@ -2,7 +2,7 @@ export interface ClinicalProtocol {
   id: string
   title: string
   shortTitle: string
-  category: 'Pediatría' | 'Cardiovascular' | 'Neurológico' | 'Respiratorio' | 'Trauma' | 'Infeccioso / Shock' | 'Inmunológico / Alergia' | 'Metabólico' | 'Toxicología' | 'Psiquiátrico'
+  category: 'Pediatría' | 'Cardiovascular' | 'Neurológico' | 'Respiratorio' | 'Trauma' | 'Infeccioso / Shock' | 'Inmunológico / Alergia' | 'Metabólico' | 'Toxicología' | 'Psiquiátrico' | 'Obstétrico'
   cie10: string
   severity: 'Crítica / Código Rojo' | 'Urgencia / Código Amarillo' | 'Prioritaria'
   summary: string
@@ -3160,5 +3160,466 @@ export const CLINICAL_PROTOCOLS: ClinicalProtocol[] = [
       ]
     },
     actionCopyTemplate: 'PACIENTE CON SHOCK MEDULAR / LESIÓN MEDULAR AGUDA. Mecanismo: [Tránsito / Caída ___ m / Zambullida / Arma ___ / Otro: ___]. Nivel de lesión estimado: ___ · Déficit: [Paraparesia / Cuadriparesia / ASIA ___]. Signos vitales: PAS ___ · FC ___ (¿hipotensión + bradicardia?) · SatO2 ___ %. Conducta INMEDIATA: Inmovilización espinal completa [collar + tabla]. Vía aérea: [Conservada / Intubación con estabilización manual]. Perfusión medular: [SF bolos ___ ml + Noradrenalina ___ mcg/kg/min → PAM objetivo 85-90]. Bradicardia: [Atropina ___ mg IV / No]. ECG: ___. TC columna: ___. Neurocirugía: [Notificada / Descompresión indicada]. Destino: [UCI trauma / Centro de lesados medulares]. Profilaxis TEV: [Sí].'
+  },
+  {
+    id: 'eclampsia-preeclampsia-severa',
+    title: 'Preeclampsia Severa / Eclampsia',
+    shortTitle: 'Eclampsia',
+    category: 'Obstétrico',
+    cie10: 'O14.1 / O15',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Hipertensión del embarazo con daño de órgano blanco y/o convulsiones. Prioridad: ABC materno, sulfato de magnesio, control de TA severa y resolución obstétrica según estado materno-fetal.',
+    prehospitalManifestations: {
+      setting: 'Gestante mayor de 20 semanas o puérpera con cefalea intensa, fosfenos, epigastralgia, hipertensión o convulsiones.',
+      keySigns: ['TA ≥ 160/110 mmHg o hipertensión con síntomas neurológicos.', 'Cefalea, alteraciones visuales, hiperreflexia/clonus.', 'Dolor epigástrico o hipocondrio derecho: sospechar HELLP.', 'Convulsión tónico-clónica sin otra causa evidente.'],
+      highSuspicionRedFlags: ['Convulsión activa o repetida.', 'Disnea, edema pulmonar, oliguria o alteración del sensorio.', 'TA severa persistente.', 'Sangrado o dolor abdominal intenso compatible con desprendimiento placentario.']
+    },
+    diagnosticAlgorithm: {
+      initialSteps: ['ABCDE materno, decúbito lateral izquierdo y prevención de aspiración.', 'Confirmar edad gestacional, síntomas de severidad y movimientos fetales.', 'No retrasar magnesio si hay eclampsia o alto riesgo.'],
+      electrocardiogram: ['Monitor/ECG si dolor torácico, disnea, arritmia o uso de antihipertensivos IV.'],
+      biomarkersAndLabs: ['Hemograma/plaquetas, creatinina, GOT/GPT, LDH, bilirrubina y coagulograma.', 'Proteinuria o relación proteína/creatinina.', 'Evaluación fetal cuando la madre esté estabilizada.'],
+      differentialDiagnosis: ['Epilepsia previa.', 'Hipoglucemia.', 'ACV/hemorragia cerebral.', 'Trombosis venosa cerebral.', 'Intoxicación o abstinencia.']
+    },
+    management: {
+      prehospitalAmbulance: ['Posición lateral izquierda, oxígeno si SatO2 < 94%, aspiración disponible.', 'Sulfato de magnesio 4-6 g IV en 15-20 min si convulsión/eclampsia o alto riesgo.', 'Proteger de traumatismos; benzodiacepina solo si convulsión persiste pese a magnesio.', 'Controlar TA severa según disponibilidad y trasladar a maternidad con UCI/quirófano.'],
+      emergencyRoomShockRoom: ['Magnesio carga + mantenimiento 1-2 g/h; controlar reflejos, FR y diuresis.', 'Bajar TA severa con objetivo inicial <160/110 evitando hipotensión brusca.', 'Laboratorio HELLP/coagulopatía y monitoreo materno-fetal.', 'Definir interrupción del embarazo tras estabilización si corresponde.'],
+      initialPharmacotherapy: [
+        { drug: 'Sulfato de magnesio', dose: '4-6 g IV carga, luego 1-2 g/h', route: 'IV', notes: 'Elección para tratar/prevenir convulsiones eclámpticas.' },
+        { drug: 'Gluconato de calcio', dose: '1 g IV lento', route: 'IV', notes: 'Antídoto ante toxicidad por magnesio.' },
+        { drug: 'Labetalol', dose: '20 mg IV, repetir/escalar según TA', route: 'IV', notes: 'Evitar en asma grave o bradicardia.' },
+        { drug: 'Nifedipina', dose: '10 mg VO, repetir a 20 min si persiste TA severa', route: 'VO', notes: 'Alternativa si no hay acceso IV inmediato.' }
+      ]
+    },
+    therapeuticWindow: {
+      timeframe: 'Control de convulsión y TA severa en minutos; resolución obstétrica una vez estabilizada la madre.',
+      goldStandard: 'Sulfato de magnesio + control de TA + estabilización materna + decisión obstétrica en centro resolutivo.',
+      alternativeReperfusion: 'No aplica reperfusión; estabilizar y trasladar con magnesio si no hay maternidad resolutiva.',
+      contraindications: ['No demorar magnesio esperando laboratorio.', 'Evitar descensos bruscos de TA.', 'No usar diuréticos de rutina salvo edema pulmonar.']
+    },
+    evidenceAndPrognosis: {
+      survivalAt6h: 'Alta si se controla convulsión y TA; riesgo inmediato de ACV, aspiración y edema pulmonar.',
+      survivalAt24h: 'Depende de HELLP, coagulopatía y acceso a resolución obstétrica.',
+      survivalAt7d: 'La vigilancia puerperal continúa por riesgo de hipertensión/eclampsia tardía.',
+      survivalAt1y: 'Mayor riesgo cardiovascular futuro: requiere seguimiento.',
+      immediateComplications: ['ACV hemorrágico/isquémico.', 'Edema agudo de pulmón.', 'HELLP/DIC/falla renal.', 'Desprendimiento placentario.'],
+      mediateAndLongTermComplications: ['Hipertensión crónica.', 'Enfermedad renal/cardiovascular futura.', 'TEPT pos evento obstétrico crítico.']
+    },
+    actionCopyTemplate: 'PREECLAMPSIA SEVERA/ECLAMPSIA. EG ___ sem. TA ___/___, síntomas: ___. Convulsión: [sí/no]. Conducta: DLI + ABCDE + MgSO4 ___ g IV + antihipertensivo ___ + labs HELLP + evaluación fetal + obstetricia/UCI.'
+  },
+  {
+    id: 'hemorragia-obstetrica-mayor',
+    title: 'Hemorragia Obstétrica Mayor (Anteparto / Postparto)',
+    shortTitle: 'Hemorragia Obstétrica',
+    category: 'Obstétrico',
+    cie10: 'O44 / O45 / O72',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Sangrado obstétrico con riesgo de shock hemorrágico materno y compromiso fetal. Incluye placenta previa, DPPNI, rotura uterina y hemorragia postparto por atonía, retención, trauma o coagulopatía.',
+    prehospitalManifestations: {
+      setting: 'Gestante con sangrado vaginal abundante o puérpera con sangrado excesivo tras parto/cesárea.',
+      keySigns: ['Taquicardia, palidez, hipotensión tardía y relleno capilar lento.', 'Placenta previa: sangrado rojo indoloro.', 'DPPNI: dolor intenso, útero hipertónico y sufrimiento fetal.', 'Postparto: útero blando sugiere atonía.'],
+      highSuspicionRedFlags: ['Shock o sangrado que empapa compresas rápidamente.', 'Dolor abdominal continuo + hipertonía uterina.', 'Sangrado por sitios de punción: DIC.', 'No hacer tacto vaginal si se sospecha placenta previa.']
+    },
+    diagnosticAlgorithm: {
+      initialSteps: ['ABCDE, cuantificar sangrado y signos de shock.', 'Dos vías gruesas, grupo/Rh y activar protocolo de hemorragia masiva.', 'Postparto: buscar 4T: Tone, Tissue, Trauma, Thrombin.'],
+      electrocardiogram: ['Monitor cardíaco continuo si shock/anemia aguda.'],
+      biomarkersAndLabs: ['Hemograma seriado, coagulograma, fibrinógeno, lactato y gases.', 'Pruebas cruzadas y hemoderivados.', 'Ecografía sin demorar reanimación.'],
+      differentialDiagnosis: ['Placenta previa.', 'DPPNI.', 'Rotura uterina.', 'Atonía uterina.', 'Retención placentaria/laceraciones/coagulopatía.']
+    },
+    management: {
+      prehospitalAmbulance: ['Decúbito lateral izquierdo, oxígeno si hipoxemia y normotermia.', 'Dos vías gruesas; cristaloides tibios mientras se prepara sangre.', 'Masaje uterino si postparto con útero atónico.', 'Traslado urgente a maternidad con banco de sangre/quirófano y preaviso.'],
+      emergencyRoomShockRoom: ['Transfusión masiva balanceada si shock.', 'Postparto: masaje uterino + uterotónicos + ácido tranexámico precoz.', 'Si no controla: balón intrauterino, suturas compresivas, embolización o cirugía.', 'Anteparto severo: estabilización materna y resolución obstétrica.'],
+      initialPharmacotherapy: [
+        { drug: 'Oxitocina', dose: '10 UI IM o 5 UI IV lenta + infusión 20-40 UI/L', route: 'IM/IV', notes: 'Primera línea en atonía uterina.' },
+        { drug: 'Ácido tranexámico', dose: '1 g IV en 10 min; repetir 1 g si persiste', route: 'IV', notes: 'Mayor beneficio dentro de las primeras 3 h del parto.' },
+        { drug: 'Misoprostol', dose: '800-1000 mcg', route: 'Rectal/sublingual', notes: 'Coadyuvante si faltan uterotónicos.' },
+        { drug: 'Hemoderivados', dose: 'Según protocolo masivo', route: 'IV', notes: 'Transfundir por clínica si shock; no esperar Hb.' }
+      ]
+    },
+    therapeuticWindow: {
+      timeframe: 'Minutos: la mortalidad por hemorragia es prevenible con reanimación y hemostasia precoz.',
+      goldStandard: 'Código hemorragia obstétrica + control de causa + transfusión balanceada + uterotónicos/TXA.',
+      alternativeReperfusion: 'Traslado medicalizado si no hay sangre/quirófano, con reanimación en curso.',
+      contraindications: ['No tacto vaginal ante sospecha de placenta previa.', 'No retrasar transfusión si shock.', 'Evitar hipotermia, acidosis e hipocalcemia.']
+    },
+    evidenceAndPrognosis: {
+      survivalAt6h: 'Depende del control rápido de sangrado y reposición hemostática.',
+      survivalAt24h: 'Riesgo de DIC, falla renal, SDRA y cirugía radical.',
+      survivalAt7d: 'Vigilar anemia, infección, trombosis y salud mental posparto.',
+      survivalAt1y: 'Pronóstico bueno si se evita shock prolongado; impacto reproductivo si histerectomía.',
+      immediateComplications: ['Shock hemorrágico.', 'DIC.', 'Hipoxia/muerte fetal.', 'Paro cardiorrespiratorio materno.'],
+      mediateAndLongTermComplications: ['Anemia severa.', 'Síndrome de Sheehan.', 'Infertilidad si histerectomía.', 'TEPT posparto.']
+    },
+    actionCopyTemplate: 'HEMORRAGIA OBSTÉTRICA MAYOR. EG/posparto: ___. Sangrado estimado ___ ml. TA/FC ___. Sospecha: ___. Conducta: ABCDE + 2 vías + código hemorragia + TXA ___ + oxitocina ___ + hemoderivados ___ + obstetricia/quirófano.'
+  },
+  {
+    id: 'embarazo-ectopico-roto',
+    title: 'Embarazo Ectópico Roto',
+    shortTitle: 'Ectópico Roto',
+    category: 'Obstétrico',
+    cie10: 'O00.9',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Rotura de embarazo extrauterino con hemoperitoneo y shock hemorrágico. Toda mujer en edad fértil con dolor abdominal, síncope o shock debe considerarse embarazada hasta demostrar lo contrario.',
+    prehospitalManifestations: {
+      setting: 'Mujer en edad fértil con atraso menstrual, dolor pélvico súbito, metrorragia escasa, lipotimia o shock.',
+      keySigns: ['Dolor unilateral o difuso con defensa.', 'Sangrado vaginal escaso: la hemorragia principal es interna.', 'Dolor referido a hombro por irritación diafragmática.', 'Síncope, palidez, taquicardia e hipotensión.'],
+      highSuspicionRedFlags: ['Shock + test embarazo positivo.', 'Dolor de hombro + abdomen agudo.', 'DIU, antecedente de ectópico, EPI o cirugía tubaria.', 'FAST con líquido libre.']
+    },
+    diagnosticAlgorithm: {
+      initialSteps: ['ABCDE y reanimación de shock; activar ginecología.', 'Test de embarazo rápido/β-hCG urgente.', 'Eco FAST/transvaginal si disponible sin retrasar quirófano si inestable.'],
+      electrocardiogram: ['Monitor por shock hemorrágico.'],
+      biomarkersAndLabs: ['β-hCG cuantitativa, hemograma, grupo/Rh, pruebas cruzadas, coagulograma y lactato.', 'Reservar hemoderivados si inestable.'],
+      differentialDiagnosis: ['Quiste ovárico roto/torsión.', 'Aborto en curso.', 'Apendicitis/cólico renal/EPI.', 'Trauma abdominal oculto.']
+    },
+    management: {
+      prehospitalAmbulance: ['Oxígeno si hipoxemia y dos vías gruesas.', 'Cristaloides tibios titulados mientras se consigue sangre/cirugía.', 'Traslado urgente a centro con ginecología, quirófano y banco de sangre.', 'Preaviso como shock hemorrágico gineco-obstétrico.'],
+      emergencyRoomShockRoom: ['Ginecología/cirugía inmediata: laparoscopia o laparotomía según estabilidad.', 'Transfusión temprana si shock; no demorar por estudios.', 'Anti-D si Rh negativo.', 'Analgesia titulada y control hemodinámico continuo.'],
+      initialPharmacotherapy: [
+        { drug: 'Hemoderivados', dose: 'Según protocolo de hemorragia masiva', route: 'IV', notes: 'Clave si shock por hemoperitoneo.' },
+        { drug: 'Ácido tranexámico', dose: '1 g IV', route: 'IV', notes: 'Coadyuvante en hemorragia severa; no reemplaza cirugía.' },
+        { drug: 'Inmunoglobulina anti-D', dose: 'Según EG/protocolo local', route: 'IM', notes: 'Paciente Rh negativa no sensibilizada.' }
+      ]
+    },
+    therapeuticWindow: {
+      timeframe: 'Minutos-horas: la demora quirúrgica aumenta mortalidad por hemorragia interna.',
+      goldStandard: 'Reanimación + sangre disponible + cirugía urgente.',
+      alternativeReperfusion: 'Metotrexato solo en ectópico no roto y estable; contraindicado en shock/rotura.',
+      contraindications: ['No metotrexato si inestable.', 'No descartar por sangrado escaso.', 'No demorar quirófano por β-hCG seriadas si shock.']
+    },
+    evidenceAndPrognosis: {
+      survivalAt6h: 'Excelente con cirugía/transfusión precoz; mala si shock no reconocido.',
+      survivalAt24h: 'Riesgo de anemia, coagulopatía y salpingectomía.',
+      survivalAt7d: 'Control de β-hCG y recuperación quirúrgica.',
+      survivalAt1y: 'Mayor riesgo de nuevo ectópico; requiere consejería reproductiva.',
+      immediateComplications: ['Shock hemorrágico.', 'Paro hipovolémico.', 'Coagulopatía.', 'Pérdida tubaria.'],
+      mediateAndLongTermComplications: ['Subfertilidad.', 'Recurrencia.', 'Impacto emocional por pérdida gestacional.']
+    },
+    actionCopyTemplate: 'SOSPECHA ECTÓPICO ROTO. FUM ___, β-hCG/test ___. Dolor ___, sangrado ___, TA/FC ___. FAST/eco ___. Conducta: 2 vías + sangre + gineco/quirófano + anti-D si Rh-.'
+  },
+  {
+    id: 'sepsis-obstetrica-aborto-septico',
+    title: 'Sepsis Obstétrica / Aborto Séptico',
+    shortTitle: 'Sepsis Obstétrica',
+    category: 'Obstétrico',
+    cie10: 'O85 / O08.0',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Infección durante embarazo, aborto o puerperio con disfunción orgánica. Requiere antibióticos en la primera hora, fluidos, vasopresores si shock y control de foco obstétrico.',
+    prehospitalManifestations: {
+      setting: 'Gestante/puérpera o postaborto con fiebre, dolor pélvico, flujo fétido, sangrado, hipotensión o confusión.',
+      keySigns: ['Fiebre o hipotermia, taquicardia y taquipnea.', 'Dolor uterino/pélvico, loquios fétidos o restos ovulares.', 'Hipotensión, piel moteada, oliguria o alteración mental.', 'Antecedente de aborto inseguro, cesárea, parto reciente o RPM.'],
+      highSuspicionRedFlags: ['Shock séptico o lactato elevado.', 'Dolor desproporcionado/crepitación/necrosis.', 'Sangrado con coagulopatía.', 'Disfunción renal, respiratoria o neurológica.']
+    },
+    diagnosticAlgorithm: {
+      initialSteps: ['ABCDE y score de sepsis obstétrica.', 'Hemocultivos si no demoran antibióticos.', 'Identificar foco uterino, urinario, respiratorio o herida.'],
+      electrocardiogram: ['Monitor por shock, fiebre y vasopresores.'],
+      biomarkersAndLabs: ['Lactato, hemograma, función renal/hepática, coagulograma, gases y cultivos.', 'Urocultivo y cultivo cervical/loquios si disponible.', 'Eco para restos/absceso cuando esté estable.'],
+      differentialDiagnosis: ['Pielonefritis del embarazo.', 'Corioamnionitis.', 'Endometritis puerperal.', 'Apendicitis/peritonitis no obstétrica.']
+    },
+    management: {
+      prehospitalAmbulance: ['Oxígeno, dos vías y cristaloides 30 ml/kg si hipotensión o mala perfusión.', 'Antibiótico precoz si protocolo prehospitalario lo permite.', 'Traslado a centro obstétrico con UCI/quirófano y preaviso sepsis obstétrica.', 'Madre primero: estabilizar a la madre mejora supervivencia fetal.'],
+      emergencyRoomShockRoom: ['Bundle primera hora: lactato, cultivos, antibióticos, fluidos y vasopresores si PAM <65.', 'Control de foco: evacuación uterina, drenaje o cirugía según causa.', 'Noradrenalina si shock refractario a fluidos.', 'Monitoreo materno-fetal y UCI.'],
+      initialPharmacotherapy: [
+        { drug: 'Ampicilina + Gentamicina + Clindamicina', dose: 'Según peso/función renal', route: 'IV', notes: 'Esquema clásico para sepsis puerperal/aborto séptico.' },
+        { drug: 'Piperacilina-tazobactam', dose: '4.5 g c/6-8 h', route: 'IV', notes: 'Alternativa amplia según protocolo local.' },
+        { drug: 'Noradrenalina', dose: '0.05-0.5 mcg/kg/min', route: 'IV', notes: 'Shock séptico refractario a fluidos.' }
+      ]
+    },
+    therapeuticWindow: {
+      timeframe: 'Antibióticos dentro de la primera hora en shock séptico.',
+      goldStandard: 'Bundle sepsis + antibióticos amplio espectro + control de foco obstétrico.',
+      alternativeReperfusion: 'Traslado con antibióticos/fluidos si no hay capacidad quirúrgica.',
+      contraindications: ['No esperar cultivos para antibióticos si shock.', 'No demorar control de foco.', 'No priorizar feto sobre estabilización materna.']
+    },
+    evidenceAndPrognosis: {
+      survivalAt6h: 'Mejora con antibióticos y reanimación precoz.',
+      survivalAt24h: 'Depende de control de foco y disfunción orgánica.',
+      survivalAt7d: 'Riesgo de falla renal, DIC, SDRA e histerectomía.',
+      survivalAt1y: 'Posibles secuelas reproductivas y emocionales.',
+      immediateComplications: ['Shock séptico.', 'DIC.', 'Falla multiorgánica.', 'Muerte fetal.'],
+      mediateAndLongTermComplications: ['Infertilidad si daño uterino/histerectomía.', 'TEPT.', 'Insuficiencia renal residual.']
+    },
+    actionCopyTemplate: 'SEPSIS OBSTÉTRICA/ABORTO SÉPTICO. EG/posparto/postaborto ___. Foco ___. TA/FC/T/Sat ___. Lactato ___. Conducta: cultivos sin demora + ATB ___ hora ___ + fluidos ___ + noradrenalina ___ + control foco ___.'
+  },
+  {
+    id: 'parto-inminente-distocia-hombros',
+    title: 'Parto Inminente / Distocia de Hombros',
+    shortTitle: 'Parto Inminente',
+    category: 'Obstétrico',
+    cie10: 'O80 / O66.0',
+    severity: 'Urgencia / Código Amarillo',
+    summary: 'Parto extrahospitalario inevitable o distocia de hombros. Prioridades: seguridad materna, recepción neonatal, prevención de hemorragia y maniobras correctas sin tracción excesiva.',
+    prehospitalManifestations: {
+      setting: 'Gestante con contracciones expulsivas, coronamiento o imposibilidad de llegar a maternidad antes del nacimiento.',
+      keySigns: ['Contracciones cada 1-2 min, pujos involuntarios y coronamiento.', 'Cabeza fetal sale y no progresan hombros: distocia.', 'Líquido meconial, sangrado o presentación anómala.', 'Gestación no controlada o prematura.'],
+      highSuspicionRedFlags: ['Prolapso de cordón.', 'Presentación podálica/transversa.', 'Hemorragia abundante.', 'Distocia: signo de tortuga.']
+    },
+    diagnosticAlgorithm: {
+      initialSteps: ['Confirmar parto inminente: no trasladar si coronamiento con pujos efectivos.', 'Preparar kit limpio, aspiración, calor neonatal y control de sangrado.', 'Evaluar presentación y riesgos.'],
+      electrocardiogram: ['No aplica de rutina; monitor materno si inestable.'],
+      biomarkersAndLabs: ['No demorar parto por laboratorio; en hospital grupo/Rh y Hb si sangrado.'],
+      differentialDiagnosis: ['Falso trabajo de parto.', 'Prolapso de cordón.', 'Presentación anómala.', 'Abruptio/placenta previa si sangrado.']
+    },
+    management: {
+      prehospitalAmbulance: ['Higiene, privacidad y posición cómoda; controlar salida de cabeza sin tirar.', 'RN: secar, estimular, calor, evaluar respiración/tono/FC.', 'Clampaje 30-60 s si RN vigoroso; cortar con técnica limpia.', 'Distocia: McRoberts + presión suprapúbica; NO presión fúndica ni tracción cervical.', 'Postparto: vigilar sangrado, masaje uterino si atonía y trasladar madre/RN.'],
+      emergencyRoomShockRoom: ['Equipo obstétrico/neonatal y manejo activo del alumbramiento.', 'Distocia: McRoberts, presión suprapúbica, Rubin/Woods, brazo posterior, Gaskin; documentar tiempos.', 'Reanimación neonatal si RN no respira o FC <100.', 'Control de laceraciones y hemorragia postparto.'],
+      initialPharmacotherapy: [
+        { drug: 'Oxitocina', dose: '10 UI IM tras nacimiento', route: 'IM/IV', notes: 'Prevención de hemorragia postparto.' },
+        { drug: 'Misoprostol', dose: '600 mcg VO o 800-1000 mcg rectal', route: 'VO/rectal', notes: 'Alternativa si no hay oxitocina.' }
+      ]
+    },
+    therapeuticWindow: {
+      timeframe: 'Distocia de hombros: cada minuto aumenta hipoxia neonatal; actuar en secuencia.',
+      goldStandard: 'Parto asistido seguro + manejo activo alumbramiento + maniobras de distocia + reanimación neonatal.',
+      alternativeReperfusion: 'Trasladar solo si no hay coronamiento/pujos expulsivos; si parto inevitable, asistir primero.',
+      contraindications: ['No traccionar cabeza/cuello fetal.', 'No presión fúndica.', 'No demorar calor neonatal.']
+    },
+    evidenceAndPrognosis: {
+      survivalAt6h: 'Muy buena si parto eutócico; distocia prolongada compromete al RN.',
+      survivalAt24h: 'Vigilar hemorragia materna, hipotermia e hipoglucemia neonatal.',
+      survivalAt7d: 'Riesgo según prematurez/asfixia.',
+      survivalAt1y: 'Buen pronóstico sin asfixia ni lesión de plexo braquial.',
+      immediateComplications: ['Asfixia neonatal.', 'Lesión de plexo braquial/clavícula.', 'Hemorragia postparto.', 'Desgarros severos.'],
+      mediateAndLongTermComplications: ['Secuelas neurológicas por hipoxia.', 'Lesión braquial persistente.', 'TEPT materno.']
+    },
+    actionCopyTemplate: 'PARTO INMINENTE/DISTOCIA. EG ___ sem. Situación: ___. Hora nacimiento ___. RN: respira ___ FC ___ tono ___. Conducta: calor/secado + clampaje ___ + oxitocina ___ + maniobras distocia ___ + traslado madre/RN.'
+  },
+  {
+    id: 'intoxicacion-opioides',
+    title: 'Intoxicación Aguda por Opioides',
+    shortTitle: 'Opioides',
+    category: 'Toxicología',
+    cie10: 'T40.0-T40.6',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Toxidrome opioide con depresión respiratoria, coma y miosis. La muerte es por hipoventilación: ventilar primero, naloxona titulada después.',
+    prehospitalManifestations: { setting: 'Sobredosis accidental/intencional con fentanilo, morfina, metadona, tramadol, heroína o analgésicos opioides.', keySigns: ['FR baja/apnea, ronquido u obstrucción.', 'Glasgow disminuido o coma.', 'Miosis puntiforme, aunque puede faltar en hipoxia severa.', 'Bradicardia, hipotensión, cianosis o edema pulmonar.'], highSuspicionRedFlags: ['Apnea o cianosis.', 'Recaída respiratoria tras naloxona.', 'Policonsumo con alcohol/benzodiacepinas.', 'Aspiración o trauma asociado.'] },
+    diagnosticAlgorithm: { initialSteps: ['ABCDE, abrir vía aérea y ventilar con bolsa-válvula-máscara.', 'Glucemia capilar.', 'Buscar parches, comprimidos, jeringas y testigos.'], electrocardiogram: ['ECG si metadona, tramadol, policonsumo, QT prolongado o arritmia.'], biomarkersAndLabs: ['Gases/lactato si hipoxia prolongada.', 'Toxicología orientativa sin esperar resultado.', 'Rx tórax si aspiración o edema pulmonar.'], differentialDiagnosis: ['Hipoglucemia.', 'Benzodiacepinas/alcohol.', 'ACV/TEC.', 'Sepsis o hipoxia primaria.'] },
+    management: { prehospitalAmbulance: ['Ventilar y oxigenar: la naloxona no reemplaza ventilación.', 'Naloxona titulada hasta respiración adecuada, no despertar completo obligatorio.', 'Monitorizar y trasladar; opioides largos requieren observación prolongada.', 'Prevenir aspiración e hipotermia.'], emergencyRoomShockRoom: ['Soporte ventilatorio e intubación si no protege vía aérea.', 'Infusión de naloxona si reaparece depresión respiratoria.', 'Manejar aspiración/edema pulmonar.', 'Evaluación de salud mental si sobredosis intencional.'], initialPharmacotherapy: [{ drug: 'Naloxona', dose: '0.04-0.4 mg IV titulado; 2 mg IN/IM si sin vía; repetir c/2-3 min', route: 'IV/IM/IN', notes: 'Objetivo: FR y ventilación adecuadas.' }, { drug: 'Infusión de naloxona', dose: '2/3 de dosis efectiva por hora', route: 'IV continua', notes: 'Para opioides largos o re-sedación.' }] },
+    therapeuticWindow: { timeframe: 'Minutos: hipoxia prolongada causa paro y daño neurológico.', goldStandard: 'Ventilación + naloxona titulada + observación por recurrencia.', alternativeReperfusion: 'Si no hay naloxona: ventilación y traslado urgente.', contraindications: ['No retrasar ventilación esperando naloxona.', 'No usar flumazenil en policonsumo desconocido.', 'No externar rápido si opioide de larga duración.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Excelente si se revierte hipoxia temprano.', survivalAt24h: 'Riesgo de re-sedación y edema pulmonar.', survivalAt7d: 'Depende de aspiración/hipoxia y abordaje de consumo.', survivalAt1y: 'Alto riesgo de nueva sobredosis sin intervención en adicciones.', immediateComplications: ['Paro respiratorio.', 'Aspiración.', 'Edema pulmonar.', 'Abstinencia precipitada.'], mediateAndLongTermComplications: ['Daño hipóxico cerebral.', 'Neumonía aspirativa.', 'Recaída de consumo.'] },
+    actionCopyTemplate: 'INTOXICACIÓN OPIOIDES. FR ___ Sat ___ Glasgow ___ pupilas ___. Conducta: vía aérea + BVM/O2 + naloxona ___ vía ___ respuesta ___. Opioide sospechado ___. Observación por re-sedación.'
+  },
+  {
+    id: 'intoxicacion-organofosforados-carbamatos',
+    title: 'Intoxicación por Organofosforados / Carbamatos',
+    shortTitle: 'Organofosforados',
+    category: 'Toxicología',
+    cie10: 'T60.0',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Síndrome colinérgico severo por plaguicidas: broncorrea, broncoespasmo, bradicardia, miosis, diarrea, fasciculaciones y convulsiones. La muerte es respiratoria.',
+    prehospitalManifestations: { setting: 'Exposición rural/laboral a plaguicidas, intento autolítico o contaminación doméstica.', keySigns: ['Salivación, lagrimeo, broncorrea, vómitos, diarrea y miosis.', 'Broncoespasmo, secreciones e hipoxemia.', 'Fasciculaciones, debilidad y convulsiones.', 'Bradicardia/hipotensión o taquicardia por hipoxia.'], highSuspicionRedFlags: ['Broncorrea masiva o Sat baja.', 'Debilidad respiratoria.', 'Convulsiones o coma.', 'Ropa/piel contaminada que expone al equipo.'] },
+    diagnosticAlgorithm: { initialSteps: ['Seguridad de escena y EPP.', 'Retirar ropa contaminada y lavar piel antes de contaminar ambulancia/guardia.', 'ABCDE con aspiración agresiva de secreciones.'], electrocardiogram: ['ECG/monitor por bradiarritmias, QT prolongado o hipoxia.'], biomarkersAndLabs: ['Colinesterasa plasmática/eritrocitaria si disponible, sin esperar.', 'Gases, lactato, ionograma, renal/hepático.', 'Rx tórax si aspiración.'], differentialDiagnosis: ['Opioides.', 'Crisis asmática/EPOC.', 'Sepsis/shock.', 'Nicotina u otros colinérgicos.'] },
+    management: { prehospitalAmbulance: ['EPP, descontaminación y embolsar ropa.', 'Oxígeno, aspiración y ventilación; intubación si secreciones severas.', 'Atropina IV repetida hasta secar secreciones y mejorar ventilación.', 'Pralidoxima precoz si organofosforado moderado-severo y traslado a UCI/toxicología.'], emergencyRoomShockRoom: ['Atropinización agresiva; duplicar dosis cada 3-5 min hasta broncorrea controlada.', 'Luego infusión de atropina según requerimiento.', 'Pralidoxima, benzodiacepinas si convulsiones y soporte ventilatorio.', 'Observación por síndrome intermedio 24-96 h.'], initialPharmacotherapy: [{ drug: 'Atropina', dose: '2-5 mg IV adulto, duplicar c/3-5 min hasta secreciones secas', route: 'IV/IO', notes: 'No hay dosis máxima en intoxicación severa.' }, { drug: 'Pralidoxima', dose: '1-2 g IV en 30 min, luego 500 mg/h', route: 'IV', notes: 'Más útil precozmente en organofosforados.' }, { drug: 'Diazepam/Midazolam', dose: 'Según convulsión', route: 'IV/IM', notes: 'Convulsiones y agitación.' }] },
+    therapeuticWindow: { timeframe: 'Minutos-horas: atropinizar antes de falla respiratoria; pralidoxima antes de envejecimiento enzimático.', goldStandard: 'Descontaminación + ventilación + atropina titulada a secreciones + pralidoxima.', alternativeReperfusion: 'Traslado a UCI/toxicología con soporte respiratorio.', contraindications: ['No trasladar ropa contaminada sin embolsar.', 'No subdosificar atropina por taquicardia.', 'No demorar ventilación por antídotos.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Depende de control respiratorio y atropinización.', survivalAt24h: 'Riesgo de aspiración y recurrencia colinérgica.', survivalAt7d: 'Vigilar síndrome intermedio con debilidad respiratoria.', survivalAt1y: 'Posible neuropatía retardada.', immediateComplications: ['Falla respiratoria.', 'Broncoaspiración.', 'Convulsiones.', 'Arritmias.'], mediateAndLongTermComplications: ['Síndrome intermedio.', 'Neuropatía retardada.', 'Secuelas por intento autolítico.'] },
+    actionCopyTemplate: 'INTOXICACIÓN ORGANOFOSFORADOS/CARBAMATOS. Producto ___ vía/tiempo ___. Clínica: broncorrea/miosis/diarrea/fasciculaciones ___. Conducta: EPP + descontaminación + O2/VM ___ + atropina total ___ mg + pralidoxima ___.'
+  },
+  {
+    id: 'intoxicacion-monoxido-carbono',
+    title: 'Intoxicación por Monóxido de Carbono (CO)',
+    shortTitle: 'Monóxido de Carbono',
+    category: 'Toxicología',
+    cie10: 'T58',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Hipoxia tisular oculta por carboxihemoglobina. La pulsioximetría puede ser falsamente normal. Tratamiento inmediato: oxígeno al 100%.',
+    prehospitalManifestations: { setting: 'Estufas/calefones defectuosos, incendios, garajes o ambientes cerrados con varios afectados.', keySigns: ['Cefalea, mareo, náuseas, debilidad o confusión.', 'Síncope, convulsiones o coma.', 'Dolor torácico/isquemia en pacientes vulnerables.', 'SatO2 normal pese a hipoxia real.'], highSuspicionRedFlags: ['Embarazo.', 'Pérdida de conciencia o déficit neurológico.', 'Acidosis/lactato alto.', 'Isquemia miocárdica o arritmias.'] },
+    diagnosticAlgorithm: { initialSteps: ['Retirar de la fuente con escena segura.', 'Oxígeno 100% inmediato sin esperar confirmación.', 'Buscar otros afectados y fuente de combustión.'], electrocardiogram: ['ECG y troponina en moderados-severos o dolor torácico.'], biomarkersAndLabs: ['Carboxihemoglobina por cooximetría.', 'Gases, lactato, troponina y embarazo.', 'No confiar en oximetría convencional.'], differentialDiagnosis: ['Migraña/gastroenteritis.', 'ACV/convulsiones.', 'Sepsis.', 'Cianuro si incendio.'] },
+    management: { prehospitalAmbulance: ['Retiro de exposición y oxígeno 100% con reservorio o ventilación asistida.', 'Intubar si coma o falla ventilatoria.', 'Traslado a centro con cooximetría; consultar hiperbárica si grave o embarazo.', 'Avisar a bomberos/gas para prevenir nuevos casos.'], emergencyRoomShockRoom: ['Oxígeno 100% hasta COHb normal y síntomas resueltos.', 'Cámara hiperbárica si pérdida de conciencia, síntomas neurológicos, embarazo, COHb alta, acidosis o isquemia.', 'Tratar arritmias/isquemia y lesiones por incendio.', 'Seguimiento por síndrome neurológico tardío.'], initialPharmacotherapy: [{ drug: 'Oxígeno al 100%', dose: 'FiO2 1.0 continuo', route: 'Máscara reservorio / VM', notes: 'Reduce la vida media de COHb.' }, { drug: 'Hidroxocobalamina', dose: '5 g IV', route: 'IV', notes: 'Solo si incendio con sospecha de cianuro concomitante.' }] },
+    therapeuticWindow: { timeframe: 'Oxígeno inmediato; hiperbárica idealmente en primeras horas si indicada.', goldStandard: 'Retiro de fuente + O2 100% + cooximetría + hiperbárica en criterios de gravedad.', alternativeReperfusion: 'Si no hay cámara, O2 100% prolongado y traslado si beneficio supera riesgos.', contraindications: ['No tranquilizarse por SatO2 normal.', 'No alta rápida si síncope/embarazo/isquemia.', 'No reingresar al ambiente sin control técnico.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Muy buena con O2 precoz; grave si coma/acidosis/isquemia.', survivalAt24h: 'Riesgo de edema cerebral y lesión miocárdica.', survivalAt7d: 'Puede aparecer síndrome neurológico tardío.', survivalAt1y: 'Posibles secuelas cognitivas/psiquiátricas tras cuadros severos.', immediateComplications: ['Coma.', 'Convulsiones.', 'Isquemia miocárdica.', 'Muerte por hipoxia.'], mediateAndLongTermComplications: ['Deterioro cognitivo tardío.', 'Parkinsonismo.', 'Depresión/ansiedad.', 'Secuelas fetales.'] },
+    actionCopyTemplate: 'INTOXICACIÓN CO. Fuente ___. Síntomas ___. SatO2 ___ (puede ser falsa). COHb ___ %. Conducta: retiro + O2 100% desde ___ + ECG/troponina ___ + hiperbárica [sí/no].'
+  },
+  {
+    id: 'sobredosis-triciclicos-psicofarmacos',
+    title: 'Sobredosis de Antidepresivos Tricíclicos / Psicofármacos Cardiotóxicos',
+    shortTitle: 'Tricíclicos',
+    category: 'Toxicología',
+    cie10: 'T43.0 / T43.2',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Bloqueo de canales de sodio con QRS ancho, convulsiones, arritmias letales y shock. El tratamiento central es bicarbonato de sodio hipertónico.',
+    prehospitalManifestations: { setting: 'Intento autolítico o sobredosis con amitriptilina, imipramina, clomipramina, quetiapina u otros psicofármacos.', keySigns: ['Coma o delirium anticolinérgico.', 'Midriasis, piel seca, hipertermia.', 'Convulsiones tempranas.', 'Hipotensión, QRS ancho o arritmias.'], highSuspicionRedFlags: ['QRS >100 ms o R en aVR >3 mm.', 'Hipotensión refractaria.', 'Convulsiones repetidas.', 'Ingesta masiva/desconocida.'] },
+    diagnosticAlgorithm: { initialSteps: ['ABCDE, glucemia, monitor/desfibrilador.', 'ECG precoz y seriado: guía tratamiento.', 'Identificar fármaco, cantidad, hora y coingestas.'], electrocardiogram: ['QRS >100 ms predice convulsiones; >160 ms arritmias ventriculares.', 'R terminal en aVR, QT prolongado, bloqueo AV o TV.'], biomarkersAndLabs: ['Gases, ionograma, K+, lactato, renal/hepático.', 'Paracetamol/salicilatos por coingesta.', 'Test embarazo y toxicológico orientativo.'], differentialDiagnosis: ['Cocaína/difenhidramina/carbamazepina.', 'Hiperkalemia.', 'SCA/arritmia primaria.', 'Sepsis/hipoglucemia.'] },
+    management: { prehospitalAmbulance: ['Oxígeno y vía aérea; intubar si coma/convulsiones.', 'ECG y monitor; bicarbonato si QRS ancho/hipotensión y está disponible.', 'Benzodiacepinas para convulsiones; evitar fisostigmina.', 'Traslado a UCI/toxicología.'], emergencyRoomShockRoom: ['Bicarbonato IV bolos hasta QRS estrecho o pH 7.45-7.55.', 'Vasopresores si hipotensión tras bicarbonato/fluidos.', 'Carbón activado si <1-2 h con vía aérea protegida.', 'Lípidos IV/ECMO como rescate en colapso refractario según toxicología.'], initialPharmacotherapy: [{ drug: 'Bicarbonato de sodio 8.4%', dose: '1-2 mEq/kg IV, repetir según QRS/pH', route: 'IV', notes: 'Para QRS ancho, shock o arritmias por bloqueo de sodio.' }, { drug: 'Diazepam/Midazolam', dose: 'Según convulsión', route: 'IV/IM', notes: 'Evitar fenitoína.' }, { drug: 'Noradrenalina', dose: '0.05-0.5 mcg/kg/min', route: 'IV', notes: 'Shock refractario.' }] },
+    therapeuticWindow: { timeframe: 'Primeras 6 h: máximo riesgo de convulsiones y arritmias.', goldStandard: 'ECG seriado + bicarbonato para QRS ancho/shock + soporte UCI.', alternativeReperfusion: 'Emulsión lipídica o ECMO en colapso refractario donde disponible.', contraindications: ['No fisostigmina.', 'No antiarrítmicos IA/IC.', 'No flumazenil en coingesta desconocida.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Si ECG normal a 6 h, el riesgo baja; QRS ancho/shock aumenta mortalidad.', survivalAt24h: 'La mayoría se estabiliza con bicarbonato y soporte.', survivalAt7d: 'Pronóstico bueno si no hubo paro/hipoxia.', survivalAt1y: 'Depende de salud mental y prevención de reintento.', immediateComplications: ['TV/FV.', 'Convulsiones.', 'Shock.', 'Aspiración.'], mediateAndLongTermComplications: ['Daño hipóxico.', 'Neumonía aspirativa.', 'Reintento suicida.'] },
+    actionCopyTemplate: 'SOBREDOSIS TCA/PSICOFÁRMACOS. Fármaco/cantidad/hora ___. Glasgow ___ TA/FC ___. ECG QRS ___ QTc ___ aVR ___. Conducta: vía aérea ___ + bicarbonato total ___ + BZD ___ + noradrenalina ___.'
+  },
+  {
+    id: 'intoxicacion-alcoholes-toxicos',
+    title: 'Intoxicación por Alcoholes Tóxicos (Metanol / Etilenglicol)',
+    shortTitle: 'Alcoholes Tóxicos',
+    category: 'Toxicología',
+    cie10: 'T51.1 / T52.8',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Metanol produce acidosis y toxicidad ocular; etilenglicol acidosis, cristales y falla renal. Requiere fomepizol/etanol, bicarbonato y hemodiálisis si grave.',
+    prehospitalManifestations: { setting: 'Alcohol adulterado, anticongelante, solventes o bebidas clandestinas.', keySigns: ['Latencia 6-24 h antes de acidosis severa.', 'Metanol: visión borrosa, nieve visual o ceguera.', 'Etilenglicol: dolor lumbar, tetania, falla renal.', 'Taquipnea de Kussmaul, coma o convulsiones.'], highSuspicionRedFlags: ['Anion gap alto + osmolar gap alto.', 'Síntomas visuales.', 'Falla renal/cristales de oxalato.', 'pH <7.25, coma o convulsiones.'] },
+    diagnosticAlgorithm: { initialSteps: ['ABCDE, glucemia y datos de producto/hora/cantidad.', 'Calcular anion gap y osmolar gap.', 'Iniciar antídoto si sospecha fuerte sin esperar niveles.'], electrocardiogram: ['Monitor por acidosis severa, electrolitos y shock.'], biomarkersAndLabs: ['Gases, lactato, ionograma, osmolaridad medida, urea/creatinina, calcio y EGO.', 'Niveles de metanol/etilenglicol si disponibles.', 'Paracetamol/salicilatos por coingesta.'], differentialDiagnosis: ['Cetoacidosis diabética/alcohólica.', 'Sepsis/acidosis láctica.', 'Insuficiencia renal.', 'Salicilatos.'] },
+    management: { prehospitalAmbulance: ['Soporte ABC y traslado a centro con diálisis/toxicología.', 'No subestimar aparente embriaguez con latencia.', 'Bicarbonato si acidosis severa y protocolo disponible.'], emergencyRoomShockRoom: ['Fomepizol inmediato; etanol si no hay fomepizol.', 'Bicarbonato para acidosis severa.', 'Hemodiálisis si acidosis, síntomas visuales, falla renal, niveles altos o deterioro.', 'Folato/folínico en metanol; tiamina/piridoxina en etilenglicol según protocolo.'], initialPharmacotherapy: [{ drug: 'Fomepizol', dose: '15 mg/kg carga, luego 10 mg/kg c/12 h', route: 'IV', notes: 'Antídoto de elección.' }, { drug: 'Etanol', dose: 'Carga y mantenimiento para 100-150 mg/dl', route: 'IV/VO', notes: 'Alternativa si no hay fomepizol.' }, { drug: 'Bicarbonato de sodio', dose: '1-2 mEq/kg según pH', route: 'IV', notes: 'Acidosis severa.' }, { drug: 'Ácido folínico/folato', dose: '50 mg c/6 h', route: 'IV', notes: 'Coadyuvante en metanol.' }] },
+    therapeuticWindow: { timeframe: 'Horas: antídoto antes de metabolización y diálisis precoz si acidosis/síntomas graves.', goldStandard: 'Fomepizol + corrección acidosis + hemodiálisis según criterios.', alternativeReperfusion: 'Etanol si no hay fomepizol; traslado a centro con diálisis.', contraindications: ['No esperar niveles si gaps y clínica orientan.', 'No subestimar “borrachera” con acidosis.', 'No retrasar diálisis con pH bajo o síntomas visuales.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Mejora si se inicia antídoto antes de acidosis profunda.', survivalAt24h: 'Depende de diálisis y reversión de acidosis.', survivalAt7d: 'Metanol deja secuelas visuales; etilenglicol renales.', survivalAt1y: 'Ceguera permanente o ERC si tratamiento tardío.', immediateComplications: ['Coma.', 'Convulsiones.', 'Shock por acidosis.', 'Ceguera aguda.', 'Falla renal.'], mediateAndLongTermComplications: ['Ceguera irreversible.', 'ERC.', 'Daño neurológico metabólico.'] },
+    actionCopyTemplate: 'ALCOHOL TÓXICO. Producto ___ hora/cantidad ___. pH ___ HCO3 ___ AG ___ osm gap ___. Clínica visual/renal ___. Conducta: fomepizol/etanol ___ + bicarbonato ___ + hemodiálisis ___ + cofactores ___.'
+  },
+  {
+    id: 'golpe-calor',
+    title: 'Golpe de Calor (Hipertermia Ambiental)',
+    shortTitle: 'Golpe de Calor',
+    category: 'Toxicología',
+    cie10: 'T67.0',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Fallo termorregulador con temperatura central elevada y disfunción neurológica. Enfriar primero: el tiempo por encima de 40 °C determina mortalidad.',
+    prehospitalManifestations: { setting: 'Olas de calor, ejercicio intenso, trabajadores al sol, adultos mayores, lactantes o encierro en vehículos.', keySigns: ['Temperatura central alta, piel caliente seca o sudorosa.', 'Confusión, ataxia, convulsiones o coma.', 'Taquicardia, hipotensión e hiperventilación.', 'Rabdomiólisis, coagulopatía y falla orgánica.'], highSuspicionRedFlags: ['Alteración mental + hipertermia.', 'Convulsiones/coma.', 'Temperatura rectal >40 °C.', 'No requiere anhidrosis: puede sudar.'] },
+    diagnosticAlgorithm: { initialSteps: ['Medir temperatura central rectal si posible.', 'ABCDE, glucemia, retirar ropa/equipo y comenzar enfriamiento.', 'Buscar esfuerzo, fármacos anticolinérgicos/neurolépticos o ambiente extremo.'], electrocardiogram: ['Monitor por arritmias, hiperpotasemia y daño miocárdico.'], biomarkersAndLabs: ['CK, renal, ionograma, gases/lactato, coagulación, hepatograma y troponina.', 'Orina para mioglobinuria.'], differentialDiagnosis: ['Síndrome neuroléptico maligno.', 'Síndrome serotoninérgico.', 'Sepsis/meningitis.', 'Intoxicación anticolinérgica/estimulantes.'] },
+    management: { prehospitalAmbulance: ['Enfriamiento inmediato: inmersión en agua fría o rociar + ventiladores + hielo en cuello/axilas/ingle.', 'Retirar ropa, mover a sombra, oxígeno y vía venosa.', 'Benzodiacepinas si convulsiones, escalofríos o agitación.', 'No usar antitérmicos; no sirven.', 'Trasladar sin detener enfriamiento; objetivo 38-39 °C.'], emergencyRoomShockRoom: ['Continuar enfriamiento agresivo hasta 38-39 °C.', 'Cristaloides fríos titulados; tratar rabdomiólisis/electrolitos.', 'UCI si alteración mental, falla renal/hepática, coagulopatía o hipertermia severa.', 'Buscar causa secundaria/fármacos.'], initialPharmacotherapy: [{ drug: 'Cristaloides fríos', dose: 'Bolos titulados', route: 'IV', notes: 'Coadyuvante; el tratamiento principal es enfriamiento externo.' }, { drug: 'Midazolam/Diazepam', dose: 'Según convulsión/agitación', route: 'IV/IM', notes: 'Reduce producción muscular de calor.' }] },
+    therapeuticWindow: { timeframe: 'Bajar temperatura por debajo de 39 °C idealmente dentro de 30 minutos.', goldStandard: 'Enfriamiento rápido + soporte orgánico + control de complicaciones.', alternativeReperfusion: 'Si no hay inmersión: evaporativo intensivo con hielo y ventilación.', contraindications: ['No paracetamol/ibuprofeno.', 'No retrasar enfriamiento por traslado.', 'No confiar en temperatura periférica.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Depende del tiempo >40 °C; enfriamiento precoz reduce mortalidad.', survivalAt24h: 'Riesgo de rabdomiólisis, DIC y falla hepatorrenal.', survivalAt7d: 'Falla hepática puede aparecer a 24-72 h.', survivalAt1y: 'Posibles secuelas neurológicas si hipertermia prolongada.', immediateComplications: ['Convulsiones.', 'Rabdomiólisis.', 'DIC.', 'Falla renal/hepática.', 'Paro.'], mediateAndLongTermComplications: ['Daño cerebeloso/cognitivo.', 'Intolerancia al calor.', 'ERC post rabdomiólisis.'] },
+    actionCopyTemplate: 'GOLPE DE CALOR. T central ___ °C estado mental ___ contexto ___. Conducta: enfriamiento método ___ desde ___ + O2/vía IV + fluidos ___ + BZD ___. Objetivo 38-39 °C.'
+  },
+  {
+    id: 'hipotermia-severa-accidental',
+    title: 'Hipotermia Severa Accidental',
+    shortTitle: 'Hipotermia Severa',
+    category: 'Toxicología',
+    cie10: 'T68',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Temperatura central <28 °C o hipotermia con inestabilidad. Riesgo de arritmias y paro refractario. Nadie está muerto hasta estar caliente y muerto.',
+    prehospitalManifestations: { setting: 'Exposición al frío, inmersión, situación de calle, montaña, ancianos, intoxicados o trauma.', keySigns: ['Confusión/coma; temblor ausente en severa.', 'Bradicardia, hipotensión y respiración lenta.', 'Piel fría, rigidez y pupilas poco reactivas.', 'Ondas J de Osborn o arritmias.'], highSuspicionRedFlags: ['T central <28 °C.', 'FV/TV o paro.', 'Manipulación brusca precipita arritmia.', 'Hipotermia + trauma/intoxicación.'] },
+    diagnosticAlgorithm: { initialSteps: ['Medir temperatura central con dispositivo de baja lectura.', 'ABCDE suave: movimientos mínimos, retirar ropa mojada y aislar.', 'Confirmar pulso/respiración durante 60 segundos.'], electrocardiogram: ['Bradicardia, PR/QRS/QT prolongados, ondas J, FV.'], biomarkersAndLabs: ['Glucemia, ionograma, gases/lactato, coagulación, CK y renal.', 'Buscar intoxicación, sepsis, hipotiroidismo o trauma.'], differentialDiagnosis: ['Sedantes/alcohol.', 'ACV/TEC.', 'Mixedema.', 'Sepsis.'] },
+    management: { prehospitalAmbulance: ['Retirar del frío, quitar ropa mojada, aislar con mantas térmicas.', 'Manejo suave y horizontal.', 'Oxígeno calentado humidificado si disponible y fluidos IV tibios.', 'RCP si paro; no suspender hasta recalentamiento salvo lesión incompatible.', 'Traslado a centro con ECMO si paro/inestabilidad severa.'], emergencyRoomShockRoom: ['Recalentamiento externo activo o interno/ECMO si severa con paro/inestabilidad.', 'Desfibrilar FV; si no responde, continuar RCP y recalentar.', 'Espaciar fármacos ACLS hasta T >30 °C según protocolo.', 'Corregir hipoglucemia/electrolitos y tratar causa.'], initialPharmacotherapy: [{ drug: 'Suero tibio', dose: 'Bolos titulados', route: 'IV/IO', notes: 'Coadyuvante de recalentamiento.' }, { drug: 'Glucosa', dose: '25 g adulto si hipoglucemia', route: 'IV', notes: 'Corregir causa reversible frecuente.' }] },
+    therapeuticWindow: { timeframe: 'Recalentamiento controlado continuo; en paro hipotérmico, RCP prolongada hasta temperatura compatible con vida.', goldStandard: 'Recalentamiento + soporte vital + ECMO/CEC si paro o inestabilidad severa.', alternativeReperfusion: 'Lavados cavitarios/calor activo si ECMO no disponible.', contraindications: ['No movilizar bruscamente.', 'No declarar muerte sin recalentar salvo lesión incompatible.', 'No calentar extremidades aisladas en severa.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Puede sobrevivir a paros prolongados si enfriamiento fue rápido y recalentamiento adecuado.', survivalAt24h: 'Depende de causa, potasio, trauma/asfixia y ECMO.', survivalAt7d: 'Riesgo de neumonía, rabdomiólisis y coagulopatía.', survivalAt1y: 'Buen pronóstico neurológico posible en hipotermia pura.', immediateComplications: ['FV/paro.', 'Coagulopatía.', 'Hipoglucemia.', 'Afterdrop.', 'Rabdomiólisis.'], mediateAndLongTermComplications: ['Congelación.', 'Neumonía.', 'Secuelas neurológicas si hipoxia asociada.'] },
+    actionCopyTemplate: 'HIPOTERMIA SEVERA. T central ___ °C estado ___ pulso/resp ___ ECG ___. Conducta: manejo suave + aislamiento + ropa mojada fuera + O2/fluidos tibios + RCP ___ + recalentamiento ___.'
+  },
+  {
+    id: 'envenenamiento-animales-ponzonosos',
+    title: 'Envenenamiento por Animales Ponzoñosos (Ofidismo / Loxoscelismo Grave)',
+    shortTitle: 'Ponzoñosos',
+    category: 'Toxicología',
+    cie10: 'T63.0 / T63.3',
+    severity: 'Urgencia / Código Amarillo',
+    summary: 'Accidentes por serpientes o arañas con compromiso local, coagulopático, hemolítico o neurotóxico. El antiveneno específico es tiempo-dependiente cuando hay criterios.',
+    prehospitalManifestations: { setting: 'Zona rural/periurbana, trabajo agrícola, domicilio o caminatas con mordedura/picadura dolorosa.', keySigns: ['Ofidismo: dolor, edema progresivo, equimosis, sangrado o neuroparálisis.', 'Loxoscelismo: lesión livedoide/necrosis, hemólisis, fiebre o hemoglobinuria.', 'Vómitos, hipotensión, ptosis, diplopía o disnea.', 'Marca de colmillos o lesión compatible.'], highSuspicionRedFlags: ['Edema rápidamente progresivo.', 'Sangrado/coagulopatía.', 'Neurotoxicidad respiratoria.', 'Hemólisis/hemoglobinuria.'] },
+    diagnosticAlgorithm: { initialSteps: ['ABCDE e identificar animal solo si es seguro (foto).', 'Marcar borde del edema y hora; retirar anillos/pulseras.', 'Evaluar neuro, sangrado, perfusión distal y dolor desproporcionado.'], electrocardiogram: ['ECG si shock, arritmia o compromiso sistémico.'], biomarkersAndLabs: ['Hemograma/plaquetas, coagulograma, fibrinógeno, renal, CK, ionograma y EGO.', 'Repetir coagulograma en ofidismo.'], differentialDiagnosis: ['Celulitis/absceso.', 'Anafilaxia.', 'Trombosis/trauma local.', 'Quemadura química.'] },
+    management: { prehospitalAmbulance: ['Reposo e inmovilización relativa del miembro; retirar constricciones.', 'NO torniquete, incisiones, succión ni hielo directo.', 'Analgesia, vía IV si sistémico y traslado a centro con antiveneno.', 'Registrar progresión del edema y preaviso.'], emergencyRoomShockRoom: ['Antiveneno específico si criterios sistémicos o local progresivo moderado-severo.', 'Preparar manejo de anafilaxia al suero.', 'Soporte respiratorio en neurotoxicidad; hemoderivados tras antiveneno si sangrado persistente.', 'Loxoscelismo sistémico: hidratación, soporte renal y transfusión si hemólisis severa.'], initialPharmacotherapy: [{ drug: 'Antiveneno específico', dose: 'Según especie y gravedad', route: 'IV', notes: 'Consultar centro toxicológico; administrar con capacidad de tratar anafilaxia.' }, { drug: 'Adrenalina', dose: '0.3-0.5 mg IM adulto', route: 'IM', notes: 'Anafilaxia por veneno o antiveneno.' }, { drug: 'Analgesia no AINE', dose: 'Titulada', route: 'IV/VO', notes: 'Evitar AINE si coagulopatía.' }] },
+    therapeuticWindow: { timeframe: 'Antiveneno cuanto antes si criterios; útil mientras haya progresión o coagulopatía.', goldStandard: 'Identificación clínica + antiveneno específico + soporte respiratorio/hemostático/renal.', alternativeReperfusion: 'Traslado a centro con antiveneno si no disponible.', contraindications: ['No torniquete/cortes/succión.', 'No hielo directo.', 'No esperar laboratorio si hay neurotoxicidad o shock.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Buena con antiveneno y soporte; neurotoxicidad respiratoria es mayor riesgo.', survivalAt24h: 'Vigilar coagulopatía, edema, hemólisis y renal.', survivalAt7d: 'Necrosis/infección puede requerir cirugía diferida.', survivalAt1y: 'Secuelas locales y cicatrices si necrosis extensa.', immediateComplications: ['Anafilaxia.', 'Coagulopatía hemorrágica.', 'Falla respiratoria.', 'Shock.', 'Hemólisis.'], mediateAndLongTermComplications: ['Necrosis cutánea.', 'Falla renal.', 'Cicatrices funcionales.', 'Dolor crónico.'] },
+    actionCopyTemplate: 'ENVENENAMIENTO PONZOÑOSO. Animal/sospecha ___ hora ___ sitio ___. Edema marcado ___ signos sistémicos ___. Conducta: inmovilización + NO torniquete + labs + antiveneno ___ + toxicología/traslado.'
+  },
+  {
+    id: 'intoxicacion-paracetamol',
+    title: 'Intoxicación por Paracetamol (Acetaminofén)',
+    shortTitle: 'Paracetamol',
+    category: 'Toxicología',
+    cie10: 'T39.1',
+    severity: 'Urgencia / Código Amarillo',
+    summary: 'Sobredosis inicialmente poco sintomática con riesgo de insuficiencia hepática fulminante tardía. N-acetilcisteína precoz previene hepatotoxicidad.',
+    prehospitalManifestations: { setting: 'Ingesta intencional o accidental, comprimidos múltiples o antigripales/analgésicos combinados.', keySigns: ['Primeras 24 h: náuseas, vómitos o asintomático.', '24-72 h: dolor hipocondrio derecho y transaminasas altas.', '72-96 h: falla hepática, INR alto y encefalopatía.', 'Dosis tóxica orientativa >150 mg/kg o >7.5-10 g adulto.'], highSuspicionRedFlags: ['Hora desconocida.', 'Ingesta masiva >30 g.', 'Alcoholismo, malnutrición o inductores CYP.', 'INR elevado, acidosis, lactato alto o encefalopatía.'] },
+    diagnosticAlgorithm: { initialSteps: ['Determinar hora, dosis, formulación y coingestas.', 'Nivel de paracetamol a ≥4 h y nomograma si ingesta única conocida.', 'Si hora desconocida o hepatotoxicidad: iniciar NAC sin esperar.'], electrocardiogram: ['ECG si coingestas o inestabilidad.'], biomarkersAndLabs: ['Paracetamolemia, GOT/GPT, bilirrubina, INR, glucemia, creatinina y gases/lactato.', 'Salicilatos y embarazo según contexto.'], differentialDiagnosis: ['Hepatitis viral/tóxica.', 'Salicilatos.', 'Alcoholes tóxicos.', 'Shock hepático.'] },
+    management: { prehospitalAmbulance: ['ABCDE, antiemético si vómitos y traslado con hora/dosis/envases.', 'Carbón activado si <1-2 h y vía aérea segura.', 'No demorar NAC si traslado largo y hay protocolo/disponibilidad.'], emergencyRoomShockRoom: ['NAC si nivel sobre línea, hora desconocida, dosis masiva o hepatotoxicidad.', 'Carbón activado hasta 4 h si ingesta masiva/liberación prolongada.', 'Monitorear INR, glucemia, lactato y pH.', 'Derivar a centro de trasplante si criterios de falla hepática; salud mental si intencional.'], initialPharmacotherapy: [{ drug: 'N-acetilcisteína', dose: 'IV 150 mg/kg 1 h + 50 mg/kg 4 h + 100 mg/kg 16 h', route: 'IV', notes: 'Máxima eficacia <8 h; continuar si INR/transaminasas empeoran.' }, { drug: 'Carbón activado', dose: '1 g/kg, máximo 50 g', route: 'VO/SNG', notes: 'Ingesta reciente y vía aérea segura.' }] },
+    therapeuticWindow: { timeframe: 'NAC ideal antes de 8 h, útil incluso en falla hepática establecida.', goldStandard: 'Nivel a 4 h + nomograma + NAC precoz.', alternativeReperfusion: 'Si no hay nivel, tratar por dosis/hora/riesgo clínico.', contraindications: ['No esperar síntomas.', 'No usar nomograma en ingestas repetidas u hora desconocida.', 'No suspender NAC si INR/GOT/GPT empeoran.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Excelente si NAC temprana.', survivalAt24h: 'Puede seguir asintomático pese a toxicidad.', survivalAt7d: 'Riesgo de falla hepática fulminante si tratamiento tardío.', survivalAt1y: 'Recuperación completa o trasplante según gravedad.', immediateComplications: ['Vómitos.', 'Reacción anafilactoide a NAC.', 'Coingestas peligrosas.'], mediateAndLongTermComplications: ['Falla hepática.', 'Encefalopatía.', 'Coagulopatía.', 'Trasplante/muerte.'] },
+    actionCopyTemplate: 'INTOXICACIÓN PARACETAMOL. Dosis ___ mg/kg hora ___. Nivel a ___ hs ___ mcg/ml. AST/ALT ___ INR ___. Conducta: NAC ___ + carbón ___ + controles hepatograma/INR + salud mental.'
+  },
+  {
+    id: 'neumotorax-tension',
+    title: 'Neumotórax a Tensión',
+    shortTitle: 'Neumotórax Tensión',
+    category: 'Respiratorio',
+    cie10: 'J93.0 / S27.0',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Aire pleural a presión con colapso pulmonar y shock obstructivo. Diagnóstico clínico: no esperar radiografía; descompresión inmediata y drenaje pleural.',
+    prehospitalManifestations: { setting: 'Trauma torácico cerrado/penetrante, ventilación mecánica, procedimientos o neumotórax espontáneo complicado.', keySigns: ['Disnea severa, dolor torácico, taquipnea e hipoxemia.', 'Hipotensión, ingurgitación yugular y desviación traqueal tardía.', 'Murmullo abolido unilateral e hipersonoridad.', 'Deterioro brusco en ventilado con presión pico alta.'], highSuspicionRedFlags: ['Shock + ausencia de murmullo unilateral.', 'Paro traumático con sospecha torácica.', 'Empeora con ventilación positiva.', 'No esperar imagen si inestable.'] },
+    diagnosticAlgorithm: { initialSteps: ['ABCDE de trauma; si shock y sospecha clínica, descomprimir.', 'Evaluar expansión, murmullo, percusión, yugulares y tráquea.', 'eFAST si disponible sin retrasar intervención.'], electrocardiogram: ['Monitor por shock/hipoxia; ECG si diferencial cardiaco.'], biomarkersAndLabs: ['No necesarios para decidir descompresión; gases/lactato luego.'], differentialDiagnosis: ['Hemotórax masivo.', 'Taponamiento cardíaco.', 'TEP masivo.', 'Asma/EPOC severo.', 'Contusión pulmonar.'] },
+    management: { prehospitalAmbulance: ['Oxígeno alto flujo y tratar shock.', 'Descompresión: 4°/5° espacio intercostal línea axilar anterior/media con catéter largo o toracostomía con dedo si entrenado.', 'Sellar heridas soplantes con apósito valvulado/3 lados.', 'Traslado a trauma y vigilancia por recurrencia.'], emergencyRoomShockRoom: ['Drenaje pleural definitivo 4°/5° EIC línea axilar anterior/media.', 'Toracostomía bilateral en paro traumático si causa probable.', 'Ventilación cuidadosa tras descompresión.', 'Buscar lesiones asociadas.'], initialPharmacotherapy: [{ drug: 'Oxígeno', dose: 'Alto flujo', route: 'Máscara/VM', notes: 'Soporte mientras se descomprime.' }, { drug: 'Analgesia', dose: 'Titulada', route: 'IV', notes: 'No retrasar descompresión por analgesia.' }] },
+    therapeuticWindow: { timeframe: 'Segundos-minutos: shock obstructivo progresa a paro si no se descomprime.', goldStandard: 'Descompresión clínica inmediata + drenaje pleural definitivo.', alternativeReperfusion: 'Toracostomía con dedo si catéter falla y operador entrenado.', contraindications: ['No esperar Rx si shock.', 'No usar catéter corto.', 'No ocluir completamente herida abierta sin válvula.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Muy buena si se descomprime antes del paro.', survivalAt24h: 'Depende de trauma asociado.', survivalAt7d: 'Riesgo de fuga aérea o infección.', survivalAt1y: 'Recuperación completa si no hay lesión pulmonar severa.', immediateComplications: ['Paro obstructivo.', 'Hipoxia.', 'Hemotórax asociado.', 'Falla de descompresión.'], mediateAndLongTermComplications: ['Neumotórax recurrente.', 'Empiema.', 'Dolor crónico post tubo.'] },
+    actionCopyTemplate: 'NEUMOTÓRAX A TENSIÓN. Contexto ___. Shock ___ murmullo abolido lado ___ Sat ___. Conducta: O2 + descompresión en ___ EIC línea ___ con ___ respuesta ___. Drenaje pleural ___.'
+  },
+  {
+    id: 'ovace',
+    title: 'Obstrucción de Vía Aérea por Cuerpo Extraño (OVACE)',
+    shortTitle: 'OVACE',
+    category: 'Respiratorio',
+    cie10: 'T17',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Asfixia mecánica por obstrucción parcial o completa. La intervención depende de tos efectiva y conciencia: maniobras, extracción bajo visión, RCP o vía aérea quirúrgica si CICO.',
+    prehospitalManifestations: { setting: 'Comida, niños con objetos, adultos mayores, alcohol/sedación o prótesis dental.', keySigns: ['No puede hablar/toser/respirar y se toma el cuello.', 'Estridor, cianosis, agitación o silencio respiratorio.', 'Tos efectiva en obstrucción parcial.', 'Pérdida de conciencia si obstrucción completa.'], highSuspicionRedFlags: ['No puede hablar ni toser.', 'Cianosis o sensorio disminuido.', 'Silencio respiratorio.', 'Lactante con llanto débil o apnea.'] },
+    diagnosticAlgorithm: { initialSteps: ['Determinar si la tos es efectiva: si sí, estimular tos y observar.', 'Si tos inefectiva y consciente: maniobras según edad.', 'Si inconsciente: RCP y retirar objeto solo si visible.'], electrocardiogram: ['No prioritario; monitor tras recuperación o paro.'], biomarkersAndLabs: ['No necesarios en fase aguda; gases/Rx si aspiración residual.'], differentialDiagnosis: ['Anafilaxia/edema glótico.', 'Crisis asmática.', 'Laringoespasmo.', 'Epiglotitis/crup.'] },
+    management: { prehospitalAmbulance: ['Adulto/niño >1 año consciente: 5 golpes interescapulares alternados con 5 compresiones abdominales.', 'Lactante: 5 golpes interescapulares + 5 compresiones torácicas; NO Heimlich abdominal.', 'Inconsciente: RCP, mirar boca solo si objeto visible y ventilar si pasa aire.', 'Magill bajo visión si entrenado; cricotiroidotomía si no se puede ventilar y obstrucción alta.'], emergencyRoomShockRoom: ['Broncoscopía si objeto no expulsado o sospecha residual.', 'Intubación si edema/agotamiento; cricotiroidotomía en CICO.', 'Observación por edema, aspiración o neumonía.'], initialPharmacotherapy: [{ drug: 'Oxígeno', dose: 'Alto flujo', route: 'Máscara/VM', notes: 'Tras alivio parcial o durante soporte.' }, { drug: 'Adrenalina IM', dose: '0.3-0.5 mg adulto', route: 'IM', notes: 'Solo si el cuadro es anafilaxia, no OVACE pura.' }] },
+    therapeuticWindow: { timeframe: 'Minutos: hipoxia completa causa daño cerebral irreversible.', goldStandard: 'Maniobras inmediatas + extracción bajo visión + vía aérea quirúrgica si CICO.', alternativeReperfusion: 'RCP si inconsciente; broncoscopía urgente si obstrucción parcial persistente.', contraindications: ['No barrido digital a ciegas.', 'No Heimlich abdominal en lactantes.', 'No golpear espalda si tos efectiva fuerte.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Excelente si se desobstruye antes de hipoxia prolongada.', survivalAt24h: 'Vigilar edema y aspiración.', survivalAt7d: 'Riesgo de neumonía aspirativa.', survivalAt1y: 'Secuelas neurológicas si paro hipóxico prolongado.', immediateComplications: ['Paro hipóxico.', 'Aspiración.', 'Trauma por maniobras.', 'Edema laríngeo.'], mediateAndLongTermComplications: ['Neumonía.', 'Estenosis/lesión vía aérea.', 'Daño neurológico hipóxico.'] },
+    actionCopyTemplate: 'OVACE. Edad ___ objeto ___. Tos efectiva/inefectiva ___ conciencia ___. Conducta: golpes/compresiones/RCP/Magill/crico ___. Objeto expulsado ___ Sat post ___.'
+  },
+  {
+    id: 'torax-inestable',
+    title: 'Tórax Inestable (Flail Chest)',
+    shortTitle: 'Tórax Inestable',
+    category: 'Trauma',
+    cie10: 'S22.5',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Fracturas costales múltiples con segmento flotante y respiración paradójica, generalmente con contusión pulmonar. Riesgo de insuficiencia respiratoria por dolor e hipoventilación.',
+    prehospitalManifestations: { setting: 'Trauma cerrado de alta energía: choque vehicular, atropello, aplastamiento o caída.', keySigns: ['Dolor torácico intenso y crepitación.', 'Movimiento paradójico del segmento.', 'Disnea, hipoxemia y taquipnea.', 'Hemoptisis/rales por contusión pulmonar.'], highSuspicionRedFlags: ['SatO2 <90% pese a O2.', 'Fatiga respiratoria o alteración del sensorio.', 'Shock o trauma multisistémico.', 'Neumotórax/hemotórax asociado.'] },
+    diagnosticAlgorithm: { initialSteps: ['ABCDE trauma, exponer tórax y evaluar ventilación.', 'Buscar primero neumotórax a tensión/hemotórax masivo.', 'Evaluar dolor y capacidad ventilatoria.'], electrocardiogram: ['ECG/troponina si trauma anterior severo por contusión miocárdica.'], biomarkersAndLabs: ['Gases si hipoxemia, lactato, Hb y trauma labs.', 'Rx/TC tórax tras estabilización.'], differentialDiagnosis: ['Contusión pulmonar sin flail.', 'Neumotórax/hemotórax.', 'Fractura esternal/contusión cardíaca.', 'Taponamiento.'] },
+    management: { prehospitalAmbulance: ['Oxígeno alto flujo; ventilación asistida/CPAP si disponible y no contraindicada.', 'Analgesia temprana para permitir ventilación.', 'No vendaje compresivo circunferencial.', 'Tratar neumotórax a tensión si aparece y trasladar a trauma.'], emergencyRoomShockRoom: ['Analgesia multimodal/bloqueos regionales.', 'VNI o intubación con PEEP si falla respiratoria.', 'Drenaje pleural si neumotórax/hemotórax.', 'Fijación quirúrgica costal en casos seleccionados.'], initialPharmacotherapy: [{ drug: 'Fentanilo', dose: '25-100 mcg titulado', route: 'IV/IN', notes: 'Analgesia potente con monitoreo respiratorio.' }, { drug: 'Ketamina', dose: '0.1-0.3 mg/kg analgesia', route: 'IV', notes: 'Útil si hipotensión relativa.' }, { drug: 'Oxígeno/PEEP', dose: 'Según Sat/trabajo respiratorio', route: 'Máscara/VM', notes: 'La PEEP estabiliza ventilación.' }] },
+    therapeuticWindow: { timeframe: 'Primeras horas: analgesia y ventilación evitan atelectasia, hipoxia y neumonía.', goldStandard: 'ABCDE + analgesia efectiva + soporte ventilatorio + tratar lesiones asociadas.', alternativeReperfusion: 'Traslado a centro de trauma; ventilación asistida si CPAP no disponible.', contraindications: ['No comprimir tórax con vendajes rígidos.', 'No subtratar dolor.', 'No pasar por alto neumotórax a tensión.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Depende de hipoxia/contusión y trauma asociado.', survivalAt24h: 'Puede deteriorar por edema de contusión pulmonar.', survivalAt7d: 'Riesgo alto de neumonía y ventilación prolongada.', survivalAt1y: 'Dolor crónico o limitación ventilatoria si fracturas complejas.', immediateComplications: ['Insuficiencia respiratoria.', 'Neumotórax/hemotórax.', 'Contusión pulmonar.', 'Shock asociado.'], mediateAndLongTermComplications: ['Neumonía.', 'SDRA.', 'Dolor crónico.', 'Pseudoartrosis costal.'] },
+    actionCopyTemplate: 'TÓRAX INESTABLE. Mecanismo ___. Segmento ___ Sat ___ FR ___ dolor ___. Conducta: O2/CPAP/VM ___ + analgesia ___ + búsqueda/tratamiento neumotórax/hemotórax + trauma.'
+  },
+  {
+    id: 'tep-masivo',
+    title: 'Tromboembolismo Pulmonar (TEP) Masivo',
+    shortTitle: 'TEP Masivo',
+    category: 'Respiratorio',
+    cie10: 'I26',
+    severity: 'Crítica / Código Rojo',
+    summary: 'TEP con hipotensión, shock obstructivo o paro. Requiere anticoagulación y reperfusión urgente si alto riesgo.',
+    prehospitalManifestations: { setting: 'Disnea súbita, síncope, dolor pleurítico, postoperatorio, cáncer, inmovilización, puerperio o TVP.', keySigns: ['Disnea brusca, taquipnea e hipoxemia.', 'Síncope o presíncope.', 'Hipotensión/shock e ingurgitación yugular.', 'Dolor pleurítico, hemoptisis o signos de TVP.'], highSuspicionRedFlags: ['Shock sin otra causa + riesgo TEV.', 'Paro en AESP.', 'Eco con dilatación de VD.', 'Lactato/troponina/BNP elevados.'] },
+    diagnosticAlgorithm: { initialSteps: ['ABCDE y estratificación: hipotensión = alto riesgo.', 'Inestable: eco bedside para VD y descartar taponamiento/neumotórax.', 'Estable: Wells/Ginebra, dímero D si bajo-intermedio y angioTC.'], electrocardiogram: ['Taquicardia sinusal, S1Q3T3, BRD o T negativas V1-V4; puede ser normal.'], biomarkersAndLabs: ['Gases, lactato, troponina/BNP, dímero D si estable y coagulación/renal.', 'AngioTC si estable; eco doppler MMII.'], differentialDiagnosis: ['IAM.', 'Neumotórax a tensión.', 'Taponamiento.', 'Disección aórtica.', 'Sepsis.'] },
+    management: { prehospitalAmbulance: ['Oxígeno; evitar exceso de fluidos, usar bolos pequeños si hipotensión.', 'Noradrenalina si shock y disponible.', 'Traslado con preaviso a centro con UCI/trombólisis.', 'RCP prolongada y considerar trombólisis en paro por TEP según protocolo.'], emergencyRoomShockRoom: ['Heparina no fraccionada si no contraindicación.', 'Trombólisis sistémica si TEP masivo con shock o paro probable.', 'Embolectomía/catéter si contraindicación o falla de trombólisis.', 'Soporte de VD con noradrenalina, oxígeno y ventilación cuidadosa.'], initialPharmacotherapy: [{ drug: 'Heparina no fraccionada', dose: '80 UI/kg bolo + 18 UI/kg/h', route: 'IV', notes: 'Preferida en inestable.' }, { drug: 'Alteplasa', dose: '100 mg IV en 2 h o protocolo de paro', route: 'IV', notes: 'TEP masivo con shock/parada si no hay contraindicación absoluta.' }, { drug: 'Noradrenalina', dose: '0.05-0.5 mcg/kg/min', route: 'IV', notes: 'Soporte de shock obstructivo.' }] },
+    therapeuticWindow: { timeframe: 'Shock/parada: minutos; reperfusión urgente salva vida.', goldStandard: 'Anticoagulación + reperfusión si TEP masivo + soporte VD.', alternativeReperfusion: 'Catéter, embolectomía o ECMO según disponibilidad.', contraindications: ['No esperar dímero D en shock.', 'Evitar grandes cargas de fluidos.', 'Evaluar contraindicaciones de trombólisis.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Alta mortalidad sin reperfusión en TEP masivo.', survivalAt24h: 'Mejora si revierte shock; riesgo de sangrado por trombólisis.', survivalAt7d: 'Vigilar recurrencia, sangrado y falla VD.', survivalAt1y: 'Riesgo de hipertensión pulmonar tromboembólica crónica.', immediateComplications: ['Paro AESP.', 'Shock obstructivo.', 'Hipoxemia severa.', 'Sangrado por trombólisis.'], mediateAndLongTermComplications: ['Recurrencia TEV.', 'HTP tromboembólica crónica.', 'Síndrome postrombótico.'] },
+    actionCopyTemplate: 'TEP MASIVO. Riesgo TEV ___. Disnea/síncope/shock ___. TA/FC/Sat ___. Eco VD ___. Conducta: O2 + heparina ___ + noradrenalina ___ + trombólisis/catéter/embolectomía ___.'
+  },
+  {
+    id: 'trauma-abdominal-visceral',
+    title: 'Trauma Abdominal Cerrado/Abierto con Lesión Visceral',
+    shortTitle: 'Trauma Abdominal',
+    category: 'Trauma',
+    cie10: 'S36',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Lesión de víscera maciza con hemorragia o hueca con peritonitis/sepsis. Prioridad: detectar shock hemorrágico y activar cirugía/trauma.',
+    prehospitalManifestations: { setting: 'Choques, caídas, aplastamientos, golpes, arma blanca/fuego o empalamiento.', keySigns: ['Dolor abdominal, defensa, distensión o equimosis de cinturón.', 'Shock con abdomen inicialmente poco expresivo.', 'Evisceración o herida penetrante.', 'Dolor hombro izquierdo, pelvis inestable o signos de sangrado interno.'], highSuspicionRedFlags: ['Hipotensión sin sangrado externo.', 'FAST positivo.', 'Evisceración/empalamiento.', 'Peritonitis o abdomen rígido.'] },
+    diagnosticAlgorithm: { initialSteps: ['ABCDE trauma y control de hemorragias externas.', 'FAST/eFAST en inestable; no demorar quirófano si shock + FAST positivo.', 'TC con contraste solo si estable.'], electrocardiogram: ['Monitor; ECG si trauma toracoabdominal o shock.'], biomarkersAndLabs: ['Hemograma seriado, lactato/gases, coagulograma y grupo/reserva.', 'Amilasa/lipasa/hepatograma no deben retrasar decisiones.'], differentialDiagnosis: ['Hemotórax/taponamiento.', 'Fractura de pelvis sangrante.', 'Shock medular.', 'Lesión vascular mayor.'] },
+    management: { prehospitalAmbulance: ['Hipotensión permisiva en penetrante sin TEC; objetivo perfusión cerebral/pulso radial.', 'Dos vías/IO, control sangrado y normotermia.', 'Evisceración: gasas estériles húmedas, no reintroducir.', 'Empalamiento: no retirar objeto; estabilizarlo.', 'Preaviso a cirugía/trauma.'], emergencyRoomShockRoom: ['Transfusión masiva si shock.', 'FAST positivo + inestable = laparotomía; estable = TC.', 'Antibióticos en trauma abierto/lesión hueca y profilaxis antitetánica.', 'Control de daños: packing, hemostasia y control de contaminación.'], initialPharmacotherapy: [{ drug: 'Hemoderivados', dose: 'Protocolo de transfusión masiva', route: 'IV/IO', notes: 'Reanimación hemostática temprana.' }, { drug: 'Ácido tranexámico', dose: '1 g IV + 1 g en 8 h si <3 h', route: 'IV', notes: 'Hemorragia traumática significativa.' }, { drug: 'Cefazolina/Ceftriaxona + Metronidazol', dose: 'Según protocolo', route: 'IV', notes: 'Penetrante, lesión hueca o evisceración.' }] },
+    therapeuticWindow: { timeframe: 'Minutos-horas: hemorragia interna mata rápido; cirugía temprana en inestable.', goldStandard: 'ABCDE + FAST/TC según estabilidad + sangre + cirugía/control de daños.', alternativeReperfusion: 'Angioembolización si estable con sangrado arterial.', contraindications: ['No retirar objetos empalados.', 'No reintroducir vísceras.', 'No mandar a TC al inestable con FAST positivo.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Depende de control hemorrágico precoz.', survivalAt24h: 'Riesgo de coagulopatía, acidosis e hipotermia.', survivalAt7d: 'Sepsis/abscesos por lesión hueca.', survivalAt1y: 'Secuelas por esplenectomía, ostomías o lesiones pancreatohepáticas.', immediateComplications: ['Shock hemorrágico.', 'Peritonitis.', 'DIC.', 'Exanguinación.'], mediateAndLongTermComplications: ['Abscesos.', 'Fístulas.', 'Adherencias/oclusión.', 'Sepsis.'] },
+    actionCopyTemplate: 'TRAUMA ABDOMINAL. Mecanismo ___. Cerrado/penetrante ___. TA/FC ___ abdomen ___. FAST ___. Conducta: 2 vías + sangre ___ + TXA ___ + ATB/tétanos ___ + TC/quirófano/angio ___.'
+  },
+  {
+    id: 'sindrome-compartimental-agudo',
+    title: 'Síndrome Compartimental Agudo',
+    shortTitle: 'Compartimental',
+    category: 'Trauma',
+    cie10: 'T79.6 / M79.A',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Aumento de presión osteofascial con isquemia muscular y nerviosa. Dolor desproporcionado y dolor con estiramiento pasivo son claves. Tratamiento: fasciotomía urgente.',
+    prehospitalManifestations: { setting: 'Fracturas de tibia/antebrazo, aplastamiento, yesos/vendajes apretados, reperfusión, quemaduras o anticoagulación.', keySigns: ['Dolor intenso desproporcionado.', 'Dolor con estiramiento pasivo.', 'Compartimento tenso en madera.', 'Parestesias; pulsos pueden persistir hasta tarde.'], highSuspicionRedFlags: ['Dolor que no cede con analgesia.', 'Déficit sensitivo/motor progresivo.', 'Paciente inconsciente con miembro tenso.', 'Vendaje/yeso constrictivo.'] },
+    diagnosticAlgorithm: { initialSteps: ['Sospecha clínica; no esperar las 6 P completas.', 'Retirar vendajes/yesos constrictivos y dejar miembro a nivel del corazón.', 'Medir presión si duda o paciente no evaluable.'], electrocardiogram: ['ECG si aplastamiento/rabdomiólisis con hiperpotasemia.'], biomarkersAndLabs: ['CK, potasio, creatinina y orina para mioglobinuria.', 'Delta presión <30 mmHg apoya fasciotomía.'], differentialDiagnosis: ['Dolor por fractura aislada.', 'Isquemia arterial aguda.', 'Neuropraxia.', 'TVP.'] },
+    management: { prehospitalAmbulance: ['Retirar constricciones, férula funcional y miembro a nivel del corazón.', 'Analgesia potente sin retrasar traslado.', 'No aplicar hielo ni elevar excesivamente.', 'Preaviso a ortopedia/trauma para fasciotomía.'], emergencyRoomShockRoom: ['Ortopedia/cirugía urgente; fasciotomía si clínica o presiones patológicas.', 'Tratar fractura o lesión vascular asociada.', 'Hidratación si rabdomiólisis y vigilancia de K+/renal.', 'Documentar neurovascular seriado.'], initialPharmacotherapy: [{ drug: 'Fentanilo/Ketamina', dose: 'Titulada', route: 'IV/IN', notes: 'Analgesia; dolor persistente refuerza sospecha.' }, { drug: 'Cristaloides', dose: 'Titulados a diuresis', route: 'IV', notes: 'Rabdomiólisis/aplastamiento.' }, { drug: 'Calcio + insulina/glucosa', dose: 'Según hiperpotasemia', route: 'IV', notes: 'Si hiperpotasemia por aplastamiento.' }] },
+    therapeuticWindow: { timeframe: 'Fasciotomía ideal antes de 6 h; daño irreversible aumenta después de 6-8 h.', goldStandard: 'Diagnóstico clínico precoz + fasciotomía urgente.', alternativeReperfusion: 'Medición de presión si duda, sin demorar si clínica clara.', contraindications: ['No esperar ausencia de pulso.', 'No elevar alto el miembro.', 'No cerrar yeso/vendaje apretado.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Excelente si fasciotomía temprana.', survivalAt24h: 'Riesgo de necrosis/rabdomiólisis si demora.', survivalAt7d: 'Infección y debridamientos.', survivalAt1y: 'Contractura de Volkmann, neuropatía o amputación si tardío.', immediateComplications: ['Necrosis muscular.', 'Lesión nerviosa.', 'Rabdomiólisis.', 'Hiperpotasemia.'], mediateAndLongTermComplications: ['Contracturas.', 'Dolor crónico.', 'Déficit motor/sensitivo.', 'Amputación.'] },
+    actionCopyTemplate: 'SÍNDROME COMPARTIMENTAL. Miembro ___ trauma ___. Dolor desproporcionado ___ estiramiento pasivo ___ tensión ___. Pulsos ___. Conducta: retirar constricción + nivel corazón + analgesia ___ + CK/K/renal + fasciotomía ___.'
+  },
+  {
+    id: 'trauma-penetrante-haf-hab-empalamiento',
+    title: 'Trauma Penetrante (HAF / HAB / Empalamiento)',
+    shortTitle: 'Trauma Penetrante',
+    category: 'Trauma',
+    cie10: 'T14.1 / S21-S31',
+    severity: 'Crítica / Código Rojo',
+    summary: 'Lesión por arma de fuego, arma blanca o empalamiento. La supervivencia depende del control de hemorragia y del tiempo hasta cirugía.',
+    prehospitalManifestations: { setting: 'Agresión, accidente laboral, empalamiento o heridas torácicas, abdominales, cuello y extremidades.', keySigns: ['Hemorragia externa o shock oculto.', 'Herida de entrada/salida; trayecto impredecible en HAF.', 'Objeto empalado in situ.', 'Disnea, abdomen agudo o déficit neurovascular distal.'], highSuspicionRedFlags: ['Sangrado pulsátil/no controlable.', 'Herida en cuello, tórax, abdomen o pelvis.', 'Shock o alteración mental.', 'Objeto empalado: riesgo de exanguinación al retirarlo.'] },
+    diagnosticAlgorithm: { initialSteps: ['XABCDE: hemorragia exanguinante primero.', 'Presión directa, torniquete en extremidades y packing hemostático en zonas compresibles.', 'Evaluar tórax, abdomen, pelvis y neurovascular.'], electrocardiogram: ['Monitor; ECG si lesión torácica o shock.'], biomarkersAndLabs: ['Grupo/reserva, hemograma, coagulograma y lactato/gases.', 'FAST/eFAST; TC solo si estable.'], differentialDiagnosis: ['Trauma cerrado asociado.', 'Taponamiento.', 'Neumotórax/hemotórax.', 'Lesión vascular periférica.'] },
+    management: { prehospitalAmbulance: ['Control de hemorragia: presión, torniquete alto y apretado o packing hemostático.', 'NO retirar objeto empalado; estabilizarlo y cortar solo si impide traslado.', 'Herida torácica soplante: apósito valvulado/3 lados; vigilar tensión.', 'Hipotensión permisiva si no TEC y traslado rápido a centro quirúrgico.', 'TXA si hemorragia significativa <3 h.'], emergencyRoomShockRoom: ['Activar trauma/cirugía y transfusión masiva si shock.', 'eFAST; quirófano inmediato si inestable con foco toracoabdominal.', 'Antibióticos y antitetánica.', 'Control de daños: toracotomía/laparotomía/vascular según sitio.'], initialPharmacotherapy: [{ drug: 'Ácido tranexámico', dose: '1 g IV + 1 g en 8 h', route: 'IV', notes: 'Hemorragia traumática dentro de 3 h.' }, { drug: 'Hemoderivados', dose: 'Protocolo masivo', route: 'IV/IO', notes: 'Reanimación hemostática.' }, { drug: 'Cefazolina ± Metronidazol', dose: 'Según herida', route: 'IV', notes: 'Penetrante/contaminada/abdominal.' }, { drug: 'Profilaxis antitetánica', dose: 'Según esquema', route: 'IM', notes: 'Vacuna/inmunoglobulina según antecedente.' }] },
+    therapeuticWindow: { timeframe: 'Minutos: minimizar tiempo en escena y llevar a control quirúrgico.', goldStandard: 'Control de sangrado + traslado a centro de trauma + cirugía/control de daños.', alternativeReperfusion: 'REBOA/toracotomía de resucitación en centros entrenados y criterios precisos.', contraindications: ['No retirar empalamientos.', 'No explorar heridas profundas en campo.', 'No retrasar traslado por intervenciones no esenciales.'] },
+    evidenceAndPrognosis: { survivalAt6h: 'Depende de control hemorrágico y sitio de lesión.', survivalAt24h: 'Riesgo de coagulopatía, lesión visceral y sepsis temprana.', survivalAt7d: 'Infección, fuga anastomótica o abscesos.', survivalAt1y: 'Secuelas funcionales según órgano, vaso o nervio lesionado.', immediateComplications: ['Exanguinación.', 'Neumotórax a tensión.', 'Taponamiento.', 'Lesión vascular mayor.'], mediateAndLongTermComplications: ['Infección.', 'Fístulas.', 'TEPT.', 'Déficit neurovascular.'] },
+    actionCopyTemplate: 'TRAUMA PENETRANTE. Tipo HAF/HAB/empalamiento ___ sitio ___ hora ___. Shock ___ sangrado ___. Conducta: XABCDE + control hemorragia ___ + NO retirar objeto + TXA ___ + ATB/tétanos ___ + cirugía/trauma.'
   }
 ];
