@@ -44,6 +44,9 @@ export async function createPublicBookingLink(params: {
   location?: string
   reason?: string
   intervalMinutes?: number
+  amountToCharge?: number
+  amountConcept?: 'sena' | 'consulta'
+  paymentLink?: string
 }): Promise<ActionResult & { token?: string; slotCount?: number }> {
   return invokePublicBooking({ action: 'create-link', ...params })
 }
