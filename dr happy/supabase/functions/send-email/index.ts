@@ -167,6 +167,15 @@ function buildHtmlForType(type: string | undefined, subject: string, templateDat
       const time = String(templateData.time || '')
       const location = String(templateData.location || 'Consultorio')
       const notes = String(templateData.notes || '')
+      const amountRaw = templateData.amountToCharge
+      const amountValue = typeof amountRaw === 'number' ? amountRaw : Number(amountRaw)
+      const hasAmount = Number.isFinite(amountValue) && amountValue > 0
+      const amountConcept = String(templateData.amountConcept || 'consulta')
+      const amountLabel = amountConcept === 'sena' ? 'Seña para reservar' : 'Valor de la consulta'
+      const amountFormatted = hasAmount
+        ? amountValue.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+        : ''
+      const paymentLink = String(templateData.paymentLink || '')
       const inner = `
         <h2 style="color: #0f172a; margin-top: 0;">Confirmación de Turno Médico 📅</h2>
         <p>Hola <strong>${patientName}</strong>,</p>
@@ -198,8 +207,28 @@ function buildHtmlForType(type: string | undefined, subject: string, templateDat
               <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Indicaciones:</td>
               <td style="padding: 6px 0; color: #0f172a;">${notes}</td>
             </tr>` : ''}
+            ${hasAmount ? `
+            <tr>
+              <td style="padding: 6px 0; color: #64748b; font-weight: 600;">${amountLabel}:</td>
+              <td style="padding: 6px 0; color: #047857; font-weight: 700;">$${amountFormatted}</td>
+            </tr>` : ''}
           </table>
         </div>
+        ${hasAmount ? `
+        <div style="background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 10px; padding: 16px; margin-top: 18px;">
+          <p style="margin: 0 0 10px; color: #065f46; font-weight: 700;">
+            ${amountConcept === 'sena' ? '💳 Seña para reservar tu turno' : '💳 Valor de la consulta'}: $${amountFormatted}
+          </p>
+          ${paymentLink ? `
+          <div style="text-align: center; margin: 14px 0;">
+            <a href="${paymentLink}" target="_blank" style="display: inline-block; background: #059669; color: #ffffff; text-decoration: none; padding: 12px 26px; border-radius: 8px; font-weight: 700;">
+              Pagar ahora
+            </a>
+          </div>` : ''}
+          <p style="margin: 0; color: #065f46; font-size: 12px;">
+            El pago se realiza directamente al profesional. Dr Happy no participa de la transacción.
+          </p>
+        </div>` : ''}
         <p style="color: #64748b; font-size: 13px;">Por favor preséntate 10 minutos antes del horario pactado con tu documento de identidad y carnet de cobertura médica.</p>
         <div style="text-align: center; margin-top: 25px;">
           <a href="https://drhappy.com.ar/" class="btn" target="_blank">Ver en DrHappy</a>

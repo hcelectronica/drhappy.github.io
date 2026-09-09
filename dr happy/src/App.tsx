@@ -172,6 +172,9 @@ interface ProfessionalProfile {
   signatureImage?: StoredFile
   signatureText: string
   communitySeenMessageIds?: string[]
+  // Link de cobro propio del profesional (Mercado Pago, alias, o cualquier medio).
+  // Dr Happy solo lo muestra al paciente: el pago es directo al profesional.
+  paymentLink?: string
 }
 
 interface ConsultationEntry {
@@ -310,6 +313,9 @@ interface AppointmentRecord {
   createdByUserId: string
   emailDraftSentAt?: string
   emailConfirmationSentAt?: string
+  // Monto a cobrar informado al paciente (opcional). Dr Happy no procesa el pago.
+  amountToCharge?: number
+  amountConcept?: 'sena' | 'consulta'
 }
 
 interface AppointmentDraft {
@@ -324,6 +330,8 @@ interface AppointmentDraft {
   notes: string
   location: string
   sendEmailConfirmation: boolean
+  amountToCharge: string
+  amountConcept: 'sena' | 'consulta'
 }
 
 interface SeedPatientsPayload {
@@ -466,6 +474,8 @@ const emptyAppointmentDraft: AppointmentDraft = {
   notes: '',
   location: 'Consultorio médico',
   sendEmailConfirmation: true,
+  amountToCharge: '',
+  amountConcept: 'consulta',
 }
 
 const PROFESSIONAL_NETWORK_OPTIONS = [
@@ -1038,6 +1048,7 @@ function normalizeRemoteProfile(raw: unknown, fallback: ProfessionalProfile): Pr
     email: candidate.email,
     phone: candidate.phone,
     signatureText: candidate.signatureText,
+    paymentLink: typeof candidate.paymentLink === 'string' ? candidate.paymentLink : undefined,
     matriculaPhoto: normalizeStoredFile(candidate.matriculaPhoto) ?? undefined,
     signatureImage: normalizeStoredFile(candidate.signatureImage) ?? undefined,
     communitySeenMessageIds: normalizeStringList(candidate.communitySeenMessageIds),
@@ -6333,6 +6344,8 @@ function App() {
         notes: '',
         location: 'Consultorio médico',
         sendEmailConfirmation: Boolean(prefillPatient.email),
+        amountToCharge: '',
+        amountConcept: 'consulta',
       })
     } else {
       setAppointmentDraft(emptyAppointmentDraft)
@@ -6353,6 +6366,8 @@ function App() {
       notes: record.notes || '',
       location: record.location || 'Consultorio médico',
       sendEmailConfirmation: Boolean(record.patientEmail),
+      amountToCharge: record.amountToCharge ? String(record.amountToCharge) : '',
+      amountConcept: record.amountConcept || 'consulta',
     })
     setAppointmentModalOpen(true)
   }
@@ -6366,6 +6381,12 @@ function App() {
     }
     if (appointmentDraft.patientEmail.trim() && !isValidEmail(appointmentDraft.patientEmail.trim())) {
       setAppError('El email del paciente no tiene un formato válido.')
+      return
+    }
+    const rawAmount = appointmentDraft.amountToCharge.trim()
+    const parsedAmount = rawAmount ? Number(rawAmount.replace(',', '.')) : null
+    if (rawAmount && (!Number.isFinite(parsedAmount) || (parsedAmount as number) <= 0)) {
+      setAppError('El monto a cobrar debe ser un número mayor a cero.')
       return
     }
 
@@ -6435,6 +6456,8 @@ function App() {
           appointmentDraft.sendEmailConfirmation && appointmentDraft.patientEmail.trim()
             ? new Date().toISOString()
             : undefined,
+        amountToCharge: parsedAmount ?? undefined,
+        amountConcept: parsedAmount ? appointmentDraft.amountConcept : undefined,
       }
 
       const nextAppointments = isEdit
@@ -6460,6 +6483,9 @@ function App() {
           time: appointmentDraft.scheduledTime,
           location: appointmentDraft.location.trim() || 'Consultorio médico',
           notes: appointmentDraft.notes.trim(),
+          amountToCharge: parsedAmount ?? undefined,
+          amountConcept: parsedAmount ? appointmentDraft.amountConcept : undefined,
+          paymentLink: currentProf?.paymentLink?.trim() || undefined,
         }).then((res) => {
           if (res.success) {
             showSavedFloatingNotice('Turno guardado y email enviado al paciente')
@@ -6610,6 +6636,9 @@ function App() {
         time: record.scheduledTime,
         location: record.location || 'Consultorio médico',
         notes: record.notes || '',
+        amountToCharge: record.amountToCharge,
+        amountConcept: record.amountConcept,
+        paymentLink: currentProf?.paymentLink?.trim() || undefined,
       })
       if (res.success) {
         const nextAppointments = appointments.map((a) =>
@@ -10162,6 +10191,15 @@ function App() {
                           </div>
                         ) : null}
 
+                        {record.amountToCharge ? (
+                          <div className="turnera-amount-box">
+                            <span>
+                              💳 {record.amountConcept === 'sena' ? 'Seña' : 'Consulta'}: $
+                              {record.amountToCharge.toLocaleString('es-AR')}
+                            </span>
+                          </div>
+                        ) : null}
+
                         {/* Email Confirmation Status */}
                         <div className="turnera-email-status-bar">
                           {record.emailConfirmationSentAt ? (
@@ -10934,6 +10972,19 @@ function App() {
                     value={profile.signatureText}
                     onChange={handleProfileFieldChange}
                   />
+                </label>
+                <label>
+                  Link de cobro (Mercado Pago, alias o CBU)
+                  <input
+                    name="paymentLink"
+                    placeholder="https://link.mercadopago.com.ar/... o tu alias"
+                    value={profile.paymentLink ?? ''}
+                    onChange={handleProfileFieldChange}
+                  />
+                  <span className="field-hint">
+                    Opcional. Se incluye en el email de confirmación cuando cargás un monto a cobrar. El pago va
+                    directo a vos: Dr Happy no participa de la transacción.
+                  </span>
                 </label>
                 <label>
                   Foto de matrícula
@@ -11990,6 +12041,55 @@ function App() {
                   />
                 </label>
               </div>
+
+              <div className="turnera-form-row">
+                <label style={{ flex: 1 }}>
+                  Monto a cobrar (opcional)
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Ej: 25000"
+                    value={appointmentDraft.amountToCharge}
+                    onChange={(e) =>
+                      setAppointmentDraft((prev) => ({
+                        ...prev,
+                        amountToCharge: e.target.value.replace(/[^\d.,]/g, ''),
+                      }))
+                    }
+                  />
+                </label>
+                <label style={{ flex: 1 }}>
+                  Concepto
+                  <select
+                    value={appointmentDraft.amountConcept}
+                    onChange={(e) =>
+                      setAppointmentDraft((prev) => ({
+                        ...prev,
+                        amountConcept: e.target.value as 'sena' | 'consulta',
+                      }))
+                    }
+                    disabled={!appointmentDraft.amountToCharge.trim()}
+                  >
+                    <option value="consulta">Valor de la consulta</option>
+                    <option value="sena">Seña para reservar</option>
+                  </select>
+                </label>
+              </div>
+
+              {appointmentDraft.amountToCharge.trim() ? (
+                <p className={`payment-info-note ${profile?.paymentLink?.trim() ? 'ok' : 'warn'}`}>
+                  {profile?.paymentLink?.trim() ? (
+                    <>
+                      ✅ El email incluirá el monto y tu botón de pago. El paciente te paga directo a vos.
+                    </>
+                  ) : (
+                    <>
+                      ⚠️ El email va a mostrar el monto, pero sin botón de pago. Cargá tu link de cobro en{' '}
+                      <strong>Perfil</strong> para que el paciente pueda pagarte online.
+                    </>
+                  )}
+                </p>
+              ) : null}
 
               <label className="toggle-option" style={{ marginTop: 4, marginBottom: 8 }}>
                 <input
