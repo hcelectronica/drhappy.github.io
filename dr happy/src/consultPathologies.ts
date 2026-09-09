@@ -20,6 +20,7 @@ export interface ConsultPathology {
     nonPharmacological: string[]
     firstLine: string[]
     pharmacologicalOptions: { drug: string; dose: string; notes: string }[]
+    therapeuticLadder: { step: string; title: string; criteria: string; action: string; reassessment: string }[]
     avoidOrUseWithCaution: string[]
   }
   followUp: {
@@ -125,6 +126,50 @@ export const CONSULT_PATHOLOGIES: ConsultPathology[] = [
           drug: 'Indapamida / Clortalidona',
           dose: 'Indapamida LP 1.5 mg/día o clortalidona 12.5 mg/día',
           notes: 'Tiazídico-like con buen efecto antihipertensivo; vigilar electrolitos.'
+        }
+      ],
+      therapeuticLadder: [
+        {
+          step: 'Paso 0',
+          title: 'Confirmar antes de intensificar',
+          criteria: 'PA elevada aislada o discordante con clínica, técnica dudosa, ansiedad, dolor, cafeína/tabaco reciente o registros domiciliarios no disponibles.',
+          action: 'Repetir medición correcta, indicar AMPA/MAPA si es posible, revisar adherencia y descartar emergencia hipertensiva. Si hay daño de órgano blanco o síntomas de alarma, no seguir escala de consultorio: derivar.',
+          reassessment: 'Reevaluar con promedio domiciliario o nuevo control en 1-4 semanas según cifras y riesgo.'
+        },
+        {
+          step: 'Paso 1',
+          title: 'Riesgo bajo / HTA grado 1 sin daño de órgano',
+          criteria: 'PA 140-159/90-99 mmHg, bajo riesgo cardiovascular, sin diabetes/ERC, sin HVI/albuminuria ni enfermedad cardiovascular establecida.',
+          action: 'Intervención intensiva de estilo de vida: sal <5 g/día, plan DASH/mediterráneo, actividad física, descenso de peso, alcohol bajo, suspender tabaco y evitar AINEs crónicos. Considerar fármaco si el paciente prefiere tratamiento o hay persistencia.',
+          reassessment: 'Control en 4-12 semanas. Si no alcanza objetivo, iniciar monoterapia o combinación según PA/riesgo.'
+        },
+        {
+          step: 'Paso 2',
+          title: 'Inicio farmacológico simple',
+          criteria: 'HTA grado 1 persistente, riesgo moderado/alto, daño subclínico, diabetes/ERC, o imposibilidad de lograr cambios suficientes.',
+          action: 'Monoterapia con IECA/ARA II, calcioantagonista dihidropiridínico o tiazida/tiazídico-like según perfil. Elegir pensando en comorbilidades: albuminuria/ERC favorece IECA/ARA II; anciano/HTA sistólica aislada favorece amlodipina o tiazídico-like.',
+          reassessment: 'Control en 2-4 semanas. Titular dosis y controlar creatinina/potasio si IECA/ARA II/diurético.'
+        },
+        {
+          step: 'Paso 3',
+          title: 'Doble terapia preferida',
+          criteria: 'PA ≥160/100, >20/10 mmHg por encima del objetivo, alto riesgo cardiovascular, daño de órgano blanco o falta de control con monoterapia.',
+          action: 'Combinar IECA o ARA II + amlodipina, o IECA/ARA II + tiazida/tiazídico-like. Preferir combinaciones en un comprimido si mejora adherencia. No combinar IECA + ARA II.',
+          reassessment: 'Control en 2-4 semanas con AMPA, efectos adversos, ortostatismo, creatinina, sodio y potasio.'
+        },
+        {
+          step: 'Paso 4',
+          title: 'Triple terapia',
+          criteria: 'No controla con dos fármacos a dosis adecuadas o PA inicial muy elevada con necesidad de intensificación rápida pero ambulatoria.',
+          action: 'IECA o ARA II + calcioantagonista dihidropiridínico + tiazida/tiazídico-like. Confirmar adherencia, técnica de toma, exceso de sal, alcohol, AINEs y apnea del sueño antes de rotular resistencia.',
+          reassessment: 'Control en 2-4 semanas. Si sigue fuera de objetivo, evaluar HTA resistente.'
+        },
+        {
+          step: 'Paso 5',
+          title: 'HTA resistente / derivación',
+          criteria: 'PA fuera de objetivo con 3 fármacos adecuados incluyendo diurético, o necesidad de 4 fármacos para controlar.',
+          action: 'Confirmar con AMPA/MAPA, buscar secundaria y agregar espironolactona si eGFR y potasio lo permiten, con vigilancia estricta. Derivar a cardiología/nefrología o unidad de HTA.',
+          reassessment: 'Control estrecho de potasio/creatinina a 1 semana, luego 4 semanas, y ajuste según respuesta.'
         }
       ],
       avoidOrUseWithCaution: [

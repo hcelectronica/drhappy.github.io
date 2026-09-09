@@ -8875,6 +8875,40 @@ function App() {
                     </div>
                   </div>
 
+                  <div className="protocol-section-box" style={{ background: '#f8fafc', borderColor: '#cbd5e1' }}>
+                    <h4 style={{ color: '#0f172a' }}>🪜 Escalera terapéutica hasta lograr control</h4>
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      {selectedConsultPathology.treatment.therapeuticLadder.map((item) => (
+                        <div
+                          key={item.step}
+                          style={{
+                            border: '1px solid #dbeafe',
+                            borderRadius: 12,
+                            padding: 12,
+                            background: '#ffffff',
+                            boxShadow: '0 6px 14px rgba(30, 64, 175, 0.06)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                            <span style={{ background: '#1d4ed8', color: '#fff', borderRadius: 999, padding: '3px 9px', fontSize: '0.78rem', fontWeight: 800 }}>
+                              {item.step}
+                            </span>
+                            <strong style={{ color: '#1e3a8a' }}>{item.title}</strong>
+                          </div>
+                          <p style={{ margin: '0 0 6px', color: '#475569', lineHeight: 1.45, fontSize: '0.9rem' }}>
+                            <strong>Criterio:</strong> {item.criteria}
+                          </p>
+                          <p style={{ margin: '0 0 6px', color: '#334155', lineHeight: 1.45, fontSize: '0.9rem' }}>
+                            <strong>Conducta:</strong> {item.action}
+                          </p>
+                          <p style={{ margin: 0, color: '#166534', lineHeight: 1.45, fontSize: '0.9rem' }}>
+                            <strong>Reevaluación:</strong> {item.reassessment}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
                     <div className="protocol-section-box" style={{ background: '#fff7ed', borderColor: '#fed7aa' }}>
                       <h4 style={{ color: '#9a3412' }}>🚫 Errores frecuentes / precauciones</h4>
