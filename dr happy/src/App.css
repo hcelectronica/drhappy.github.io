@@ -2893,6 +2893,42 @@ body.theme-night .field-error-hint {
   color: #fca5a5;
 }
 
+.freeslot-capacity-note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.freeslot-capacity-note.ok {
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  color: #065f46;
+}
+
+.freeslot-capacity-note.error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+.freeslot-capacity-note button.ghost.compact {
+  margin-top: 6px;
+}
+
+body.theme-night .freeslot-capacity-note.ok {
+  background: rgba(6, 78, 59, 0.35);
+  border-color: #059669;
+  color: #a7f3d0;
+}
+
+body.theme-night .freeslot-capacity-note.error {
+  background: rgba(127, 29, 29, 0.35);
+  border-color: #dc2626;
+  color: #fecaca;
+}
+
 .turnera-card-body {
   display: flex;
   flex-direction: column;

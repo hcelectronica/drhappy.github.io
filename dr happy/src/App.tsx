@@ -1244,6 +1244,15 @@ function isValidEmail(value: string): boolean {
 
 const MAX_COMMUNITY_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
+function formatMinutesLabel(totalMinutes: number): string {
+  if (totalMinutes <= 0) return '0 min'
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours === 0) return `${minutes} min`
+  if (minutes === 0) return `${hours} h`
+  return `${hours} h ${minutes} min`
+}
+
 async function fileToStoredFile(file: File): Promise<StoredFile> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
@@ -2482,6 +2491,47 @@ function App() {
   // Acceso a la Turnera Premium (calendario de ocupación + estadísticas): solo suscripción activa,
   // no incluye usuarios en período de prueba (trial) ni vencidos.
   const hasPremiumTurneraAccess = Boolean(isAdminSession || activeUser?.subscriptionStatus === 'active')
+
+  // Capacidad real del rango horario elegido para la turnera libre:
+  // cuántos turnos de `durationMinutes` entran realmente entre "Desde" y "Hasta".
+  const freeSlotCapacity = useMemo(() => {
+    const parseMinutes = (value: string): number | null => {
+      const [h, m] = value.split(':').map(Number)
+      if (!Number.isFinite(h) || !Number.isFinite(m)) return null
+      return h * 60 + m
+    }
+    const startMinutes = parseMinutes(freeSlotDraft.startTime)
+    const endMinutes = parseMinutes(freeSlotDraft.endTime)
+    const duration = Number(freeSlotDraft.durationMinutes)
+    const requested = Number(freeSlotDraft.slotCount)
+
+    if (startMinutes === null || endMinutes === null || !duration) {
+      return null
+    }
+
+    const rangeMinutes = endMinutes - startMinutes
+    if (rangeMinutes <= 0) {
+      return {
+        rangeMinutes,
+        maxSlots: 0,
+        requested,
+        fits: false,
+        invalidRange: true,
+        requiredMinutes: requested * duration,
+      }
+    }
+
+    const maxSlots = Math.floor(rangeMinutes / duration)
+    return {
+      rangeMinutes,
+      maxSlots,
+      requested,
+      fits: requested > 0 && requested <= maxSlots,
+      invalidRange: false,
+      requiredMinutes: requested * duration,
+    }
+  }, [freeSlotDraft.startTime, freeSlotDraft.endTime, freeSlotDraft.durationMinutes, freeSlotDraft.slotCount])
+
   const ambulanceRecentPatients = useMemo(() => {
     const normalizedLicense = profile?.licenseNumber.trim().toLowerCase() ?? ''
     const normalizedFullName = profile?.fullName.trim().toLowerCase() ?? ''
@@ -6482,6 +6532,19 @@ function App() {
     if (!activeUserId) return
     if (!freeSlotDraft.slotDate || !freeSlotDraft.startTime || !freeSlotDraft.endTime || !freeSlotDraft.slotCount) {
       setFreeSlotError('Completa fecha, horario y cantidad de turnos.')
+      return
+    }
+    if (freeSlotCapacity?.invalidRange) {
+      setFreeSlotError('El horario "Hasta" debe ser posterior al horario "Desde".')
+      return
+    }
+    if (freeSlotCapacity && !freeSlotCapacity.fits) {
+      const horasNecesarias = Math.ceil((freeSlotCapacity.requiredMinutes / 60) * 100) / 100
+      setFreeSlotError(
+        `No entran ${freeSlotCapacity.requested} turnos de ${freeSlotDraft.durationMinutes} min en ese rango horario. ` +
+          `En ${formatMinutesLabel(freeSlotCapacity.rangeMinutes)} entran como máximo ${freeSlotCapacity.maxSlots} turno(s). ` +
+          `Para ${freeSlotCapacity.requested} turnos necesitás al menos ${horasNecesarias} h de rango.`
+      )
       return
     }
     setFreeSlotSaving(true)
@@ -12044,6 +12107,65 @@ function App() {
               </label>
             </div>
 
+            {freeSlotCapacity ? (
+              freeSlotCapacity.invalidRange ? (
+                <p className="freeslot-capacity-note error">
+                  ⚠️ El horario <strong>Hasta</strong> debe ser posterior al horario <strong>Desde</strong>.
+                </p>
+              ) : freeSlotCapacity.fits ? (
+                <p className="freeslot-capacity-note ok">
+                  ✅ Entran {freeSlotCapacity.requested} turno(s) de {freeSlotDraft.durationMinutes} min en{' '}
+                  {formatMinutesLabel(freeSlotCapacity.rangeMinutes)}
+                  {freeSlotCapacity.maxSlots > freeSlotCapacity.requested
+                    ? ` (capacidad máxima del rango: ${freeSlotCapacity.maxSlots}).`
+                    : ' (usás el rango completo).'}
+                </p>
+              ) : (
+                <p className="freeslot-capacity-note error">
+                  ⚠️ No entran {freeSlotCapacity.requested} turnos de {freeSlotDraft.durationMinutes} min en{' '}
+                  {formatMinutesLabel(freeSlotCapacity.rangeMinutes)}. Entran como máximo{' '}
+                  <strong>{freeSlotCapacity.maxSlots}</strong>. Para {freeSlotCapacity.requested} turnos necesitás un
+                  rango de al menos <strong>{formatMinutesLabel(freeSlotCapacity.requiredMinutes)}</strong>.
+                  {freeSlotCapacity.maxSlots > 0 ? (
+                    <>
+                      {' '}
+                      <button
+                        type="button"
+                        className="ghost compact"
+                        onClick={() =>
+                          setFreeSlotDraft((prev) => ({ ...prev, slotCount: freeSlotCapacity.maxSlots }))
+                        }
+                      >
+                        Ajustar a {freeSlotCapacity.maxSlots} turnos
+                      </button>
+                    </>
+                  ) : null}
+                  {' '}
+                  <button
+                    type="button"
+                    className="ghost compact"
+                    onClick={() => {
+                      const [h, m] = freeSlotDraft.startTime.split(':').map(Number)
+                      const endTotal = h * 60 + m + freeSlotCapacity.requiredMinutes
+                      const endH = Math.floor(endTotal / 60)
+                      const endM = endTotal % 60
+                      if (endH >= 24) {
+                        setFreeSlotError('El rango necesario supera el fin del día. Reducí la cantidad de turnos.')
+                        return
+                      }
+                      setFreeSlotError(null)
+                      setFreeSlotDraft((prev) => ({
+                        ...prev,
+                        endTime: `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`,
+                      }))
+                    }}
+                  >
+                    Extender horario automáticamente
+                  </button>
+                </p>
+              )
+            ) : null}
+
             <div className="turnera-form-group">
               <label>
                 Lugar / Consultorio
@@ -12095,7 +12217,11 @@ function App() {
             ) : null}
 
             <div className="drhappy-modal-footer" style={{ marginTop: 12 }}>
-              <button type="button" onClick={() => void handleCreateFreeSlotLink()} disabled={freeSlotSaving}>
+              <button
+                type="button"
+                onClick={() => void handleCreateFreeSlotLink()}
+                disabled={freeSlotSaving || Boolean(freeSlotCapacity && !freeSlotCapacity.fits)}
+              >
                 {freeSlotSaving ? 'Generando enlace...' : 'Generar enlace de turnos libres'}
               </button>
               <button type="button" className="ghost" onClick={() => setFreeSlotModalOpen(false)}>
