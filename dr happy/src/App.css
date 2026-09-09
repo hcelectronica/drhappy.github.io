@@ -1,3 +1,20 @@
+/* Variables de tema. Estas variables se usan en varias reglas de la app
+   (superficies, bordes y textos). Sin definirlas, todas caían al valor
+   claro por defecto y quedaban ilegibles en modo nocturno. */
+:root {
+  --surface-bg: #ffffff;
+  --border-color: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+}
+
+body.theme-night {
+  --surface-bg: #0f1c30;
+  --border-color: rgba(130, 153, 186, 0.28);
+  --text-primary: #e8f1ff;
+  --text-secondary: #a3b6d1;
+}
+
 .app,
 .auth-layout,
 .loading {
@@ -1576,6 +1593,9 @@ body.theme-night select {
   background: rgba(14, 27, 48, 0.95);
   color: #e8f1ff;
   border-color: #3c5376;
+  /* Hace que el navegador pinte los controles nativos (texto del placeholder
+     de fecha/hora, icono del calendario, reloj y flechas) en variante oscura. */
+  color-scheme: dark;
 }
 
 body.theme-night button.ghost {
@@ -2785,7 +2805,7 @@ body.theme-night .turnera-tab-buttons button.active {
   border: 1px solid var(--border-color, #cbd5e1);
   font-size: 0.88rem;
   background: var(--surface-bg, #ffffff);
-  color: inherit;
+  color: var(--text-primary, #0f172a);
 }
 
 .turnera-cards-grid {
