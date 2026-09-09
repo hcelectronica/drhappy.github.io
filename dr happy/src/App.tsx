@@ -1253,6 +1253,12 @@ function isValidEmail(value: string): boolean {
   return EMAIL_REGEX.test(value.trim())
 }
 
+/** Un alias/CBU no es navegable: solo hay botón de pago si es una URL real. */
+function isNavigablePaymentLink(value: string): boolean {
+  const raw = value.trim()
+  return /^https?:\/\//i.test(raw) || /^[\w-]+(\.[\w-]+)+\//.test(raw)
+}
+
 const MAX_COMMUNITY_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 function formatMinutesLabel(totalMinutes: number): string {
@@ -12077,18 +12083,32 @@ function App() {
               </div>
 
               {appointmentDraft.amountToCharge.trim() ? (
-                <p className={`payment-info-note ${profile?.paymentLink?.trim() ? 'ok' : 'warn'}`}>
-                  {profile?.paymentLink?.trim() ? (
-                    <>
+                (() => {
+                  const link = profile?.paymentLink?.trim() || ''
+                  if (!link) {
+                    return (
+                      <p className="payment-info-note warn">
+                        ⚠️ El email va a mostrar el monto, pero sin botón de pago. Cargá tu link de cobro en{' '}
+                        <strong>Perfil</strong> para que el paciente pueda pagarte online.
+                      </p>
+                    )
+                  }
+                  if (!isNavigablePaymentLink(link)) {
+                    return (
+                      <p className="payment-info-note warn">
+                        ⚠️ Guardaste <strong>{link}</strong> como alias, no como link. El email va a mostrarlo para
+                        que el paciente transfiera, pero sin botón. Si querés el botón <strong>Pagar ahora</strong>,
+                        pegá en <strong>Perfil</strong> el link completo de Mercado Pago (empieza con{' '}
+                        <code>https://</code>).
+                      </p>
+                    )
+                  }
+                  return (
+                    <p className="payment-info-note ok">
                       ✅ El email incluirá el monto y tu botón de pago. El paciente te paga directo a vos.
-                    </>
-                  ) : (
-                    <>
-                      ⚠️ El email va a mostrar el monto, pero sin botón de pago. Cargá tu link de cobro en{' '}
-                      <strong>Perfil</strong> para que el paciente pueda pagarte online.
-                    </>
-                  )}
-                </p>
+                    </p>
+                  )
+                })()
               ) : null}
 
               <label className="toggle-option" style={{ marginTop: 4, marginBottom: 8 }}>
