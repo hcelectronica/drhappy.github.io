@@ -175,7 +175,15 @@ function buildHtmlForType(type: string | undefined, subject: string, templateDat
       const amountFormatted = hasAmount
         ? amountValue.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
         : ''
-      const paymentLink = String(templateData.paymentLink || '')
+      const rawPaymentLink = String(templateData.paymentLink || '').trim()
+      // Un alias/CBU no es navegable: solo generamos botón si hay una URL real.
+      // Los alias argentinos suelen llevar puntos (alan.happy.mp), así que no alcanza
+      // con detectar puntos: exigimos esquema explícito o una ruta con barra.
+      const looksLikeUrl = /^https?:\/\//i.test(rawPaymentLink) || /^[\w-]+(\.[\w-]+)+\//.test(rawPaymentLink)
+      const paymentLink = looksLikeUrl
+        ? (/^https?:\/\//i.test(rawPaymentLink) ? rawPaymentLink : `https://${rawPaymentLink}`)
+        : ''
+      const paymentAlias = !looksLikeUrl && rawPaymentLink ? rawPaymentLink : ''
       const inner = `
         <h2 style="color: #0f172a; margin-top: 0;">Confirmación de Turno Médico 📅</h2>
         <p>Hola <strong>${patientName}</strong>,</p>
@@ -225,6 +233,10 @@ function buildHtmlForType(type: string | undefined, subject: string, templateDat
               Pagar ahora
             </a>
           </div>` : ''}
+          ${paymentAlias ? `
+          <p style="margin: 10px 0; color: #065f46;">
+            Podés transferir a: <strong style="font-family: monospace; font-size: 15px;">${paymentAlias}</strong>
+          </p>` : ''}
           <p style="margin: 0; color: #065f46; font-size: 12px;">
             El pago se realiza directamente al profesional. Dr Happy no participa de la transacción.
           </p>
