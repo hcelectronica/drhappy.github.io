@@ -750,6 +750,12 @@ body.theme-night {
   font-size: 1.1rem;
 }
 
+@media (min-width: 981px) {
+  body:not(.theme-night) .password-input .password-visibility {
+    color: #111827;
+  }
+}
+
 .field-status {
   display: block;
   margin-top: 4px;

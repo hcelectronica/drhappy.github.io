@@ -80,7 +80,7 @@ serve(async (request) => {
         const specialty = body.specialty?.trim() ?? ''
         const licenseNumber = body.licenseNumber?.trim() ?? ''
         const dni = body.dni?.trim() ?? null
-        const email = body.email?.trim()
+        const email = body.email?.trim().toLowerCase()
         const networkMemberships = body.networkMemberships ?? []
 
         if (!username || !password || !fullName || !email) {
@@ -100,6 +100,18 @@ serve(async (request) => {
         }
         if (existing) {
           return jsonResponse(409, { success: false, message: 'Ese nombre de usuario ya existe.' })
+        }
+
+        const { data: existingEmail, error: existingEmailError } = await admin
+          .from('professionals')
+          .select('id')
+          .ilike('email', email)
+          .maybeSingle()
+        if (existingEmailError) {
+          return jsonResponse(500, { success: false, message: `No se pudo validar el email: ${existingEmailError.message}` })
+        }
+        if (existingEmail) {
+          return jsonResponse(409, { success: false, message: 'Ese email ya está asociado a otro usuario.' })
         }
 
         const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS)
@@ -123,7 +135,13 @@ serve(async (request) => {
           .single()
 
         if (insertError?.code === '23505') {
-          return jsonResponse(409, { success: false, message: 'Ese nombre de usuario ya existe.' })
+          const duplicateEmail = insertError.message.includes('email')
+          return jsonResponse(409, {
+            success: false,
+            message: duplicateEmail
+              ? 'Ese email ya está asociado a otro usuario.'
+              : 'Ese nombre de usuario ya existe.',
+          })
         }
         if (insertError) {
           return jsonResponse(500, { success: false, message: `No se pudo crear el usuario: ${insertError.message}` })
