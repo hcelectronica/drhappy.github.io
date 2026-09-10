@@ -74,7 +74,7 @@ serve(async (request) => {
   try {
     switch (body.action) {
       case 'register': {
-        const username = body.username?.trim()
+        const username = body.username?.trim().toLowerCase()
         const password = body.password
         const fullName = body.fullName?.trim()
         const specialty = body.specialty?.trim() ?? ''
@@ -86,8 +86,8 @@ serve(async (request) => {
         if (!username || !password || !fullName || !email) {
           return jsonResponse(400, { success: false, message: 'Faltan campos obligatorios para registrar el usuario.' })
         }
-        if (password.length < 8) {
-          return jsonResponse(400, { success: false, message: 'La contraseña debe tener al menos 8 caracteres.' })
+        if (password.length < 6) {
+          return jsonResponse(400, { success: false, message: 'La contraseña debe tener al menos 6 caracteres.' })
         }
 
         const { data: existing, error: existingError } = await admin
@@ -122,6 +122,9 @@ serve(async (request) => {
           .select(PROFESSIONAL_PUBLIC_COLUMNS)
           .single()
 
+        if (insertError?.code === '23505') {
+          return jsonResponse(409, { success: false, message: 'Ese nombre de usuario ya existe.' })
+        }
         if (insertError) {
           return jsonResponse(500, { success: false, message: `No se pudo crear el usuario: ${insertError.message}` })
         }
@@ -130,7 +133,7 @@ serve(async (request) => {
       }
 
       case 'login': {
-        const username = body.username?.trim()
+        const username = body.username?.trim().toLowerCase()
         const password = body.password
         if (!username || !password) {
           return jsonResponse(400, { success: false, message: 'Usuario y contraseña son requeridos.' })
@@ -165,8 +168,8 @@ serve(async (request) => {
         if (!userId || !currentPassword || !newPassword) {
           return jsonResponse(400, { success: false, message: 'Faltan campos para cambiar la contraseña.' })
         }
-        if (newPassword.length < 8) {
-          return jsonResponse(400, { success: false, message: 'La nueva contraseña debe tener al menos 8 caracteres.' })
+        if (newPassword.length < 6) {
+          return jsonResponse(400, { success: false, message: 'La nueva contraseña debe tener al menos 6 caracteres.' })
         }
 
         const { data, error } = await admin
@@ -204,8 +207,8 @@ serve(async (request) => {
         if (!userId || !newPassword) {
           return jsonResponse(400, { success: false, message: 'Faltan campos para restablecer la contraseña.' })
         }
-        if (newPassword.length < 8) {
-          return jsonResponse(400, { success: false, message: 'La nueva contraseña debe tener al menos 8 caracteres.' })
+        if (newPassword.length < 6) {
+          return jsonResponse(400, { success: false, message: 'La nueva contraseña debe tener al menos 6 caracteres.' })
         }
         const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS)
         const { error: updateError } = await admin

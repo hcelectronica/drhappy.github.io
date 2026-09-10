@@ -664,6 +664,134 @@ body.theme-night {
   font-size: 1.05rem;
 }
 
+.password-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input input {
+  width: 100%;
+  padding-right: 46px;
+}
+
+.password-input .password-visibility {
+  position: absolute;
+  right: 5px;
+  width: 36px;
+  min-width: 36px;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 1.1rem;
+}
+
+.field-status {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8rem;
+}
+
+.field-status.available {
+  color: #167447;
+}
+
+.field-status.error {
+  color: #b42318;
+}
+
+.notification-corner-toast {
+  position: fixed;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 1200;
+  width: min(340px, calc(100vw - 28px));
+  box-sizing: border-box;
+  padding: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.97);
+  color: #334155;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.2);
+  backdrop-filter: blur(8px);
+  animation: notification-toast-in 0.22s ease-out;
+}
+
+.notification-corner-toast.denied {
+  border-color: #fecaca;
+}
+
+.notification-toast-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-toast-heading h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.notification-corner-toast p {
+  margin: 8px 0 12px;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.notification-toast-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.notification-toast-actions button {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+}
+
+@keyframes notification-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.specialty-suggestions {
+  z-index: 2;
+  max-height: 190px;
+  margin: 4px 0 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid #bfd4ef;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(33, 74, 130, 0.12);
+}
+
+.specialty-suggestions button {
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #173961;
+  text-align: left;
+  box-shadow: none;
+}
+
+.specialty-suggestions button:hover,
+.specialty-suggestions button:focus-visible {
+  background: #eaf3ff;
+}
+
 .register-networks-fieldset {
   margin: 0;
   padding: 12px;
@@ -3576,4 +3704,3 @@ body.theme-night .turnera-card-actions {
     flex-direction: column;
   }
 }
-
