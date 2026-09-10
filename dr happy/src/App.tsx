@@ -38,6 +38,12 @@ import type { PublicBookingLinkSummary } from './publicBookingService'
 import { fetchAdminUserStats } from './adminStatsService'
 import type { AdminUserStats } from './adminStatsService'
 import { selfDeleteAccount } from './selfDeleteService'
+import {
+  setProfessionalActive,
+  setProfessionalSubscription,
+  setProfessionalModules,
+  deleteProfessionalAsAdmin,
+} from './adminProfessionalsService'
 import { buildSignatureSeal } from './signatureSeal'
 import {
   registerProfessional,
@@ -419,6 +425,9 @@ interface RemoteProfessionalRow {
   subscription_status?: string | null
   subscription_expires_at?: string | null
 }
+
+const PROFESSIONAL_SELECT_COLUMNS =
+  'id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, enabled_modules_json, trial_started_at, subscription_status, subscription_expires_at'
 
 interface RemoteWorkspaceRow {
   user_id: string
@@ -3219,10 +3228,12 @@ function App() {
     const localSeenIds = readJsonStorage<string[]>(communitySeenStorageKey(user.id), [])
 
     if (isSupabaseConfigured && supabase) {
-      const { error: professionalError } = await supabase.from('professionals').upsert(
-        {
-          id: user.id,
-          username: user.username,
+      // El alta de cuentas ocurre en la Edge Function auth-professional (Service Role).
+      // Desde el cliente solo se refrescan los campos del propio perfil: id y username
+      // no son actualizables, y los privilegiados los maneja admin-professionals.
+      const { error: professionalError } = await supabase
+        .from('professionals')
+        .update({
           full_name: user.fullName,
           specialty: user.specialty,
           license_number: user.licenseNumber,
@@ -3230,9 +3241,8 @@ function App() {
           email: user.email,
           network_memberships_json: user.networkMemberships ?? [],
           last_seen_at: new Date().toISOString(),
-        },
-        { onConflict: 'id' },
-      )
+        })
+        .eq('id', user.id)
       if (professionalError) {
         throw new Error(`No se pudo sincronizar el profesional: ${professionalError.message}`)
       }
@@ -3322,7 +3332,7 @@ function App() {
 
     const { data, error } = await supabase
       .from('professionals')
-      .select('*')
+      .select(PROFESSIONAL_SELECT_COLUMNS)
       .eq('id', userId)
       .maybeSingle()
 
@@ -3500,9 +3510,12 @@ function App() {
           throw new Error(`No se pudo enviar el archivo legal por correo: ${archiveEmailResult.message ?? 'error desconocido'}`)
         }
 
-        const { error: deleteError } = await supabase.from('professionals').delete().eq('id', targetUser.id)
-        if (deleteError) {
-          throw new Error(`No se pudo eliminar el usuario: ${deleteError.message}`)
+        if (!activeUserId) {
+          throw new Error('Sesión no válida para esta acción.')
+        }
+        const deleteResult = await deleteProfessionalAsAdmin(activeUserId, targetUser.id)
+        if (!deleteResult.success) {
+          throw new Error(`No se pudo eliminar el usuario: ${deleteResult.message ?? 'error desconocido'}`)
         }
 
         const nextArchive = archiveRecord
@@ -3608,12 +3621,12 @@ function App() {
 
     try {
       if (isSupabaseConfigured && supabase) {
-        const { error } = await supabase
-          .from('professionals')
-          .update({ enabled_modules_json: nextModules })
-          .eq('id', userId)
-        if (error) {
-          throw new Error(error.message)
+        if (!activeUserId) {
+          throw new Error('Sesión no válida para esta acción.')
+        }
+        const result = await setProfessionalModules(activeUserId, userId, nextModules)
+        if (!result.success) {
+          throw new Error(result.message ?? 'No se pudieron actualizar los módulos.')
         }
       } else {
         const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
@@ -3701,15 +3714,17 @@ function App() {
             )
 
       if (isSupabaseConfigured && supabase) {
-        const { error } = await supabase
-          .from('professionals')
-          .update({
-            subscription_status: nextStatus,
-            subscription_expires_at: nextExpiration,
-          })
-          .eq('id', userId)
-        if (error) {
-          throw new Error(error.message)
+        if (!activeUserId) {
+          throw new Error('Sesión no válida para esta acción.')
+        }
+        const result = await setProfessionalSubscription(
+          activeUserId,
+          userId,
+          nextStatus,
+          nextExpiration,
+        )
+        if (!result.success) {
+          throw new Error(result.message ?? 'No se pudo actualizar la suscripción.')
         }
       } else {
         const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
@@ -3971,7 +3986,7 @@ function App() {
         if (isSupabaseConfigured && supabase) {
           const { data, error } = await supabase
             .from('professionals')
-            .select('*')
+            .select(PROFESSIONAL_SELECT_COLUMNS)
             .order('full_name', { ascending: true })
           if (error) {
             throw new Error(`No se pudo cargar profesionales remotos: ${error.message}`)
@@ -5854,11 +5869,13 @@ function App() {
 
     const nextActive = targetUser.active === false
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('professionals').update({ active: nextActive }).eq('id', userId)
-      if (error) {
-        setAppError(
-          `No se pudo actualizar el estado del usuario: ${error.message}. Si falta la columna active, agrega la migración indicada en README.`,
-        )
+      if (!activeUserId) {
+        setAppError('Sesión no válida para esta acción.')
+        return
+      }
+      const result = await setProfessionalActive(activeUserId, userId, nextActive)
+      if (!result.success) {
+        setAppError(`No se pudo actualizar el estado del usuario: ${result.message ?? 'error desconocido'}`)
         return
       }
     } else {
