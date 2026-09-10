@@ -425,6 +425,7 @@ interface RemoteWorkspaceRow {
   profile_json: unknown
   patients_json: unknown
   appointments_json: unknown
+  treatment_ledger_json?: unknown
 }
 
 interface RemoteCommunityMessageRow {
@@ -3175,6 +3176,7 @@ function App() {
     nextProfile: ProfessionalProfile,
     nextPatients: PatientRecord[],
     nextAppointments: AppointmentRecord[],
+    nextLedger?: TreatmentLedgerEntry[],
   ): Promise<void> {
     if (!isSupabaseConfigured || !supabase) {
       return
@@ -3186,6 +3188,8 @@ function App() {
           profile_json: nextProfile,
           patients_json: nextPatients,
           appointments_json: nextAppointments,
+          treatment_ledger_json:
+            nextLedger ?? readJsonStorage<TreatmentLedgerEntry[]>(treatmentLedgerStorageKey(userId), []),
         },
         { onConflict: 'user_id' },
       )
@@ -3209,6 +3213,9 @@ function App() {
     let patientsList = localLoaded.patientsList
     let availablePatientsList = localLoaded.availablePatientsList
     let loadedAppointments = localAppointments
+    let loadedLedger = readJsonStorage<unknown[]>(treatmentLedgerStorageKey(user.id), [])
+      .map(normalizeTreatmentLedgerEntry)
+      .filter((entry): entry is TreatmentLedgerEntry => Boolean(entry))
     const localSeenIds = readJsonStorage<string[]>(communitySeenStorageKey(user.id), [])
 
     if (isSupabaseConfigured && supabase) {
@@ -3232,7 +3239,7 @@ function App() {
 
       const { data, error } = await supabase
         .from('user_workspaces')
-        .select('user_id, profile_json, patients_json, appointments_json')
+        .select('user_id, profile_json, patients_json, appointments_json, treatment_ledger_json')
         .eq('user_id', user.id)
         .maybeSingle()
       if (error) {
@@ -3255,8 +3262,26 @@ function App() {
               .filter((appointment) => appointment.scheduledDate && appointment.scheduledTime)
               .sort((left, right) => appointmentSortKey(left).localeCompare(appointmentSortKey(right)))
           : []
+        const remoteLedger = Array.isArray(workspace.treatment_ledger_json)
+          ? workspace.treatment_ledger_json
+              .map(normalizeTreatmentLedgerEntry)
+              .filter((entry): entry is TreatmentLedgerEntry => Boolean(entry))
+          : []
+        // Primera sincronización: si la nube todavía no tiene el balance pero el
+        // dispositivo sí, conservamos lo local y lo subimos en vez de borrarlo.
+        if (remoteLedger.length === 0 && loadedLedger.length > 0) {
+          void persistWorkspaceRemote(user.id, loadedProfile, patientsList, loadedAppointments, loadedLedger)
+        } else {
+          loadedLedger = remoteLedger
+        }
       } else {
-        await persistWorkspaceRemote(user.id, localProfile, localLoaded.patientsList, localAppointments)
+        await persistWorkspaceRemote(
+          user.id,
+          localProfile,
+          localLoaded.patientsList,
+          localAppointments,
+          loadedLedger,
+        )
       }
     }
 
@@ -3286,11 +3311,8 @@ function App() {
     setPatients(patientsList)
     setAvailablePatients(availablePatientsList)
     setAppointments(loadedAppointments)
-    setTreatmentLedger(
-      readJsonStorage<unknown[]>(treatmentLedgerStorageKey(user.id), [])
-        .map(normalizeTreatmentLedgerEntry)
-        .filter((entry): entry is TreatmentLedgerEntry => Boolean(entry)),
-    )
+    setTreatmentLedger(loadedLedger)
+    localStorage.setItem(treatmentLedgerStorageKey(user.id), JSON.stringify(loadedLedger))
   }
 
   async function fetchRemoteProfessionalById(userId: string): Promise<SeedUser | null> {
@@ -6734,6 +6756,9 @@ function App() {
     if (!activeUserId) return
     setTreatmentLedger(next)
     localStorage.setItem(treatmentLedgerStorageKey(activeUserId), JSON.stringify(next))
+    if (profile) {
+      void persistWorkspaceRemote(activeUserId, profile, patients, appointments, next)
+    }
   }
 
   function buildEmptyLedgerDraft(patient?: PatientRecord | null): TreatmentLedgerDraft {
