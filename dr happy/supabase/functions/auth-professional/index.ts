@@ -32,7 +32,7 @@ interface AuthRequestBody {
 }
 
 const PROFESSIONAL_PUBLIC_COLUMNS =
-  'id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, trial_started_at, subscription_status, subscription_expires_at'
+  'id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, enabled_modules_json, trial_started_at, subscription_status, subscription_expires_at'
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {

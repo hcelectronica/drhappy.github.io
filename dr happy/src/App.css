@@ -1296,6 +1296,63 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
   justify-content: flex-end;
 }
 
+.admin-modules-box {
+  width: 100%;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface-muted, #f8fafc);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.admin-modules-title {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-heading, #0f172a);
+  margin-bottom: 8px;
+}
+
+.admin-modules-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.admin-module-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.admin-module-option input {
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.admin-modules-hint {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.76rem;
+  color: #64748b;
+}
+
+body.theme-night .admin-modules-box {
+  border-color: #33415a;
+  background: #16233a;
+}
+
+body.theme-night .admin-modules-title,
+body.theme-night .admin-module-option {
+  color: #e2e8f0;
+}
+
+body.theme-night .admin-modules-hint {
+  color: #94a3b8;
+}
+
 .status-on,
 .status-off {
   font-weight: 700;
