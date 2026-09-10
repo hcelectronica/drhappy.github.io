@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChangeEvent,
   DragEvent as ReactDragEvent,
@@ -68,6 +68,32 @@ type WorkspaceLayer =
   | 'ambulance-history'
   | 'appointments'
 type SubscriptionPlan = 'monthly' | 'semiannual' | 'annual'
+
+type AppModuleId = 'attention' | 'appointments' | 'tools' | 'ambulance' | 'community'
+
+const APP_MODULES: Array<{ id: AppModuleId; label: string; description: string }> = [
+  { id: 'attention', label: 'Atención médica', description: 'Pacientes, historia clínica y consultas' },
+  { id: 'appointments', label: 'Turnera', description: 'Agenda de turnos y turnera libre' },
+  { id: 'tools', label: 'Herramientas', description: 'Protocolos, vademécum y patologías' },
+  { id: 'ambulance', label: 'Modo Ambulancia', description: 'Atención prehospitalaria y traslados' },
+  { id: 'community', label: 'Comunidad', description: 'Mensajería entre profesionales' },
+]
+
+const ALL_APP_MODULE_IDS: AppModuleId[] = APP_MODULES.map((module) => module.id)
+
+/**
+ * Normaliza la lista de módulos guardada. Devuelve `null` cuando el usuario no
+ * tiene restricción configurada, que equivale a "todos los módulos habilitados".
+ */
+function normalizeEnabledModules(value: unknown): AppModuleId[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+  const allowed = value.filter((item): item is AppModuleId =>
+    typeof item === 'string' && (ALL_APP_MODULE_IDS as string[]).includes(item),
+  )
+  return Array.from(new Set(allowed))
+}
 
 interface AmbulanceDraft {
   qth: string
@@ -148,6 +174,8 @@ interface SeedUser {
   networkMemberships?: string[]
   isAdmin?: boolean
   active?: boolean
+  // undefined = todos los módulos habilitados (usuarios previos a esta función).
+  enabledModules?: AppModuleId[]
   trialStartedAt?: string        // ISO date cuando se registró
   subscriptionStatus?: 'trial' | 'active' | 'expired' | 'cancelled'
   subscriptionExpiresAt?: string // ISO date de vencimiento de suscripción paga
@@ -349,6 +377,7 @@ interface RemoteProfessionalRow {
   network_memberships_json?: unknown
   is_admin?: boolean | null
   active?: boolean | null
+  enabled_modules_json?: unknown
   trial_started_at?: string | null
   subscription_status?: string | null
   subscription_expires_at?: string | null
@@ -1009,6 +1038,7 @@ function mapRemoteProfessional(row: RemoteProfessionalRow): SeedUser {
       isAdmin: Boolean(row.is_admin),
     }),
     active: row.active ?? true,
+    enabledModules: normalizeEnabledModules(row.enabled_modules_json),
     trialStartedAt: row.trial_started_at ?? undefined,
     subscriptionStatus: (row.subscription_status as SeedUser['subscriptionStatus']) ?? undefined,
     subscriptionExpiresAt: row.subscription_expires_at ?? undefined,
@@ -1031,6 +1061,7 @@ function mapAuthProfessionalPublic(row: AuthProfessionalPublic): SeedUser {
       isAdmin: Boolean(row.is_admin),
     }),
     active: row.active ?? true,
+    enabledModules: normalizeEnabledModules(row.enabled_modules_json),
     trialStartedAt: row.trial_started_at ?? undefined,
     subscriptionStatus: (row.subscription_status as SeedUser['subscriptionStatus']) ?? undefined,
     subscriptionExpiresAt: row.subscription_expires_at ?? undefined,
@@ -2539,6 +2570,22 @@ function App() {
   // no incluye usuarios en período de prueba (trial) ni vencidos.
   const hasPremiumTurneraAccess = Boolean(isAdminSession || activeUser?.subscriptionStatus === 'active')
 
+  // Módulos visibles para el usuario activo. El admin siempre los ve todos, y
+  // un usuario sin configuración (undefined) también, para no romper cuentas previas.
+  const isModuleEnabled = useCallback(
+    (moduleId: AppModuleId): boolean => {
+      if (isAdminSession) {
+        return true
+      }
+      const configured = activeUser?.enabledModules
+      if (!configured) {
+        return true
+      }
+      return configured.includes(moduleId)
+    },
+    [isAdminSession, activeUser],
+  )
+
   // Capacidad real del rango horario elegido para la turnera libre:
   // cuántos turnos de `durationMinutes` entran realmente entre "Desde" y "Hasta".
   const freeSlotCapacity = useMemo(() => {
@@ -3341,6 +3388,66 @@ function App() {
       setSeedUsers((current) => current.filter((user) => user.id !== targetUser.id))
       setAppNotice(`Usuario eliminado y archivado correctamente: ${targetUser.fullName}.`)
       showSavedFloatingNotice()
+    } finally {
+      setAdminBusyUserId(null)
+    }
+  }
+
+  async function handleAdminToggleModule(userId: string, moduleId: AppModuleId): Promise<void> {
+    const targetUser = seedUsers.find((user) => user.id === userId)
+    if (!targetUser) {
+      setAppError('No se encontró el usuario a actualizar.')
+      return
+    }
+    if (!isAdminSession) {
+      setAppError('Solo el administrador puede modificar los módulos habilitados.')
+      return
+    }
+
+    const current = targetUser.enabledModules ?? ALL_APP_MODULE_IDS
+    const nextModules = current.includes(moduleId)
+      ? current.filter((entry) => entry !== moduleId)
+      : ALL_APP_MODULE_IDS.filter((entry) => entry === moduleId || current.includes(entry))
+
+    setAdminBusyUserId(userId)
+    setAppError(null)
+    setAppNotice(null)
+
+    try {
+      if (isSupabaseConfigured && supabase) {
+        const { error } = await supabase
+          .from('professionals')
+          .update({ enabled_modules_json: nextModules })
+          .eq('id', userId)
+        if (error) {
+          throw new Error(error.message)
+        }
+      } else {
+        const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
+        localStorage.setItem(
+          CREATED_USERS_KEY,
+          JSON.stringify(
+            localUsers.map((user) => (user.id === userId ? { ...user, enabledModules: nextModules } : user)),
+          ),
+        )
+      }
+
+      setSeedUsers((currentUsers) =>
+        currentUsers.map((user) => (user.id === userId ? { ...user, enabledModules: nextModules } : user)),
+      )
+
+      setAppNotice(
+        nextModules.length === ALL_APP_MODULE_IDS.length
+          ? `${targetUser.fullName} tiene acceso a todos los módulos.`
+          : `Módulos actualizados para ${targetUser.fullName}: ${nextModules.length} habilitado(s).`,
+      )
+      showSavedFloatingNotice()
+    } catch (error) {
+      setAppError(
+        error instanceof Error
+          ? `No se pudieron actualizar los módulos: ${error.message}`
+          : 'No se pudieron actualizar los módulos.',
+      )
     } finally {
       setAdminBusyUserId(null)
     }
@@ -6267,6 +6374,10 @@ function App() {
   }
 
   function handleToggleCommunity(): void {
+    if (!isModuleEnabled('community')) {
+      setAppError('El módulo Comunidad no está habilitado para tu cuenta.')
+      return
+    }
     setCommunityOpen((current) => !current)
     setAppError(null)
     setAppNotice(null)
@@ -6298,6 +6409,10 @@ function App() {
   }
 
   function handleStartAttentionFlow(): void {
+    if (!isModuleEnabled('attention')) {
+      setAppError('El módulo Atención médica no está habilitado para tu cuenta.')
+      return
+    }
     stopDictation()
     setCommunityOpen(false)
     setWorkspaceLayer('patient-search')
@@ -6333,6 +6448,10 @@ function App() {
   }
 
   function handleOpenTools(): void {
+    if (!isModuleEnabled('tools')) {
+      setAppError('El módulo Herramientas no está habilitado para tu cuenta.')
+      return
+    }
     stopDictation()
     setCommunityOpen(false)
     setWorkspaceLayer('tools')
@@ -6340,6 +6459,10 @@ function App() {
   }
 
   function handleOpenAmbulance(): void {
+    if (!isModuleEnabled('ambulance')) {
+      setAppError('El módulo Modo Ambulancia no está habilitado para tu cuenta.')
+      return
+    }
     stopDictation()
     setCommunityOpen(false)
     setWorkspaceLayer('ambulance')
@@ -6347,6 +6470,10 @@ function App() {
   }
 
   function handleOpenAmbulanceHistory(): void {
+    if (!isModuleEnabled('ambulance')) {
+      setAppError('El módulo Modo Ambulancia no está habilitado para tu cuenta.')
+      return
+    }
     stopDictation()
     setCommunityOpen(false)
     setWorkspaceLayer('ambulance-history')
@@ -6361,6 +6488,10 @@ function App() {
   }
 
   function handleOpenAppointments(): void {
+    if (!isModuleEnabled('appointments')) {
+      setAppError('El módulo Turnera no está habilitado para tu cuenta.')
+      return
+    }
     stopDictation()
     setCommunityOpen(false)
     setWorkspaceLayer('appointments')
@@ -8238,20 +8369,24 @@ function App() {
           <button type="button" className="ghost" onClick={handleBackToOverview}>
             Inicio
           </button>
-          <button
-            type="button"
-            className={`ghost ${workspaceLayer === 'appointments' ? 'active' : ''}`}
-            onClick={handleOpenAppointments}
-            title="Turnera médica y citas programadas"
-          >
-            📅 Turnera
-          </button>
+          {isModuleEnabled('appointments') ? (
+            <button
+              type="button"
+              className={`ghost ${workspaceLayer === 'appointments' ? 'active' : ''}`}
+              onClick={handleOpenAppointments}
+              title="Turnera médica y citas programadas"
+            >
+              📅 Turnera
+            </button>
+          ) : null}
           <button type="button" className="ghost" onClick={handleOpenProfile}>
             Perfil
           </button>
-          <button type="button" className="ghost" onClick={handleOpenTools}>
-            Herramientas
-          </button>
+          {isModuleEnabled('tools') ? (
+            <button type="button" className="ghost" onClick={handleOpenTools}>
+              Herramientas
+            </button>
+          ) : null}
           {isAdminSession ? (
             <button type="button" className="ghost" onClick={handleOpenUserAdmin}>
               Editar usuarios
@@ -8268,9 +8403,11 @@ function App() {
               👁 Ver pantalla de trial
             </button>
           ) : null}
-          <button type="button" className="ghost" onClick={handleToggleCommunity}>
-            Comunidad {communityUnreadCount > 0 ? `(${communityUnreadCount})` : ''}
-          </button>
+          {isModuleEnabled('community') ? (
+            <button type="button" className="ghost" onClick={handleToggleCommunity}>
+              Comunidad {communityUnreadCount > 0 ? `(${communityUnreadCount})` : ''}
+            </button>
+          ) : null}
           <button
             type="button"
             className="ghost"
@@ -8606,6 +8743,31 @@ function App() {
                         </button>
                       </div>
                     </div>
+
+                    {!isAdminUser(user) ? (
+                      <div className="admin-modules-box">
+                        <strong className="admin-modules-title">Módulos habilitados</strong>
+                        <div className="admin-modules-grid">
+                          {APP_MODULES.map((module) => {
+                            const enabled = (user.enabledModules ?? ALL_APP_MODULE_IDS).includes(module.id)
+                            return (
+                              <label key={module.id} className="admin-module-option" title={module.description}>
+                                <input
+                                  type="checkbox"
+                                  checked={enabled}
+                                  disabled={adminBusyUserId === user.id}
+                                  onChange={() => void handleAdminToggleModule(user.id, module.id)}
+                                />
+                                <span>{module.label}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                        <small className="admin-modules-hint">
+                          Perfil y Cerrar sesión siempre quedan visibles. Si desactivás todos, el usuario solo verá su perfil.
+                        </small>
+                      </div>
+                    ) : null}
 
                     {!isAdminUser(user) ? (
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -9698,51 +9860,57 @@ function App() {
           <section className="workspace single-column">
             <section className="panel">
               <div className="overview-dashboard">
-                <article className="overview-card quick-start-card">
-                  <h2>Atención médica</h2>
-                  <p>Inicia una consulta, busca un paciente o crea uno nuevo.</p>
-                  <button type="button" onClick={handleStartAttentionFlow}>
-                    Iniciar atención médica
-                  </button>
-                  <small>Luego podrás buscar o agregar pacientes desde la ficha.</small>
-                </article>
-                <article className="overview-card">
-                  <h2>📅 Turnera Médica</h2>
-                  <p>Agenda consultas presenciales o virtuales con confirmación por email (soporte@drhappy.com.ar).</p>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                    <button type="button" onClick={handleOpenAppointments}>
-                      Abrir Turnera ({appointmentsMetrics.todayCount} hoy)
+                {isModuleEnabled('attention') ? (
+                  <article className="overview-card quick-start-card">
+                    <h2>Atención médica</h2>
+                    <p>Inicia una consulta, busca un paciente o crea uno nuevo.</p>
+                    <button type="button" onClick={handleStartAttentionFlow}>
+                      Iniciar atención médica
                     </button>
-                    <button type="button" className="ghost" onClick={() => handleNewAppointmentModal()}>
-                      + Agendar turno
+                    <small>Luego podrás buscar o agregar pacientes desde la ficha.</small>
+                  </article>
+                ) : null}
+                {isModuleEnabled('appointments') ? (
+                  <article className="overview-card">
+                    <h2>📅 Turnera Médica</h2>
+                    <p>Agenda consultas presenciales o virtuales con confirmación por email (soporte@drhappy.com.ar).</p>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                      <button type="button" onClick={handleOpenAppointments}>
+                        Abrir Turnera ({appointmentsMetrics.todayCount} hoy)
+                      </button>
+                      <button type="button" className="ghost" onClick={() => handleNewAppointmentModal()}>
+                        + Agendar turno
+                      </button>
+                    </div>
+                    <small style={{ display: 'block', marginTop: 8, color: '#64748b' }}>
+                      {appointmentsMetrics.upcomingCount} próximos · {appointmentsMetrics.emailSentCount} confirmados por email
+                    </small>
+                  </article>
+                ) : null}
+                {isModuleEnabled('ambulance') ? (
+                  <article className="overview-card ambulance-card">
+                    <h2>🚑 Modo Ambulancia</h2>
+                    <p>Activa el acceso rápido para traslados, guardias y atención prehospitalaria.</p>
+                    <label className="toggle-option">
+                      <input
+                        type="checkbox"
+                        checked={false}
+                        onChange={(event) => {
+                          if (event.target.checked) {
+                            handleOpenAmbulance()
+                            return
+                          }
+                          setWorkspaceLayer('overview')
+                        }}
+                      />
+                      <span className="toggle-switch" />
+                      <span>Desactivado</span>
+                    </label>
+                    <button type="button" className="ghost" style={{ marginTop: 16 }} onClick={handleOpenAmbulanceHistory}>
+                      Pacientes atendidos en ambulancia
                     </button>
-                  </div>
-                  <small style={{ display: 'block', marginTop: 8, color: '#64748b' }}>
-                    {appointmentsMetrics.upcomingCount} próximos · {appointmentsMetrics.emailSentCount} confirmados por email
-                  </small>
-                </article>
-                <article className="overview-card ambulance-card">
-                  <h2>🚑 Modo Ambulancia</h2>
-                  <p>Activa el acceso rápido para traslados, guardias y atención prehospitalaria.</p>
-                  <label className="toggle-option">
-                    <input
-                      type="checkbox"
-                      checked={false}
-                      onChange={(event) => {
-                        if (event.target.checked) {
-                          handleOpenAmbulance()
-                          return
-                        }
-                        setWorkspaceLayer('overview')
-                      }}
-                    />
-                    <span className="toggle-switch" />
-                    <span>Desactivado</span>
-                  </label>
-                  <button type="button" className="ghost" style={{ marginTop: 16 }} onClick={handleOpenAmbulanceHistory}>
-                    Pacientes atendidos en ambulancia
-                  </button>
-                </article>
+                  </article>
+                ) : null}
                 <article className="overview-card">
                   <h2>📰 Noticias médicas</h2>
                   <p>

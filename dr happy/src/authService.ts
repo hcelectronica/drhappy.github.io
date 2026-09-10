@@ -11,6 +11,7 @@ export interface AuthProfessionalPublic {
   network_memberships_json: unknown
   is_admin: boolean | null
   active: boolean | null
+  enabled_modules_json?: unknown
   trial_started_at: string | null
   subscription_status: string | null
   subscription_expires_at: string | null
