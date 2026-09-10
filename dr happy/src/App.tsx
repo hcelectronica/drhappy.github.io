@@ -13047,7 +13047,7 @@ function App() {
                   : 'Activá las notificaciones'}
               </h3>
             </div>
-             
+
             {notificationPermission === 'denied' ? (
               <>
                 <p>
