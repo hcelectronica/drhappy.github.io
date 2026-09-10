@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type {
   ChangeEvent,
   DragEvent as ReactDragEvent,
@@ -8340,7 +8341,7 @@ function App() {
                   </button>
                 </div>
               </label>
-              {authError ? <p className="error">{authError}</p> : null}
+              {authError && !registerOpen ? <p className="error">{authError}</p> : null}
               {appError ? <p className="error">{appError}</p> : null}
               {appNotice ? <p className="notice">{appNotice}</p> : null}
               <button type="submit">Iniciar sesión</button>
@@ -8470,9 +8471,40 @@ function App() {
               </button>
             </section>
           )}
-          {registerOpen ? (
-            <form className="grid register-form" onSubmit={handleCreateUser}>
-              <h2>Nuevo profesional</h2>
+          {registerOpen ? createPortal(
+            <div
+              className="drhappy-modal-overlay registration-modal-overlay"
+              onClick={() => {
+                setRegisterOpen(false)
+                setAuthError(null)
+              }}
+            >
+              <div
+                className="drhappy-modal-card registration-modal-card"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="registration-modal-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="registration-modal-header">
+                  <div>
+                    <h2 id="registration-modal-title">Crear profesional</h2>
+                    <p>Completá los datos para registrar la cuenta.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="registration-modal-close"
+                    aria-label="Cerrar registro"
+                    onClick={() => {
+                      setRegisterOpen(false)
+                      setAuthError(null)
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <form className="grid register-form" onSubmit={handleCreateUser}>
+                  <div className="registration-fields">
               <label>
                 Nombre
                 <input
@@ -8598,8 +8630,9 @@ function App() {
                 </div>
                 <small>Mínimo 6 caracteres.</small>
               </label>
-              <fieldset className="register-networks-fieldset">
-                <legend>Redes en las que trabaja</legend>
+                  </div>
+              <details className="register-networks-fieldset">
+                <summary>Redes en las que trabaja (opcional)</summary>
                 <div className="register-networks-grid">
                   {PROFESSIONAL_NETWORK_OPTIONS.map((network) => (
                     <label key={network} className="toggle-option">
@@ -8613,9 +8646,27 @@ function App() {
                     </label>
                   ))}
                 </div>
-              </fieldset>
-              <button type="submit">Guardar usuario</button>
-            </form>
+              </details>
+                  {authError ? <p className="error registration-error">{authError}</p> : null}
+                  <div className="registration-modal-actions">
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => {
+                        setRegisterOpen(false)
+                        setAuthError(null)
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button type="submit" disabled={registerUsernameExists}>
+                      Guardar usuario
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>,
+            document.body,
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
