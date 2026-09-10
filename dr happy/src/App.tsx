@@ -69,7 +69,7 @@ type WorkspaceLayer =
   | 'appointments'
 type SubscriptionPlan = 'monthly' | 'semiannual' | 'annual'
 
-type AppModuleId = 'attention' | 'appointments' | 'tools' | 'ambulance' | 'community'
+type AppModuleId = 'attention' | 'appointments' | 'tools' | 'ambulance' | 'community' | 'ledger'
 
 const APP_MODULES: Array<{ id: AppModuleId; label: string; description: string }> = [
   { id: 'attention', label: 'Atención médica', description: 'Pacientes, historia clínica y consultas' },
@@ -77,7 +77,14 @@ const APP_MODULES: Array<{ id: AppModuleId; label: string; description: string }
   { id: 'tools', label: 'Herramientas', description: 'Protocolos, vademécum y patologías' },
   { id: 'ambulance', label: 'Modo Ambulancia', description: 'Atención prehospitalaria y traslados' },
   { id: 'community', label: 'Comunidad', description: 'Mensajería entre profesionales' },
+  { id: 'ledger', label: 'Balance de pagos', description: 'Planilla de cobros y saldos (odontología). Automático para odontólogos.' },
 ]
+
+/**
+ * Módulos que no se habilitan por defecto: requieren activación explícita del
+ * admin (o, en el caso del balance, una especialidad odontológica).
+ */
+const OPT_IN_APP_MODULE_IDS: AppModuleId[] = ['ledger']
 
 const ALL_APP_MODULE_IDS: AppModuleId[] = APP_MODULES.map((module) => module.id)
 
@@ -219,6 +226,8 @@ interface ConsultationEntry {
     signatureImageDataUrl?: string
   }
   signatureSeal?: import('./signatureSeal').SignatureSeal
+  // Turno que originó esta evolución, para no duplicarla si se vuelve a atender.
+  appointmentId?: string
 }
 
 interface PatientRecord {
@@ -364,6 +373,34 @@ interface AppointmentDraft {
 
 interface SeedPatientsPayload {
   patients: Array<Partial<PatientRecord>>
+}
+
+/**
+ * Registro del balance de pagos: una intervención realizada a un paciente, con
+ * el total acordado y lo que ya abonó. El saldo se deriva de ambos.
+ */
+interface TreatmentLedgerEntry {
+  id: string
+  patientId: string
+  patientName: string
+  date: string
+  intervention: string
+  totalAmount: number
+  paidAmount: number
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface TreatmentLedgerDraft {
+  id?: string
+  patientId: string
+  patientName: string
+  date: string
+  intervention: string
+  totalAmount: string
+  paidAmount: string
+  notes: string
 }
 
 interface RemoteProfessionalRow {
@@ -698,6 +735,10 @@ function appointmentsStorageKey(userId: string): string {
   return `drhappy-appointments-${userId}`
 }
 
+function treatmentLedgerStorageKey(userId: string): string {
+  return `drhappy-treatment-ledger-${userId}`
+}
+
 function patientGlobalStorageKey(patientId: string): string {
   return `drhappy-patient-global-${patientId}`
 }
@@ -993,6 +1034,51 @@ function loadDiagnosisCatalogFromCsv(csvText: string): string[] {
 
 function isAmbulanceConsultation(entry: ConsultationEntry): boolean {
   return entry.motivoConsulta.trim().startsWith('[AMBULANCIA]')
+}
+
+function isAppointmentConsultation(entry: ConsultationEntry): boolean {
+  return entry.motivoConsulta.trim().startsWith('[TURNO]')
+}
+
+/**
+ * Detecta si el profesional es odontólogo a partir de su especialidad, para
+ * habilitar automáticamente el Balance de pagos (tratamientos y saldos).
+ * La especialidad es texto libre, así que contempla las variantes y subespecialidades
+ * más frecuentes. El texto llega sin acentos y en minúsculas.
+ */
+function isDentistSpecialty(specialty?: string | null): boolean {
+  const normalized = normalizeSearchText(specialty ?? '')
+  return /odonto|dental|dentist|estomatolog|ortodon|endodon|periodon|implantolog|protesis dental|maxilofacial/.test(
+    normalized,
+  )
+}
+
+function normalizeTreatmentLedgerEntry(raw: unknown): TreatmentLedgerEntry | null {
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+  const candidate = raw as Partial<TreatmentLedgerEntry>
+  if (typeof candidate.id !== 'string' || typeof candidate.intervention !== 'string') {
+    return null
+  }
+  const total = Number(candidate.totalAmount)
+  const paid = Number(candidate.paidAmount)
+  return {
+    id: candidate.id,
+    patientId: typeof candidate.patientId === 'string' ? candidate.patientId : '',
+    patientName: typeof candidate.patientName === 'string' ? candidate.patientName : '',
+    date: typeof candidate.date === 'string' ? candidate.date : '',
+    intervention: candidate.intervention,
+    totalAmount: Number.isFinite(total) ? total : 0,
+    paidAmount: Number.isFinite(paid) ? paid : 0,
+    notes: typeof candidate.notes === 'string' ? candidate.notes : undefined,
+    createdAt: typeof candidate.createdAt === 'string' ? candidate.createdAt : new Date().toISOString(),
+    updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : new Date().toISOString(),
+  }
+}
+
+function formatMoney(value: number): string {
+  return value.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
 }
 
 function mergeMedicalNewsItems(primaryItems: MedicalNewsItem[], secondaryItems: MedicalNewsItem[]): MedicalNewsItem[] {
@@ -2339,7 +2425,16 @@ function App() {
   const [appointmentDateFilter, setAppointmentDateFilter] = useState('')
   // Prueba piloto: vista alternativa de la Turnera con calendario mensual de ocupación
   // y estadísticas de pacientes atendidos por semana/mes (candidata a feature premium anual).
-  const [turneraViewMode, setTurneraViewMode] = useState<'list' | 'calendar' | 'stats'>('list')
+  const [turneraViewMode, setTurneraViewMode] = useState<'list' | 'calendar' | 'stats' | 'ledger'>('list')
+  // Balance de pagos (odontología): tratamientos realizados, cobrado y saldo pendiente.
+  const [treatmentLedger, setTreatmentLedger] = useState<TreatmentLedgerEntry[]>([])
+  const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
+  const [ledgerDraft, setLedgerDraft] = useState<TreatmentLedgerDraft | null>(null)
+  const [ledgerPatientQuery, setLedgerPatientQuery] = useState('')
+  const [ledgerSuggestionsOpen, setLedgerSuggestionsOpen] = useState(false)
+  const [ledgerFilter, setLedgerFilter] = useState<'all' | 'debt' | 'settled'>('all')
+  const [paymentTarget, setPaymentTarget] = useState<{ entryId: string; amount: string } | null>(null)
+  const [ledgerSearch, setLedgerSearch] = useState('')
   const [calendarMonthCursor, setCalendarMonthCursor] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
@@ -2347,6 +2442,10 @@ function App() {
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<string | null>(null)
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false)
   const [appointmentDraft, setAppointmentDraft] = useState<AppointmentDraft>(emptyAppointmentDraft)
+  // Sugerencias de pacientes ya cargados al escribir en el modal de turno, para
+  // que el turno quede vinculado a la ficha existente en vez de duplicarla.
+  const [appointmentPatientQuery, setAppointmentPatientQuery] = useState('')
+  const [appointmentSuggestionsOpen, setAppointmentSuggestionsOpen] = useState(false)
   const [appointmentSaving, setAppointmentSaving] = useState(false)
   const [appointmentResendingId, setAppointmentResendingId] = useState<string | null>(null)
   // NUEVA función "Turnos libres" — no modifica nada de la Turnera existente.
@@ -2579,7 +2678,7 @@ function App() {
       }
       const configured = activeUser?.enabledModules
       if (!configured) {
-        return true
+        return !OPT_IN_APP_MODULE_IDS.includes(moduleId)
       }
       return configured.includes(moduleId)
     },
@@ -2625,6 +2724,70 @@ function App() {
       requiredMinutes: requested * duration,
     }
   }, [freeSlotDraft.startTime, freeSlotDraft.endTime, freeSlotDraft.durationMinutes, freeSlotDraft.slotCount])
+
+  // Sugerencias del modal de turno: busca por apellido, nombre o DNI entre los
+  // pacientes ya cargados, para vincular el turno a la ficha existente.
+  const appointmentPatientSuggestions = useMemo(() => {
+    const query = normalizeSearchText(appointmentPatientQuery)
+    if (query.length < 2) {
+      return []
+    }
+    return patients
+      .filter((patient) => {
+        const haystack = normalizeSearchText(
+          `${patient.apellido} ${patient.nombre} ${patient.dni} ${patient.email}`,
+        )
+        return haystack.includes(query)
+      })
+      .sort((left, right) =>
+        `${left.apellido} ${left.nombre}`.localeCompare(`${right.apellido} ${right.nombre}`, 'es'),
+      )
+      .slice(0, 6)
+  }, [patients, appointmentPatientQuery])
+
+  // Acceso al Balance de pagos: odontólogos (por especialidad) o cualquier
+  // usuario al que el admin le habilite el módulo. Siempre requiere premium.
+  const isDentist = isDentistSpecialty(profile?.specialty || activeUser?.specialty)
+  const canUseTreatmentLedger = Boolean(
+    (isDentist || isModuleEnabled('ledger')) && hasPremiumTurneraAccess,
+  )
+
+  const ledgerTotals = useMemo(() => {
+    return treatmentLedger.reduce(
+      (acc, entry) => {
+        const pending = Math.max(entry.totalAmount - entry.paidAmount, 0)
+        acc.total += entry.totalAmount
+        acc.collected += entry.paidAmount
+        acc.pending += pending
+        if (pending > 0) acc.debtors.add(entry.patientName)
+        return acc
+      },
+      { total: 0, collected: 0, pending: 0, debtors: new Set<string>() },
+    )
+  }, [treatmentLedger])
+
+  const visibleLedgerEntries = useMemo(() => {
+    const query = normalizeSearchText(ledgerSearch)
+    return treatmentLedger
+      .filter((entry) => {
+        const pending = entry.totalAmount - entry.paidAmount
+        if (ledgerFilter === 'debt' && pending <= 0) return false
+        if (ledgerFilter === 'settled' && pending > 0) return false
+        if (!query) return true
+        return normalizeSearchText(`${entry.patientName} ${entry.intervention}`).includes(query)
+      })
+      .sort((left, right) => right.date.localeCompare(left.date))
+  }, [treatmentLedger, ledgerFilter, ledgerSearch])
+
+  const ledgerPatientSuggestions = useMemo(() => {
+    const query = normalizeSearchText(ledgerPatientQuery)
+    if (query.length < 2) return []
+    return patients
+      .filter((patient) =>
+        normalizeSearchText(`${patient.apellido} ${patient.nombre} ${patient.dni}`).includes(query),
+      )
+      .slice(0, 6)
+  }, [patients, ledgerPatientQuery])
 
   const ambulanceRecentPatients = useMemo(() => {
     const normalizedLicense = profile?.licenseNumber.trim().toLowerCase() ?? ''
@@ -3123,6 +3286,11 @@ function App() {
     setPatients(patientsList)
     setAvailablePatients(availablePatientsList)
     setAppointments(loadedAppointments)
+    setTreatmentLedger(
+      readJsonStorage<unknown[]>(treatmentLedgerStorageKey(user.id), [])
+        .map(normalizeTreatmentLedgerEntry)
+        .filter((entry): entry is TreatmentLedgerEntry => Boolean(entry)),
+    )
   }
 
   async function fetchRemoteProfessionalById(userId: string): Promise<SeedUser | null> {
@@ -3404,7 +3572,10 @@ function App() {
       return
     }
 
-    const current = targetUser.enabledModules ?? ALL_APP_MODULE_IDS
+    const defaultModules = ALL_APP_MODULE_IDS.filter(
+      (entry) => !OPT_IN_APP_MODULE_IDS.includes(entry),
+    )
+    const current = targetUser.enabledModules ?? defaultModules
     const nextModules = current.includes(moduleId)
       ? current.filter((entry) => entry !== moduleId)
       : ALL_APP_MODULE_IDS.filter((entry) => entry === moduleId || current.includes(entry))
@@ -5699,6 +5870,7 @@ function App() {
     setPatients([])
     setAvailablePatients([])
     setAppointments([])
+    setTreatmentLedger([])
     setSelectedPatientId(null)
     setPatientSearchQuery('')
     setPatientDraft(emptyPatientDraft)
@@ -6517,6 +6689,8 @@ function App() {
     } else {
       setAppointmentDraft(buildEmptyAppointmentDraft())
     }
+    setAppointmentPatientQuery('')
+    setAppointmentSuggestionsOpen(false)
     setAppointmentModalOpen(true)
   }
 
@@ -6536,7 +6710,169 @@ function App() {
       amountToCharge: record.amountToCharge ? String(record.amountToCharge) : '',
       amountConcept: record.amountConcept || 'consulta',
     })
+    setAppointmentPatientQuery('')
+    setAppointmentSuggestionsOpen(false)
     setAppointmentModalOpen(true)
+  }
+
+  function handleSelectAppointmentPatient(patient: PatientRecord): void {
+    const displayName = `${patient.apellido}${patient.nombre ? `, ${patient.nombre}` : ''}`.trim()
+    setAppointmentDraft((prev) => ({
+      ...prev,
+      patientId: patient.id,
+      patientName: displayName,
+      patientDni: patient.dni || prev.patientDni,
+      patientEmail: patient.email || prev.patientEmail,
+    }))
+    setAppointmentPatientQuery('')
+    setAppointmentSuggestionsOpen(false)
+  }
+
+  // ── Balance de pagos (odontología) ──────────────────────────────────────────
+
+  function persistTreatmentLedger(next: TreatmentLedgerEntry[]): void {
+    if (!activeUserId) return
+    setTreatmentLedger(next)
+    localStorage.setItem(treatmentLedgerStorageKey(activeUserId), JSON.stringify(next))
+  }
+
+  function buildEmptyLedgerDraft(patient?: PatientRecord | null): TreatmentLedgerDraft {
+    return {
+      patientId: patient?.id ?? '',
+      patientName: patient ? `${patient.apellido}${patient.nombre ? `, ${patient.nombre}` : ''}`.trim() : '',
+      date: todayLocalISO(),
+      intervention: '',
+      totalAmount: '',
+      paidAmount: '',
+      notes: '',
+    }
+  }
+
+  function handleOpenLedgerModal(entry?: TreatmentLedgerEntry): void {
+    if (entry) {
+      setLedgerDraft({
+        id: entry.id,
+        patientId: entry.patientId,
+        patientName: entry.patientName,
+        date: entry.date,
+        intervention: entry.intervention,
+        totalAmount: String(entry.totalAmount),
+        paidAmount: String(entry.paidAmount),
+        notes: entry.notes ?? '',
+      })
+    } else {
+      setLedgerDraft(buildEmptyLedgerDraft())
+    }
+    setLedgerPatientQuery('')
+    setLedgerSuggestionsOpen(false)
+    setLedgerModalOpen(true)
+  }
+
+  function handleSaveLedgerEntry(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    if (!ledgerDraft || !activeUserId) return
+
+    const patientName = ledgerDraft.patientName.trim()
+    const intervention = ledgerDraft.intervention.trim()
+    if (!patientName || !intervention) {
+      setAppError('Indicá el paciente y la intervención realizada.')
+      return
+    }
+
+    const total = Number(ledgerDraft.totalAmount.replace(',', '.'))
+    const paid = ledgerDraft.paidAmount.trim() ? Number(ledgerDraft.paidAmount.replace(',', '.')) : 0
+    if (!Number.isFinite(total) || total <= 0) {
+      setAppError('El monto total del tratamiento debe ser un número mayor a cero.')
+      return
+    }
+    if (!Number.isFinite(paid) || paid < 0) {
+      setAppError('El monto abonado debe ser un número válido.')
+      return
+    }
+    if (paid > total) {
+      setAppError('Lo abonado no puede superar el total del tratamiento.')
+      return
+    }
+
+    const now = new Date().toISOString()
+    const existing = ledgerDraft.id ? treatmentLedger.find((e) => e.id === ledgerDraft.id) : null
+    const record: TreatmentLedgerEntry = {
+      id: ledgerDraft.id ?? crypto.randomUUID(),
+      patientId: ledgerDraft.patientId,
+      patientName,
+      date: ledgerDraft.date || todayLocalISO(),
+      intervention,
+      totalAmount: total,
+      paidAmount: paid,
+      notes: ledgerDraft.notes.trim() || undefined,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }
+
+    const next = existing
+      ? treatmentLedger.map((e) => (e.id === record.id ? record : e))
+      : [record, ...treatmentLedger]
+
+    persistTreatmentLedger(next)
+    setAppError(null)
+    setLedgerModalOpen(false)
+    setLedgerDraft(null)
+    setAppNotice(existing ? 'Tratamiento actualizado.' : 'Tratamiento registrado en el balance.')
+    showSavedFloatingNotice()
+  }
+
+  /** Registra un pago parcial sobre un tratamiento con saldo pendiente. */
+  function handleRegisterLedgerPayment(entryId: string): void {
+    const entry = treatmentLedger.find((e) => e.id === entryId)
+    if (!entry) return
+    const pending = entry.totalAmount - entry.paidAmount
+    if (pending <= 0) {
+      setAppNotice(`El tratamiento de ${entry.patientName} ya está saldado.`)
+      return
+    }
+    setPaymentTarget({ entryId, amount: String(pending) })
+  }
+
+  function handleConfirmLedgerPayment(): void {
+    if (!paymentTarget) return
+    const entry = treatmentLedger.find((e) => e.id === paymentTarget.entryId)
+    if (!entry) {
+      setPaymentTarget(null)
+      return
+    }
+    const pending = entry.totalAmount - entry.paidAmount
+
+    const amount = Number(paymentTarget.amount.replace(',', '.'))
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setAppError('El importe del pago debe ser un número mayor a cero.')
+      return
+    }
+    if (amount > pending) {
+      setAppError(`El pago no puede superar el saldo pendiente (${formatMoney(pending)}).`)
+      return
+    }
+
+    persistTreatmentLedger(
+      treatmentLedger.map((e) =>
+        e.id === paymentTarget.entryId
+          ? { ...e, paidAmount: e.paidAmount + amount, updatedAt: new Date().toISOString() }
+          : e,
+      ),
+    )
+    setPaymentTarget(null)
+    setAppError(null)
+    setAppNotice(`Pago de ${formatMoney(amount)} registrado para ${entry.patientName}.`)
+    showSavedFloatingNotice()
+  }
+
+  function handleDeleteLedgerEntry(entryId: string): void {
+    const entry = treatmentLedger.find((e) => e.id === entryId)
+    if (!entry) return
+    if (!window.confirm(`¿Eliminar el registro "${entry.intervention}" de ${entry.patientName}?`)) {
+      return
+    }
+    persistTreatmentLedger(treatmentLedger.filter((e) => e.id !== entryId))
+    setAppNotice('Registro eliminado del balance.')
   }
 
   async function handleSaveAppointment(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -6579,20 +6915,31 @@ function App() {
       let finalPatientId = appointmentDraft.patientId
 
       if (!finalPatientId) {
-        const existing = patients.find(
-          (p) =>
-            (appointmentDraft.patientDni && p.dni === appointmentDraft.patientDni) ||
-            `${p.apellido}, ${p.nombre}`.toLowerCase().includes(appointmentDraft.patientName.toLowerCase())
-        )
+        const typedName = normalizeSearchText(appointmentDraft.patientName)
+        const typedDni = appointmentDraft.patientDni.trim()
+        // Solo reutilizamos una ficha existente ante una coincidencia inequívoca
+        // (DNI exacto, o nombre completo idéntico). Una coincidencia parcial
+        // podría asociar el turno al paciente equivocado.
+        const existing = patients.find((p) => {
+          if (typedDni && p.dni && p.dni === typedDni) {
+            return true
+          }
+          const fullName = normalizeSearchText(`${p.apellido}${p.nombre ? `, ${p.nombre}` : ''}`)
+          return Boolean(typedName) && fullName === typedName
+        })
         if (existing) {
           finalPatientId = existing.id
         } else {
           finalPatientId = crypto.randomUUID()
+          // "Apellido, Nombre" se separa en sus campos reales para que la ficha
+          // quede bien formada y sea buscable después.
+          const rawName = appointmentDraft.patientName.trim()
+          const [rawApellido, ...restName] = rawName.split(',')
           const newPatient: PatientRecord = {
             id: finalPatientId,
             ownerUserId: activeUserId,
-            apellido: appointmentDraft.patientName.trim(),
-            nombre: '',
+            apellido: (rawApellido || rawName).trim(),
+            nombre: restName.join(',').trim(),
             dni: appointmentDraft.patientDni.trim(),
             email: appointmentDraft.patientEmail.trim(),
             obraSocial: '',
@@ -6855,12 +7202,75 @@ function App() {
     }
   }
 
+  /**
+   * Marca el turno como atendido y deja constancia en la historia clínica del
+   * paciente, igual que las atenciones del modo ambulancia. Luego abre la ficha
+   * para que el profesional complete la evolución.
+   */
   function handleStartConsultationFromAppointment(record: AppointmentRecord): void {
+    const patient = patients.find((p) => p.id === record.patientId)
+    if (!patient) {
+      setAppError('No se encontró la ficha del paciente de este turno.')
+      return
+    }
+
+    const alreadyRegistered = patient.consultations.some(
+      (entry) => isAppointmentConsultation(entry) && entry.appointmentId === record.id,
+    )
+
+    if (!alreadyRegistered) {
+      const entry: ConsultationEntry = {
+        id: crypto.randomUUID(),
+        date: new Date().toISOString(),
+        motivoConsulta: `[TURNO] ${record.reason || 'Consulta médica'}`,
+        diagnostico: record.reason || 'Consulta médica',
+        detalleAtencion: [
+          `Turno del ${formatShortDate(record.scheduledDate)} a las ${record.scheduledTime} hs`,
+          record.location ? `Lugar: ${record.location}` : '',
+          record.notes ? `Notas del turno: ${record.notes}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        pensamientoMedico: '',
+        professionalSignature: {
+          fullName: profile?.fullName ?? '',
+          licenseNumber: profile?.licenseNumber ?? '',
+          signatureText: profile?.signatureText ?? '',
+          signatureImageDataUrl: profile?.signatureImage?.dataUrl,
+        },
+        appointmentId: record.id,
+      }
+      persistPatientConsultation(patient.id, entry)
+    }
+
+    if (record.status !== 'attended') {
+      void markAppointmentAsAttended(record.id)
+    }
+
     handleSelectPatient(record.patientId)
     setConsultationDraft((curr) => ({
       ...curr,
       motivoConsulta: record.reason || curr.motivoConsulta,
     }))
+    setAppNotice(
+      alreadyRegistered
+        ? `Este turno ya figura en la historia clínica de ${patient.apellido}.`
+        : `Turno registrado como evolución en la historia clínica de ${patient.apellido}.`,
+    )
+  }
+
+  /** Deja el turno marcado como atendido, sin tocar el resto de sus datos. */
+  async function markAppointmentAsAttended(appointmentId: string): Promise<void> {
+    if (!activeUserId) return
+    const nextAppointments = appointments.map((a) =>
+      a.id === appointmentId ? { ...a, status: 'attended' as const } : a,
+    )
+    setAppointments(nextAppointments)
+    localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
+    const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
+    if (currentProf) {
+      void persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)
+    }
   }
 
   async function handleCommunityFileInput(event: ChangeEvent<HTMLInputElement>): Promise<void> {
@@ -8749,7 +9159,10 @@ function App() {
                         <strong className="admin-modules-title">Módulos habilitados</strong>
                         <div className="admin-modules-grid">
                           {APP_MODULES.map((module) => {
-                            const enabled = (user.enabledModules ?? ALL_APP_MODULE_IDS).includes(module.id)
+                            const enabled = (
+                              user.enabledModules ??
+                              ALL_APP_MODULE_IDS.filter((entry) => !OPT_IN_APP_MODULE_IDS.includes(entry))
+                            ).includes(module.id)
                             return (
                               <label key={module.id} className="admin-module-option" title={module.description}>
                                 <input
@@ -10105,10 +10518,160 @@ function App() {
             >
               📊 Estadísticas{!hasPremiumTurneraAccess ? ' 🔒' : ''}
             </button>
+            {isDentist || isModuleEnabled('ledger') ? (
+              <button
+                type="button"
+                className={`ghost ${turneraViewMode === 'ledger' ? 'active' : ''} ${!canUseTreatmentLedger ? 'locked' : ''}`}
+                onClick={() => {
+                  if (!canUseTreatmentLedger) {
+                    setAppError('El Balance de pagos es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
+                    return
+                  }
+                  setTurneraViewMode('ledger')
+                }}
+              >
+                💰 Balance de pagos{!canUseTreatmentLedger ? ' 🔒' : ''}
+              </button>
+            ) : null}
             <span className="turnera-view-switch-badge" title="Función premium — incluida en planes con suscripción activa">
               ⭐ Premium
             </span>
           </div>
+
+          {turneraViewMode === 'ledger' && canUseTreatmentLedger ? (
+            <section className="panel turnera-ledger-panel">
+              <div className="turnera-ledger-header">
+                <div>
+                  <h3 style={{ margin: 0 }}>💰 Balance de pagos</h3>
+                  <small className="flow-hint">
+                    Registrá cada intervención, cuánto cobraste y cuánto queda pendiente.
+                  </small>
+                </div>
+                <button type="button" onClick={() => handleOpenLedgerModal()}>
+                  ➕ Registrar intervención
+                </button>
+              </div>
+
+              <div className="ledger-summary-grid">
+                <div className="ledger-summary-card">
+                  <span className="ledger-summary-label">Facturado</span>
+                  <strong>{formatMoney(ledgerTotals.total)}</strong>
+                </div>
+                <div className="ledger-summary-card ok">
+                  <span className="ledger-summary-label">Cobrado</span>
+                  <strong>{formatMoney(ledgerTotals.collected)}</strong>
+                </div>
+                <div className={`ledger-summary-card ${ledgerTotals.pending > 0 ? 'warn' : 'ok'}`}>
+                  <span className="ledger-summary-label">Pendiente de cobro</span>
+                  <strong>{formatMoney(ledgerTotals.pending)}</strong>
+                </div>
+                <div className="ledger-summary-card">
+                  <span className="ledger-summary-label">Pacientes con deuda</span>
+                  <strong>{ledgerTotals.debtors.size}</strong>
+                </div>
+              </div>
+
+              <div className="ledger-toolbar">
+                <input
+                  type="search"
+                  placeholder="Buscar por paciente o intervención..."
+                  value={ledgerSearch}
+                  onChange={(e) => setLedgerSearch(e.target.value)}
+                />
+                <div className="ledger-filter-buttons">
+                  <button
+                    type="button"
+                    className={`ghost compact ${ledgerFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setLedgerFilter('all')}
+                  >
+                    Todos ({treatmentLedger.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`ghost compact ${ledgerFilter === 'debt' ? 'active' : ''}`}
+                    onClick={() => setLedgerFilter('debt')}
+                  >
+                    Con saldo ({treatmentLedger.filter((e) => e.totalAmount - e.paidAmount > 0).length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`ghost compact ${ledgerFilter === 'settled' ? 'active' : ''}`}
+                    onClick={() => setLedgerFilter('settled')}
+                  >
+                    Saldados ({treatmentLedger.filter((e) => e.totalAmount - e.paidAmount <= 0).length})
+                  </button>
+                </div>
+              </div>
+
+              {visibleLedgerEntries.length === 0 ? (
+                <div className="turnera-empty-state">
+                  <p>
+                    {treatmentLedger.length === 0
+                      ? 'Todavía no registraste intervenciones. Empezá cargando el primer tratamiento.'
+                      : 'No hay registros con los filtros seleccionados.'}
+                  </p>
+                  {treatmentLedger.length === 0 ? (
+                    <button type="button" onClick={() => handleOpenLedgerModal()}>
+                      ➕ Registrar la primera intervención
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="ledger-grid">
+                  {visibleLedgerEntries.map((entry) => {
+                    const pending = entry.totalAmount - entry.paidAmount
+                    const progress = entry.totalAmount > 0
+                      ? Math.min(Math.round((entry.paidAmount / entry.totalAmount) * 100), 100)
+                      : 0
+                    return (
+                      <article key={entry.id} className={`ledger-card ${pending > 0 ? 'has-debt' : 'settled'}`}>
+                        <div className="ledger-card-top">
+                          <div>
+                            <strong className="ledger-card-patient">{entry.patientName}</strong>
+                            <span className="ledger-card-date">{formatShortDate(entry.date)}</span>
+                          </div>
+                          <span className={`ledger-badge ${pending > 0 ? 'warn' : 'ok'}`}>
+                            {pending > 0 ? `Debe ${formatMoney(pending)}` : '✅ Saldado'}
+                          </span>
+                        </div>
+
+                        <p className="ledger-card-intervention">{entry.intervention}</p>
+                        {entry.notes ? <p className="ledger-card-notes">{entry.notes}</p> : null}
+
+                        <div className="ledger-progress">
+                          <div className="ledger-progress-bar">
+                            <div className="ledger-progress-fill" style={{ width: `${progress}%` }} />
+                          </div>
+                          <span className="ledger-progress-label">
+                            {formatMoney(entry.paidAmount)} de {formatMoney(entry.totalAmount)} ({progress}%)
+                          </span>
+                        </div>
+
+                        <div className="ledger-card-actions">
+                          {pending > 0 ? (
+                            <button type="button" onClick={() => handleRegisterLedgerPayment(entry.id)}>
+                              💵 Registrar pago
+                            </button>
+                          ) : null}
+                          <button type="button" className="ghost" onClick={() => handleOpenLedgerModal(entry)}>
+                            ✏️ Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost"
+                            style={{ color: '#c0392b' }}
+                            onClick={() => handleDeleteLedgerEntry(entry.id)}
+                          >
+                            🗑️ Eliminar
+                          </button>
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          ) : null}
 
           {turneraViewMode === 'calendar' && !hasPremiumTurneraAccess ? (
             <section className="panel turnera-premium-locked">
@@ -10388,7 +10951,7 @@ function App() {
                     <article key={record.id} className={`turnera-card ${isToday ? 'highlight-today' : ''}`}>
                       <div className="turnera-card-header">
                         <span className={`turnera-date-badge ${dateBadgeClass}`}>
-                          {formatDate(record.scheduledDate)} · {record.scheduledTime} hs
+                          {formatShortDate(record.scheduledDate)} · {record.scheduledTime} hs
                         </span>
                         <span className="turnera-status-badge">
                           {isToday ? '🟢 Hoy' : isPast ? '⚪ Pasado' : '🔵 Confirmado'}
@@ -10656,7 +11219,7 @@ function App() {
                         <span>Fecha de nacimiento</span>
                         <strong>
                           {selectedPatient.birthDate
-                            ? formatDate(selectedPatient.birthDate)
+                            ? formatShortDate(selectedPatient.birthDate)
                             : 'Sin dato'}
                         </strong>
                       </div>
@@ -10952,7 +11515,7 @@ function App() {
                     <div>
                       <span>Fecha de nacimiento</span>
                       <strong>
-                        {selectedPatient.birthDate ? formatDate(selectedPatient.birthDate) : 'Sin dato'}
+                        {selectedPatient.birthDate ? formatShortDate(selectedPatient.birthDate) : 'Sin dato'}
                       </strong>
                     </div>
                     <div>
@@ -11992,6 +12555,233 @@ function App() {
           </div>
         )
       })() : null}
+      {paymentTarget ? (() => {
+        const entry = treatmentLedger.find((e) => e.id === paymentTarget.entryId)
+        if (!entry) return null
+        const pending = entry.totalAmount - entry.paidAmount
+        return (
+          <div className="drhappy-modal-overlay" onClick={() => setPaymentTarget(null)}>
+            <div
+              className="drhappy-modal-card turnera-modal-card"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Registrar pago"
+            >
+              <div className="drhappy-modal-header">
+                <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>💵 Registrar pago</h3>
+                <button
+                  type="button"
+                  className="drhappy-modal-close-btn"
+                  onClick={() => setPaymentTarget(null)}
+                  aria-label="Cerrar ventana"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="turnera-modal-body">
+                <p style={{ margin: '0 0 4px' }}>
+                  <strong>{entry.patientName}</strong> — {entry.intervention}
+                </p>
+                <p className="flow-hint" style={{ margin: '0 0 12px' }}>
+                  Saldo pendiente: <strong>{formatMoney(pending)}</strong>
+                </p>
+                <label>
+                  ¿Cuánto abona ahora?
+                  <input
+                    type="number"
+                    min="0"
+                    max={pending}
+                    autoFocus
+                    value={paymentTarget.amount}
+                    onChange={(e) =>
+                      setPaymentTarget((prev) => (prev ? { ...prev, amount: e.target.value } : prev))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleConfirmLedgerPayment()
+                      }
+                    }}
+                  />
+                </label>
+                <div className="turnera-modal-actions">
+                  <button type="button" className="ghost" onClick={() => setPaymentTarget(null)}>
+                    Cancelar
+                  </button>
+                  <button type="button" onClick={handleConfirmLedgerPayment}>
+                    Confirmar pago
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })() : null}
+      {ledgerModalOpen && ledgerDraft ? (
+        <div className="drhappy-modal-overlay" onClick={() => setLedgerModalOpen(false)}>
+          <div
+            className="drhappy-modal-card turnera-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ledger-modal-title"
+          >
+            <div className="drhappy-modal-header">
+              <h3 id="ledger-modal-title" style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>
+                {ledgerDraft.id ? '✏️ Editar intervención' : '💰 Registrar intervención'}
+              </h3>
+              <button
+                type="button"
+                className="drhappy-modal-close-btn"
+                onClick={() => setLedgerModalOpen(false)}
+                aria-label="Cerrar ventana"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveLedgerEntry} className="turnera-modal-form">
+              <div className="turnera-form-group">
+                <label>
+                  Paciente *
+                  <div className="patient-autocomplete">
+                    <input
+                      type="text"
+                      required
+                      autoComplete="off"
+                      placeholder="Escribí apellido, nombre o DNI"
+                      value={ledgerDraft.patientName}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setLedgerDraft((prev) => (prev ? { ...prev, patientName: value, patientId: '' } : prev))
+                        setLedgerPatientQuery(value)
+                        setLedgerSuggestionsOpen(true)
+                      }}
+                      onFocus={() => setLedgerSuggestionsOpen(true)}
+                      onBlur={() => window.setTimeout(() => setLedgerSuggestionsOpen(false), 150)}
+                    />
+                    {ledgerSuggestionsOpen && ledgerPatientSuggestions.length > 0 ? (
+                      <ul className="patient-autocomplete-list">
+                        {ledgerPatientSuggestions.map((patient) => (
+                          <li key={patient.id}>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                const displayName = `${patient.apellido}${patient.nombre ? `, ${patient.nombre}` : ''}`.trim()
+                                setLedgerDraft((prev) =>
+                                  prev ? { ...prev, patientId: patient.id, patientName: displayName } : prev,
+                                )
+                                setLedgerPatientQuery('')
+                                setLedgerSuggestionsOpen(false)
+                              }}
+                            >
+                              <strong>
+                                {`${patient.apellido}${patient.nombre ? `, ${patient.nombre}` : ''}`.trim()}
+                              </strong>
+                              <span>{patient.dni ? `DNI ${patient.dni}` : 'Sin DNI'}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                </label>
+              </div>
+
+              <div className="turnera-form-group">
+                <label>
+                  Intervención realizada *
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: Conducto molar superior derecho"
+                    value={ledgerDraft.intervention}
+                    onChange={(e) =>
+                      setLedgerDraft((prev) => (prev ? { ...prev, intervention: e.target.value } : prev))
+                    }
+                  />
+                </label>
+              </div>
+
+              <div className="turnera-form-row">
+                <label style={{ flex: 1 }}>
+                  Fecha
+                  <input
+                    type="date"
+                    value={ledgerDraft.date}
+                    onChange={(e) => setLedgerDraft((prev) => (prev ? { ...prev, date: e.target.value } : prev))}
+                  />
+                </label>
+                <label style={{ flex: 1 }}>
+                  Total del tratamiento *
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    required
+                    placeholder="Ej: 45000"
+                    value={ledgerDraft.totalAmount}
+                    onChange={(e) =>
+                      setLedgerDraft((prev) =>
+                        prev ? { ...prev, totalAmount: e.target.value.replace(/[^\d.,]/g, '') } : prev,
+                      )
+                    }
+                  />
+                </label>
+                <label style={{ flex: 1 }}>
+                  Abonado ahora
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Ej: 20000"
+                    value={ledgerDraft.paidAmount}
+                    onChange={(e) =>
+                      setLedgerDraft((prev) =>
+                        prev ? { ...prev, paidAmount: e.target.value.replace(/[^\d.,]/g, '') } : prev,
+                      )
+                    }
+                  />
+                </label>
+              </div>
+
+              {(() => {
+                const total = Number(ledgerDraft.totalAmount.replace(',', '.'))
+                const paid = ledgerDraft.paidAmount.trim() ? Number(ledgerDraft.paidAmount.replace(',', '.')) : 0
+                if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(paid)) return null
+                const pending = total - paid
+                return (
+                  <div className={`payment-info-note ${pending > 0 ? 'warn' : 'ok'}`}>
+                    {pending > 0
+                      ? `Queda un saldo pendiente de ${formatMoney(pending)}.`
+                      : '✅ El tratamiento queda saldado por completo.'}
+                  </div>
+                )
+              })()}
+
+              <div className="turnera-form-group">
+                <label>
+                  Notas (opcional)
+                  <textarea
+                    rows={2}
+                    placeholder="Ej: Continúa con la segunda sesión el mes próximo"
+                    value={ledgerDraft.notes}
+                    onChange={(e) => setLedgerDraft((prev) => (prev ? { ...prev, notes: e.target.value } : prev))}
+                  />
+                </label>
+              </div>
+
+              <div className="turnera-modal-actions">
+                <button type="button" className="ghost" onClick={() => setLedgerModalOpen(false)}>
+                  Cancelar
+                </button>
+                <button type="submit">{ledgerDraft.id ? 'Guardar cambios' : 'Registrar'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
       {liveScanTarget ? (
         <div className="scanner-overlay" role="dialog" aria-modal="true" aria-label="Escáner en vivo">
           <div className="scanner-panel">
@@ -12176,13 +12966,57 @@ function App() {
               <div className="turnera-form-group">
                 <label>
                   Paciente (Apellido y Nombre) *
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: Gómez, Carlos"
-                    value={appointmentDraft.patientName}
-                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, patientName: e.target.value }))}
-                  />
+                  <div className="patient-autocomplete">
+                    <input
+                      type="text"
+                      required
+                      autoComplete="off"
+                      placeholder="Escribí apellido, nombre o DNI para buscar"
+                      value={appointmentDraft.patientName}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        // Al reescribir el nombre se desvincula la ficha elegida,
+                        // para no asociar el turno a un paciente equivocado.
+                        setAppointmentDraft((prev) => ({ ...prev, patientName: value, patientId: '' }))
+                        setAppointmentPatientQuery(value)
+                        setAppointmentSuggestionsOpen(true)
+                      }}
+                      onFocus={() => setAppointmentSuggestionsOpen(true)}
+                      onBlur={() => window.setTimeout(() => setAppointmentSuggestionsOpen(false), 150)}
+                    />
+                    {appointmentSuggestionsOpen && appointmentPatientSuggestions.length > 0 ? (
+                      <ul className="patient-autocomplete-list">
+                        {appointmentPatientSuggestions.map((patient) => (
+                          <li key={patient.id}>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => handleSelectAppointmentPatient(patient)}
+                            >
+                              <strong>
+                                {`${patient.apellido}${patient.nombre ? `, ${patient.nombre}` : ''}`.trim()}
+                              </strong>
+                              <span>
+                                {patient.dni ? `DNI ${patient.dni}` : 'Sin DNI'}
+                                {patient.consultations.length > 0
+                                  ? ` · ${patient.consultations.length} ${patient.consultations.length === 1 ? 'atención registrada' : 'atenciones registradas'}`
+                                  : ' · Sin atenciones previas'}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                  {appointmentDraft.patientId ? (
+                    <span className="patient-linked-hint">
+                      ✅ Vinculado a la ficha existente — el turno quedará en su historia clínica
+                    </span>
+                  ) : appointmentPatientQuery.trim().length >= 2 && appointmentPatientSuggestions.length === 0 ? (
+                    <span className="field-hint">
+                      No hay pacientes con ese dato. Se creará una ficha nueva al guardar.
+                    </span>
+                  ) : null}
                 </label>
               </div>
 

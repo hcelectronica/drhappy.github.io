@@ -1296,6 +1296,346 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
   justify-content: flex-end;
 }
 
+/* ── Balance de pagos (odontología) ──────────────────────────────────────── */
+
+.turnera-ledger-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.ledger-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ledger-summary-card {
+  background: var(--surface-muted, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ledger-summary-card strong {
+  font-size: 1.25rem;
+  color: var(--text-heading, #0f172a);
+}
+
+.ledger-summary-card.ok {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.ledger-summary-card.ok strong {
+  color: #15803d;
+}
+
+.ledger-summary-card.warn {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.ledger-summary-card.warn strong {
+  color: #b45309;
+}
+
+.ledger-summary-label {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.ledger-toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.ledger-toolbar input[type='search'] {
+  flex: 1;
+  min-width: 220px;
+}
+
+.ledger-filter-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ledger-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.ledger-card {
+  border: 1px solid var(--border, #e2e8f0);
+  border-left: 4px solid #94a3b8;
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface, #fff);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ledger-card.has-debt {
+  border-left-color: #f59e0b;
+}
+
+.ledger-card.settled {
+  border-left-color: #22c55e;
+}
+
+.ledger-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ledger-card-patient {
+  display: block;
+  font-size: 1rem;
+  color: var(--text-heading, #0f172a);
+}
+
+.ledger-card-date {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.ledger-badge {
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.ledger-badge.warn {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.ledger-badge.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.ledger-card-intervention {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-body, #1e293b);
+}
+
+.ledger-card-notes {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.ledger-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ledger-progress-bar {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ledger-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.ledger-progress-label {
+  font-size: 0.78rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+.ledger-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ledger-card-actions button {
+  font-size: 0.82rem;
+  padding: 6px 12px;
+}
+
+body.theme-night .ledger-summary-card {
+  background: #16233a;
+  border-color: #33415a;
+}
+
+body.theme-night .ledger-summary-card strong {
+  color: #e2e8f0;
+}
+
+body.theme-night .ledger-summary-card.ok {
+  background: #14321f;
+  border-color: #22c55e;
+}
+
+body.theme-night .ledger-summary-card.ok strong {
+  color: #4ade80;
+}
+
+body.theme-night .ledger-summary-card.warn {
+  background: #3a2c12;
+  border-color: #f59e0b;
+}
+
+body.theme-night .ledger-summary-card.warn strong {
+  color: #fbbf24;
+}
+
+body.theme-night .ledger-summary-label,
+body.theme-night .ledger-card-date,
+body.theme-night .ledger-card-notes {
+  color: #94a3b8;
+}
+
+body.theme-night .ledger-card {
+  background: #16233a;
+  border-color: #33415a;
+}
+
+body.theme-night .ledger-card-patient {
+  color: #e2e8f0;
+}
+
+body.theme-night .ledger-card-intervention {
+  color: #cbd5e1;
+}
+
+body.theme-night .ledger-progress-bar {
+  background: #253449;
+}
+
+body.theme-night .ledger-progress-label {
+  color: #cbd5e1;
+}
+
+body.theme-night .ledger-badge.warn {
+  background: #3a2c12;
+  color: #fbbf24;
+}
+
+body.theme-night .ledger-badge.ok {
+  background: #14321f;
+  color: #4ade80;
+}
+
+.patient-autocomplete {
+  position: relative;
+}
+
+.patient-autocomplete-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #cbd5f5);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.patient-autocomplete-list li + li {
+  border-top: 1px solid var(--border, #eef2ff);
+}
+
+.patient-autocomplete-list button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.patient-autocomplete-list button:hover,
+.patient-autocomplete-list button:focus-visible {
+  background: #eef2ff;
+}
+
+.patient-autocomplete-list strong {
+  font-size: 0.92rem;
+  color: var(--text-heading, #0f172a);
+}
+
+.patient-autocomplete-list span {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.patient-linked-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #15803d;
+}
+
+body.theme-night .patient-autocomplete-list {
+  background: #16233a;
+  border-color: #33415a;
+}
+
+body.theme-night .patient-autocomplete-list li + li {
+  border-top-color: #253449;
+}
+
+body.theme-night .patient-autocomplete-list button:hover,
+body.theme-night .patient-autocomplete-list button:focus-visible {
+  background: #1f3454;
+}
+
+body.theme-night .patient-autocomplete-list strong {
+  color: #e2e8f0;
+}
+
+body.theme-night .patient-autocomplete-list span {
+  color: #94a3b8;
+}
+
+body.theme-night .patient-linked-hint {
+  color: #4ade80;
+}
+
 .admin-modules-box {
   width: 100%;
   border: 1px solid var(--border, #e2e8f0);
