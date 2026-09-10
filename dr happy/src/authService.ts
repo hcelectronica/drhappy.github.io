@@ -29,6 +29,17 @@ async function invokeAuthProfessional(body: Record<string, unknown>): Promise<Au
   }
   const { data, error } = await supabase.functions.invoke('auth-professional', { body })
   if (error) {
+    const context = (error as { context?: Response }).context
+    if (context && typeof context.json === 'function') {
+      try {
+        const payload = (await context.json()) as { message?: unknown }
+        if (typeof payload.message === 'string' && payload.message.trim()) {
+          return { success: false, message: payload.message }
+        }
+      } catch {
+        // Si la respuesta no contiene JSON, se conserva el mensaje del cliente.
+      }
+    }
     return { success: false, message: error.message || 'Error invocando el servicio de autenticación.' }
   }
   const result = data as AuthActionResult

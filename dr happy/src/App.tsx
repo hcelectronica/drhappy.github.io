@@ -944,6 +944,18 @@ function buildStringSuggestions(catalog: string[], query: string, limit = 12): s
     .map((entry) => entry.entry)
 }
 
+function mergeUniqueSearchValues(...catalogs: string[][]): string[] {
+  const valuesByNormalizedName = new Map<string, string>()
+  for (const value of catalogs.flat()) {
+    const trimmedValue = value.trim()
+    const normalizedValue = normalizeSearchText(trimmedValue)
+    if (normalizedValue && !valuesByNormalizedName.has(normalizedValue)) {
+      valuesByNormalizedName.set(normalizedValue, trimmedValue)
+    }
+  }
+  return Array.from(valuesByNormalizedName.values())
+}
+
 function loadMedicationCatalogFromJson(rawCatalog: unknown): MedicationEntry[] {
   if (!Array.isArray(rawCatalog)) {
     return []
@@ -2408,6 +2420,8 @@ function App() {
   const [authError, setAuthError] = useState<string | null>(null)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showLoginPassword, setShowLoginPassword] = useState(false)
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = localStorage.getItem(THEME_MODE_KEY)
     return stored === 'night' ? 'night' : 'light'
@@ -2849,12 +2863,29 @@ function App() {
       )
   }, [patients, profile?.fullName, profile?.licenseNumber])
   const registerSpecialtySuggestions = useMemo(
-    () => buildStringSuggestions(specialtyCatalog, registerDraft.specialty, 8),
-    [specialtyCatalog, registerDraft.specialty],
+    () =>
+      buildStringSuggestions(
+        mergeUniqueSearchValues(specialtyCatalog, seedUsers.map((user) => user.specialty)),
+        registerDraft.specialty,
+        8,
+      ),
+    [specialtyCatalog, seedUsers, registerDraft.specialty],
   )
+  const registerUsernameExists = useMemo(() => {
+    const normalizedUsername = registerDraft.username.trim().toLowerCase()
+    return (
+      normalizedUsername.length > 0 &&
+      seedUsers.some((user) => user.username.trim().toLowerCase() === normalizedUsername)
+    )
+  }, [registerDraft.username, seedUsers])
   const profileSpecialtySuggestions = useMemo(
-    () => buildStringSuggestions(specialtyCatalog, profile?.specialty ?? '', 8),
-    [specialtyCatalog, profile?.specialty],
+    () =>
+      buildStringSuggestions(
+        mergeUniqueSearchValues(specialtyCatalog, seedUsers.map((user) => user.specialty)),
+        profile?.specialty ?? '',
+        8,
+      ),
+    [specialtyCatalog, seedUsers, profile?.specialty],
   )
   const filteredMedicationCatalog = useMemo(() => {
     const normalizedQuery = normalizeSearchText(vademecumSearchQuery)
@@ -4173,7 +4204,30 @@ function App() {
   }, [])
 
   useEffect(() => {
-    setSpecialtyCatalog(loadSimpleCatalogFromCsv(specialtiesCsv))
+    const baseCatalog = loadSimpleCatalogFromCsv(specialtiesCsv)
+    if (!isSupabaseConfigured || !supabase) {
+      setSpecialtyCatalog(baseCatalog)
+      return
+    }
+    const supabaseClient = supabase
+
+    const loadSpecialtyCatalog = async () => {
+      const { data, error } = await supabaseClient
+        .from('medical_specialties')
+        .select('name')
+        .order('name', { ascending: true })
+      if (error) {
+        console.error('[specialties] No se pudo cargar el catálogo compartido:', error.message)
+        setSpecialtyCatalog(baseCatalog)
+        return
+      }
+      const learnedSpecialties = (data ?? [])
+        .map((row) => (typeof row.name === 'string' ? row.name : ''))
+        .filter(Boolean)
+      setSpecialtyCatalog(mergeUniqueSearchValues(baseCatalog, learnedSpecialties))
+    }
+
+    void loadSpecialtyCatalog()
   }, [])
 
   useEffect(() => {
@@ -5440,8 +5494,8 @@ function App() {
       setAuthError('El código es inválido o venció. Solicita uno nuevo.')
       return
     }
-    if (recoveryPassword.length < 8) {
-      setAuthError('La nueva contraseña debe tener al menos 8 caracteres.')
+    if (recoveryPassword.length < 6) {
+      setAuthError('La nueva contraseña debe tener al menos 6 caracteres.')
       return
     }
 
@@ -5701,7 +5755,7 @@ function App() {
     setAppNotice(null)
 
     if (isSupabaseConfigured) {
-      const result = await loginProfessional({ username: username.trim(), password })
+      const result = await loginProfessional({ username: username.trim().toLowerCase(), password })
       if (!result.success || !result.professional) {
         setAuthError(result.message || 'Usuario o contraseña inválidos o usuario inactivo.')
         return
@@ -5728,7 +5782,7 @@ function App() {
     const user = seedUsers.find(
       (entry) =>
         entry.active !== false &&
-        entry.username === username.trim() &&
+        entry.username.trim().toLowerCase() === username.trim().toLowerCase() &&
         (passwordOverrides[entry.id] ?? entry.password) === password,
     )
     if (!user) {
@@ -5753,7 +5807,10 @@ function App() {
 
   function handleRegisterFieldChange(event: ChangeEvent<HTMLInputElement>): void {
     const { name, value } = event.target
-    setRegisterDraft((current) => ({ ...current, [name]: value }))
+    setRegisterDraft((current) => ({
+      ...current,
+      [name]: name === 'username' ? value.toLowerCase() : value,
+    }))
   }
 
   function handleRegisterNetworkToggle(network: string): void {
@@ -5780,7 +5837,7 @@ function App() {
       specialty: registerDraft.specialty.trim(),
       licenseNumber: registerDraft.licenseNumber.trim(),
       email: registerDraft.email.trim(),
-      username: registerDraft.username.trim(),
+      username: registerDraft.username.trim().toLowerCase(),
       password: registerDraft.password,
       networkMemberships: registerDraft.networkMemberships,
     }
@@ -5800,10 +5857,12 @@ function App() {
       return
     }
 
-    const usernameExists = seedUsers.some(
-      (user) => user.username.toLowerCase() === draft.username.toLowerCase(),
-    )
-    if (usernameExists) {
+    if (draft.password.length < 6) {
+      setAuthError('La contraseña debe tener al menos 6 caracteres.')
+      return
+    }
+
+    if (registerUsernameExists) {
       setAuthError('Ese nombre de usuario ya existe.')
       return
     }
@@ -7483,8 +7542,8 @@ function App() {
       setAppError('Ingresa la nueva contraseña en ambos campos.')
       return
     }
-    if (passwordChangeDraft.newPassword.length < 8) {
-      setAppError('La nueva contraseña debe tener al menos 8 caracteres.')
+    if (passwordChangeDraft.newPassword.length < 6) {
+      setAppError('La nueva contraseña debe tener al menos 6 caracteres.')
       return
     }
     if (passwordChangeDraft.newPassword !== passwordChangeDraft.confirmPassword) {
@@ -8252,19 +8311,34 @@ function App() {
                 <input
                   name="username"
                   value={username}
-                  onChange={(event) => setUsername(event.target.value)}
+                  onChange={(event) => setUsername(event.target.value.toLowerCase())}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  autoComplete="username"
                   required
                 />
               </label>
               <label>
                 Contraseña
-                <input
-                  type="password"
-                  name="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                />
+                <div className="password-input">
+                  <input
+                    type={showLoginPassword ? 'text' : 'password'}
+                    name="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-visibility"
+                    onClick={() => setShowLoginPassword((current) => !current)}
+                    aria-label={showLoginPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    title={showLoginPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    {showLoginPassword ? '🙈' : '👁'}
+                  </button>
+                </div>
               </label>
               {authError ? <p className="error">{authError}</p> : null}
               {appError ? <p className="error">{appError}</p> : null}
@@ -8381,7 +8455,7 @@ function App() {
                       type="password"
                       value={recoveryPassword}
                       onChange={(event) => setRecoveryPassword(event.target.value)}
-                      minLength={8}
+                      minLength={6}
                       required
                     />
                   </label>
@@ -8424,7 +8498,7 @@ function App() {
                   value={registerDraft.dni}
                   onChange={handleRegisterFieldChange}
                   inputMode="numeric"
-                  pattern="[0-9. -]+"
+                  pattern="[0-9. ]+"
                   required
                 />
               </label>
@@ -8435,14 +8509,27 @@ function App() {
                   value={registerDraft.specialty}
                   onChange={handleRegisterFieldChange}
                   autoComplete="off"
-                  list="register-specialty-suggestions-list"
                   required
                 />
-                <datalist id="register-specialty-suggestions-list">
-                  {registerSpecialtySuggestions.map((specialty) => (
-                    <option key={specialty} value={specialty} />
-                  ))}
-                </datalist>
+                {registerDraft.specialty.trim() && registerSpecialtySuggestions.length > 0 ? (
+                  <ul className="specialty-suggestions">
+                    {registerSpecialtySuggestions.map((specialty) => (
+                      <li key={specialty}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRegisterDraft((current) => ({ ...current, specialty }))
+                          }
+                        >
+                          {specialty}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <small>
+                  Podés elegir una sugerencia o escribir una especialidad nueva para incorporarla al catálogo.
+                </small>
               </label>
               <label>
                 Matrícula
@@ -8469,18 +8556,47 @@ function App() {
                   name="username"
                   value={registerDraft.username}
                   onChange={handleRegisterFieldChange}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  autoComplete="username"
+                  aria-describedby="register-username-status"
                   required
                 />
+                {registerDraft.username.trim() ? (
+                  <small
+                    id="register-username-status"
+                    className={registerUsernameExists ? 'field-status error' : 'field-status available'}
+                    aria-live="polite"
+                  >
+                    {registerUsernameExists
+                      ? 'Ese nombre de usuario ya existe.'
+                      : 'Nombre de usuario disponible. Se guardará en minúsculas.'}
+                  </small>
+                ) : null}
               </label>
               <label>
                 Contraseña
-                <input
-                  type="password"
-                  name="password"
-                  value={registerDraft.password}
-                  onChange={handleRegisterFieldChange}
-                  required
-                />
+                <div className="password-input">
+                  <input
+                    type={showRegisterPassword ? 'text' : 'password'}
+                    name="password"
+                    value={registerDraft.password}
+                    onChange={handleRegisterFieldChange}
+                    minLength={6}
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-visibility"
+                    onClick={() => setShowRegisterPassword((current) => !current)}
+                    aria-label={showRegisterPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    title={showRegisterPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    {showRegisterPassword ? '🙈' : '👁'}
+                  </button>
+                </div>
+                <small>Mínimo 6 caracteres.</small>
               </label>
               <fieldset className="register-networks-fieldset">
                 <legend>Redes en las que trabaja</legend>
@@ -11775,13 +11891,28 @@ function App() {
                     value={profile.specialty}
                     onChange={handleProfileFieldChange}
                     autoComplete="off"
-                    list="profile-specialty-suggestions-list"
                   />
-                  <datalist id="profile-specialty-suggestions-list">
-                    {profileSpecialtySuggestions.map((specialty) => (
-                      <option key={specialty} value={specialty} />
-                    ))}
-                  </datalist>
+                  {profile.specialty.trim() && profileSpecialtySuggestions.length > 0 ? (
+                    <ul className="specialty-suggestions">
+                      {profileSpecialtySuggestions.map((specialty) => (
+                        <li key={specialty}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setProfile((current) =>
+                                current ? { ...current, specialty } : current,
+                              )
+                            }
+                          >
+                            {specialty}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <small>
+                    La búsqueda ignora tildes y mayúsculas. Las especialidades nuevas quedan disponibles para todos.
+                  </small>
                 </label>
                 <label>
                   Matrícula
@@ -11912,7 +12043,7 @@ function App() {
                     name="newPassword"
                     value={passwordChangeDraft.newPassword}
                     onChange={handlePasswordChangeField}
-                    minLength={8}
+                    minLength={6}
                     required
                   />
                 </label>
@@ -11923,7 +12054,7 @@ function App() {
                     name="confirmPassword"
                     value={passwordChangeDraft.confirmPassword}
                     onChange={handlePasswordChangeField}
-                    minLength={8}
+                    minLength={6}
                     required
                   />
                 </label>
@@ -12900,38 +13031,31 @@ function App() {
         </div>
       ) : null}
 
-      {/* Modal Central de Activación de Notificaciones */}
+      {/* Aviso no bloqueante de activación de notificaciones */}
       {!showInstallToast && showNotificationToast && notificationPermission !== 'granted' ? (
-        <div
-          className="center-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="notification-modal-title"
+        <aside
+          className={`notification-corner-toast ${notificationPermission === 'denied' ? 'denied' : ''}`}
+          role="status"
+          aria-live="polite"
+          aria-labelledby="notification-toast-title"
         >
-          <div className={`center-modal-card ${notificationPermission === 'denied' ? 'denied' : ''}`}>
-            <div className="center-modal-icon-bubble" aria-hidden="true">
-              {notificationPermission === 'denied' ? '⚠️' : '🔔'}
-            </div>
-            <h3 id="notification-modal-title" className="center-modal-title">
+            <div className="notification-toast-heading">
+              <span aria-hidden="true">{notificationPermission === 'denied' ? '⚠️' : '🔔'}</span>
+              <h3 id="notification-toast-title">
               {notificationPermission === 'denied'
-                ? 'Notificaciones bloqueadas en tu navegador'
-                : 'Activá las Notificaciones de Dr. Happy'}
-            </h3>
-            
+                  ? 'Notificaciones bloqueadas'
+                  : 'Activá las notificaciones'}
+              </h3>
+            </div>
+             
             {notificationPermission === 'denied' ? (
               <>
-                <p className="center-modal-description">
-                  Las notificaciones ya fueron bloqueadas por el navegador. Por seguridad, Dr. Happy no puede volver a abrir el permiso automáticamente: hay que desbloquearlo una vez desde el candado o desde ajustes del sistema.
+                <p>
+                  Habilitalas desde los permisos de Dr Happy en el navegador o en los ajustes del teléfono.
                 </p>
-                <div className="center-modal-instructions-box">
-                  <div>📱 <strong>Android/Chrome:</strong> Tocá el candado 🔒 junto a <code>drhappy.com.ar</code> ➔ <em>Permisos / Notificaciones</em> ➔ <strong>Permitir</strong>. Si no aparece, entrá a <em>Ajustes del sitio</em>.</div>
-                  <div>🍎 <strong>En iPhone (iOS):</strong> Abrí <em>Ajustes de iOS</em> ➔ <em>Notificaciones</em> ➔ <em>Dr. Happy</em> ➔ <strong>Permitir</strong>.</div>
-                  <div>💻 <strong>En Computadora:</strong> Hacé clic en el candado 🔒 a la izquierda de la URL ➔ <em>Notificaciones</em> ➔ <strong>Permitir</strong>.</div>
-                </div>
-                <div className="center-modal-actions">
+                <div className="notification-toast-actions">
                   <button
                     type="button"
-                    className="unblock-btn"
                     onClick={() => {
                       const p = getNotificationPermission()
                       setNotificationPermission(p)
@@ -12944,42 +13068,38 @@ function App() {
                       }
                     }}
                   >
-                    🔄 Ya las desbloqueé (Re-verificar)
+                    🔄 Verificar
                   </button>
                   <button
                     type="button"
-                    className="secondary-btn"
                     onClick={handleDismissNotificationToast}
                   >
-                    Entendido, no volver a mostrar por 7 días
+                    Posponer 7 días
                   </button>
                 </div>
               </>
             ) : (
               <>
-                <p className="center-modal-description">
-                  Recibí avisos inmediatos cuando un colega te envíe un mensaje privado, el administrador publique novedades de guardia o se agende un turno médico. Si el navegador muestra una ventana de permiso, elegí <strong>Permitir</strong>.
+                <p>
+                  Recibí avisos de mensajes, novedades y turnos aunque no estés mirando la pantalla.
                 </p>
-                <div className="center-modal-actions">
+                <div className="notification-toast-actions">
                   <button
                     type="button"
-                    className="primary-btn"
                     onClick={() => void handleEnableNotifications()}
                   >
-                    🔔 Abrir permiso del navegador
+                    🔔 Activar
                   </button>
                   <button
                     type="button"
-                    className="secondary-btn"
                     onClick={handleDismissNotificationToast}
                   >
-                    Ahora no, recordar en 7 días
+                    Posponer 7 días
                   </button>
                 </div>
               </>
             )}
-          </div>
-        </div>
+        </aside>
       ) : null}
       {appointmentModalOpen ? (
         <div className="drhappy-modal-overlay" onClick={() => setAppointmentModalOpen(false)}>
