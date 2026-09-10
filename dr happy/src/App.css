@@ -654,14 +654,76 @@ body.theme-night {
 }
 
 .register-form {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px dashed #bfd4ef;
+  margin: 0;
 }
 
 .register-form h2 {
   margin: 0 0 4px;
   font-size: 1.05rem;
+}
+
+.drhappy-modal-card.registration-modal-card {
+  max-width: 660px;
+  max-height: min(88vh, 720px);
+  padding: 18px;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.registration-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.registration-modal-header h2,
+.registration-modal-header p {
+  margin: 0;
+}
+
+.registration-modal-header p {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.registration-modal-close {
+  flex: 0 0 auto;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.registration-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+.registration-fields > label {
+  min-width: 0;
+}
+
+.registration-fields input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.registration-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.registration-modal-actions button {
+  min-width: 130px;
+}
+
+.registration-error {
+  margin: 0;
 }
 
 .password-input {
@@ -801,15 +863,49 @@ body.theme-night {
   gap: 10px;
 }
 
-.register-networks-fieldset legend {
-  padding: 0 6px;
+.register-networks-fieldset summary {
+  cursor: pointer;
   font-weight: 700;
   color: #173961;
 }
 
 .register-networks-grid {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  margin-top: 10px;
+}
+
+@media (max-width: 620px) {
+  .drhappy-modal-overlay.registration-modal-overlay {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .drhappy-modal-card.registration-modal-card {
+    width: calc(100% - 20px);
+    max-height: 92vh;
+    padding: 16px;
+    border-radius: 18px 18px 12px 12px;
+  }
+
+  .registration-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .registration-modal-actions {
+    position: sticky;
+    bottom: -16px;
+    margin: 0 -16px -16px;
+    padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+    background: inherit;
+    border-top: 1px solid #dbe5f2;
+  }
+
+  .registration-modal-actions button {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 .toggle-option {
