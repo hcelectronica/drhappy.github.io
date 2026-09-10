@@ -2879,6 +2879,13 @@ function App() {
       seedUsers.some((user) => user.username.trim().toLowerCase() === normalizedUsername)
     )
   }, [registerDraft.username, seedUsers])
+  const registerEmailExists = useMemo(() => {
+    const normalizedEmail = registerDraft.email.trim().toLowerCase()
+    return (
+      normalizedEmail.length > 0 &&
+      seedUsers.some((user) => user.email.trim().toLowerCase() === normalizedEmail)
+    )
+  }, [registerDraft.email, seedUsers])
   const profileSpecialtySuggestions = useMemo(
     () =>
       buildStringSuggestions(
@@ -5808,10 +5815,22 @@ function App() {
 
   function handleRegisterFieldChange(event: ChangeEvent<HTMLInputElement>): void {
     const { name, value } = event.target
-    setRegisterDraft((current) => ({
-      ...current,
-      [name]: name === 'username' ? value.toLowerCase() : value,
-    }))
+    setRegisterDraft((current) => {
+      if (name === 'email') {
+        const usernameFollowsEmail =
+          !current.username.trim() ||
+          current.username.trim().toLowerCase() === current.email.trim().toLowerCase()
+        return {
+          ...current,
+          email: value,
+          username: usernameFollowsEmail ? value.trim().toLowerCase() : current.username,
+        }
+      }
+      return {
+        ...current,
+        [name]: name === 'username' ? value.toLowerCase() : value,
+      }
+    })
   }
 
   function handleRegisterNetworkToggle(network: string): void {
@@ -5837,7 +5856,7 @@ function App() {
       dni: registerDraft.dni.trim(),
       specialty: registerDraft.specialty.trim(),
       licenseNumber: registerDraft.licenseNumber.trim(),
-      email: registerDraft.email.trim(),
+      email: registerDraft.email.trim().toLowerCase(),
       username: registerDraft.username.trim().toLowerCase(),
       password: registerDraft.password,
       networkMemberships: registerDraft.networkMemberships,
@@ -5865,6 +5884,11 @@ function App() {
 
     if (registerUsernameExists) {
       setAuthError('Ese nombre de usuario ya existe.')
+      return
+    }
+
+    if (registerEmailExists) {
+      setAuthError('Ese email ya está asociado a otro usuario.')
       return
     }
 
@@ -8579,8 +8603,20 @@ function App() {
                   name="email"
                   value={registerDraft.email}
                   onChange={handleRegisterFieldChange}
+                  aria-describedby="register-email-status"
                   required
                 />
+                {registerDraft.email.trim() ? (
+                  <small
+                    id="register-email-status"
+                    className={registerEmailExists ? 'field-status error' : 'field-status available'}
+                    aria-live="polite"
+                  >
+                    {registerEmailExists
+                      ? 'Ese email ya está asociado a otro usuario.'
+                      : 'Email disponible. Se sugerirá también como nombre de usuario.'}
+                  </small>
+                ) : null}
               </label>
               <label>
                 Usuario
