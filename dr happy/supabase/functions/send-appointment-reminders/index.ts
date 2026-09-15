@@ -30,10 +30,14 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
 }
 
 function parseAppointmentDate(appointment: Appointment): Date | null {
-  const value = appointment.scheduledAt ||
+  const rawValue = appointment.scheduledAt ||
     (appointment.scheduledDate && appointment.scheduledTime
       ? `${appointment.scheduledDate}T${appointment.scheduledTime}:00`
       : '')
+  // La Turnera guarda horarios locales de Argentina sin offset.
+  const value = rawValue && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(rawValue)
+    ? `${rawValue}-03:00`
+    : rawValue
   if (!value) return null
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? null : parsed
