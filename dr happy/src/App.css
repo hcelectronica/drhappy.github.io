@@ -49,6 +49,7 @@ body.theme-night {
   background: rgba(249, 252, 255, 0.96);
   box-shadow: 0 22px 60px rgba(26, 59, 104, 0.2);
   backdrop-filter: blur(18px);
+  overflow-y: auto;
   transform: translateX(calc(-100% - 32px));
   transition: transform 180ms ease;
 }
@@ -59,7 +60,7 @@ body.theme-night {
 .app-sidebar-header strong { display: block; color: #102b4d; font-size: 0.9rem; line-height: 1.3; }
 .sidebar-eyebrow, .section-kicker { display: block; margin-bottom: 4px; color: #5f7b9f; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
 .sidebar-close { border: 0; background: transparent; color: #7890ad; font-size: 1.35rem; cursor: pointer; }
-.sidebar-nav { display: grid; gap: 6px; overflow-y: auto; padding: 14px 0; }
+.sidebar-nav { display: grid; gap: 6px; padding: 14px 0; }
 .sidebar-nav button, .sidebar-footer button, .sidebar-toggle-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 9px 10px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: #36516f; font: inherit; font-size: 0.78rem; font-weight: 700; text-align: left; cursor: pointer; }
 .sidebar-nav button span, .sidebar-footer button span { width: 20px; color: #1d4ed8; font-size: 1rem; text-align: center; }
 .sidebar-nav button small { margin-left: auto; padding: 2px 7px; border-radius: 999px; background: #e4edff; color: #1d4ed8; font-size: 0.68rem; }
@@ -71,11 +72,21 @@ body.theme-night {
 .sidebar-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 11px; height: 11px; border-radius: 50%; background: #fff; transition: transform 160ms ease; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
 .sidebar-toggle-row input:checked + .sidebar-switch { background: #1d4ed8; }
 .sidebar-toggle-row input:checked + .sidebar-switch::after { transform: translateX(13px); }
-.sidebar-footer { display: grid; gap: 5px; margin-top: auto; padding-top: 12px; border-top: 1px solid #dbe5f2; }
+.sidebar-footer { display: grid; gap: 5px; margin-top: 0; padding: 12px 0 2px; border-top: 1px solid #dbe5f2; }
 .medical-news-strip { display: flex; align-items: center; gap: 12px; min-height: 34px; margin: -4px 0 16px; padding: 7px 12px; border: 1px solid rgba(130, 153, 186, 0.36); border-radius: 12px; background: rgba(245, 249, 255, 0.8); color: #4e6785; font-size: 0.73rem; overflow: hidden; }
 .medical-news-label { flex: 0 0 auto; color: #1d4ed8; font-weight: 800; }
 .medical-news-track { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .medical-news-strip button { border: 0; background: transparent; color: #1d4ed8; font: inherit; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.medical-news-page { display: grid; gap: 16px; }
+.medical-news-source-tabs { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px; }
+.medical-news-feature { overflow: hidden; border: 1px solid #d7e3f1; border-radius: 16px; background: #fff; box-shadow: 0 12px 28px rgba(30, 66, 112, .1); }
+.medical-news-feature-image { min-height: 260px; display: flex; align-items: flex-end; padding: 22px; background-position: center; background-size: cover; color: #fff; }
+.medical-news-feature-image > div { display: grid; gap: 7px; max-width: 760px; }
+.medical-news-feature-image small { color: rgba(255,255,255,.84); }
+.medical-news-feature-image h3 { margin: 0; font-size: clamp(1.2rem, 2.5vw, 1.8rem); line-height: 1.2; }
+.medical-news-feature-body { display: grid; gap: 12px; padding: 18px 22px; }
+.medical-news-feature-body p { margin: 0; color: #536b87; line-height: 1.6; }
+.medical-news-feature-body a { color: #1d4ed8; font-weight: 800; text-decoration: none; }
 .patient-directory-panel { display: grid; gap: 16px; }
 .directory-search { display: grid; gap: 6px; color: #4e6785; font-size: 0.75rem; font-weight: 800; }
 .directory-search input { width: 100%; padding: 12px 14px; border: 1px solid #b7cae5; border-radius: 12px; background: #fbfdff; color: #102b4d; font: inherit; font-size: 0.85rem; outline: none; }
@@ -91,6 +102,44 @@ body.theme-night {
 .patient-directory-actions button { min-height: 32px; padding: 6px 10px; border-radius: 9px; font-size: 0.72rem; }
 .directory-empty { display: grid; gap: 5px; padding: 28px 12px; text-align: center; color: #7187a2; }
 .directory-empty strong { color: #36516f; }
+.app-tools-flyer { max-width: 980px; margin: 22px auto; padding: clamp(22px, 5vw, 48px); border: 1px solid rgba(126, 153, 191, .42); border-radius: 24px; background: linear-gradient(145deg, rgba(249,252,255,.98), rgba(232,241,255,.9)); box-shadow: 0 22px 60px rgba(26, 59, 104, .13); overflow: hidden; }
+.flyer-intro { max-width: 650px; margin-bottom: 24px; }
+.flyer-intro h2 { margin: 0 0 8px; color: #102b4d; font-size: clamp(1.45rem, 3vw, 2.2rem); line-height: 1.12; }
+.flyer-intro p { margin: 0; color: #5a718e; font-size: .9rem; line-height: 1.55; }
+.flyer-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.flyer-tool { display: grid; gap: 7px; min-height: 148px; padding: 17px; border: 1px solid #c3d4eb; border-radius: 16px; background: rgba(255,255,255,.78); color: #183759; text-align: left; cursor: pointer; transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease; }
+.flyer-tool:hover, .flyer-tool:focus-visible { border-color: #1d4ed8; box-shadow: 0 12px 25px rgba(29,78,216,.14); transform: translateY(-2px); outline: none; }
+.flyer-tool-icon { color: var(--flyer-accent, #1d4ed8); font-size: 1.5rem; }
+.flyer-tool strong { font-size: .88rem; }
+.flyer-tool small { color: #68809d; font-size: .72rem; line-height: 1.4; }
+.flyer-tool-ambulance { border-color: #8bb8a4; background: linear-gradient(145deg, #f3fff8, #e6f7ed); }
+.flyer-slide { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .9fr); gap: 28px; align-items: center; min-height: 370px; animation: flyer-slide-in 420ms ease both; }
+.flyer-slide::before { content: ''; position: absolute; top: -48px; left: -48px; width: 110px; height: 7px; border-radius: 0 8px 8px 0; background: var(--flyer-accent, #1d4ed8); box-shadow: 0 0 0 10px color-mix(in srgb, var(--flyer-accent, #1d4ed8) 12%, transparent); }
+.flyer-slide-ambulance { --flyer-accent: #15945f; }
+.flyer-slide-patient { --flyer-accent: #2563eb; }
+.flyer-slide-calendar { --flyer-accent: #d97706; }
+.flyer-slide-tools { --flyer-accent: #7c3aed; }
+.flyer-slide-patients { --flyer-accent: #0891b2; }
+.flyer-slide-ledger { --flyer-accent: #dc2626; }
+.flyer-slide-copy { display: grid; gap: 12px; max-width: 520px; }
+.flyer-slide-copy h2 { margin: 0; color: #102b4d; font-size: clamp(1.7rem, 4vw, 2.8rem); line-height: 1.05; letter-spacing: -.02em; }
+.flyer-slide-copy h2:first-letter { color: var(--flyer-accent, #1d4ed8); }
+.flyer-slide-copy p { margin: 0; color: #536b87; font-size: 1rem; line-height: 1.6; }
+.flyer-slide-caption { color: #7890ad; font-size: .72rem; font-weight: 700; }
+.flyer-slide-visual { min-height: 230px; padding: 15px; border: 1px solid color-mix(in srgb, var(--flyer-accent, #1d4ed8) 28%, #d7e3f1); border-radius: 18px; background: linear-gradient(145deg, color-mix(in srgb, var(--flyer-accent, #1d4ed8) 12%, #fff), #fff); box-shadow: 0 18px 34px color-mix(in srgb, var(--flyer-accent, #1d4ed8) 18%, transparent); }
+.flyer-window-bar { display: flex; gap: 5px; padding-bottom: 12px; border-bottom: 1px solid #cddcf0; }
+.flyer-window-bar i { width: 7px; height: 7px; border-radius: 50%; background: #8eacd0; }
+.flyer-mock-lines, .flyer-mock-profile, .flyer-mock-calendar, .flyer-mock-tools, .flyer-mock-patient-list, .flyer-mock-ledger { display: grid; gap: 11px; margin-top: 18px; padding: 16px; border-radius: 13px; background: rgba(255,255,255,.86); color: #355676; font-size: .78rem; box-shadow: 0 8px 20px rgba(40,78,120,.08); }
+.flyer-mock-lines span, .flyer-mock-profile span, .flyer-mock-profile small, .flyer-mock-calendar span, .flyer-mock-tools span, .flyer-mock-patient-list span, .flyer-mock-ledger span { color: #7890ad; font-size: .7rem; }
+.flyer-mock-alert { margin-top: 18px; padding: 12px; border-radius: 10px; background: #e2f7eb; color: #177349; font-weight: 800; }
+.flyer-mock-search { margin-top: 18px; padding: 10px 12px; border: 1px solid #b9cde7; border-radius: 9px; color: #91a5bd; background: #fff; }
+.flyer-mock-calendar b, .flyer-mock-tools b, .flyer-mock-patient-list b, .flyer-mock-ledger b { color: var(--flyer-accent, #1d4ed8); }
+.flyer-mock-patient-list em { margin-left: 5px; padding: 2px 6px; border-radius: 99px; background: #e7efff; color: #1d4ed8; font-style: normal; }
+.flyer-mock-ledger strong { color: #c2410c; font-size: .75rem; }
+.flyer-slide-dots { position: absolute; bottom: -4px; left: 50%; display: flex; gap: 6px; transform: translateX(-50%); }
+.flyer-slide-dots span { width: 7px; height: 7px; border-radius: 50%; background: #b9cde7; }
+.flyer-slide-dots span.active { width: 20px; border-radius: 5px; background: var(--flyer-accent, #1d4ed8); }
+@keyframes flyer-slide-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .analytics-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; margin: 22px 0; }
 .analytics-stat-card { display: grid; gap: 4px; padding: 13px; border: 1px solid #d7e3f1; border-radius: 13px; background: #f8fbff; }
 .analytics-stat-card strong { color: #1d4ed8; font-size: 1.18rem; }
@@ -262,9 +311,11 @@ body.theme-night {
 }
 
 .google-session-chip img {
-  width: 100%;
-  height: 100%;
+  width: 28px;
+  height: 28px;
   object-fit: cover;
+  object-position: center;
+  border-radius: 50%;
   display: block;
 }
 
@@ -3816,8 +3867,12 @@ body.theme-night .turnera-card-actions {
   .app { padding: 10px; }
   .topbar { gap: 9px; padding: 10px; border-radius: 15px; }
   .brand-block.compact { min-width: 0; flex: 1; }
-  .brand-copy .slogan, .brand-copy .professional, .google-session-indicator, .build-badge { display: none; }
-  .brand-copy h1 { font-size: 1rem; }
+  .brand-block.compact { justify-content: center; text-align: center; flex-direction: column; gap: 6px; }
+  .brand-mark { width: 48px; height: 48px; border-radius: 14px; }
+  .brand-mark svg { width: 40px; height: 40px; }
+  .brand-copy .slogan { display: block; font-size: 0.68rem; line-height: 1.2; }
+  .brand-copy .professional, .google-session-indicator, .build-badge { display: none; }
+  .brand-copy h1 { font-size: 1.1rem; }
   .topbar-actions { gap: 5px; }
   .topbar-actions > span:not(.google-session-chip) { display: none; }
   .google-session-chip { width: 32px; height: 32px; }
@@ -3829,8 +3884,18 @@ body.theme-night .turnera-card-actions {
   .layer-header > * { width: 100%; }
   .patient-directory-grid { grid-template-columns: 1fr; }
   .patient-directory-actions button { flex: 1; }
+  .flyer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .flyer-tool { min-height: 128px; padding: 13px; }
+  .flyer-slide { grid-template-columns: 1fr; gap: 18px; min-height: 480px; }
+  .flyer-slide-copy h2 { font-size: 1.65rem; }
+  .flyer-slide-copy p { font-size: .86rem; }
+  .flyer-slide-visual { min-height: 190px; }
   .analytics-columns { grid-template-columns: 1fr; }
   .appointment-capacity-panel { grid-template-columns: 1fr; gap: 12px; }
   .capacity-controls { align-items: stretch; flex-direction: column; gap: 12px; }
   .capacity-status { white-space: normal; }
+}
+
+@media (max-width: 420px) {
+  .flyer-grid { grid-template-columns: 1fr; }
 }

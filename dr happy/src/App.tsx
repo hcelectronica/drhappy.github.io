@@ -61,6 +61,7 @@ import specialtiesCsv from '../especialidades-medicas.csv?raw'
 
 type WorkspaceLayer =
   | 'overview'
+  | 'medical-news'
   | 'my-patients'
   | 'patient-search'
   | 'patient-record'
@@ -98,6 +99,15 @@ const WEEK_DAYS = [
 ]
 const DEFAULT_APPOINTMENT_DAYS = [1, 2, 4]
 const DEFAULT_DAILY_PATIENT_LIMIT = 10
+
+const APP_FLYER_SLIDES = [
+  { key: 'ambulance', eyebrow: 'Respuesta inmediata', title: 'Modo Ambulancia', description: 'Gestioná rápidamente traslados, guardias y atención prehospitalaria con protocolos listos para usar.', icon: '🚑', visual: 'ambulance' },
+  { key: 'attention', eyebrow: 'Historia clínica', title: 'Atención médica', description: 'Encontrá pacientes, registrá evoluciones y mantené toda la información clínica organizada.', icon: '♙', visual: 'patient' },
+  { key: 'appointments', eyebrow: 'Agenda inteligente', title: 'Turnera médica', description: 'Organizá tus días, definí cupos y ofrecé turnos libres con horarios segmentados.', icon: '◷', visual: 'calendar' },
+  { key: 'tools', eyebrow: 'Decisiones clínicas', title: 'Herramientas clínicas', description: 'Consultá protocolos, vademécum y patologías desde un mismo espacio profesional.', icon: '✦', visual: 'tools' },
+  { key: 'patients', eyebrow: 'Tu base clínica', title: 'Mis pacientes', description: 'Accedé rápidamente a tus pacientes, buscá por DNI y continuá una atención cuando quieras.', icon: '♧', visual: 'patients' },
+  { key: 'ledger', eyebrow: 'Control profesional', title: 'Balance de pagos', description: 'Registrá tratamientos, pagos y saldos pendientes para saber qué está cobrado y qué falta cobrar.', icon: '◈', visual: 'ledger' },
+] as const
 
 /**
  * Módulos que no se habilitan por defecto: requieren activación explícita del
@@ -2491,12 +2501,13 @@ function App() {
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
   const [myPatientsQuery, setMyPatientsQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [flyerSlideIndex, setFlyerSlideIndex] = useState(0)
   const [diagnosisCatalog, setDiagnosisCatalog] = useState<string[]>([])
   const [specialtyCatalog, setSpecialtyCatalog] = useState<string[]>([])
   const [medicationCatalog, setMedicationCatalog] = useState<MedicationEntry[]>([])
   const [, setMedicalNewsLoading] = useState(false)
   const [medicalNews, setMedicalNews] = useState<MedicalNewsItem[]>([])
-  const [, setCurrentMedicalNewsIndex] = useState(0)
+  const [currentMedicalNewsIndex, setCurrentMedicalNewsIndex] = useState(0)
   const [vademecumSearchQuery, setVademecumSearchQuery] = useState('')
   const [selectedMedicationId, setSelectedMedicationId] = useState<string | null>(null)
 
@@ -4289,6 +4300,14 @@ function App() {
       window.clearInterval(intervalId)
     }
   }, [medicalNews])
+
+  useEffect(() => {
+    if (workspaceLayer !== 'overview') return
+    const intervalId = window.setInterval(() => {
+      setFlyerSlideIndex((current) => (current + 1) % APP_FLYER_SLIDES.length)
+    }, 6500)
+    return () => window.clearInterval(intervalId)
+  }, [workspaceLayer])
 
   useEffect(() => {
     if (!selectedMedicationId) {
@@ -8999,6 +9018,9 @@ function App() {
               Herramientas
             </button>
           ) : null}
+          <button type="button" className={workspaceLayer === 'medical-news' ? 'active' : ''} onClick={() => { setWorkspaceLayer('medical-news'); setSidebarOpen(false) }}>
+            <span>◫</span> Noticias médicas
+          </button>
           {isAdminSession ? (
             <button type="button" className="ghost" onClick={handleOpenUserAdmin}>
               Editar usuarios
@@ -9053,6 +9075,13 @@ function App() {
           </button>
         </div>
         <nav className="sidebar-nav">
+          {isModuleEnabled('ambulance') ? (
+            <label className="sidebar-toggle-row ambulance-sidebar-item">
+              <span><b>🚑</b> Modo Ambulancia</span>
+              <input type="checkbox" checked={workspaceLayer === 'ambulance'} onChange={(event) => event.target.checked ? handleOpenAmbulance() : handleBackToOverview()} />
+              <span className="sidebar-switch" aria-hidden="true" />
+            </label>
+          ) : null}
           <button type="button" className={workspaceLayer === 'overview' ? 'active' : ''} onClick={() => { handleBackToOverview(); setSidebarOpen(false) }}>
             <span>⌂</span> Inicio
           </button>
@@ -9069,25 +9098,24 @@ function App() {
               <span>✦</span> Herramientas
             </button>
           ) : null}
-          {isModuleEnabled('ambulance') ? (
-            <label className="sidebar-toggle-row">
-              <span><b>✚</b> Ambulancia</span>
-              <input type="checkbox" checked={workspaceLayer === 'ambulance'} onChange={(event) => event.target.checked ? handleOpenAmbulance() : handleBackToOverview()} />
-              <span className="sidebar-switch" aria-hidden="true" />
-            </label>
-          ) : null}
           {isModuleEnabled('community') ? (
             <button type="button" onClick={() => { handleToggleCommunity(); setSidebarOpen(false) }}>
               <span>◌</span> Comunidad {communityUnreadCount > 0 ? <small>{communityUnreadCount}</small> : null}
             </button>
           ) : null}
           {canUseTreatmentLedger ? (
-            <button type="button" onClick={() => { handleOpenAppointments(); setTurneraViewMode('ledger'); setSidebarOpen(false) }}>
+            <button type="button" className={workspaceLayer === 'appointments' && turneraViewMode === 'ledger' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setTurneraViewMode('ledger'); setSidebarOpen(false) }}>
               <span>◈</span> Balance de pagos
             </button>
           ) : null}
         </nav>
         <div className="sidebar-footer">
+          <button type="button" onClick={() => { void handleShareApp(); setSidebarOpen(false) }}>
+            <span>↗</span> Compartir esta app
+          </button>
+          <button type="button" onClick={() => { setContactModalOpen(true); setSidebarOpen(false) }}>
+            <span>✉</span> Contactar desarrolladores
+          </button>
           <button type="button" onClick={() => { handleOpenProfile(); setSidebarOpen(false) }}>
             <span>{googleIdentity ? '◉' : '⚙'}</span> {googleIdentity ? 'Perfil' : 'Perfil y ajustes'}
           </button>
@@ -10486,7 +10514,71 @@ function App() {
       ) : null}
 
       {workspaceLayer === 'overview' ? (
-        <div className="screen-stage overview-empty" aria-label="Inicio vacío" />
+        <div className="screen-stage">
+          <section className="app-tools-flyer" aria-label="Herramientas de Dr Happy">
+            {(() => {
+              const slide = APP_FLYER_SLIDES[flyerSlideIndex]
+              return (
+                <article className={`flyer-slide flyer-slide-${slide.visual}`}>
+                  <div className="flyer-slide-copy">
+                    <span className="section-kicker">{slide.eyebrow}</span>
+                    <h2>{slide.icon} {slide.title}</h2>
+                    <p>{slide.description}</p>
+                    <span className="flyer-slide-caption">Dr Happy · herramientas para tu práctica profesional</span>
+                  </div>
+                  <div className="flyer-slide-visual" aria-hidden="true">
+                    <div className="flyer-window-bar"><i /><i /><i /></div>
+                    {slide.visual === 'ambulance' ? <><div className="flyer-mock-alert">🚑 Atención prioritaria</div><div className="flyer-mock-lines"><b>Paciente en traslado</b><span>Protocolo · Ubicación · Destino</span><span>✓ Registro guardado</span></div></> : null}
+                    {slide.visual === 'patient' ? <><div className="flyer-mock-search">⌕ Buscar paciente...</div><div className="flyer-mock-profile"><b>García, María</b><span>DNI 28.456.789</span><small>Última evolución · Hoy</small></div></> : null}
+                    {slide.visual === 'calendar' ? <><div className="flyer-mock-calendar"><b>Agenda semanal</b><span>09:00&nbsp;&nbsp; García, María</span><span>10:30&nbsp;&nbsp; López, Juan</span><span>12:00&nbsp;&nbsp; Turno libre</span></div></> : null}
+                    {slide.visual === 'tools' ? <><div className="flyer-mock-tools"><b>Herramientas clínicas</b><span>✦ Protocolos</span><span>▣ Vademécum</span><span>⌕ Patologías</span></div></> : null}
+                    {slide.visual === 'patients' ? <><div className="flyer-mock-patient-list"><b>Mis pacientes <em>19</em></b><span>García, María</span><span>Rodríguez, Ana</span><span>Martínez, Carlos</span></div></> : null}
+                    {slide.visual === 'ledger' ? <><div className="flyer-mock-ledger"><b>Balance de pagos</b><span>✓ Sin deuda&nbsp;&nbsp; 12</span><span>! Pendientes&nbsp;&nbsp; 3</span><strong>Total adeudado&nbsp; $ 125.000</strong></div></> : null}
+                  </div>
+                  <div className="flyer-slide-dots">{APP_FLYER_SLIDES.map((item, index) => <span key={item.key} className={index === flyerSlideIndex ? 'active' : ''} />)}</div>
+                </article>
+              )
+            })()}
+          </section>
+        </div>
+      ) : null}
+
+      {workspaceLayer === 'medical-news' ? (
+        <div className="screen-stage">
+          <section className="panel layer-header">
+            <div>
+              <span className="section-kicker">Actualidad clínica</span>
+              <h2>Noticias médicas</h2>
+              <p className="flow-hint">Fuentes oficiales y novedades seleccionadas para profesionales de la salud.</p>
+            </div>
+            <button type="button" className="ghost" onClick={handleBackToOverview}>Volver</button>
+          </section>
+          <section className="panel medical-news-page">
+            {medicalNewsLoading ? <p className="flow-hint">Cargando noticias...</p> : null}
+            {medicalNews.length > 0 ? (
+              <>
+                <div className="medical-news-source-tabs">
+                  {Array.from(new Map(medicalNews.map((item, index) => [item.source, index])).entries()).map(([source, index]) => (
+                    <button key={source} type="button" className={`ghost compact ${index === currentMedicalNewsIndex ? 'active' : ''}`} onClick={() => setCurrentMedicalNewsIndex(index)}>
+                      {source}
+                    </button>
+                  ))}
+                </div>
+                {(() => {
+                  const item = medicalNews[currentMedicalNewsIndex] ?? medicalNews[0]
+                  return (
+                    <article className="medical-news-feature">
+                      <div className="medical-news-feature-image" style={{ backgroundImage: `linear-gradient(180deg, rgba(10,20,35,.05), rgba(10,20,35,.7)), url("${item.imageUrl}")` }}>
+                        <div><strong>{item.source}</strong><small>{item.publishedAt ? formatDate(item.publishedAt) : 'Fuente oficial'}</small><h3>{item.title}</h3></div>
+                      </div>
+                      <div className="medical-news-feature-body"><p>{item.summary || 'Abrí la fuente oficial para leer la noticia completa.'}</p><a href={item.link} target="_blank" rel="noreferrer">Ver noticia completa →</a></div>
+                    </article>
+                  )
+                })()}
+              </>
+            ) : !medicalNewsLoading ? <p className="flow-hint">No hay noticias disponibles en este momento.</p> : null}
+          </section>
+        </div>
       ) : null}
 
       {workspaceLayer === 'ambulance-history' ? (
@@ -10530,25 +10622,27 @@ function App() {
         <div className="screen-stage">
           <section className="panel layer-header">
             <div>
-              <h2>📅 Turnera Médica</h2>
+              <h2>{turneraViewMode === 'ledger' ? '◈ Balance de pagos' : '📅 Turnera Médica'}</h2>
               <p className="flow-hint">
-                Gestión de turnos clínicos, agenda diaria y recordatorios automáticos por email desde soporte@drhappy.com.ar.
+                {turneraViewMode === 'ledger'
+                  ? 'Registro exclusivo de cobros, saldos pendientes y deuda acumulada por paciente.'
+                  : 'Gestión de turnos clínicos, agenda diaria y recordatorios automáticos por email desde soporte@drhappy.com.ar.'}
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => handleNewAppointmentModal()}>
+              {turneraViewMode !== 'ledger' ? <button type="button" onClick={() => handleNewAppointmentModal()}>
                 ➕ Nuevo turno
-              </button>
-              <button type="button" className="ghost" onClick={handleOpenFreeSlotModal}>
+              </button> : null}
+              {turneraViewMode !== 'ledger' ? <button type="button" className="ghost" onClick={handleOpenFreeSlotModal}>
                 📲 Enviar turnera libre al paciente
-              </button>
+              </button> : null}
               <button type="button" className="ghost" onClick={handleBackToOverview}>
                 Volver
               </button>
             </div>
           </section>
 
-          <section className="panel appointment-capacity-panel">
+          {turneraViewMode !== 'ledger' ? <section className="panel appointment-capacity-panel">
             <div>
               <span className="section-kicker">Control de agenda</span>
               <h3 style={{ margin: 0 }}>Cupos de atención</h3>
@@ -10589,10 +10683,10 @@ function App() {
             <div className="capacity-status">
               {appointmentDaysLabel || 'Elegí al menos un día'} · {appointmentCapacityByDate.get(todayLocalISO()) ?? 0}/{dailyPatientLimit} usados hoy
             </div>
-          </section>
+          </section> : null}
 
           {/* Prueba piloto: selector de vista Lista / Calendario de ocupación / Estadísticas */}
-          <div className="turnera-view-switch">
+          {turneraViewMode !== 'ledger' ? <div className="turnera-view-switch">
             <button
               type="button"
               className={`ghost ${turneraViewMode === 'list' ? 'active' : ''}`}
@@ -10644,7 +10738,7 @@ function App() {
             <span className="turnera-view-switch-badge" title="Función premium — incluida en planes con suscripción activa">
               ⭐ Premium
             </span>
-          </div>
+          </div> : null}
 
           {turneraViewMode === 'ledger' && canUseTreatmentLedger ? (
             <section className="panel turnera-ledger-panel">
