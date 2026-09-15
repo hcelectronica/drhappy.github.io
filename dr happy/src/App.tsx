@@ -8912,7 +8912,7 @@ function App() {
             <p className="professional">Profesional: {profile.fullName}</p>
             {googleIdentity ? (
               <p className="google-session-indicator">
-                Sesión Google: {googleIdentity.email}
+                Sesión iniciada como: {googleIdentity.email}
               </p>
             ) : null}
           </div>
@@ -8929,7 +8929,7 @@ function App() {
           ) : null}
           <span className="build-badge compact">Compilación {APP_BUILD_ID}</span>
           {trialInfo?.status === 'active' && Number.isFinite(trialInfo.daysLeft) && (
-            <span style={{
+            <span className="subscription-status" style={{
               display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
               background: trialInfo.daysLeft <= 7 ? '#1d4ed8' : '#1f7a3d',
               color: '#fff', fontSize: '0.75rem', fontWeight: 600,
@@ -8964,7 +8964,7 @@ function App() {
             </span>
           )}
           {trialInfo?.status === 'trial' && (
-            <span style={{
+            <span className="subscription-status" style={{
               display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
               background: (trialInfo.daysLeft <= 3 || trialInfo.patientsLeft <= 3) ? '#c0392b' : trialInfo.daysLeft <= 7 || trialInfo.patientsLeft <= 7 ? '#e67e22' : '#555',
               color: '#fff', fontSize: '0.75rem', fontWeight: 600,
