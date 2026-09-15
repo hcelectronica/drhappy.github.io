@@ -2505,7 +2505,7 @@ function App() {
   const [diagnosisCatalog, setDiagnosisCatalog] = useState<string[]>([])
   const [specialtyCatalog, setSpecialtyCatalog] = useState<string[]>([])
   const [medicationCatalog, setMedicationCatalog] = useState<MedicationEntry[]>([])
-  const [, setMedicalNewsLoading] = useState(false)
+  const [medicalNewsLoading, setMedicalNewsLoading] = useState(false)
   const [medicalNews, setMedicalNews] = useState<MedicalNewsItem[]>([])
   const [currentMedicalNewsIndex, setCurrentMedicalNewsIndex] = useState(0)
   const [vademecumSearchQuery, setVademecumSearchQuery] = useState('')
@@ -10723,7 +10723,7 @@ function App() {
             {isDentist || isModuleEnabled('ledger') ? (
               <button
                 type="button"
-                className={`ghost ${turneraViewMode === 'ledger' ? 'active' : ''} ${!canUseTreatmentLedger ? 'locked' : ''}`}
+                className={`ghost ${!canUseTreatmentLedger ? 'locked' : ''}`}
                 onClick={() => {
                   if (!canUseTreatmentLedger) {
                     setAppError('El Balance de pagos es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
