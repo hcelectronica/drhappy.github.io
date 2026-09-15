@@ -1,5 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChangeEvent,
   DragEvent as ReactDragEvent,
@@ -453,37 +452,8 @@ interface RemotePasswordRecoveryRow {
   expires_at: string
 }
 
-interface RemoteDeletedUserArchiveRow {
-  id: string
-  deleted_user_id: string
-  deleted_username: string
-  deleted_full_name: string
-  deleted_email: string
-  deleted_dni?: string | null
-  deleted_at: string
-  deleted_by_user_id: string
-  deleted_by_user_name: string
-  patient_count: number | null
-  appointment_count: number | null
-  archive_json: unknown
-}
-
-interface DeletedUserArchiveRecord {
-  id: string
-  deletedUserId: string
-  deletedUsername: string
-  deletedFullName: string
-  deletedEmail: string
-  deletedDni: string
-  deletedAt: string
-  deletedByUserId: string
-  deletedByUserName: string
-  patientCount: number
-  appointmentCount: number
-  archiveData: Record<string, unknown>
-}
-
 const SESSION_USER_KEY = 'drhappy-active-user'
+const SESSION_USER_CACHE_KEY = 'drhappy-active-user-cache'
 const CREATED_USERS_KEY = 'drhappy-created-users'
 const THEME_MODE_KEY = 'drhappy-theme-mode'
 const PATIENT_REGISTRY_KEY = 'drhappy-patient-registry'
@@ -491,7 +461,6 @@ const PASSWORD_OVERRIDES_KEY = 'drhappy-password-overrides'
 const PASSWORD_RECOVERY_KEY = 'drhappy-password-recovery'
 const USER_ACTIVE_OVERRIDES_KEY = 'drhappy-user-active-overrides'
 const CUSTOM_DIAGNOSIS_STORAGE_KEY = 'drhappy-custom-diagnosis-catalog'
-const DELETED_USER_ARCHIVES_KEY = 'drhappy-deleted-user-archives'
 const INSTALL_PROMPT_DISMISSED_KEY = 'drhappy-install-prompt-dismissed'
 const NOTIFICATION_PROMPT_DISMISSED_KEY = 'drhappy-notification-prompt-dismissed'
 // Cuántos días esperamos antes de volver a ofrecer la instalación tras un "Ahora no".
@@ -945,18 +914,6 @@ function buildStringSuggestions(catalog: string[], query: string, limit = 12): s
     .map((entry) => entry.entry)
 }
 
-function mergeUniqueSearchValues(...catalogs: string[][]): string[] {
-  const valuesByNormalizedName = new Map<string, string>()
-  for (const value of catalogs.flat()) {
-    const trimmedValue = value.trim()
-    const normalizedValue = normalizeSearchText(trimmedValue)
-    if (normalizedValue && !valuesByNormalizedName.has(normalizedValue)) {
-      valuesByNormalizedName.set(normalizedValue, trimmedValue)
-    }
-  }
-  return Array.from(valuesByNormalizedName.values())
-}
-
 function loadMedicationCatalogFromJson(rawCatalog: unknown): MedicationEntry[] {
   if (!Array.isArray(rawCatalog)) {
     return []
@@ -1177,23 +1134,6 @@ function mapAuthProfessionalPublic(row: AuthProfessionalPublic): SeedUser {
   }
 }
 
-function mapRemoteDeletedUserArchive(row: RemoteDeletedUserArchiveRow): DeletedUserArchiveRecord {
-  return {
-    id: row.id,
-    deletedUserId: row.deleted_user_id,
-    deletedUsername: row.deleted_username,
-    deletedFullName: row.deleted_full_name,
-    deletedEmail: row.deleted_email,
-    deletedDni: row.deleted_dni ?? '',
-    deletedAt: row.deleted_at,
-    deletedByUserId: row.deleted_by_user_id,
-    deletedByUserName: row.deleted_by_user_name,
-    patientCount: typeof row.patient_count === 'number' ? row.patient_count : 0,
-    appointmentCount: typeof row.appointment_count === 'number' ? row.appointment_count : 0,
-    archiveData: row.archive_json && typeof row.archive_json === 'object' ? (row.archive_json as Record<string, unknown>) : {},
-  }
-}
-
 function normalizeRemoteProfile(raw: unknown, fallback: ProfessionalProfile): ProfessionalProfile {
   if (!raw || typeof raw !== 'object') {
     return fallback
@@ -1385,7 +1325,7 @@ function buildSubscriptionExpiryIso(plan: SubscriptionPlan, baseIso = new Date()
 }
 
 function buildArchiveFileName(
-  record: Pick<DeletedUserArchiveRecord, 'deletedUsername' | 'deletedFullName' | 'deletedAt'> & { deletedDni?: string },
+  record: { deletedUsername: string; deletedFullName: string; deletedAt: string; deletedDni?: string },
 ): string {
   const preferredSegment = slugifyFileSegment(record.deletedFullName || record.deletedUsername || 'usuario')
   const dniSegment = slugifyFileSegment(record.deletedDni || 'sin-dni')
@@ -2571,8 +2511,6 @@ function App() {
   const [previewTrialExpired, setPreviewTrialExpired] = useState(false)
   const [subscriptionCheckoutLoading, setSubscriptionCheckoutLoading] = useState<SubscriptionPlan | null>(null)
   const [adminBusyUserId, setAdminBusyUserId] = useState<string | null>(null)
-  const [adminArchivedUsers, setAdminArchivedUsers] = useState<DeletedUserArchiveRecord[]>([])
-  const [loadingAdminArchives, setLoadingAdminArchives] = useState(false)
   const [passwordChangeDraft, setPasswordChangeDraft] = useState({
     currentPassword: '',
     newPassword: '',
@@ -2864,12 +2802,21 @@ function App() {
       )
   }, [patients, profile?.fullName, profile?.licenseNumber])
   const registerSpecialtySuggestions = useMemo(
-    () =>
-      buildStringSuggestions(
-        mergeUniqueSearchValues(specialtyCatalog, seedUsers.map((user) => user.specialty)),
+    () => {
+      const catalogByNormalizedName = new Map<string, string>()
+      for (const specialty of [...specialtyCatalog, ...seedUsers.map((user) => user.specialty)]) {
+        const trimmedSpecialty = specialty.trim()
+        const normalizedSpecialty = normalizeSearchText(trimmedSpecialty)
+        if (normalizedSpecialty && !catalogByNormalizedName.has(normalizedSpecialty)) {
+          catalogByNormalizedName.set(normalizedSpecialty, trimmedSpecialty)
+        }
+      }
+      return buildStringSuggestions(
+        Array.from(catalogByNormalizedName.values()),
         registerDraft.specialty,
         8,
-      ),
+      )
+    },
     [specialtyCatalog, seedUsers, registerDraft.specialty],
   )
   const registerUsernameExists = useMemo(() => {
@@ -2887,12 +2834,21 @@ function App() {
     )
   }, [registerDraft.email, seedUsers])
   const profileSpecialtySuggestions = useMemo(
-    () =>
-      buildStringSuggestions(
-        mergeUniqueSearchValues(specialtyCatalog, seedUsers.map((user) => user.specialty)),
+    () => {
+      const catalogByNormalizedName = new Map<string, string>()
+      for (const specialty of [...specialtyCatalog, ...seedUsers.map((user) => user.specialty)]) {
+        const trimmedSpecialty = specialty.trim()
+        const normalizedSpecialty = normalizeSearchText(trimmedSpecialty)
+        if (normalizedSpecialty && !catalogByNormalizedName.has(normalizedSpecialty)) {
+          catalogByNormalizedName.set(normalizedSpecialty, trimmedSpecialty)
+        }
+      }
+      return buildStringSuggestions(
+        Array.from(catalogByNormalizedName.values()),
         profile?.specialty ?? '',
         8,
-      ),
+      )
+    },
     [specialtyCatalog, seedUsers, profile?.specialty],
   )
   const filteredMedicationCatalog = useMemo(() => {
@@ -3266,6 +3222,16 @@ function App() {
       .filter((entry): entry is TreatmentLedgerEntry => Boolean(entry))
     const localSeenIds = readJsonStorage<string[]>(communitySeenStorageKey(user.id), [])
 
+    localStorage.setItem(SESSION_USER_KEY, user.id)
+    localStorage.setItem(SESSION_USER_CACHE_KEY, JSON.stringify(user))
+    setActiveUserId(user.id)
+    setProfile(localProfile)
+    setCommunitySeenIds(localSeenIds)
+    setPatients(localLoaded.patientsList)
+    setAvailablePatients(localLoaded.availablePatientsList)
+    setAppointments(localAppointments)
+    setTreatmentLedger(loadedLedger)
+
     if (isSupabaseConfigured && supabase) {
       // El alta de cuentas ocurre en la Edge Function auth-professional (Service Role).
       // Desde el cliente solo se refrescan los campos del propio perfil: id y username
@@ -3354,7 +3320,6 @@ function App() {
       localStorage.setItem(patientGlobalStorageKey(patient.id), JSON.stringify(patient))
     }
 
-    setActiveUserId(user.id)
     setProfile(loadedProfile)
     setCommunitySeenIds(loadedProfile.communitySeenMessageIds ?? localSeenIds)
     setPatients(patientsList)
@@ -3384,33 +3349,6 @@ function App() {
     }
 
     return mapRemoteProfessional(data as RemoteProfessionalRow)
-  }
-
-  async function loadAdminDeletedUserArchives(): Promise<void> {
-    if (!isAdminSession) {
-      setAdminArchivedUsers([])
-      return
-    }
-
-    if (!isSupabaseConfigured || !supabase) {
-      const localArchives = readJsonStorage<DeletedUserArchiveRecord[]>(DELETED_USER_ARCHIVES_KEY, [])
-      setAdminArchivedUsers(localArchives)
-      return
-    }
-
-    setLoadingAdminArchives(true)
-    const { data, error } = await supabase
-      .from('deleted_user_archives')
-      .select('*')
-      .order('deleted_at', { ascending: false })
-    setLoadingAdminArchives(false)
-
-    if (error) {
-      setAppError(`No se pudieron cargar los archivos legales: ${error.message}`)
-      return
-    }
-
-    setAdminArchivedUsers((data ?? []).map((row) => mapRemoteDeletedUserArchive(row as RemoteDeletedUserArchiveRow)))
   }
 
   function removeLocalUserArtifacts(userId: string, ownedPatients: PatientRecord[]): void {
@@ -3507,33 +3445,16 @@ function App() {
           communityMessages: archivedMessages,
         }
 
-        const { data: archiveInsert, error: archiveError } = await supabase
-          .from('deleted_user_archives')
-          .insert({
-            deleted_user_id: targetUser.id,
-            deleted_username: targetUser.username,
-            deleted_full_name: targetUser.fullName,
-            deleted_email: targetUser.email,
-            deleted_dni: targetUser.dni ?? null,
-            deleted_at: new Date().toISOString(),
-            deleted_by_user_id: activeUser.id,
-            deleted_by_user_name: activeUser.fullName,
-            patient_count: archivedPatients.length,
-            appointment_count: archivedAppointments.length,
-            archive_json: archiveData,
-          })
-          .select('*')
-          .single()
-
-        if (archiveError) {
-          throw new Error(`No se pudo guardar el archivo legal del usuario: ${archiveError.message}`)
-        }
-
-        const archiveRecord = mapRemoteDeletedUserArchive(archiveInsert as RemoteDeletedUserArchiveRow)
-        const archiveContent = JSON.stringify(archiveRecord.archiveData, null, 2)
-        const archiveFileName = buildArchiveFileName(archiveRecord)
+        const archiveDeletedAt = new Date().toISOString()
+        const archiveContent = JSON.stringify(archiveData, null, 2)
+        const archiveFileName = buildArchiveFileName({
+          deletedUsername: targetUser.username,
+          deletedFullName: targetUser.fullName,
+          deletedDni: targetUser.dni ?? '',
+          deletedAt: archiveDeletedAt,
+        })
         const archiveEmailResult = await sendEmail({
-          to: [targetUser.email, 'archivolegal@drhappy.com.ar'],
+          to: [targetUser.email],
           subject: `Archivo legal - ${targetUser.fullName} - DNI ${targetUser.dni ?? 'no informado'}`,
           text: `Se adjunta el archivo legal correspondiente a la eliminación del usuario ${targetUser.fullName} (DNI ${targetUser.dni ?? 'no informado'}).`,
           type: 'legal_archive',
@@ -3557,78 +3478,29 @@ function App() {
           throw new Error(`No se pudo eliminar el usuario: ${deleteResult.message ?? 'error desconocido'}`)
         }
 
-        const nextArchive = archiveRecord
         const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
         localStorage.setItem(
           CREATED_USERS_KEY,
           JSON.stringify(localUsers.filter((user) => user.id !== targetUser.id)),
         )
         removeLocalUserArtifacts(targetUser.id, archivedPatients)
-        setAdminArchivedUsers((current) => [nextArchive, ...current])
-        downloadTextFile(buildArchiveFileName(nextArchive), JSON.stringify(nextArchive.archiveData, null, 2))
       } else {
-        const localProfile = readJsonStorage<ProfessionalProfile>(profileStorageKey(targetUser.id), profileFromSeed(targetUser))
         const localPatientIds = readJsonStorage<string[]>(patientIndexStorageKey(targetUser.id), [])
         const localPatients = localPatientIds
           .map((patientId) =>
             normalizeRemotePatient(readJsonStorage<unknown>(patientGlobalStorageKey(patientId), null), targetUser.id),
           )
           .filter((item): item is PatientRecord => Boolean(item))
-        const localAppointments = readJsonStorage<AppointmentRecord[]>(appointmentsStorageKey(targetUser.id), [])
-          .map(normalizeAppointmentRecord)
-          .filter((appointment) => appointment.scheduledDate && appointment.scheduledTime)
-        const localArchive: DeletedUserArchiveRecord = {
-          id: crypto.randomUUID(),
-          deletedUserId: targetUser.id,
-          deletedUsername: targetUser.username,
-          deletedFullName: targetUser.fullName,
-          deletedEmail: targetUser.email,
-          deletedDni: targetUser.dni ?? '',
-          deletedAt: new Date().toISOString(),
-          deletedByUserId: activeUser.id,
-          deletedByUserName: activeUser.fullName,
-          patientCount: localPatients.length,
-          appointmentCount: localAppointments.length,
-          archiveData: {
-            exportedAt: new Date().toISOString(),
-            deletedBy: {
-              id: activeUser.id,
-              username: activeUser.username,
-              fullName: activeUser.fullName,
-              email: activeUser.email,
-            },
-            user: {
-              id: targetUser.id,
-              username: targetUser.username,
-              fullName: targetUser.fullName,
-              dni: targetUser.dni ?? '',
-              specialty: targetUser.specialty,
-              licenseNumber: targetUser.licenseNumber,
-              email: targetUser.email,
-            },
-            workspace: {
-              profile: localProfile,
-              patients: localPatients,
-              appointments: localAppointments,
-            },
-            communityMessages: [],
-          },
-        }
-        const localArchives = readJsonStorage<DeletedUserArchiveRecord[]>(DELETED_USER_ARCHIVES_KEY, [])
-        localStorage.setItem(DELETED_USER_ARCHIVES_KEY, JSON.stringify([localArchive, ...localArchives]))
-        setAdminArchivedUsers((current) => [localArchive, ...current])
-
         const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
         localStorage.setItem(
           CREATED_USERS_KEY,
           JSON.stringify(localUsers.filter((user) => user.id !== targetUser.id)),
         )
         removeLocalUserArtifacts(targetUser.id, localPatients)
-        downloadTextFile(buildArchiveFileName(localArchive), JSON.stringify(localArchive.archiveData, null, 2))
       }
 
       setSeedUsers((current) => current.filter((user) => user.id !== targetUser.id))
-      setAppNotice(`Usuario eliminado y archivado correctamente: ${targetUser.fullName}.`)
+      setAppNotice(`Usuario eliminado definitivamente: ${targetUser.fullName}.`)
       showSavedFloatingNotice()
     } finally {
       setAdminBusyUserId(null)
@@ -3817,10 +3689,6 @@ function App() {
     } finally {
       setAdminBusyUserId(null)
     }
-  }
-
-  function handleDownloadDeletedUserArchive(archive: DeletedUserArchiveRecord): void {
-    downloadTextFile(buildArchiveFileName(archive), JSON.stringify(archive.archiveData, null, 2))
   }
 
   async function handleSendAdminBroadcast(): Promise<void> {
@@ -4014,6 +3882,8 @@ function App() {
 
   useEffect(() => {
     const loadSeedUsers = async () => {
+      const storedUserId = localStorage.getItem(SESSION_USER_KEY)
+      const cachedSessionUser = readJsonStorage<SeedUser | null>(SESSION_USER_CACHE_KEY, null)
       try {
         const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
         const localActiveOverrides = readJsonStorage<Record<string, boolean>>(
@@ -4066,13 +3936,20 @@ function App() {
             'Modo local activo: los nuevos profesionales y chats solo se comparten en este navegador.',
           )
         }
-        setSeedUsers(
-          merged.map((user) => ({
-            ...user,
-            isAdmin: isAdminUser(user),
-            active: user.active ?? true,
-          })),
-        )
+        const normalizedUsers = merged.map((user) => ({
+          ...user,
+          isAdmin: isAdminUser(user),
+          active: user.active ?? true,
+        }))
+        const sessionUser =
+          normalizedUsers.find((user) => user.id === storedUserId) ??
+          (!isSupabaseConfigured && cachedSessionUser?.id === storedUserId ? cachedSessionUser : null)
+        const usersWithSession =
+          sessionUser && !normalizedUsers.some((user) => user.id === sessionUser.id)
+            ? [...normalizedUsers, sessionUser]
+            : normalizedUsers
+
+        setSeedUsers(usersWithSession)
 
         if (!isSupabaseConfigured) {
           const patientsResponse = await fetch(`${import.meta.env.BASE_URL}patients.json`)
@@ -4139,8 +4016,21 @@ function App() {
             localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(Array.from(registry)))
           }
         }
+        if (sessionUser) {
+          await loadWorkspaceForUser(sessionUser)
+        }
       } catch (error) {
         setAppError(error instanceof Error ? error.message : 'Error cargando usuarios.')
+        if (cachedSessionUser?.id === storedUserId) {
+          setSeedUsers([cachedSessionUser])
+          await loadWorkspaceForUser(cachedSessionUser).catch((workspaceError: unknown) => {
+            setAppError(
+              workspaceError instanceof Error
+                ? `La sesión sigue activa, pero no se pudieron sincronizar los datos: ${workspaceError.message}`
+                : 'La sesión sigue activa, pero no se pudieron sincronizar los datos.',
+            )
+          })
+        }
       } finally {
         setLoadingUsers(false)
       }
@@ -4212,30 +4102,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const baseCatalog = loadSimpleCatalogFromCsv(specialtiesCsv)
-    if (!isSupabaseConfigured || !supabase) {
-      setSpecialtyCatalog(baseCatalog)
-      return
-    }
-    const supabaseClient = supabase
-
-    const loadSpecialtyCatalog = async () => {
-      const { data, error } = await supabaseClient
-        .from('medical_specialties')
-        .select('name')
-        .order('name', { ascending: true })
-      if (error) {
-        console.error('[specialties] No se pudo cargar el catálogo compartido:', error.message)
-        setSpecialtyCatalog(baseCatalog)
-        return
-      }
-      const learnedSpecialties = (data ?? [])
-        .map((row) => (typeof row.name === 'string' ? row.name : ''))
-        .filter(Boolean)
-      setSpecialtyCatalog(mergeUniqueSearchValues(baseCatalog, learnedSpecialties))
-    }
-
-    void loadSpecialtyCatalog()
+    setSpecialtyCatalog(loadSimpleCatalogFromCsv(specialtiesCsv))
   }, [])
 
   useEffect(() => {
@@ -4521,39 +4388,9 @@ function App() {
   }
 
   useEffect(() => {
-    if (loadingUsers || seedUsers.length === 0) {
-      return
-    }
-
-    const storedUserId = localStorage.getItem(SESSION_USER_KEY)
-    if (!storedUserId) {
-      return
-    }
-
-    const user = seedUsers.find((entry) => entry.id === storedUserId)
-    if (!user) {
-      const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
-      const fallbackUser = localUsers.find((entry) => entry.id === storedUserId)
-      if (fallbackUser) {
-        void loadWorkspaceForUser(fallbackUser)
-      }
-      return
-    }
-
-    void loadWorkspaceForUser(user).catch((error: unknown) => {
-      setAppError(
-        error instanceof Error
-          ? `No se pudieron recuperar datos del profesional: ${error.message}`
-          : 'No se pudieron recuperar datos del profesional.',
-      )
-    })
-  }, [loadingUsers, seedUsers])
-
-  useEffect(() => {
     if (workspaceLayer !== 'user-admin' || !isAdminSession) {
       return
     }
-    void loadAdminDeletedUserArchives()
     void getPushSubscriptionsCount().then((res) => setAdminPushCount(res.total))
     // Carga métricas de uso por usuario (conteos y fechas, sin datos clínicos).
     if (activeUserId) {
@@ -5991,6 +5828,7 @@ function App() {
       await supabase.auth.signOut()
     }
     localStorage.removeItem(SESSION_USER_KEY)
+    localStorage.removeItem(SESSION_USER_CACHE_KEY)
     setGoogleIdentity(null)
     setActiveUserId(null)
     setProfile(null)
@@ -7643,7 +7481,7 @@ function App() {
     }
 
     const finalConfirm = window.confirm(
-      '⚠️ ÚLTIMA CONFIRMACIÓN\n\nSe eliminará tu cuenta de forma permanente junto con tus pacientes, turnos y archivos. Antes de borrarla, se generará y enviará el archivo legal a tu correo y al resguardo institucional.\n\nEsta acción NO se puede deshacer. ¿Confirmás la baja definitiva?',
+      '⚠️ ÚLTIMA CONFIRMACIÓN\n\nSe eliminará tu cuenta de forma permanente junto con tus pacientes, turnos y archivos. Antes de borrarla, se generará y enviará el archivo legal únicamente a tu correo.\n\nEsta acción NO se puede deshacer. ¿Confirmás la baja definitiva?',
     )
     if (!finalConfirm) {
       return
@@ -8369,7 +8207,7 @@ function App() {
                   </button>
                 </div>
               </label>
-              {authError && !registerOpen ? <p className="error">{authError}</p> : null}
+              {authError ? <p className="error">{authError}</p> : null}
               {appError ? <p className="error">{appError}</p> : null}
               {appNotice ? <p className="notice">{appNotice}</p> : null}
               <button type="submit">Iniciar sesión</button>
@@ -8499,40 +8337,9 @@ function App() {
               </button>
             </section>
           )}
-          {registerOpen ? createPortal(
-            <div
-              className="drhappy-modal-overlay registration-modal-overlay"
-              onClick={() => {
-                setRegisterOpen(false)
-                setAuthError(null)
-              }}
-            >
-              <div
-                className="drhappy-modal-card registration-modal-card"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="registration-modal-title"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="registration-modal-header">
-                  <div>
-                    <h2 id="registration-modal-title">Crear profesional</h2>
-                    <p>Completá los datos para registrar la cuenta.</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="registration-modal-close"
-                    aria-label="Cerrar registro"
-                    onClick={() => {
-                      setRegisterOpen(false)
-                      setAuthError(null)
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-                <form className="grid register-form" onSubmit={handleCreateUser}>
-                  <div className="registration-fields">
+          {registerOpen ? (
+            <form className="grid register-form" onSubmit={handleCreateUser}>
+              <h2>Nuevo profesional</h2>
               <label>
                 Nombre
                 <input
@@ -8558,7 +8365,7 @@ function App() {
                   value={registerDraft.dni}
                   onChange={handleRegisterFieldChange}
                   inputMode="numeric"
-                  pattern="[0-9. ]+"
+                  pattern="[0-9. -]+"
                   required
                 />
               </label>
@@ -8670,9 +8477,8 @@ function App() {
                 </div>
                 <small>Mínimo 6 caracteres.</small>
               </label>
-                  </div>
-              <details className="register-networks-fieldset">
-                <summary>Redes en las que trabaja (opcional)</summary>
+              <fieldset className="register-networks-fieldset">
+                <legend>Redes en las que trabaja</legend>
                 <div className="register-networks-grid">
                   {PROFESSIONAL_NETWORK_OPTIONS.map((network) => (
                     <label key={network} className="toggle-option">
@@ -8686,27 +8492,9 @@ function App() {
                     </label>
                   ))}
                 </div>
-              </details>
-                  {authError ? <p className="error registration-error">{authError}</p> : null}
-                  <div className="registration-modal-actions">
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => {
-                        setRegisterOpen(false)
-                        setAuthError(null)
-                      }}
-                    >
-                      Cancelar
-                    </button>
-                    <button type="submit" disabled={registerUsernameExists}>
-                      Guardar usuario
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>,
-            document.body,
+              </fieldset>
+              <button type="submit">Guardar usuario</button>
+            </form>
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
@@ -9262,7 +9050,7 @@ function App() {
               <div>
                 <h2>Administración clínica y suscripciones</h2>
                 <p className="flow-hint">
-                  Desde aquí puedes gestionar accesos, suscripciones y archivar el contenido de usuarios eliminados.
+                  Desde aquí puedes gestionar accesos y suscripciones de los profesionales.
                 </p>
               </div>
               <button type="button" className="ghost" onClick={handleBackToOverview}>
@@ -9298,10 +9086,6 @@ function App() {
                     ).length
                   }
                 </div>
-              </div>
-              <div className="overview-card" style={{ padding: 14 }}>
-                <strong>Archivos legales</strong>
-                <div style={{ fontSize: '1.4rem', marginTop: 6 }}>{adminArchivedUsers.length}</div>
               </div>
             </div>
 
@@ -9472,51 +9256,13 @@ function App() {
                           disabled={adminBusyUserId === user.id}
                           onClick={() => void handleAdminDeleteUser(user.id)}
                         >
-                          {adminBusyUserId === user.id ? 'Procesando...' : 'Eliminar usuario y archivar'}
+                          {adminBusyUserId === user.id ? 'Procesando...' : 'Eliminar usuario definitivamente'}
                         </button>
                       </div>
                     ) : null}
                   </li>
                 ))}
             </ul>
-
-            <section style={{ marginTop: 24 }}>
-              <div className="panel-header" style={{ marginBottom: 12 }}>
-                <div>
-                  <h3>Archivo legal de usuarios eliminados</h3>
-                  <p className="flow-hint">
-                    Cada eliminación genera un resguardo descargable con pacientes, turnos y datos clínicos.
-                  </p>
-                </div>
-              </div>
-              {loadingAdminArchives ? (
-                <p>Cargando archivos legales...</p>
-              ) : adminArchivedUsers.length === 0 ? (
-                <p>Aún no hay usuarios archivados.</p>
-              ) : (
-                <ul className="admin-user-list">
-                  {adminArchivedUsers.map((archive) => (
-                    <li key={archive.id}>
-                      <div>
-                        <strong>{archive.deletedFullName}</strong>
-                        <span>
-                          {archive.deletedUsername} · {archive.patientCount} paciente{archive.patientCount === 1 ? '' : 's'} ·{' '}
-                          {archive.appointmentCount} turno{archive.appointmentCount === 1 ? '' : 's'}
-                        </span>
-                        <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: 4 }}>
-                          Eliminado el {formatDate(archive.deletedAt)} por {archive.deletedByUserName}
-                        </span>
-                      </div>
-                      <div className="admin-user-actions">
-                        <button type="button" className="ghost" onClick={() => handleDownloadDeletedUserArchive(archive)}>
-                          Descargar archivo legal
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
 
             <section className="panel" style={{ marginTop: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -12247,7 +11993,7 @@ function App() {
                 <p className="flow-hint">
                   Podés eliminar tu cuenta de forma permanente desde acá. Antes de borrarla, el sistema genera
                   automáticamente tu <strong>archivo legal</strong> (respaldo de tu información registrada) y lo envía
-                  a tu correo electrónico y al resguardo institucional de Dr Happy, conforme a la legislación vigente.
+                  a tu correo electrónico, conforme a la legislación vigente.
                 </p>
                 <p className="flow-hint" style={{ color: '#991b1b', fontWeight: 600 }}>
                   ⚠️ Esta acción es irreversible: se eliminan tu cuenta, tus pacientes, turnos y archivos.
@@ -13122,31 +12868,38 @@ function App() {
         </div>
       ) : null}
 
-      {/* Aviso no bloqueante de activación de notificaciones */}
+      {/* Modal Central de Activación de Notificaciones */}
       {!showInstallToast && showNotificationToast && notificationPermission !== 'granted' ? (
-        <aside
-          className={`notification-corner-toast ${notificationPermission === 'denied' ? 'denied' : ''}`}
-          role="status"
-          aria-live="polite"
-          aria-labelledby="notification-toast-title"
+        <div
+          className="center-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="notification-modal-title"
         >
-            <div className="notification-toast-heading">
-              <span aria-hidden="true">{notificationPermission === 'denied' ? '⚠️' : '🔔'}</span>
-              <h3 id="notification-toast-title">
-              {notificationPermission === 'denied'
-                  ? 'Notificaciones bloqueadas'
-                  : 'Activá las notificaciones'}
-              </h3>
+          <div className={`center-modal-card ${notificationPermission === 'denied' ? 'denied' : ''}`}>
+            <div className="center-modal-icon-bubble" aria-hidden="true">
+              {notificationPermission === 'denied' ? '⚠️' : '🔔'}
             </div>
-
+            <h3 id="notification-modal-title" className="center-modal-title">
+              {notificationPermission === 'denied'
+                ? 'Notificaciones bloqueadas en tu navegador'
+                : 'Activá las Notificaciones de Dr. Happy'}
+            </h3>
+            
             {notificationPermission === 'denied' ? (
               <>
-                <p>
-                  Habilitalas desde los permisos de Dr Happy en el navegador o en los ajustes del teléfono.
+                <p className="center-modal-description">
+                  Las notificaciones ya fueron bloqueadas por el navegador. Por seguridad, Dr. Happy no puede volver a abrir el permiso automáticamente: hay que desbloquearlo una vez desde el candado o desde ajustes del sistema.
                 </p>
-                <div className="notification-toast-actions">
+                <div className="center-modal-instructions-box">
+                  <div>📱 <strong>Android/Chrome:</strong> Tocá el candado 🔒 junto a <code>drhappy.com.ar</code> ➔ <em>Permisos / Notificaciones</em> ➔ <strong>Permitir</strong>. Si no aparece, entrá a <em>Ajustes del sitio</em>.</div>
+                  <div>🍎 <strong>En iPhone (iOS):</strong> Abrí <em>Ajustes de iOS</em> ➔ <em>Notificaciones</em> ➔ <em>Dr. Happy</em> ➔ <strong>Permitir</strong>.</div>
+                  <div>💻 <strong>En Computadora:</strong> Hacé clic en el candado 🔒 a la izquierda de la URL ➔ <em>Notificaciones</em> ➔ <strong>Permitir</strong>.</div>
+                </div>
+                <div className="center-modal-actions">
                   <button
                     type="button"
+                    className="unblock-btn"
                     onClick={() => {
                       const p = getNotificationPermission()
                       setNotificationPermission(p)
@@ -13159,38 +12912,42 @@ function App() {
                       }
                     }}
                   >
-                    🔄 Verificar
+                    🔄 Ya las desbloqueé (Re-verificar)
                   </button>
                   <button
                     type="button"
+                    className="secondary-btn"
                     onClick={handleDismissNotificationToast}
                   >
-                    Posponer 7 días
+                    Entendido, no volver a mostrar por 7 días
                   </button>
                 </div>
               </>
             ) : (
               <>
-                <p>
-                  Recibí avisos de mensajes, novedades y turnos aunque no estés mirando la pantalla.
+                <p className="center-modal-description">
+                  Recibí avisos inmediatos cuando un colega te envíe un mensaje privado, el administrador publique novedades de guardia o se agende un turno médico. Si el navegador muestra una ventana de permiso, elegí <strong>Permitir</strong>.
                 </p>
-                <div className="notification-toast-actions">
+                <div className="center-modal-actions">
                   <button
                     type="button"
+                    className="primary-btn"
                     onClick={() => void handleEnableNotifications()}
                   >
-                    🔔 Activar
+                    🔔 Abrir permiso del navegador
                   </button>
                   <button
                     type="button"
+                    className="secondary-btn"
                     onClick={handleDismissNotificationToast}
                   >
-                    Posponer 7 días
+                    Ahora no, recordar en 7 días
                   </button>
                 </div>
               </>
             )}
-        </aside>
+          </div>
+        </div>
       ) : null}
       {appointmentModalOpen ? (
         <div className="drhappy-modal-overlay" onClick={() => setAppointmentModalOpen(false)}>
