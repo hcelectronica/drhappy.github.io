@@ -40,6 +40,8 @@ interface RequestBody {
   patientEmail?: string
   patientPhone?: string
   linkId?: string
+  appointmentDays?: number[]
+  dailyPatientLimit?: number
 }
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
@@ -119,6 +121,10 @@ serve(async (request) => {
         const startTime = body.startTime?.trim()
         const endTime = body.endTime?.trim()
         const slotCount = Number(body.slotCount)
+        const appointmentDays = Array.isArray(body.appointmentDays)
+          ? body.appointmentDays.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+          : [1, 2, 4]
+        const dailyPatientLimit = Math.max(1, Math.min(100, Number(body.dailyPatientLimit) || 10))
 
         if (!professionalId || !slotDate || !startTime || !endTime || !slotCount) {
           return jsonResponse(400, {
@@ -131,6 +137,9 @@ serve(async (request) => {
         }
         if (startTime >= endTime) {
           return jsonResponse(400, { success: false, message: 'El horario de inicio debe ser anterior al de fin.' })
+        }
+        if (!appointmentDays.includes(new Date(`${slotDate}T12:00:00`).getDay())) {
+          return jsonResponse(409, { success: false, message: 'Ese día no está habilitado para recibir turnos.' })
         }
 
         const token = generateToken()
@@ -152,6 +161,8 @@ serve(async (request) => {
             amount_concept: hasAmount ? (body.amountConcept === 'sena' ? 'sena' : 'consulta') : null,
             payment_link: hasAmount ? (body.paymentLink?.trim() || null) : null,
             status: 'active',
+            appointment_days: appointmentDays,
+            daily_patient_limit: dailyPatientLimit,
           })
           .select('id, token')
           .single()
@@ -291,7 +302,7 @@ serve(async (request) => {
 
         const { data: link, error: linkError } = await admin
           .from('public_booking_links')
-          .select('id, professional_id, slot_date, location, reason, status, amount_to_charge, amount_concept, payment_link')
+          .select('id, professional_id, slot_date, location, reason, status, amount_to_charge, amount_concept, payment_link, appointment_days, daily_patient_limit')
           .eq('token', token)
           .maybeSingle()
         if (linkError) {
@@ -299,6 +310,22 @@ serve(async (request) => {
         }
         if (!link || link.status !== 'active') {
           return jsonResponse(404, { success: false, message: 'Este enlace de turnos ya no está disponible.' })
+        }
+
+        const configuredDays = Array.isArray(link.appointment_days) ? link.appointment_days : [1, 2, 4]
+        if (!configuredDays.includes(new Date(`${link.slot_date}T12:00:00`).getDay())) {
+          return jsonResponse(409, { success: false, message: 'Ese día ya no está habilitado para recibir turnos.' })
+        }
+        const { data: capacityWorkspace } = await admin
+          .from('user_workspaces')
+          .select('appointments_json')
+          .eq('user_id', link.professional_id)
+          .maybeSingle()
+        const appointmentsForDate = Array.isArray(capacityWorkspace?.appointments_json)
+          ? capacityWorkspace.appointments_json.filter((appointment: { scheduledDate?: string; status?: string }) => appointment.scheduledDate === link.slot_date && appointment.status !== 'cancelled').length
+          : 0
+        if (appointmentsForDate >= Number(link.daily_patient_limit ?? 10)) {
+          return jsonResponse(409, { success: false, message: 'No quedan turnos disponibles para ese día.' })
         }
 
         const { data: slot, error: slotError } = await admin
@@ -359,6 +386,7 @@ serve(async (request) => {
           scheduledDate: link.slot_date,
           scheduledTime: slotTime,
           scheduledAt: `${link.slot_date}T${slotTime}:00`,
+          durationMinutes: 30,
           reason: link.reason || 'Turno reservado por el paciente (turnos libres)',
           notes: patientPhone ? `Teléfono de contacto: ${patientPhone}` : '',
           location: link.location || 'Consultorio médico',

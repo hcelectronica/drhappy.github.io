@@ -61,6 +61,7 @@ import specialtiesCsv from '../especialidades-medicas.csv?raw'
 
 type WorkspaceLayer =
   | 'overview'
+  | 'my-patients'
   | 'patient-search'
   | 'patient-record'
   | 'clinical'
@@ -85,6 +86,18 @@ const APP_MODULES: Array<{ id: AppModuleId; label: string; description: string }
   { id: 'community', label: 'Comunidad', description: 'Mensajería entre profesionales' },
   { id: 'ledger', label: 'Balance de pagos', description: 'Planilla de cobros y saldos (odontología). Automático para odontólogos.' },
 ]
+
+const WEEK_DAYS = [
+  { value: 1, label: 'Lunes' },
+  { value: 2, label: 'Martes' },
+  { value: 3, label: 'Miércoles' },
+  { value: 4, label: 'Jueves' },
+  { value: 5, label: 'Viernes' },
+  { value: 6, label: 'Sábado' },
+  { value: 0, label: 'Domingo' },
+]
+const DEFAULT_APPOINTMENT_DAYS = [1, 2, 4]
+const DEFAULT_DAILY_PATIENT_LIMIT = 10
 
 /**
  * Módulos que no se habilitan por defecto: requieren activación explícita del
@@ -216,6 +229,8 @@ interface ProfessionalProfile {
   // Link de cobro propio del profesional (Mercado Pago, alias, o cualquier medio).
   // Dr Happy solo lo muestra al paciente: el pago es directo al profesional.
   paymentLink?: string
+  appointmentDays?: number[]
+  dailyPatientLimit?: number
 }
 
 interface ConsultationEntry {
@@ -347,6 +362,7 @@ interface AppointmentRecord {
   patientDni?: string
   scheduledDate: string
   scheduledTime: string
+  durationMinutes?: number
   scheduledAt?: string
   reason: string
   notes?: string
@@ -369,6 +385,7 @@ interface AppointmentDraft {
   patientDni: string
   scheduledDate: string
   scheduledTime: string
+  durationMinutes: number
   reason: string
   notes: string
   location: string
@@ -528,6 +545,7 @@ function buildEmptyAppointmentDraft(): AppointmentDraft {
     patientDni: '',
     scheduledDate: todayLocalISO(),
     scheduledTime: '09:00',
+    durationMinutes: 30,
     reason: 'Control médico general',
     notes: '',
     location: 'Consultorio médico',
@@ -1157,6 +1175,13 @@ function normalizeRemoteProfile(raw: unknown, fallback: ProfessionalProfile): Pr
     phone: candidate.phone,
     signatureText: candidate.signatureText,
     paymentLink: typeof candidate.paymentLink === 'string' ? candidate.paymentLink : undefined,
+    appointmentDays: Array.isArray(candidate.appointmentDays)
+      ? candidate.appointmentDays.filter((day): day is number => typeof day === 'number' && day >= 0 && day <= 6)
+      : DEFAULT_APPOINTMENT_DAYS,
+    dailyPatientLimit:
+      typeof candidate.dailyPatientLimit === 'number' && candidate.dailyPatientLimit > 0
+        ? candidate.dailyPatientLimit
+        : DEFAULT_DAILY_PATIENT_LIMIT,
     matriculaPhoto: normalizeStoredFile(candidate.matriculaPhoto) ?? undefined,
     signatureImage: normalizeStoredFile(candidate.signatureImage) ?? undefined,
     communitySeenMessageIds: normalizeStringList(candidate.communitySeenMessageIds),
@@ -1405,6 +1430,8 @@ function profileFromSeed(user: SeedUser): ProfessionalProfile {
     phone: '',
     signatureText: 'Validado digitalmente por profesional de la salud.',
     communitySeenMessageIds: [],
+    appointmentDays: DEFAULT_APPOINTMENT_DAYS,
+    dailyPatientLimit: DEFAULT_DAILY_PATIENT_LIMIT,
   }
 }
 
@@ -1431,6 +1458,7 @@ function normalizeAppointmentRecord(appointment: AppointmentRecord): Appointment
   if (appointment.scheduledDate && appointment.scheduledTime) {
     return {
       ...appointment,
+      durationMinutes: appointment.durationMinutes ?? 30,
       scheduledAt: appointment.scheduledAt ?? `${appointment.scheduledDate}T${appointment.scheduledTime}:00`,
     }
   }
@@ -1441,16 +1469,36 @@ function normalizeAppointmentRecord(appointment: AppointmentRecord): Appointment
       ...appointment,
       scheduledDate: '',
       scheduledTime: '',
+      durationMinutes: 30,
       scheduledAt: appointment.scheduledAt,
     }
   }
 
   return {
     ...appointment,
+    durationMinutes: appointment.durationMinutes ?? 30,
     scheduledDate: localDateKey(scheduledDateTime),
     scheduledTime: `${String(scheduledDateTime.getHours()).padStart(2, '0')}:${String(scheduledDateTime.getMinutes()).padStart(2, '0')}`,
     scheduledAt: appointment.scheduledAt,
   }
+}
+
+function linkAppointmentsToPatients(appointmentList: AppointmentRecord[], patientList: PatientRecord[]): AppointmentRecord[] {
+  return appointmentList.map((appointment) => {
+    const linked = patientList.find((patient) => {
+      if (appointment.patientId && patient.id === appointment.patientId) return true
+      if (appointment.patientDni && patient.dni && appointment.patientDni === patient.dni) return true
+      return normalizeSearchText(`${patient.apellido}, ${patient.nombre}`) === normalizeSearchText(appointment.patientName)
+    })
+    if (!linked) return appointment
+    return {
+      ...appointment,
+      patientId: linked.id,
+      patientName: `${linked.apellido}, ${linked.nombre}`.trim(),
+      patientDni: linked.dni || appointment.patientDni,
+      patientEmail: linked.email || appointment.patientEmail,
+    }
+  })
 }
 
 function normalizeSearchText(value: string): string {
@@ -2388,6 +2436,8 @@ function App() {
   const [appointmentSearchQuery, setAppointmentSearchQuery] = useState('')
   const [appointmentFilterTab, setAppointmentFilterTab] = useState<'today' | 'upcoming' | 'all' | 'past'>('today')
   const [appointmentDateFilter, setAppointmentDateFilter] = useState('')
+  const [appointmentDays, setAppointmentDays] = useState<number[]>(DEFAULT_APPOINTMENT_DAYS)
+  const [dailyPatientLimit, setDailyPatientLimit] = useState(DEFAULT_DAILY_PATIENT_LIMIT)
   // Prueba piloto: vista alternativa de la Turnera con calendario mensual de ocupación
   // y estadísticas de pacientes atendidos por semana/mes (candidata a feature premium anual).
   const [turneraViewMode, setTurneraViewMode] = useState<'list' | 'calendar' | 'stats' | 'ledger'>('list')
@@ -2438,6 +2488,8 @@ function App() {
   const [adminUserStatsLoading, setAdminUserStatsLoading] = useState(false)
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
+  const [myPatientsQuery, setMyPatientsQuery] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [diagnosisCatalog, setDiagnosisCatalog] = useState<string[]>([])
   const [specialtyCatalog, setSpecialtyCatalog] = useState<string[]>([])
   const [medicationCatalog, setMedicationCatalog] = useState<MedicationEntry[]>([])
@@ -2729,6 +2781,30 @@ function App() {
     )
   }, [treatmentLedger])
 
+  const ledgerPatientBalances = useMemo(() => {
+    const balances = new Map<string, { patientName: string; pending: number }>()
+    for (const entry of treatmentLedger) {
+      const pending = Math.max(entry.totalAmount - entry.paidAmount, 0)
+      const current = balances.get(entry.patientId) ?? { patientName: entry.patientName, pending: 0 }
+      current.pending += pending
+      balances.set(entry.patientId, current)
+    }
+    return Array.from(balances.values()).sort((left, right) => right.pending - left.pending)
+  }, [treatmentLedger])
+
+  const pathologyStats = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const patient of patients) {
+      for (const consultation of patient.consultations) {
+        const diagnosis = consultation.diagnostico?.trim() || consultation.motivoConsulta?.trim()
+        if (diagnosis) counts.set(diagnosis, (counts.get(diagnosis) ?? 0) + 1)
+      }
+    }
+    return Array.from(counts.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 8)
+  }, [patients])
+
   const visibleLedgerEntries = useMemo(() => {
     const query = normalizeSearchText(ledgerSearch)
     return treatmentLedger
@@ -2974,6 +3050,21 @@ function App() {
       emailSentCount,
     }
   }, [appointments])
+
+  const appointmentCapacityByDate = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const appointment of appointments) {
+      if (appointment.status !== 'cancelled') {
+        counts.set(appointment.scheduledDate, (counts.get(appointment.scheduledDate) ?? 0) + 1)
+      }
+    }
+    return counts
+  }, [appointments])
+
+  const appointmentDaysLabel = useMemo(
+    () => WEEK_DAYS.filter((day) => appointmentDays.includes(day.value)).map((day) => day.label).join(', '),
+    [appointmentDays],
+  )
 
   const filteredAppointments = useMemo(() => {
     const q = normalizeSearchText(appointmentSearchQuery)
@@ -3311,6 +3402,7 @@ function App() {
     }
 
     localStorage.setItem(profileStorageKey(user.id), JSON.stringify(loadedProfile))
+    loadedAppointments = linkAppointmentsToPatients(loadedAppointments, patientsList)
     localStorage.setItem(appointmentsStorageKey(user.id), JSON.stringify(loadedAppointments))
     localStorage.setItem(
       patientIndexStorageKey(user.id),
@@ -4744,6 +4836,20 @@ function App() {
     return visiblePatients.slice(0, 6)
   }, [patientSearchQuery, visiblePatients])
 
+  const myPatients = useMemo(() => {
+    const query = normalizeSearchText(myPatientsQuery)
+    const filtered = patients.filter((patient) => {
+      if (!query) return true
+      return normalizeSearchText(`${patient.apellido} ${patient.nombre} ${patient.dni}`).includes(query)
+    })
+    return filtered
+      .sort((left, right) => {
+        const leftLast = left.consultations.reduce((latest, entry) => Math.max(latest, Date.parse(entry.date) || 0), 0)
+        const rightLast = right.consultations.reduce((latest, entry) => Math.max(latest, Date.parse(entry.date) || 0), 0)
+        return rightLast - leftLast || `${left.apellido} ${left.nombre}`.localeCompare(`${right.apellido} ${right.nombre}`, 'es')
+      })
+  }, [myPatientsQuery, patients])
+
   const selectedCommunityMember = useMemo(
     () => communityMembers.find((member) => member.id === communityTargetId) ?? null,
     [communityMembers, communityTargetId],
@@ -4759,6 +4865,12 @@ function App() {
     setPatientDraft(nextDraft)
     setPatientFormUnlocked(false)
   }, [selectedPatient])
+
+  useEffect(() => {
+    if (!profile) return
+    setAppointmentDays(profile.appointmentDays?.length ? profile.appointmentDays : DEFAULT_APPOINTMENT_DAYS)
+    setDailyPatientLimit(profile.dailyPatientLimit || DEFAULT_DAILY_PATIENT_LIMIT)
+  }, [profile])
 
   useEffect(() => {
     if (!communityOpen || !activeUserId) {
@@ -6635,6 +6747,23 @@ function App() {
     setAppError(null)
   }
 
+  function saveAppointmentCapacity(nextDays: number[], nextLimit: number): void {
+    const normalizedDays = Array.from(new Set(nextDays)).filter((day) => day >= 0 && day <= 6)
+    const normalizedLimit = Math.max(1, Math.min(100, Math.round(nextLimit)))
+    setAppointmentDays(normalizedDays)
+    setDailyPatientLimit(normalizedLimit)
+    if (!activeUserId || !profile) return
+    const nextProfile = {
+      ...profile,
+      appointmentDays: normalizedDays,
+      dailyPatientLimit: normalizedLimit,
+    }
+    setProfile(nextProfile)
+    localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
+    void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments, treatmentLedger)
+    setAppNotice(`Cupo actualizado: ${normalizedLimit} pacientes por día · ${WEEK_DAYS.filter((day) => normalizedDays.includes(day.value)).map((day) => day.label).join(', ')}.`)
+  }
+
   function handleNewAppointmentModal(prefillPatient?: PatientRecord | null): void {
     if (prefillPatient) {
       setAppointmentDraft({
@@ -6644,6 +6773,7 @@ function App() {
         patientDni: prefillPatient.dni || '',
         scheduledDate: todayLocalISO(),
         scheduledTime: '09:00',
+        durationMinutes: 30,
         reason: prefillPatient.diagnosticoPrincipal || 'Control médico general',
         notes: '',
         location: 'Consultorio médico',
@@ -6668,6 +6798,7 @@ function App() {
       patientDni: record.patientDni || '',
       scheduledDate: record.scheduledDate,
       scheduledTime: record.scheduledTime,
+      durationMinutes: record.durationMinutes ?? 30,
       reason: record.reason,
       notes: record.notes || '',
       location: record.location || 'Consultorio médico',
@@ -6861,13 +6992,31 @@ function App() {
       return
     }
 
-    const conflict = appointments.find(
-      (a) =>
-        a.id !== appointmentDraft.id &&
-        a.status !== 'cancelled' &&
-        a.scheduledDate === appointmentDraft.scheduledDate &&
-        a.scheduledTime === appointmentDraft.scheduledTime
-    )
+    const selectedDateDay = new Date(`${appointmentDraft.scheduledDate}T12:00:00`).getDay()
+    if (!appointmentDays.includes(selectedDateDay)) {
+      setAppError(`Ese día no está habilitado en tu agenda. Días de atención: ${appointmentDaysLabel}.`)
+      return
+    }
+    const dayCount = appointmentCapacityByDate.get(appointmentDraft.scheduledDate) ?? 0
+    const isNewAppointment = !appointmentDraft.id
+    if (isNewAppointment && dayCount >= dailyPatientLimit) {
+      setAppError(`Cupo completo: ya tenés ${dayCount} de ${dailyPatientLimit} pacientes para ese día.`)
+      setAppNotice('No quedan turnos libres para esa fecha según tu límite diario.')
+      return
+    }
+
+    const toMinutes = (value: string): number => {
+      const [hours, minutes] = value.split(':').map(Number)
+      return hours * 60 + minutes
+    }
+    const requestedStart = toMinutes(appointmentDraft.scheduledTime)
+    const requestedEnd = requestedStart + appointmentDraft.durationMinutes
+    const conflict = appointments.find((a) => {
+      if (a.id === appointmentDraft.id || a.status === 'cancelled' || a.scheduledDate !== appointmentDraft.scheduledDate) return false
+      const currentStart = toMinutes(a.scheduledTime)
+      const currentEnd = currentStart + (a.durationMinutes ?? 30)
+      return requestedStart < currentEnd && currentStart < requestedEnd
+    })
     if (conflict) {
       setAppError(
         `Ya tenés un turno con ${conflict.patientName} el ${appointmentDraft.scheduledDate} a las ${appointmentDraft.scheduledTime} hs. Elegí otro horario.`
@@ -6939,6 +7088,7 @@ function App() {
         patientDni: appointmentDraft.patientDni.trim(),
         scheduledDate: appointmentDraft.scheduledDate,
         scheduledTime: appointmentDraft.scheduledTime,
+        durationMinutes: appointmentDraft.durationMinutes,
         scheduledAt,
         reason: appointmentDraft.reason.trim() || 'Consulta médica general',
         notes: appointmentDraft.notes.trim(),
@@ -6965,6 +7115,9 @@ function App() {
       const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
       if (currentProf) {
         void persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)
+      }
+      if (nextAppointments.filter((appointment) => appointment.scheduledDate === nextRecord.scheduledDate && appointment.status !== 'cancelled').length >= dailyPatientLimit) {
+        setAppNotice(`Cupo completo para ${nextRecord.scheduledDate}: alcanzaste ${dailyPatientLimit} pacientes.`)
       }
 
       if (appointmentDraft.sendEmailConfirmation && appointmentDraft.patientEmail.trim()) {
@@ -7058,6 +7211,17 @@ function App() {
       setFreeSlotError('Completa fecha, horario y cantidad de turnos.')
       return
     }
+    const freeSlotDay = new Date(`${freeSlotDraft.slotDate}T12:00:00`).getDay()
+    if (!appointmentDays.includes(freeSlotDay)) {
+      setFreeSlotError(`Ese día no está habilitado. Días de atención: ${appointmentDaysLabel}.`)
+      return
+    }
+    const occupiedOnDate = appointmentCapacityByDate.get(freeSlotDraft.slotDate) ?? 0
+    const remainingCapacity = Math.max(0, dailyPatientLimit - occupiedOnDate)
+    if (Number(freeSlotDraft.slotCount) > remainingCapacity) {
+      setFreeSlotError(`Solo quedan ${remainingCapacity} cupos disponibles para ese día.`)
+      return
+    }
     if (freeSlotCapacity?.invalidRange) {
       setFreeSlotError('El horario "Hasta" debe ser posterior al horario "Desde".')
       return
@@ -7095,6 +7259,8 @@ function App() {
         amountToCharge: parsedFreeAmount ?? undefined,
         amountConcept: parsedFreeAmount ? freeSlotDraft.amountConcept : undefined,
         paymentLink: parsedFreeAmount ? currentProf?.paymentLink?.trim() || undefined : undefined,
+        appointmentDays,
+        dailyPatientLimit,
       })
       if (!result.success || !result.token) {
         setFreeSlotError(result.message || 'No se pudo generar el enlace de turnos libres.')
@@ -8708,6 +8874,15 @@ function App() {
   return (
     <main className="app">
       <header className="topbar">
+        <button
+          type="button"
+          className="sidebar-toggle"
+          aria-label="Abrir navegación"
+          aria-expanded={sidebarOpen}
+          onClick={() => setSidebarOpen((current) => !current)}
+        >
+          ☰
+        </button>
         <div className="brand-block compact">
           <span className="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 64 64" role="presentation">
@@ -8735,13 +8910,13 @@ function App() {
         </div>
         <div className="topbar-actions">
           {googleIdentity ? (
-            <div className="google-session-chip" title={googleIdentity.email}>
+            <button type="button" className="google-session-chip" title="Perfil y ajustes" onClick={handleOpenProfile}>
               {googleIdentity.avatarUrl ? (
                 <img src={googleIdentity.avatarUrl} alt={googleIdentity.fullName ?? googleIdentity.email} />
               ) : (
                 <span>{(googleIdentity.fullName ?? googleIdentity.email).slice(0, 1).toUpperCase()}</span>
               )}
-            </div>
+            </button>
           ) : null}
           <span className="build-badge compact">Compilación {APP_BUILD_ID}</span>
           {trialInfo?.status === 'active' && Number.isFinite(trialInfo.daysLeft) && (
@@ -8876,6 +9051,63 @@ function App() {
           </button>
         </div>
       </header>
+
+      <aside className={`app-sidebar${sidebarOpen ? ' open' : ''}`} aria-label="Navegación principal">
+        <div className="app-sidebar-header">
+          <div>
+            <span className="sidebar-eyebrow">Espacio profesional</span>
+            <strong>{profile.fullName}</strong>
+          </div>
+          <button type="button" className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Cerrar navegación">
+            ×
+          </button>
+        </div>
+        <nav className="sidebar-nav">
+          <button type="button" className={workspaceLayer === 'overview' ? 'active' : ''} onClick={() => { handleBackToOverview(); setSidebarOpen(false) }}>
+            <span>⌂</span> Inicio
+          </button>
+          <button type="button" className={workspaceLayer === 'my-patients' ? 'active' : ''} onClick={() => { setWorkspaceLayer('my-patients'); setSidebarOpen(false) }}>
+            <span>♙</span> Mis pacientes <small>{patients.length}</small>
+          </button>
+          {isModuleEnabled('appointments') ? (
+            <button type="button" className={workspaceLayer === 'appointments' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setSidebarOpen(false) }}>
+              <span>◷</span> Turnera
+            </button>
+          ) : null}
+          {isModuleEnabled('tools') ? (
+            <button type="button" className={workspaceLayer === 'tools' ? 'active' : ''} onClick={() => { handleOpenTools(); setSidebarOpen(false) }}>
+              <span>✦</span> Herramientas
+            </button>
+          ) : null}
+          {isModuleEnabled('ambulance') ? (
+            <label className="sidebar-toggle-row">
+              <span><b>✚</b> Ambulancia</span>
+              <input type="checkbox" checked={workspaceLayer === 'ambulance'} onChange={(event) => event.target.checked ? handleOpenAmbulance() : handleBackToOverview()} />
+              <span className="sidebar-switch" aria-hidden="true" />
+            </label>
+          ) : null}
+          {isModuleEnabled('community') ? (
+            <button type="button" onClick={() => { handleToggleCommunity(); setSidebarOpen(false) }}>
+              <span>◌</span> Comunidad {communityUnreadCount > 0 ? <small>{communityUnreadCount}</small> : null}
+            </button>
+          ) : null}
+          {canUseTreatmentLedger ? (
+            <button type="button" onClick={() => { handleOpenAppointments(); setTurneraViewMode('ledger'); setSidebarOpen(false) }}>
+              <span>◈</span> Balance de pagos
+            </button>
+          ) : null}
+        </nav>
+        <div className="sidebar-footer">
+          <button type="button" onClick={() => { handleOpenProfile(); setSidebarOpen(false) }}>
+            <span>{googleIdentity ? '◉' : '⚙'}</span> {googleIdentity ? 'Perfil' : 'Perfil y ajustes'}
+          </button>
+          <button type="button" onClick={() => { handleToggleThemeMode(); setSidebarOpen(false) }}>
+            <span>◐</span> {themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'}
+          </button>
+          <button type="button" onClick={handleLogout}><span>↪</span> Cerrar sesión</button>
+        </div>
+      </aside>
+      {sidebarOpen ? <button type="button" className="sidebar-scrim" aria-label="Cerrar navegación" onClick={() => setSidebarOpen(false)} /> : null}
 
       {appError ? <p className="error">{appError}</p> : null}
       {appNotice ? <p className="notice">{appNotice}</p> : null}
@@ -10264,159 +10496,7 @@ function App() {
       ) : null}
 
       {workspaceLayer === 'overview' ? (
-        <div className="screen-stage">
-          <section className="workspace single-column">
-            <section className="panel">
-              <div className="overview-dashboard">
-                {isModuleEnabled('attention') ? (
-                  <article className="overview-card quick-start-card">
-                    <h2>Atención médica</h2>
-                    <p>Inicia una consulta, busca un paciente o crea uno nuevo.</p>
-                    <button type="button" onClick={handleStartAttentionFlow}>
-                      Iniciar atención médica
-                    </button>
-                    <small>Luego podrás buscar o agregar pacientes desde la ficha.</small>
-                  </article>
-                ) : null}
-                {isModuleEnabled('appointments') ? (
-                  <article className="overview-card">
-                    <h2>📅 Turnera Médica</h2>
-                    <p>Agenda consultas presenciales o virtuales con confirmación por email (soporte@drhappy.com.ar).</p>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                      <button type="button" onClick={handleOpenAppointments}>
-                        Abrir Turnera ({appointmentsMetrics.todayCount} hoy)
-                      </button>
-                      <button type="button" className="ghost" onClick={() => handleNewAppointmentModal()}>
-                        + Agendar turno
-                      </button>
-                    </div>
-                    <small style={{ display: 'block', marginTop: 8, color: '#64748b' }}>
-                      {appointmentsMetrics.upcomingCount} próximos · {appointmentsMetrics.emailSentCount} confirmados por email
-                    </small>
-                  </article>
-                ) : null}
-                {isModuleEnabled('ambulance') ? (
-                  <article className="overview-card ambulance-card">
-                    <h2>🚑 Modo Ambulancia</h2>
-                    <p>Activa el acceso rápido para traslados, guardias y atención prehospitalaria.</p>
-                    <label className="toggle-option">
-                      <input
-                        type="checkbox"
-                        checked={false}
-                        onChange={(event) => {
-                          if (event.target.checked) {
-                            handleOpenAmbulance()
-                            return
-                          }
-                          setWorkspaceLayer('overview')
-                        }}
-                      />
-                      <span className="toggle-switch" />
-                      <span>Desactivado</span>
-                    </label>
-                    <button type="button" className="ghost" style={{ marginTop: 16 }} onClick={handleOpenAmbulanceHistory}>
-                      Pacientes atendidos en ambulancia
-                    </button>
-                  </article>
-                ) : null}
-                <article className="overview-card">
-                  <h2>📰 Noticias médicas</h2>
-                  <p>
-                    Elegí una fuente para verla en el momento. OMS y Ministerio de Salud de la Nación se
-                    actualizan automáticamente; las demás abren su sitio oficial.
-                  </p>
-                  {(() => {
-                    const activeNews = medicalNews[currentMedicalNewsIndex] ?? medicalNews[0] ?? null
-                    const activeImageUrl =
-                      activeNews?.imageUrl ||
-                      (activeNews?.source.includes('Ministerio')
-                        ? MEDICAL_NEWS_FALLBACK[0].imageUrl
-                        : MEDICAL_NEWS_FALLBACK[1].imageUrl)
-                    if (medicalNewsLoading) {
-                      return <p>Cargando noticias...</p>
-                    }
-                    if (!activeNews) {
-                      return <p>No hay noticias disponibles en este momento.</p>
-                    }
-                    return (
-                      <div style={{ display: 'grid', gap: 12 }}>
-                        <div
-                          aria-label="Fuentes de noticias médicas"
-                          style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}
-                        >
-                          {Array.from(new Map(medicalNews.map((item, index) => [item.source, index])).entries()).map(
-                            ([source, index]) => (
-                              <button
-                                key={source}
-                                type="button"
-                                className="ghost compact"
-                                style={{
-                                  flex: '0 0 auto',
-                                  borderColor:
-                                    index === currentMedicalNewsIndex ? '#1d4ed8' : undefined,
-                                  background:
-                                    index === currentMedicalNewsIndex ? '#e8f0ff' : undefined,
-                                  color: index === currentMedicalNewsIndex ? '#0b2d6b' : undefined,
-                                }}
-                                onClick={() => setCurrentMedicalNewsIndex(index)}
-                              >
-                                {source}
-                              </button>
-                            ),
-                          )}
-                        </div>
-                        <article
-                          style={{
-                            borderRadius: 18,
-                            overflow: 'hidden',
-                            border: '1px solid rgba(69, 116, 191, 0.2)',
-                            background: '#f7faff',
-                            boxShadow: '0 12px 24px rgba(18, 58, 104, 0.12)',
-                          }}
-                        >
-                          <div
-                            style={{
-                              minHeight: 320,
-                              backgroundImage: `linear-gradient(180deg, rgba(10, 20, 35, 0.1), rgba(10, 20, 35, 0.55)), url("${activeImageUrl}")`,
-                              backgroundSize: 'cover',
-                              backgroundPosition: 'center',
-                              display: 'flex',
-                              alignItems: 'flex-end',
-                              padding: 20,
-                            }}
-                          >
-                            <div style={{ color: '#fff', display: 'grid', gap: 8 }}>
-                              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                                <strong>{activeNews.source}</strong>
-                                <small style={{ color: 'rgba(255,255,255,0.9)' }}>
-                                  {activeNews.publishedAt ? formatDate(activeNews.publishedAt) : 'Fuente oficial'}
-                                </small>
-                              </div>
-                              <h3 style={{ margin: 0, fontSize: '1.35rem', lineHeight: 1.25 }}>{activeNews.title}</h3>
-                            </div>
-                          </div>
-                          <div style={{ padding: 18, display: 'grid', gap: 12 }}>
-                            <p style={{ margin: 0, color: '#42556f', lineHeight: 1.6 }}>
-                              {activeNews.summary || 'Abrí la fuente oficial para ver la noticia completa.'}
-                            </p>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <small>
-                                {currentMedicalNewsIndex + 1} de {medicalNews.length}
-                              </small>
-                              <a href={activeNews.link} target="_blank" rel="noreferrer">
-                                Ver noticia completa
-                              </a>
-                            </div>
-                          </div>
-                        </article>
-                      </div>
-                    )
-                  })()}
-                </article>
-              </div>
-            </section>
-          </section>
-        </div>
+        <div className="screen-stage overview-empty" aria-label="Inicio vacío" />
       ) : null}
 
       {workspaceLayer === 'ambulance-history' ? (
@@ -10475,6 +10555,49 @@ function App() {
               <button type="button" className="ghost" onClick={handleBackToOverview}>
                 Volver
               </button>
+            </div>
+          </section>
+
+          <section className="panel appointment-capacity-panel">
+            <div>
+              <span className="section-kicker">Control de agenda</span>
+              <h3 style={{ margin: 0 }}>Cupos de atención</h3>
+              <p className="flow-hint">Elegí qué días atendés y cuántos pacientes aceptás como máximo por día.</p>
+            </div>
+            <div className="capacity-controls">
+              <label>
+                Máximo diario
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={dailyPatientLimit}
+                  onChange={(event) => saveAppointmentCapacity(appointmentDays, Number(event.target.value))}
+                />
+              </label>
+              <div className="capacity-days">
+                <span>Días de atención</span>
+                <div>
+                  {WEEK_DAYS.map((day) => (
+                    <label key={day.value} className="capacity-day-option">
+                      <input
+                        type="checkbox"
+                        checked={appointmentDays.includes(day.value)}
+                        onChange={() => {
+                          const nextDays = appointmentDays.includes(day.value)
+                            ? appointmentDays.filter((value) => value !== day.value)
+                            : [...appointmentDays, day.value]
+                          saveAppointmentCapacity(nextDays, dailyPatientLimit)
+                        }}
+                      />
+                      <span>{day.label.slice(0, 3)}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="capacity-status">
+              {appointmentDaysLabel || 'Elegí al menos un día'} · {appointmentCapacityByDate.get(todayLocalISO()) ?? 0}/{dailyPatientLimit} usados hoy
             </div>
           </section>
 
@@ -10829,6 +10952,28 @@ function App() {
               ) : (
                 <p className="flow-hint">Todavía no hay turnos suficientes para comparar meses.</p>
               )}
+              <div className="analytics-summary-grid">
+                <article className="analytics-stat-card"><strong>{patients.length}</strong><span>Pacientes registrados</span></article>
+                <article className="analytics-stat-card"><strong>{patients.reduce((total, patient) => total + patient.consultations.length, 0)}</strong><span>Consultas registradas</span></article>
+                <article className="analytics-stat-card"><strong>{pathologyStats.length}</strong><span>Patologías identificadas</span></article>
+                <article className="analytics-stat-card"><strong>{ledgerPatientBalances.filter((entry) => entry.pending <= 0).length}</strong><span>Pacientes sin deuda</span></article>
+                <article className="analytics-stat-card warn"><strong>{ledgerPatientBalances.filter((entry) => entry.pending > 0).length}</strong><span>Pacientes con deuda</span></article>
+                <article className="analytics-stat-card warn"><strong>{formatMoney(ledgerTotals.pending)}</strong><span>Total adeudado</span></article>
+              </div>
+              <div className="analytics-columns">
+                <section>
+                  <h3>Patologías más frecuentes</h3>
+                  {pathologyStats.length > 0 ? pathologyStats.map(([name, count]) => (
+                    <div className="analytics-row" key={name}><span>{name}</span><strong>{count}</strong></div>
+                  )) : <p className="flow-hint">Todavía no hay diagnósticos registrados.</p>}
+                </section>
+                <section>
+                  <h3>Balance por paciente</h3>
+                  {ledgerPatientBalances.length > 0 ? ledgerPatientBalances.slice(0, 8).map((entry) => (
+                    <div className="analytics-row" key={entry.patientName}><span>{entry.patientName}</span><strong className={entry.pending > 0 ? 'analytics-debt' : 'analytics-paid'}>{entry.pending > 0 ? formatMoney(entry.pending) : 'Sin deuda'}</strong></div>
+                  )) : <p className="flow-hint">Todavía no hay movimientos de balance.</p>}
+                </section>
+              </div>
             </section>
           ) : null}
 
@@ -11135,6 +11280,57 @@ function App() {
                 </div>
               </div>
             </section>
+          </section>
+        </div>
+      ) : null}
+
+      {workspaceLayer === 'my-patients' ? (
+        <div className="screen-stage">
+          <section className="panel layer-header">
+            <div>
+              <span className="section-kicker">Tu base clínica</span>
+              <h2>Mis pacientes</h2>
+              <p className="flow-hint">Acceso directo a tus fichas, independientemente de la agenda.</p>
+            </div>
+            <button type="button" onClick={handleNewPatient}>+ Nuevo paciente</button>
+          </section>
+          <section className="panel patient-directory-panel">
+            <label className="directory-search">
+              <span>Buscar paciente</span>
+              <input
+                type="search"
+                placeholder="Nombre, apellido o DNI"
+                value={myPatientsQuery}
+                onChange={(event) => setMyPatientsQuery(event.target.value)}
+              />
+            </label>
+            <div className="directory-meta">
+              <span>{myPatientsQuery ? `${myPatients.length} coincidencias` : 'Últimos pacientes vistos'}</span>
+              <span>{patients.length} registrados</span>
+            </div>
+            {myPatients.length > 0 ? (
+              <div className="patient-directory-grid">
+                {myPatients.slice(0, myPatientsQuery ? myPatients.length : 5).map((patient) => {
+                  const lastConsultation = [...patient.consultations].sort((left, right) => Date.parse(right.date) - Date.parse(left.date))[0]
+                  return (
+                    <article className="patient-directory-card" key={patient.id}>
+                      <div className="patient-directory-avatar">{(patient.apellido || patient.nombre || '?').slice(0, 1).toUpperCase()}</div>
+                      <div className="patient-directory-info">
+                        <strong>{patient.apellido}, {patient.nombre || 'Sin nombre'}</strong>
+                        <span>DNI {patient.dni || 'Sin dato'}</span>
+                        <small>{lastConsultation ? `Última consulta: ${formatShortDate(lastConsultation.date)}` : 'Sin consultas registradas'}</small>
+                      </div>
+                      <div className="patient-directory-actions">
+                        <button type="button" onClick={() => handleSelectPatient(patient.id)}>Abrir ficha</button>
+                        <button type="button" className="ghost" onClick={() => handleNewAppointmentModal(patient)}>Agendar</button>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="directory-empty"><strong>No encontramos pacientes</strong><span>Probá con otro nombre, apellido o DNI.</span></div>
+            )}
           </section>
         </div>
       ) : null}
@@ -13076,6 +13272,17 @@ function App() {
                     value={appointmentDraft.scheduledTime}
                     onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, scheduledTime: e.target.value }))}
                   />
+                </label>
+                <label style={{ flex: 1 }}>
+                  Duración
+                  <select
+                    value={appointmentDraft.durationMinutes}
+                    onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, durationMinutes: Number(e.target.value) }))}
+                  >
+                    {[15, 20, 30, 45, 60, 90].map((minutes) => (
+                      <option key={minutes} value={minutes}>{minutes} minutos</option>
+                    ))}
+                  </select>
                 </label>
               </div>
 
