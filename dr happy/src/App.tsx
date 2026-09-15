@@ -9108,6 +9108,11 @@ function App() {
               <span>◈</span> Balance de pagos
             </button>
           ) : null}
+          {isAdminSession ? (
+            <button type="button" className={workspaceLayer === 'user-admin' ? 'active' : ''} onClick={() => { handleOpenUserAdmin(); setSidebarOpen(false) }}>
+              <span>⚙</span> Administrar usuarios
+            </button>
+          ) : null}
         </nav>
         <div className="sidebar-footer">
           <button type="button" onClick={() => { void handleShareApp(); setSidebarOpen(false) }}>
