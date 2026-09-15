@@ -1,19 +1,21 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import fs from 'node:fs'
-import path from 'node:path'
 
 function resolveBuildId(): string {
-  const counterPath = path.join(process.cwd(), '.build-counter')
-  const currentValue = fs.existsSync(counterPath)
-    ? Number.parseInt(fs.readFileSync(counterPath, 'utf8').trim(), 10)
-    : 0
-
-  const safeValue = Number.isFinite(currentValue) ? currentValue : 0
-  const buildId = safeValue.toString().padStart(5, '0')
-
-  fs.writeFileSync(counterPath, String(safeValue + 1), 'utf8')
-  return buildId
+  const commit =
+    process.env.GITHUB_SHA?.slice(0, 7) ||
+    process.env.HOSTINGER_GIT_COMMIT?.slice(0, 7) ||
+    process.env.SOURCE_VERSION?.slice(0, 7)
+  const now = new Date()
+  const timestamp = [
+    now.getUTCFullYear(),
+    String(now.getUTCMonth() + 1).padStart(2, '0'),
+    String(now.getUTCDate()).padStart(2, '0'),
+    '-',
+    String(now.getUTCHours()).padStart(2, '0'),
+    String(now.getUTCMinutes()).padStart(2, '0'),
+  ].join('')
+  return commit ? `${timestamp}-${commit}` : timestamp
 }
 
 // https://vite.dev/config/
