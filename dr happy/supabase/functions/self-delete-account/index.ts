@@ -5,8 +5,8 @@ import { corsHeaders } from '../_shared/cors.ts'
 
 // Auto-eliminación de cuenta por el propio usuario (requisito de Google Play).
 // Flujo idéntico a la baja administrativa: genera el archivo legal, lo envía
-// por email al usuario y a archivolegal@drhappy.com.ar, y luego elimina la
-// cuenta y sus datos asociados. Irreversible.
+// por email al usuario y luego elimina la cuenta y sus datos asociados.
+// El archivo no se guarda en la base de datos ni queda visible para el admin.
 //
 // Seguridad: exige la contraseña actual del usuario (bcrypt) para confirmar
 // que es realmente él quien solicita la baja.
@@ -16,8 +16,6 @@ interface RequestBody {
   userId?: string
   password?: string
 }
-
-const LEGAL_ARCHIVE_EMAIL = 'archivolegal@drhappy.com.ar'
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
@@ -133,28 +131,10 @@ serve(async (request) => {
       communityMessages: messages,
     }
 
-    // 3) Guardamos el archivo legal en la tabla de archivos.
-    const { error: archiveError } = await admin.from('deleted_user_archives').insert({
-      deleted_user_id: professional.id,
-      deleted_username: professional.username,
-      deleted_full_name: professional.full_name,
-      deleted_email: professional.email,
-      deleted_dni: professional.dni ?? null,
-      deleted_at: nowIso,
-      deleted_by_user_id: professional.id,
-      deleted_by_user_name: `${professional.full_name} (auto-eliminación)`,
-      patient_count: patients.length,
-      appointment_count: appointments.length,
-      archive_json: archiveData,
-    })
-    if (archiveError) {
-      return jsonResponse(500, { success: false, message: `No se pudo guardar el archivo legal: ${archiveError.message}` })
-    }
-
-    // 4) Enviamos el archivo legal por email (usuario + casilla legal).
+    // 3) Enviamos el archivo legal únicamente al usuario.
     const fileNameSafe = `archivo-legal-${professional.username}-${nowIso.slice(0, 10)}.json`
     const emailPayload = {
-      to: [professional.email, LEGAL_ARCHIVE_EMAIL],
+      to: [professional.email],
       subject: `Archivo legal - ${professional.full_name} - DNI ${professional.dni ?? 'no informado'}`,
       text: `Se adjunta el archivo legal correspondiente a la eliminación de la cuenta de ${professional.full_name} (DNI ${professional.dni ?? 'no informado'}), solicitada por el propio usuario.`,
       type: 'legal_archive',
