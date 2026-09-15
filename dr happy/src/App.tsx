@@ -562,6 +562,7 @@ const emptyAppointmentDraft: AppointmentDraft = {
   patientDni: '',
   scheduledDate: new Date().toISOString().slice(0, 10),
   scheduledTime: '09:00',
+  durationMinutes: 30,
   reason: 'Control médico general',
   notes: '',
   location: 'Consultorio médico',
@@ -2493,9 +2494,9 @@ function App() {
   const [diagnosisCatalog, setDiagnosisCatalog] = useState<string[]>([])
   const [specialtyCatalog, setSpecialtyCatalog] = useState<string[]>([])
   const [medicationCatalog, setMedicationCatalog] = useState<MedicationEntry[]>([])
+  const [, setMedicalNewsLoading] = useState(false)
   const [medicalNews, setMedicalNews] = useState<MedicalNewsItem[]>([])
-  const [medicalNewsLoading, setMedicalNewsLoading] = useState(false)
-  const [currentMedicalNewsIndex, setCurrentMedicalNewsIndex] = useState(0)
+  const [, setCurrentMedicalNewsIndex] = useState(0)
   const [vademecumSearchQuery, setVademecumSearchQuery] = useState('')
   const [selectedMedicationId, setSelectedMedicationId] = useState<string | null>(null)
 
@@ -6715,17 +6716,6 @@ function App() {
     stopDictation()
     setCommunityOpen(false)
     setWorkspaceLayer('ambulance')
-    setAppError(null)
-  }
-
-  function handleOpenAmbulanceHistory(): void {
-    if (!isModuleEnabled('ambulance')) {
-      setAppError('El módulo Modo Ambulancia no está habilitado para tu cuenta.')
-      return
-    }
-    stopDictation()
-    setCommunityOpen(false)
-    setWorkspaceLayer('ambulance-history')
     setAppError(null)
   }
 
