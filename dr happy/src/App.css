@@ -3878,10 +3878,10 @@ body.theme-night .turnera-card-actions {
   .brand-copy .slogan { display: block; font-size: 0.68rem; line-height: 1.2; }
   .brand-copy .professional, .google-session-indicator, .build-badge { display: none; }
   .brand-copy h1 { font-size: 1.2rem; }
-  .topbar-actions { position: absolute; top: 20px; right: 17px; gap: 5px; }
+  .topbar-actions { position: absolute; top: 20px; right: 17px; width: auto; gap: 5px; justify-content: flex-end; }
   .topbar-actions > span:not(.google-session-chip) { display: none; }
-  .google-session-chip { width: 42px; height: 42px; box-shadow: 0 0 0 5px rgba(147,197,253,.3), 0 0 24px rgba(59,130,246,.58), 0 8px 18px rgba(32,74,130,.2); }
-  .google-session-chip img { width: 36px; height: 36px; }
+  .topbar-actions > button.google-session-chip { flex: 0 0 50px; width: 50px; min-width: 50px; height: 50px; padding: 0; border-radius: 50%; box-sizing: border-box; box-shadow: 0 0 0 5px rgba(147,197,253,.3), 0 0 24px rgba(59,130,246,.58), 0 8px 18px rgba(32,74,130,.2); }
+  .topbar-actions > button.google-session-chip img { width: 42px; height: 42px; max-width: 42px; max-height: 42px; }
   .medical-news-strip { gap: 7px; margin-bottom: 10px; padding: 6px 8px; font-size: 0.66rem; }
   .medical-news-label { max-width: 78px; line-height: 1.1; }
   .medical-news-strip button { font-size: 0.65rem; }
