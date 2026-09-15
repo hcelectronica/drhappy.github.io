@@ -306,9 +306,14 @@ body.theme-night {
   color: #123a68;
   font-weight: 700;
   border: 1px solid rgba(69, 116, 191, 0.35);
-  box-shadow: 0 4px 10px rgba(32, 74, 130, 0.12);
+  box-shadow: 0 0 0 5px rgba(147, 197, 253, 0.26), 0 0 22px rgba(59, 130, 246, 0.5), 0 8px 18px rgba(32, 74, 130, 0.2);
   flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
 }
+
+.google-session-chip:hover,
+.google-session-chip:focus-visible { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(147, 197, 253, 0.34), 0 0 28px rgba(59, 130, 246, 0.66), 0 10px 22px rgba(32, 74, 130, 0.24); outline: none; }
 
 .google-session-chip img {
   width: 28px;
@@ -3865,17 +3870,18 @@ body.theme-night .turnera-card-actions {
 
 @media (max-width: 720px) {
   .app { padding: 10px; }
-  .topbar { gap: 9px; padding: 10px; border-radius: 15px; }
-  .brand-block.compact { min-width: 0; flex: 1; }
-  .brand-block.compact { justify-content: center; text-align: center; flex-direction: column; gap: 6px; }
-  .brand-mark { width: 48px; height: 48px; border-radius: 14px; }
-  .brand-mark svg { width: 40px; height: 40px; }
+  .topbar { position: relative; display: grid; grid-template-columns: 1fr; justify-items: center; gap: 7px; min-height: 164px; padding: 16px 46px 14px; border-radius: 18px; }
+  .sidebar-toggle { position: absolute; top: 14px; left: 14px; }
+  .brand-block.compact { min-width: 0; width: 100%; justify-content: center; text-align: center; flex-direction: column; gap: 6px; }
+  .brand-mark { width: 72px; height: 72px; border-radius: 21px; box-shadow: 0 10px 22px rgba(17, 45, 78, .28), 0 0 0 7px rgba(147,197,253,.18); }
+  .brand-mark svg { width: 61px; height: 61px; }
   .brand-copy .slogan { display: block; font-size: 0.68rem; line-height: 1.2; }
   .brand-copy .professional, .google-session-indicator, .build-badge { display: none; }
-  .brand-copy h1 { font-size: 1.1rem; }
-  .topbar-actions { gap: 5px; }
+  .brand-copy h1 { font-size: 1.2rem; }
+  .topbar-actions { position: absolute; top: 20px; right: 17px; gap: 5px; }
   .topbar-actions > span:not(.google-session-chip) { display: none; }
-  .google-session-chip { width: 32px; height: 32px; }
+  .google-session-chip { width: 42px; height: 42px; box-shadow: 0 0 0 5px rgba(147,197,253,.3), 0 0 24px rgba(59,130,246,.58), 0 8px 18px rgba(32,74,130,.2); }
+  .google-session-chip img { width: 36px; height: 36px; }
   .medical-news-strip { gap: 7px; margin-bottom: 10px; padding: 6px 8px; font-size: 0.66rem; }
   .medical-news-label { max-width: 78px; line-height: 1.1; }
   .medical-news-strip button { font-size: 0.65rem; }
