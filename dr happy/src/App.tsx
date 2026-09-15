@@ -4760,7 +4760,11 @@ function App() {
     }
     // Al volver del redirect de Google, Supabase deja la sesión activa; la resolvemos
     // buscando/creando el profesional correspondiente al email de Google.
-    if (localStorage.getItem(SESSION_USER_KEY)) {
+    const storedUserId = localStorage.getItem(SESSION_USER_KEY)
+    const storedUserIsLoaded = Boolean(
+      storedUserId && seedUsers.some((user) => user.id === storedUserId),
+    )
+    if (storedUserIsLoaded && activeUserId === storedUserId) {
       return
     }
     void resolveGoogleSession().catch((error: unknown) => {
@@ -4770,7 +4774,7 @@ function App() {
           : 'No se pudo completar el inicio de sesión con Google.',
       )
     })
-  }, [loadingUsers, seedUsers])
+  }, [activeUserId, loadingUsers, seedUsers])
 
   const sortedPatients = useMemo(() => {
     const list = [...patients]
