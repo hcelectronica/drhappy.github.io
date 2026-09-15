@@ -3870,17 +3870,19 @@ body.theme-night .turnera-card-actions {
 
 @media (max-width: 720px) {
   .app { padding: 10px; }
-  .topbar { position: relative; display: grid; grid-template-columns: 1fr; justify-items: center; gap: 7px; min-height: 164px; padding: 16px 46px 14px; border-radius: 18px; }
+  .topbar { position: relative; display: grid; grid-template-columns: 1fr; justify-items: center; gap: 7px; min-height: 228px; padding: 16px 28px 15px; border-radius: 18px; }
   .sidebar-toggle { position: absolute; top: 14px; left: 14px; }
   .brand-block.compact { min-width: 0; width: 100%; justify-content: center; text-align: center; flex-direction: column; gap: 6px; }
   .brand-mark { width: 72px; height: 72px; border-radius: 21px; box-shadow: 0 10px 22px rgba(17, 45, 78, .28), 0 0 0 7px rgba(147,197,253,.18); }
   .brand-mark svg { width: 61px; height: 61px; }
   .brand-copy .slogan { display: block; font-size: 0.68rem; line-height: 1.2; }
-  .brand-copy .professional, .google-session-indicator, .build-badge { display: none; }
+  .brand-copy .professional, .build-badge { display: none; }
+  .google-session-indicator { display: block; max-width: min(270px, 80vw); overflow: hidden; color: #5f6f86; font-size: .66rem; text-overflow: ellipsis; white-space: nowrap; }
   .brand-copy h1 { font-size: 1.2rem; }
-  .topbar-actions { position: absolute; top: 20px; right: 17px; width: auto; gap: 5px; justify-content: flex-end; }
+  .topbar-actions { position: static; width: 100%; display: grid; justify-items: center; gap: 12px; }
   .topbar-actions > span { display: none !important; }
-  .topbar-actions > button.google-session-chip { flex: 0 0 50px; width: 50px; min-width: 50px; height: 50px; padding: 0; border-radius: 50%; box-sizing: border-box; box-shadow: 0 0 0 5px rgba(147,197,253,.3), 0 0 24px rgba(59,130,246,.58), 0 8px 18px rgba(32,74,130,.2); }
+  .topbar-actions > span.subscription-status { display: flex !important; width: min(100%, 310px); justify-content: center; text-align: center; }
+  .topbar-actions > button.google-session-chip { flex: 0 0 58px; width: 58px; min-width: 58px; height: 58px; padding: 0; border-radius: 50%; box-sizing: border-box; box-shadow: 0 0 0 6px rgba(147,197,253,.3), 0 0 26px rgba(59,130,246,.58), 0 8px 18px rgba(32,74,130,.2); }
   .topbar-actions > button.google-session-chip img { width: 42px; height: 42px; max-width: 42px; max-height: 42px; }
   .medical-news-strip { gap: 7px; margin-bottom: 10px; padding: 6px 8px; font-size: 0.66rem; }
   .medical-news-label { max-width: 78px; line-height: 1.1; }
