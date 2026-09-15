@@ -6773,14 +6773,14 @@ function App() {
     setAppNotice(`Cupo actualizado: ${normalizedLimit} pacientes por día · ${WEEK_DAYS.filter((day) => normalizedDays.includes(day.value)).map((day) => day.label).join(', ')}.`)
   }
 
-  function handleNewAppointmentModal(prefillPatient?: PatientRecord | null): void {
+  function handleNewAppointmentModal(prefillPatient?: PatientRecord | null, prefillDate?: string): void {
     if (prefillPatient) {
       setAppointmentDraft({
         patientId: prefillPatient.id,
         patientName: `${prefillPatient.apellido}, ${prefillPatient.nombre}`.trim(),
         patientEmail: prefillPatient.email || '',
         patientDni: prefillPatient.dni || '',
-        scheduledDate: todayLocalISO(),
+        scheduledDate: prefillDate || todayLocalISO(),
         scheduledTime: '09:00',
         durationMinutes: 30,
         reason: prefillPatient.diagnosticoPrincipal || 'Control médico general',
@@ -6791,7 +6791,7 @@ function App() {
         amountConcept: 'consulta',
       })
     } else {
-      setAppointmentDraft(buildEmptyAppointmentDraft())
+      setAppointmentDraft({ ...buildEmptyAppointmentDraft(), scheduledDate: prefillDate || todayLocalISO() })
     }
     setAppointmentPatientQuery('')
     setAppointmentSuggestionsOpen(false)
@@ -10967,6 +10967,23 @@ function App() {
                     }}
                   >
                     Ver ese día en la lista →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleNewAppointmentModal(null, selectedCalendarDay)}
+                    disabled={
+                      !appointmentDays.includes(new Date(`${selectedCalendarDay}T12:00:00`).getDay()) ||
+                      (appointmentCountByDate.get(selectedCalendarDay) ?? 0) >= dailyPatientLimit
+                    }
+                    title={
+                      !appointmentDays.includes(new Date(`${selectedCalendarDay}T12:00:00`).getDay())
+                        ? 'Día no habilitado en tu agenda'
+                        : (appointmentCountByDate.get(selectedCalendarDay) ?? 0) >= dailyPatientLimit
+                          ? 'Cupo diario completo'
+                          : 'Agendar un turno nuevo para este día'
+                    }
+                  >
+                    Agendar turno ese día
                   </button>
                 </div>
               ) : (
