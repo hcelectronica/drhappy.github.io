@@ -7342,31 +7342,6 @@ function App() {
       : current)
   }
 
-  function addPublicBookingBlock(modality: 'coverage' | 'private'): void {
-    if (publicBookingSettings?.blocks.some((block) => block.modality === modality)) {
-      setPublicBookingError(modality === 'private' ? 'Ya existe el bloque de pacientes particulares.' : 'Ya existe el bloque de pacientes con obra social.')
-      return
-    }
-    const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
-    const paymentLink = currentProf?.paymentLink?.trim() || ''
-    const block: PublicBookingAvailabilityBlock = {
-      id: crypto.randomUUID(),
-      label: modality === 'private' ? 'Paciente particular' : 'Paciente con obra social',
-      modality,
-      days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
-      startTime: modality === 'private' ? '16:00' : '09:00',
-      endTime: modality === 'private' ? '18:00' : '12:00',
-      durationMinutes: 30,
-      slotCount: 5,
-      location: publicBookingSettings?.location || '',
-      reason: modality === 'private' ? 'Consulta particular' : 'Consulta médica',
-      amountToCharge: modality === 'private' ? 25000 : undefined,
-      amountConcept: modality === 'private' ? 'consulta' : undefined,
-      paymentLink: modality === 'private' ? paymentLink : undefined,
-    }
-    setPublicBookingSettings((current) => current ? { ...current, blocks: [...current.blocks, block] } : current)
-  }
-
   function removePublicBookingBlock(blockId: string): void {
     setPublicBookingSettings((current) => current
       ? { ...current, blocks: current.blocks.filter((block) => block.id !== blockId) }
@@ -7412,12 +7387,6 @@ function App() {
     } finally {
       setPublicBookingSaving(false)
     }
-  }
-
-  function handleShareFixedPublicBookingLink(): void {
-    if (!publicBookingSettings) return
-    const url = buildFixedPublicBookingUrl(publicBookingSettings.slug)
-    window.open(buildWhatsAppShareUrl(url, publicBookingSettings.professionalName), '_blank', 'noopener,noreferrer')
   }
 
   async function handleCreateFreeSlotLink(): Promise<void> {
