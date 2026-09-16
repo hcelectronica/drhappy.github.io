@@ -19,6 +19,16 @@ const tools = [
     },
   },
   {
+    name: 'consultar_calendario_ocupacion',
+    description: 'Consulta la ocupación real de la agenda del profesional: cupo diario, días de atención, cantidad ocupada y lugares libres por fecha.',
+    input_schema: { type: 'object', properties: { date: { type: 'string', description: 'Fecha YYYY-MM-DD opcional.' }, month: { type: 'string', description: 'Mes YYYY-MM opcional.' } } },
+  },
+  {
+    name: 'obtener_link_pago_profesional',
+    description: 'Obtiene el link o alias de pago que el profesional tiene guardado en su perfil. Nunca inventes uno.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'buscar_pacientes',
     description: 'Busca pacientes del profesional autenticado por nombre, apellido o DNI. No devuelve historias clínicas completas.',
     input_schema: {
@@ -62,6 +72,11 @@ const tools = [
     input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD, nunca texto relativo.' }, time: { type: 'string' }, reason: { type: 'string' }, durationMinutes: { type: 'number' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'date', 'time', 'confirmation'] },
   },
   {
+    name: 'crear_paciente_y_agendar_turno',
+    description: 'Registra un paciente nuevo y agenda su primer turno. Requiere confirmation=true; sin confirmación solo prepara una propuesta.',
+    input_schema: { type: 'object', properties: { nombre: { type: 'string' }, apellido: { type: 'string' }, dni: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, obraSocial: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD.' }, time: { type: 'string' }, reason: { type: 'string' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['nombre', 'apellido', 'dni', 'date', 'time', 'confirmation'] },
+  },
+  {
     name: 'cancelar_turno',
     description: 'Cancela un turno. Siempre requiere confirmation=true; si es false, solo prepara una propuesta y no modifica datos.',
     input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string' }, time: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'confirmation'] },
@@ -101,6 +116,32 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
       .slice(0, 30)
       .map((item) => ({ date: item.scheduledDate, time: item.scheduledTime, patient: item.patientName, reason: item.reason, location: item.location, status: item.status, modality: item.publicBookingModality }))
     return { count: matches.length, appointments: matches }
+  }
+
+  if (name === 'consultar_calendario_ocupacion') {
+    const [{ data: workspace }, { data: profile }] = await Promise.all([
+      admin.from('user_workspaces').select('appointments_json, profile_json').eq('user_id', professionalId).maybeSingle(),
+      admin.from('user_workspaces').select('profile_json').eq('user_id', professionalId).maybeSingle(),
+    ])
+    const appointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json as Array<Record<string, unknown>> : []
+    const profileData = (profile?.profile_json && typeof profile.profile_json === 'object' ? profile.profile_json : {}) as Record<string, unknown>
+    const dailyLimit = Number(profileData.dailyPatientLimit) || 10
+    const configuredDays = Array.isArray(profileData.appointmentDays) ? profileData.appointmentDays : [1, 2, 4]
+    const requestedDate = typeof input.date === 'string' ? input.date : ''
+    const requestedMonth = typeof input.month === 'string' ? input.month : ''
+    const dates = appointments.map((item) => String(item.scheduledDate || '')).filter(Boolean)
+    const uniqueDates = Array.from(new Set(dates)).filter((date) => (!requestedDate || date === requestedDate) && (!requestedMonth || date.startsWith(requestedMonth))).sort()
+    const occupancy = uniqueDates.map((date) => {
+      const count = appointments.filter((item) => item.scheduledDate === date && item.status !== 'cancelled').length
+      return { date, occupied: count, available: Math.max(0, dailyLimit - count), limit: dailyLimit }
+    })
+    return { dailyLimit, appointmentDays: configuredDays, occupancy }
+  }
+
+  if (name === 'obtener_link_pago_profesional') {
+    const { data } = await admin.from('user_workspaces').select('profile_json').eq('user_id', professionalId).maybeSingle()
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    return { paymentLink: typeof profile.paymentLink === 'string' ? profile.paymentLink : null }
   }
 
   if (name === 'buscar_pacientes') {
@@ -189,6 +230,28 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const appointment = { id: crypto.randomUUID(), patientId: patient.id, patientName: proposal.patient, patientEmail: patient.email || '', patientDni: patient.dni || '', scheduledDate: input.date, scheduledTime: input.time, scheduledAt: `${input.date}T${input.time}:00`, durationMinutes: proposal.durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
     const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, appointments_json: [...appointments, appointment] }, { onConflict: 'user_id' })
     return error ? { success: false, message: error.message } : { success: true, message: `Turno agendado para ${proposal.patient} el ${input.date} a las ${input.time}.` }
+  }
+
+  if (name === 'crear_paciente_y_agendar_turno') {
+    const nombre = String(input.nombre || '').trim()
+    const apellido = String(input.apellido || '').trim()
+    const dni = String(input.dni || '').trim()
+    const date = String(input.date || '').trim()
+    const time = String(input.time || '').trim()
+    if (!nombre || !apellido || !dni || !date || !time) return { success: false, message: 'Faltan nombre, apellido, DNI, fecha u hora.' }
+    const { data } = await admin.from('user_workspaces').select('patients_json, appointments_json').eq('user_id', professionalId).maybeSingle()
+    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const existing = patients.find((patient) => String(patient.dni || '').trim() === dni)
+    const patientId = existing?.id || crypto.randomUUID()
+    const patientName = `${apellido}, ${nombre}`
+    const proposal = { patientName, dni, email: input.email || '', date, time, reason: input.reason || 'Consulta médica', location: input.location || 'Consultorio médico' }
+    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'crear_paciente_y_agendar_turno', proposal, message: 'Pedí confirmación explícita antes de registrar al paciente y agendar.' }
+    if (appointments.some((item) => item.status !== 'cancelled' && item.scheduledDate === date && item.scheduledTime === time)) return { success: false, message: 'Ese horario ya está ocupado.' }
+    const patient = existing || { id: patientId, ownerUserId: professionalId, nombre, apellido, dni, email: input.email || '', obraSocial: input.obraSocial || '', numeroAfiliado: '', plan: '', birthDate: '', edad: 0, patologiasConocidas: '', patologiasCronicas: '', ultimaInternacion: '', cirugiasPrevias: '', direccion: '', documents: [], consultations: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+    const appointment = { id: crypto.randomUUID(), patientId, patientName, patientEmail: input.email || '', patientDni: dni, scheduledDate: date, scheduledTime: time, scheduledAt: `${date}T${time}:00`, durationMinutes: 30, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
+    const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, patients_json: existing ? patients : [...patients, patient], appointments_json: [...appointments, appointment] }, { onConflict: 'user_id' })
+    return error ? { success: false, message: error.message } : { success: true, message: `Paciente ${patientName} registrado y turno agendado para ${date} a las ${time}.` }
   }
 
   if (name === 'cancelar_turno') {
@@ -301,6 +364,8 @@ Deno.serve(async (request) => {
     'Nunca ejecutes agendar_turno, cancelar_turno o enviar_notificacion_paciente sin confirmation=true. Primero presentá la propuesta y pedí confirmación explícita.',
     `Fecha y hora actual de Argentina: ${currentDate} ${currentTime}. Si el profesional dice hoy, mañana o pasado mañana, convertílo a YYYY-MM-DD sin preguntarle qué fecha es.`,
     'Si preguntan por turnos o agenda, usá siempre buscar_turnos antes de responder. Si piden agendar, primero consultá disponibilidad con buscar_turnos y luego pedí confirmación.',
+    'Si preguntan por ocupación, cupos o disponibilidad diaria, usá consultar_calendario_ocupacion. Si piden un link de pago, usá obtener_link_pago_profesional.',
+    'Para un paciente nuevo usá crear_paciente_y_agendar_turno; nunca registres ni agendes sin confirmation=true.',
     context ? `Contexto disponible de la sesión:\n${context}` : '',
   ].filter(Boolean).join('\n\n')
 
