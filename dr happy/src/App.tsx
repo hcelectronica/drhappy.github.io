@@ -2670,6 +2670,9 @@ function App() {
       role: 'assistant',
       content: result.success ? result.reply || 'No recibí una respuesta.' : (result.message || 'No pude responder en este momento.'),
     }])
+    if (result.success && activeUser) {
+      void loadWorkspaceForUser(activeUser)
+    }
     setSofiaBusy(false)
   }
 
