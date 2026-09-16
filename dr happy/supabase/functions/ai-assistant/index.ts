@@ -205,9 +205,5 @@ Deno.serve(async (request) => {
     request_type: 'chat',
   })
 
-  return jsonResponse(200, {
-    success: true,
-    reply,
-    usage: { inputTokens, outputTokens, totalTokens, estimatedCostUsd },
-  })
+  return jsonResponse(200, { success: true, reply })
 })

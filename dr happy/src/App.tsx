@@ -2637,7 +2637,6 @@ function App() {
   const [sofiaOpen, setSofiaOpen] = useState(false)
   const [sofiaDraft, setSofiaDraft] = useState('')
   const [sofiaBusy, setSofiaBusy] = useState(false)
-  const [sofiaLastUsage, setSofiaLastUsage] = useState<{ inputTokens: number; outputTokens: number; totalTokens: number; estimatedCostUsd: number } | null>(null)
   const [sofiaMessages, setSofiaMessages] = useState<AssistantMessage[]>([
     { role: 'assistant', content: 'Hola. Soy Sofía, tu secretaria clínica. Puedo ayudarte a ordenar ideas, preparar una consulta o trabajar con la información que me compartas.' },
   ])
@@ -2664,7 +2663,6 @@ function App() {
       professionalName: profile?.fullName || activeUser?.fullName,
       context: 'El profesional está dentro de Dr Happy. En esta primera versión Sofía solo conversa y prepara borradores; todavía no ejecuta acciones sobre turnos o historias clínicas.',
     })
-    setSofiaLastUsage(result.usage || null)
     setSofiaMessages((current) => [...current, {
       role: 'assistant',
       content: result.success ? result.reply || 'No recibí una respuesta.' : (result.message || 'No pude responder en este momento.'),
@@ -14291,7 +14289,6 @@ function App() {
               <textarea value={sofiaDraft} onChange={(event) => setSofiaDraft(event.target.value)} placeholder="Ej: ayudame a ordenar esta consulta..." rows={3} disabled={sofiaBusy} />
               <button type="submit" disabled={sofiaBusy || !sofiaDraft.trim()}>{sofiaBusy ? 'Consultando...' : 'Preguntar a Sofía'}</button>
             </form>
-            {sofiaLastUsage ? <small className="sofia-usage">Última respuesta: {sofiaLastUsage.totalTokens.toLocaleString('es-AR')} tokens · costo estimado USD {sofiaLastUsage.estimatedCostUsd.toFixed(5)}</small> : null}
             <small className="sofia-disclaimer">Revisá toda respuesta antes de incorporarla a una historia clínica.</small>
           </div>
         </div>
