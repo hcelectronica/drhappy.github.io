@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Turnera pública — Dr Happy</title>
+  <meta name="description" content="Elegí un turno disponible con tu profesional." />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <style>
+    :root {
+      --ink: #102033;
+      --muted: #64748b;
+      --line: #dbe7f1;
+      --brand: #1d4ed8;
+      --brand-2: #0f766e;
+      --private: #b45309;
+      --coverage: #047857;
+      --bg: #eef7fb;
+      --card: rgba(255, 255, 255, 0.92);
+      --danger: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Aptos, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 8%, rgba(29, 78, 216, .20), transparent 30%),
+        radial-gradient(circle at 85% 10%, rgba(20, 184, 166, .22), transparent 28%),
+        linear-gradient(145deg, #f8fcff 0%, #edf8f6 46%, #eaf2ff 100%);
+    }
+    main { max-width: 1120px; margin: 0 auto; padding: 28px 18px 60px; }
+    .hero { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; margin-bottom: 18px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand img { width: 56px; height: 56px; border-radius: 14px; box-shadow: 0 10px 26px rgba(29, 78, 216, .18); }
+    .eyebrow { display: block; color: var(--brand-2); text-transform: uppercase; font-size: .76rem; font-weight: 800; letter-spacing: .08em; }
+    h1 { margin: 2px 0 0; font-size: clamp(1.7rem, 4vw, 3.2rem); line-height: 1.02; }
+    .hero p { margin: 8px 0 0; color: var(--muted); max-width: 680px; font-size: 1.02rem; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 22px 60px rgba(15, 23, 42, .08); }
+    .toolbar { padding: 16px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .nav { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    button, .button-link { border: 0; border-radius: 12px; padding: 10px 14px; background: var(--brand); color: #fff; font-weight: 800; cursor: pointer; text-decoration: none; font-family: inherit; }
+    button.ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip { background: #fff; border: 1px solid var(--line); color: var(--ink); }
+    .chip.active { background: #102033; border-color: #102033; color: #fff; }
+    .calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; }
+    .calendar-weekday { color: var(--muted); font-size: .76rem; font-weight: 800; text-align: center; text-transform: uppercase; }
+    .month-day { min-height: 78px; display: grid; align-content: space-between; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; text-align: left; color: var(--ink); }
+    .month-day strong { font-size: 1.05rem; }
+    .month-day span { font-size: .72rem; font-weight: 800; }
+    .month-day.day-free { background: #ecfdf5; border-color: #86efac; color: #166534; cursor: pointer; }
+    .month-day.day-busy { background: #fef2f2; border-color: #fca5a5; color: #991b1b; cursor: pointer; }
+    .month-day.day-closed { background: #f8fafc; color: #94a3b8; }
+    .month-day.empty { border: 0; background: transparent; }
+    .first-available { grid-column: 1 / -1; padding: 14px 16px; border: 0; border-radius: 12px; background: #166534; color: white; font-size: .95rem; font-weight: 800; cursor: pointer; }
+    .first-available:disabled { background: #cbd5e1; cursor: not-allowed; }
+    .day { padding: 14px; min-height: 180px; }
+    .day header { margin-bottom: 10px; }
+    .day strong { display: block; text-transform: capitalize; }
+    .day small { color: var(--muted); }
+    .slot { width: 100%; margin: 6px 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #fff; color: var(--ink); border: 1px solid var(--line); padding: 10px; text-align: left; }
+    .slot.selected { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(29, 78, 216, .12); }
+    .slot[disabled] { background: #f1f5f9; color: #94a3b8; text-decoration: line-through; }
+    .slot span { display: grid; gap: 2px; }
+    .slot small { color: var(--muted); font-weight: 600; }
+    .badge { border-radius: 999px; padding: 4px 8px; font-size: .7rem; white-space: nowrap; }
+    .badge.coverage { background: #d1fae5; color: var(--coverage); }
+    .badge.private { background: #fef3c7; color: var(--private); }
+    .layout { display: block; }
+    .form { width: min(520px, 100%); padding: 18px; }
+    .form h2 { margin: 0 0 6px; }
+    label { display: block; margin: 12px 0 4px; font-weight: 800; font-size: .9rem; }
+    input { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; font: inherit; }
+    .selected-box { margin: 12px 0; padding: 12px; border-radius: 14px; background: #f8fafc; border: 1px solid var(--line); }
+    .booking-panel { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(15, 32, 51, .56); }
+    .booking-panel[hidden] { display: none; }
+    .booking-panel .form { max-height: min(720px, calc(100svh - 32px)); overflow-y: auto; }
+    .booking-close { float: right; padding: 6px 10px; background: transparent; color: var(--muted); border: 1px solid var(--line); }
+    .slot-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 12px 0; }
+    .slot-choice { padding: 8px 5px; background: #fff; color: var(--ink); border: 1px solid var(--line); font-size: .82rem; }
+    .slot-choice.selected { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .msg { margin-top: 12px; padding: 11px 12px; border-radius: 12px; font-weight: 700; }
+    .msg.err { background: #fee2e2; color: var(--danger); }
+    .msg.ok { background: #dcfce7; color: #166534; }
+    .empty { color: var(--muted); font-size: .9rem; }
+    .loading { padding: 34px; text-align: center; color: var(--muted); }
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; }
+      .calendar { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+      .month-day { min-height: 68px; padding: 8px; }
+      .calendar-weekday { font-size: .62rem; }
+      .month-day span { font-size: .58rem; }
+      .booking-panel { padding: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div>
+        <div class="brand"><img src="/icon-192.png" alt="Dr Happy" /><div><span class="eyebrow">Turnera pública</span><h1 id="title">Elegí tu turno</h1></div></div>
+        <p id="subtitle">Consultá la disponibilidad del profesional y reservá un horario.</p>
+      </div>
+    </section>
+
+    <div id="loading" class="card loading">Cargando agenda...</div>
+    <div id="error" class="card loading" style="display:none"></div>
+
+    <section id="content" style="display:none">
+      <div class="card toolbar">
+        <div class="nav">
+          <button type="button" class="ghost" id="prevBtn">Fechas anteriores</button>
+          <strong id="rangeLabel"></strong>
+          <button type="button" class="ghost" id="nextBtn">Más fechas</button>
+        </div>
+        <div class="filters">
+          <button type="button" class="chip active" data-filter="all">Todos</button>
+          <button type="button" class="chip" data-filter="coverage">Obra social / sin pago</button>
+          <button type="button" class="chip" data-filter="private">Particular / con pago</button>
+        </div>
+      </div>
+
+      <div class="layout">
+        <div class="calendar" id="calendar"></div>
+      </div>
+      <div id="bookingPanel" class="booking-panel" hidden>
+        <aside class="card form">
+          <button type="button" class="booking-close" id="closeBooking">Cerrar</button>
+          <h2>Reservar turno</h2>
+          <p class="empty" id="selectedText">Elegí un horario disponible.</p>
+          <div id="selectedBox" class="selected-box" style="display:none"></div>
+          <div id="slotChoices" class="slot-choices"></div>
+          <label for="patientName">Nombre y apellido *</label>
+          <input id="patientName" autocomplete="name" />
+          <label for="patientDni">DNI *</label>
+          <input id="patientDni" inputmode="numeric" />
+          <label for="patientPhone">WhatsApp</label>
+          <input id="patientPhone" type="tel" autocomplete="tel" />
+          <label for="patientEmail">Email</label>
+          <input id="patientEmail" type="email" autocomplete="email" />
+          <button type="button" id="confirmBtn" style="width:100%; margin-top:16px" disabled>Confirmar turno</button>
+          <div id="message"></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    var SUPABASE_URL = 'https://stzsobirxdivbgqxwkhc.supabase.co';
+    var SUPABASE_ANON_KEY = 'sb_publishable_jZQuKg9OtpDPTVHbccWpGQ_2BD66W6I';
+    var FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/public-booking';
+    var params = new URLSearchParams(window.location.search);
+    var slug = params.get('p') || (window.location.hash || '').replace(/^#\/?/, '') || '';
+    var fixedModality = params.get('m') === 'private' || params.get('m') === 'coverage' ? params.get('m') : null;
+    var cursor = todayISO().slice(0, 7) + '-01';
+    var filter = fixedModality || 'all';
+    var agenda = null;
+    var selected = null;
+
+    function el(id) { return document.getElementById(id); }
+    function todayISO() { return new Date().toISOString().slice(0, 10); }
+    function addDays(dateStr, days) { var p = dateStr.split('-').map(Number); var d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + days, 12)); return d.toISOString().slice(0, 10); }
+    function formatDate(dateStr, opts) { var p = dateStr.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString('es-AR', opts || { weekday: 'short', day: 'numeric', month: 'short' }); }
+    function money(value) { return Number(value).toLocaleString('es-AR'); }
+
+    function callFunction(body) {
+      return fetch(FUNCTIONS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY }, body: JSON.stringify(body) })
+        .then(function (res) { return res.json().then(function (data) { return { status: res.status, data: data }; }); });
+    }
+    function showError(message) { el('loading').style.display = 'none'; el('content').style.display = 'none'; el('error').style.display = 'block'; el('error').textContent = message || 'No pudimos cargar esta turnera.'; }
+
+    function loadAgenda() {
+      if (!slug) { showError('Falta el link público del profesional.'); return; }
+      el('loading').style.display = 'block';
+      callFunction({ action: 'get-public-agenda', slug: slug, modality: fixedModality, startDate: cursor, days: 35 }).then(function (result) {
+        if (!result.data.success) { showError(result.data.message); return; }
+        agenda = result.data;
+        el('title').textContent = 'Turnos de ' + agenda.profile.professionalName;
+        el('subtitle').textContent = [agenda.profile.location, agenda.profile.reason].filter(Boolean).join(' · ') || 'Elegí un horario disponible.';
+        el('loading').style.display = 'none';
+        el('error').style.display = 'none';
+        el('content').style.display = 'block';
+        renderAgenda();
+      }).catch(function () { showError('No pudimos conectar con el servidor. Probá nuevamente.'); });
+    }
+
+    function renderAgenda() {
+      var days = agenda.days || [];
+      var monthDate = new Date(Number(cursor.slice(0, 4)), Number(cursor.slice(5, 7)) - 1, 1);
+      el('rangeLabel').textContent = monthDate.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+      el('prevBtn').disabled = cursor <= todayISO().slice(0, 7) + '-01';
+      var nextMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1);
+      el('nextBtn').disabled = nextMonth.toISOString().slice(0, 10) > addDays(todayISO(), (agenda.profile.horizonDays || 60) - 1);
+      var calendar = el('calendar');
+      calendar.innerHTML = '';
+      calendar.className = 'calendar month-calendar';
+      ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].forEach(function (label) { var heading = document.createElement('div'); heading.className = 'calendar-weekday'; heading.textContent = label; calendar.appendChild(heading); });
+      var firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+      var offset = (firstDay.getDay() + 6) % 7;
+      for (var blank = 0; blank < offset; blank++) { var empty = document.createElement('div'); empty.className = 'month-day empty'; calendar.appendChild(empty); }
+      var daysByDate = {}; days.forEach(function (day) { daysByDate[day.date] = day; });
+      var daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+      for (var dayNumber = 1; dayNumber <= daysInMonth; dayNumber++) {
+        var date = monthDate.getFullYear() + '-' + String(monthDate.getMonth() + 1).padStart(2, '0') + '-' + String(dayNumber).padStart(2, '0');
+        var day = daysByDate[date]; var slots = day ? (day.slots || []).filter(function (slot) { return filter === 'all' || slot.modality === filter; }) : [];
+        var available = slots.filter(function (slot) { return slot.available; });
+        var cell = document.createElement('button'); cell.type = 'button'; cell.className = 'month-day ' + (available.length ? 'day-free' : slots.length ? 'day-busy' : 'day-closed');
+        cell.innerHTML = '<strong>' + dayNumber + '</strong><span>' + (available.length ? available.length + ' libres' : slots.length ? 'Ocupado' : 'Sin agenda') + '</span>';
+        cell.disabled = !available.length;
+        cell.addEventListener('click', function (chosenDate, chosenSlots) { return function () { var first = chosenSlots.filter(function (slot) { return slot.available; })[0]; if (first) { selected = Object.assign({ date: chosenDate }, first); renderSelection(); } }; }(date, slots));
+        calendar.appendChild(cell);
+      }
+      var firstAvailable = days.flatMap(function (day) { return (day.slots || []).filter(function (slot) { return slot.available && (filter === 'all' || slot.modality === filter); }).map(function (slot) { return Object.assign({ date: day.date }, slot); }); })[0];
+      var firstButton = document.createElement('button'); firstButton.type = 'button'; firstButton.className = 'first-available'; firstButton.textContent = firstAvailable ? '➜ Primer turno disponible: ' + formatDate(firstAvailable.date, { day: 'numeric', month: 'long' }) + ' a las ' + firstAvailable.time + ' hs' : 'No hay turnos libres en este mes'; firstButton.disabled = !firstAvailable; firstButton.addEventListener('click', function () { selected = firstAvailable; renderSelection(); }); calendar.appendChild(firstButton);
+    }
+
+    function renderSelection() {
+      var msg = el('message'); msg.className = ''; msg.textContent = '';
+      if (!selected) { el('confirmBtn').disabled = true; return; }
+      el('confirmBtn').disabled = false;
+      el('selectedText').textContent = 'Horario seleccionado';
+      el('selectedBox').style.display = 'block';
+      el('selectedBox').innerHTML = '<strong>' + formatDate(selected.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' · ' + selected.time + ' hs</strong><br><span>' + selected.label + '</span>' + (selected.location ? '<br><small>' + selected.location + '</small>' : '');
+      var choiceBox = el('slotChoices'); choiceBox.innerHTML = '';
+      var day = (agenda.days || []).find(function (entry) { return entry.date === selected.date; });
+      (day ? day.slots : []).filter(function (slot) { return slot.available && (filter === 'all' || slot.modality === filter); }).forEach(function (slot) {
+        var button = document.createElement('button'); button.type = 'button'; button.className = 'slot-choice' + (slot.time === selected.time ? ' selected' : ''); button.textContent = slot.time + ' hs';
+        button.addEventListener('click', function () { selected = Object.assign({ date: selected.date }, slot); renderSelection(); }); choiceBox.appendChild(button);
+      });
+      el('bookingPanel').hidden = false;
+    }
+
+    if (fixedModality) {
+      document.querySelectorAll('.chip').forEach(function (button) { button.style.display = 'none'; });
+    }
+    document.querySelectorAll('.chip').forEach(function (button) {
+      button.addEventListener('click', function () {
+        filter = button.getAttribute('data-filter');
+        document.querySelectorAll('.chip').forEach(function (item) { item.classList.remove('active'); });
+        button.classList.add('active');
+        renderAgenda();
+      });
+    });
+    el('prevBtn').addEventListener('click', function () { var d = new Date(Number(cursor.slice(0, 4)), Number(cursor.slice(5, 7)) - 2, 1); cursor = d.toISOString().slice(0, 10); loadAgenda(); });
+    el('nextBtn').addEventListener('click', function () { var d = new Date(Number(cursor.slice(0, 4)), Number(cursor.slice(5, 7)), 1); cursor = d.toISOString().slice(0, 10); loadAgenda(); });
+    el('closeBooking').addEventListener('click', function () { el('bookingPanel').hidden = true; });
+    el('confirmBtn').addEventListener('click', function () {
+      var patientName = el('patientName').value.trim();
+      var patientDni = el('patientDni').value.trim();
+      var msg = el('message'); msg.className = 'msg'; msg.textContent = '';
+      if (!selected) { msg.className = 'msg err'; msg.textContent = 'Elegí un horario.'; return; }
+      if (!patientName || !patientDni) { msg.className = 'msg err'; msg.textContent = 'Completá nombre y DNI.'; return; }
+      el('confirmBtn').disabled = true;
+      el('confirmBtn').textContent = 'Confirmando...';
+      callFunction({ action: 'book-public-slot', slug: slug, modality: fixedModality, slotDate: selected.date, slotTime: selected.time, blockId: selected.blockId, patientName: patientName, patientDni: patientDni, patientPhone: el('patientPhone').value.trim(), patientEmail: el('patientEmail').value.trim() }).then(function (result) {
+        if (!result.data.success) {
+          msg.className = 'msg err'; msg.textContent = result.data.message || 'No pudimos reservar el turno.'; el('confirmBtn').disabled = false; el('confirmBtn').textContent = 'Confirmar turno'; loadAgenda(); return;
+        }
+        msg.className = 'msg ok';
+        msg.textContent = 'Turno confirmado para el ' + formatDate(result.data.appointment.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' a las ' + result.data.appointment.time + ' hs.' + (result.data.emailSent ? ' Te enviamos la confirmación por email.' : ' Revisá los datos del turno en pantalla.') + (result.data.appointment.amountToCharge ? ' Recordá completar el pago indicado por el profesional.' : '');
+        el('confirmBtn').style.display = 'none';
+        selected = null;
+        loadAgenda();
+      }).catch(function () {
+        msg.className = 'msg err'; msg.textContent = 'No pudimos conectar con el servidor.'; el('confirmBtn').disabled = false; el('confirmBtn').textContent = 'Confirmar turno';
+      });
+    });
+    loadAgenda();
+  </script>
+</body>
+</html>
