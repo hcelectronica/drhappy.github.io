@@ -2,11 +2,12 @@ import sofiaReference from './assets/sofia-reference.png'
 
 interface SofiaAvatarProps {
   state?: 'idle' | 'listening' | 'thinking' | 'ready'
+  variant?: 'compact' | 'scene'
 }
 
-export function SofiaAvatar({ state = 'idle' }: SofiaAvatarProps) {
+export function SofiaAvatar({ state = 'idle', variant = 'compact' }: SofiaAvatarProps) {
   return (
-    <div className={`sofia-avatar sofia-avatar-${state}`} aria-label={`Sofía ${state === 'listening' ? 'está escuchando' : state === 'thinking' ? 'está pensando' : state === 'ready' ? 'terminó de responder' : 'está disponible'}`} role="img">
+    <div className={`sofia-avatar sofia-avatar-${variant} sofia-avatar-${state}`} aria-label={`Sofía ${state === 'listening' ? 'está escuchando' : state === 'thinking' ? 'está pensando' : state === 'ready' ? 'terminó de responder' : 'está disponible'}`} role="img">
       <div className="sofia-avatar-image-wrap" aria-hidden="true">
         <img className="sofia-avatar-image" src={sofiaReference} alt="" />
       </div>
@@ -45,6 +46,7 @@ export function SofiaAvatar({ state = 'idle' }: SofiaAvatarProps) {
         <circle cx="56" cy="108" r="7" fill="#cbd5e1" stroke="#334155" strokeWidth="3" />
       </svg>
       {state === 'listening' ? <span className="sofia-avatar-wave" aria-hidden="true"><i /><i /><i /></span> : null}
+      {variant === 'scene' ? <span className="sofia-avatar-greeting" aria-hidden="true">👋</span> : null}
     </div>
   )
 }

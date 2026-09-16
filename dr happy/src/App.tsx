@@ -14462,6 +14462,10 @@ function App() {
               <button type="button" className="drhappy-modal-close-btn" onClick={() => setSofiaOpen(false)} aria-label="Cerrar Sofía">✕</button>
             </div>
             <p className="sofia-intro">Tu secretaria clínica para consultar la agenda, preparar información y ejecutar acciones con tu confirmación.</p>
+            <div className="sofia-avatar-stage" aria-hidden="true">
+              <SofiaAvatar state={sofiaBusy ? 'thinking' : sofiaDictating ? 'listening' : sofiaPendingConfirmation ? 'ready' : 'idle'} variant="scene" />
+              <span className="sofia-scene-bubble">{sofiaDictating ? 'Te escucho' : sofiaBusy ? 'Un segundo...' : '¡Hola!'}</span>
+            </div>
             <div className="sofia-messages" aria-live="polite">
               {sofiaMessages.map((message, index) => <div className={`sofia-message ${message.role}`} key={`${message.role}-${index}`}><span>{message.role === 'assistant' ? 'Sofía' : 'Vos'}</span><p>{message.content}</p></div>)}
               {sofiaBusy ? <div className="sofia-message assistant"><span>Sofía</span><p>Estoy pensando...</p></div> : null}
