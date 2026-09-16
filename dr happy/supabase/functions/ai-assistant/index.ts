@@ -58,8 +58,8 @@ const tools = [
   },
   {
     name: 'agendar_turno',
-    description: 'Agenda un turno. Siempre requiere confirmation=true; si es false, solo prepara una propuesta y no modifica datos.',
-    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string' }, time: { type: 'string' }, reason: { type: 'string' }, durationMinutes: { type: 'number' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'date', 'time', 'confirmation'] },
+    description: 'Agenda un turno. Antes de usarla consultá buscar_turnos para verificar disponibilidad. Convertí hoy/mañana a una fecha YYYY-MM-DD usando la fecha actual del sistema. Siempre requiere confirmation=true; si es false, solo prepara una propuesta y no modifica datos.',
+    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD, nunca texto relativo.' }, time: { type: 'string' }, reason: { type: 'string' }, durationMinutes: { type: 'number' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'date', 'time', 'confirmation'] },
   },
   {
     name: 'cancelar_turno',
@@ -288,6 +288,9 @@ Deno.serve(async (request) => {
 
   const professionalName = typeof payload.professionalName === 'string' ? payload.professionalName.trim() : 'profesional'
   const context = typeof payload.context === 'string' ? payload.context.trim().slice(0, 8000) : ''
+  const now = new Date()
+  const currentDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
+  const currentTime = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' }).format(now)
   const system = [
     'Sos Sofía, la secretaria clínica inteligente de Dr Happy.',
     `Asistís de forma privada a ${professionalName}.`,
@@ -296,6 +299,8 @@ Deno.serve(async (request) => {
     'No diagnostiques ni indiques tratamientos autónomamente. Separá hechos, sugerencias y datos faltantes.',
     'Cuando el profesional pida una acción que todavía no está conectada, explicá que se incorporará como herramienta en la próxima etapa.',
     'Nunca ejecutes agendar_turno, cancelar_turno o enviar_notificacion_paciente sin confirmation=true. Primero presentá la propuesta y pedí confirmación explícita.',
+    `Fecha y hora actual de Argentina: ${currentDate} ${currentTime}. Si el profesional dice hoy, mañana o pasado mañana, convertílo a YYYY-MM-DD sin preguntarle qué fecha es.`,
+    'Si preguntan por turnos o agenda, usá siempre buscar_turnos antes de responder. Si piden agendar, primero consultá disponibilidad con buscar_turnos y luego pedí confirmación.',
     context ? `Contexto disponible de la sesión:\n${context}` : '',
   ].filter(Boolean).join('\n\n')
 
