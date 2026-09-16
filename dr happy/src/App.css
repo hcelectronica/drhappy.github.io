@@ -2963,6 +2963,8 @@ body.theme-night .appt-patient-search > label {
   align-items: center;
   justify-content: center;
   padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   animation: modal-fade-in 0.2s ease-out;
 }
 
@@ -3830,6 +3832,10 @@ body.theme-night .turnera-card-actions {
 .turnera-modal-card {
   width: min(900px, 100%);
   max-width: 900px;
+  min-height: 0;
+  max-height: calc(100dvh - 32px);
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .public-booking-config {

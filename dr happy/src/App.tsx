@@ -2519,6 +2519,17 @@ function App() {
   const [publicBookingSaving, setPublicBookingSaving] = useState(false)
   const [publicBookingError, setPublicBookingError] = useState<string | null>(null)
   const [publicBookingNotice, setPublicBookingNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!freeSlotModalOpen) {
+      return
+    }
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [freeSlotModalOpen])
   // Métricas de uso por usuario (solo conteos y fechas, sin datos clínicos).
   const [adminUserStats, setAdminUserStats] = useState<AdminUserStats[]>([])
   const [adminUserStatsLoading, setAdminUserStatsLoading] = useState(false)
