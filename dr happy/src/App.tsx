@@ -40,6 +40,8 @@ import {
 import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBookingSettings } from './publicBookingService'
 import { fetchAdminUserStats } from './adminStatsService'
 import type { AdminUserStats } from './adminStatsService'
+import { askSofia } from './aiAssistantService'
+import type { AssistantMessage } from './aiAssistantService'
 import { selfDeleteAccount } from './selfDeleteService'
 import {
   setProfessionalActive,
@@ -2632,6 +2634,12 @@ function App() {
     useState<NotificationPermissionState>(() => getNotificationPermission())
   const [showNotificationToast, setShowNotificationToast] = useState(false)
   const [contactModalOpen, setContactModalOpen] = useState(false)
+  const [sofiaOpen, setSofiaOpen] = useState(false)
+  const [sofiaDraft, setSofiaDraft] = useState('')
+  const [sofiaBusy, setSofiaBusy] = useState(false)
+  const [sofiaMessages, setSofiaMessages] = useState<AssistantMessage[]>([
+    { role: 'assistant', content: 'Hola. Soy Sofía, tu secretaria clínica. Puedo ayudarte a ordenar ideas, preparar una consulta o trabajar con la información que me compartas.' },
+  ])
   const [adminBroadcastTarget, setAdminBroadcastTarget] = useState<string>('all')
   const [adminPushCount, setAdminPushCount] = useState<number | null>(null)
   const [adminTestingPush, setAdminTestingPush] = useState(false)
@@ -2641,6 +2649,25 @@ function App() {
   const [adminBroadcastSendEmail, setAdminBroadcastSendEmail] = useState(true)
   const [adminTestEmailAddress, setAdminTestEmailAddress] = useState('')
   const [adminTestingEmail, setAdminTestingEmail] = useState(false)
+
+  async function handleAskSofia(): Promise<void> {
+    const question = sofiaDraft.trim()
+    if (!question || sofiaBusy) return
+    const nextMessages: AssistantMessage[] = [...sofiaMessages, { role: 'user', content: question }]
+    setSofiaMessages(nextMessages)
+    setSofiaDraft('')
+    setSofiaBusy(true)
+    const result = await askSofia({
+      messages: nextMessages,
+      professionalName: profile?.fullName || activeUser?.fullName,
+      context: 'El profesional está dentro de Dr Happy. En esta primera versión Sofía solo conversa y prepara borradores; todavía no ejecuta acciones sobre turnos o historias clínicas.',
+    })
+    setSofiaMessages((current) => [...current, {
+      role: 'assistant',
+      content: result.success ? result.reply || 'No recibí una respuesta.' : (result.message || 'No pude responder en este momento.'),
+    }])
+    setSofiaBusy(false)
+  }
 
   // --- Trial / Suscripción ---
   const trialInfo = useMemo(() => {
@@ -9254,6 +9281,9 @@ function App() {
           >
             💬 Contactar
           </button>
+          <button type="button" className="ghost sofia-nav-button" onClick={() => setSofiaOpen(true)} title="Abrir a Sofía, tu secretaria clínica">
+            ✦ Sofía
+          </button>
           <button type="button" className="ghost" onClick={handleLogout}>
             Cerrar sesión
           </button>
@@ -9316,6 +9346,9 @@ function App() {
           </button>
           <button type="button" onClick={() => { setContactModalOpen(true); setSidebarOpen(false) }}>
             <span>✉</span> Contactar desarrolladores
+          </button>
+          <button type="button" onClick={() => { setSofiaOpen(true); setSidebarOpen(false) }}>
+            <span>✦</span> Sofía, secretaria clínica
           </button>
           <button type="button" onClick={() => { handleOpenProfile(); setSidebarOpen(false) }}>
             <span>{googleIdentity ? '◉' : '⚙'}</span> {googleIdentity ? 'Perfil' : 'Perfil y ajustes'}
@@ -14233,6 +14266,29 @@ function App() {
               </div>
             ) : null}
             </></div>) : null}
+          </div>
+        </div>
+      ) : null}
+      {sofiaOpen ? (
+        <div className="drhappy-modal-overlay" onClick={() => setSofiaOpen(false)}>
+          <div className="drhappy-modal-card sofia-modal-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="sofia-title">
+            <div className="drhappy-modal-header">
+              <div>
+                <span className="section-kicker">Secretaria clínica</span>
+                <h3 id="sofia-title" style={{ margin: 0, fontSize: '1.3rem', color: '#0f172a' }}>✦ Sofía</h3>
+              </div>
+              <button type="button" className="drhappy-modal-close-btn" onClick={() => setSofiaOpen(false)} aria-label="Cerrar Sofía">✕</button>
+            </div>
+            <p className="sofia-intro">Una primera versión para ordenar ideas, preparar consultas y redactar borradores. Todavía no modifica turnos ni historias clínicas.</p>
+            <div className="sofia-messages" aria-live="polite">
+              {sofiaMessages.map((message, index) => <div className={`sofia-message ${message.role}`} key={`${message.role}-${index}`}><span>{message.role === 'assistant' ? 'Sofía' : 'Vos'}</span><p>{message.content}</p></div>)}
+              {sofiaBusy ? <div className="sofia-message assistant"><span>Sofía</span><p>Estoy pensando...</p></div> : null}
+            </div>
+            <form className="sofia-compose" onSubmit={(event) => { event.preventDefault(); void handleAskSofia() }}>
+              <textarea value={sofiaDraft} onChange={(event) => setSofiaDraft(event.target.value)} placeholder="Ej: ayudame a ordenar esta consulta..." rows={3} disabled={sofiaBusy} />
+              <button type="submit" disabled={sofiaBusy || !sofiaDraft.trim()}>{sofiaBusy ? 'Consultando...' : 'Preguntar a Sofía'}</button>
+            </form>
+            <small className="sofia-disclaimer">Revisá toda respuesta antes de incorporarla a una historia clínica.</small>
           </div>
         </div>
       ) : null}
