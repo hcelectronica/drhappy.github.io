@@ -3865,6 +3865,17 @@ body.theme-night .turnera-card-actions {
   min-width: 0;
 }
 
+.public-booking-horizon-note {
+  align-self: end;
+  padding: 10px 12px;
+  border: 1px solid #cbd9ed;
+  border-radius: 10px;
+  background: #f8fbff;
+  color: #536b87;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .turnera-modal-form {
   display: flex;
   flex-direction: column;
@@ -3904,6 +3915,10 @@ body.theme-night .turnera-card-actions {
   .public-booking-url-row > span {
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+
+  .public-booking-horizon-note {
+    align-self: stretch;
   }
 }
 

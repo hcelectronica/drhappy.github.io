@@ -13761,10 +13761,10 @@ function App() {
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div>
                   <span className="section-kicker">Link fijo profesional</span>
-                  <h4 style={{ margin: '4px 0 6px', fontSize: '1.05rem' }}>Turnera pública navegable</h4>
+                  <h4 style={{ margin: '4px 0 6px', fontSize: '1.05rem' }}>Liberar turnos para pacientes</h4>
                   <p className="flow-hint" style={{ margin: 0 }}>
-                    Un enlace permanente para WhatsApp Business. El paciente navega días futuros y elige entre
-                    cobertura/sin pago online o particular/con pago informado.
+                    El paciente verá los turnos que liberes durante los próximos 60 días y podrá elegir PAMI o
+                    particular según el bloque que configures.
                   </p>
                 </div>
                 {publicBookingSettings ? (
@@ -13796,37 +13796,7 @@ function App() {
                         />
                       </div>
                     </label>
-                    <label style={{ flex: 0.8 }}>
-                      Mostrar próximos
-                      <select
-                        value={publicBookingSettings.horizonDays}
-                        onChange={(event) => setPublicBookingSettings((current) => current ? { ...current, horizonDays: Number(event.target.value) } : current)}
-                      >
-                        <option value={30}>30 días</option>
-                        <option value={60}>60 días</option>
-                        <option value={90}>90 días</option>
-                        <option value={120}>120 días</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div className="turnera-form-row">
-                    <label style={{ flex: 1 }}>
-                      Nombre visible
-                      <input
-                        type="text"
-                        value={publicBookingSettings.professionalName}
-                        onChange={(event) => setPublicBookingSettings((current) => current ? { ...current, professionalName: event.target.value } : current)}
-                      />
-                    </label>
-                    <label style={{ flex: 1 }}>
-                      Lugar general
-                      <input
-                        type="text"
-                        placeholder="Ej: Consultorio Centro"
-                        value={publicBookingSettings.location || ''}
-                        onChange={(event) => setPublicBookingSettings((current) => current ? { ...current, location: event.target.value } : current)}
-                      />
-                    </label>
+                    <div className="public-booking-horizon-note">Disponibilidad visible: próximos 60 días</div>
                   </div>
 
                   <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
@@ -13842,11 +13812,7 @@ function App() {
                           </div>
                           <div className="turnera-form-row">
                             <label style={{ flex: 1 }}>
-                              Etiqueta para paciente
-                              <input type="text" value={block.label} onChange={(event) => updatePublicBookingBlock(block.id, { label: event.target.value })} />
-                            </label>
-                            <label style={{ flex: 1 }}>
-                              Modalidad
+                              Tipo de turno
                               <select
                                 value={block.modality}
                                 onChange={(event) => updatePublicBookingBlock(block.id, {
@@ -13905,11 +13871,11 @@ function App() {
                           </small>
                           <div className="turnera-form-row">
                             <label style={{ flex: 1 }}>
-                              Lugar del bloque
+                              Lugar / consultorio
                               <input type="text" placeholder="Opcional" value={block.location || ''} onChange={(event) => updatePublicBookingBlock(block.id, { location: event.target.value })} />
                             </label>
                             <label style={{ flex: 1 }}>
-                              Motivo
+                              Motivo del turno
                               <input type="text" placeholder="Ej: Control PAMI / Consulta particular" value={block.reason || ''} onChange={(event) => updatePublicBookingBlock(block.id, { reason: event.target.value })} />
                             </label>
                           </div>
@@ -13943,8 +13909,8 @@ function App() {
                   </div>
 
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-                    <button type="button" className="ghost" onClick={() => addPublicBookingBlock('coverage')}>+ Bloque cobertura</button>
-                    <button type="button" className="ghost" onClick={() => addPublicBookingBlock('private')}>+ Bloque particular</button>
+                    <button type="button" className="ghost" onClick={() => addPublicBookingBlock('coverage')}>+ Liberar turnos PAMI</button>
+                    <button type="button" className="ghost" onClick={() => addPublicBookingBlock('private')}>+ Liberar turnos particulares</button>
                   </div>
 
                   {publicBookingError ? <p style={{ color: '#c62828', fontSize: '0.9rem' }}>{publicBookingError}</p> : null}
