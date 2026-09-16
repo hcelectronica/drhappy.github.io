@@ -3192,6 +3192,14 @@ body.theme-night .turnera-premium-locked h3 {
   color: #1d4ed8;
 }
 
+.turnera-calendar-day-breakdown {
+  color: #475569;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
 .turnera-calendar-cell.is-today {
   border: 2px solid #2563eb;
 }
@@ -3263,6 +3271,12 @@ body.theme-night .turnera-premium-locked h3 {
   gap: 10px;
   flex-wrap: wrap;
   color: var(--text-primary, #0f172a);
+}
+
+.turnera-calendar-day-breakdown-detail {
+  display: block;
+  color: #475569;
+  font-weight: 700;
 }
 
 .turnera-bar-chart {
