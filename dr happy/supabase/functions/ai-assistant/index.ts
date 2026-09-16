@@ -28,6 +28,15 @@ const tools = [
     },
   },
   {
+    name: 'consultar_historia_paciente',
+    description: 'Consulta la ficha e historial clínico resumido de un paciente del profesional autenticado. Usala sólo cuando el profesional pregunte por un paciente concreto o sus antecedentes.',
+    input_schema: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Nombre, apellido o DNI del paciente.' } },
+      required: ['query'],
+    },
+  },
+  {
     name: 'buscar_vademecum',
     description: 'Busca medicamentos en el vademécum de Dr Happy. Devuelve coincidencias informativas; no reemplaza el criterio profesional.',
     input_schema: {
@@ -77,6 +86,39 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const entries = Array.isArray(catalog) ? catalog : Array.isArray(catalog?.medications) ? catalog.medications : []
     const matches = entries.filter((entry: unknown) => normalizeSearch(JSON.stringify(entry)).includes(query)).slice(0, 12)
     return { count: matches.length, medications: matches }
+  }
+
+  if (name === 'consultar_historia_paciente') {
+    const query = normalizeSearch(input.query)
+    if (query.length < 2) return { matches: [], message: 'La búsqueda necesita al menos 2 caracteres.' }
+    const { data } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
+    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const matches = patients.filter((patient) => normalizeSearch(`${patient.nombre || ''} ${patient.apellido || ''} ${patient.dni || ''}`).includes(query)).slice(0, 5)
+    return {
+      count: matches.length,
+      patients: matches.map((patient) => ({
+        id: patient.id,
+        name: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(),
+        dni: patient.dni,
+        email: patient.email,
+        obraSocial: patient.obraSocial,
+        numeroAfiliado: patient.numeroAfiliado,
+        plan: patient.plan,
+        birthDate: patient.birthDate,
+        diagnosticoPrincipal: patient.diagnosticoPrincipal,
+        patologiasConocidas: patient.patologiasConocidas,
+        patologiasCronicas: patient.patologiasCronicas,
+        consultations: Array.isArray(patient.consultations)
+          ? patient.consultations.slice(-10).map((consultation: Record<string, unknown>) => ({
+            date: consultation.date,
+            motivoConsulta: consultation.motivoConsulta,
+            diagnostico: consultation.diagnostico,
+            detalleAtencion: consultation.detalleAtencion,
+            pensamientoMedico: consultation.pensamientoMedico,
+          }))
+          : [],
+      })),
+    }
   }
 
   return { error: 'Herramienta no disponible.' }
