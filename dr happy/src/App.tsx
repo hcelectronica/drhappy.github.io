@@ -38,8 +38,8 @@ import {
   buildWhatsAppShareUrl,
 } from './publicBookingService'
 import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBookingSettings } from './publicBookingService'
-import { fetchAdminUserStats } from './adminStatsService'
-import type { AdminUserStats } from './adminStatsService'
+import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
+import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
 import type { AssistantMessage } from './aiAssistantService'
 import { selfDeleteAccount } from './selfDeleteService'
@@ -2542,6 +2542,9 @@ function App() {
   // Métricas de uso por usuario (solo conteos y fechas, sin datos clínicos).
   const [adminUserStats, setAdminUserStats] = useState<AdminUserStats[]>([])
   const [adminUserStatsLoading, setAdminUserStatsLoading] = useState(false)
+  const [adminAIUsage, setAdminAIUsage] = useState<AdminAIUsageStats[]>([])
+  const [adminAIUsageLoading, setAdminAIUsageLoading] = useState(false)
+  const [adminAITotal, setAdminAITotal] = useState({ requests: 0, tokens: 0, costUsd: 0 })
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
   const [myPatientsQuery, setMyPatientsQuery] = useState('')
@@ -4599,6 +4602,15 @@ function App() {
           }
         })
         .finally(() => setAdminUserStatsLoading(false))
+      setAdminAIUsageLoading(true)
+      void fetchAdminAIUsage(activeUserId)
+        .then((res) => {
+          if (res.success) {
+            setAdminAIUsage(res.usage || [])
+            setAdminAITotal(res.total || { requests: 0, tokens: 0, costUsd: 0 })
+          }
+        })
+        .finally(() => setAdminAIUsageLoading(false))
     }
   }, [workspaceLayer, isAdminSession, activeUserId])
 
@@ -9629,6 +9641,12 @@ function App() {
                   </table>
                 </div>
               )}
+            </section>
+
+            <section style={{ marginBottom: 24 }}>
+              <div className="panel-header" style={{ marginBottom: 12 }}><div><h3>Consumo de Sofía</h3><p className="flow-hint">Vista privada del administrador. Los profesionales no ven estos datos.</p></div></div>
+              <div className="analytics-summary-grid" style={{ margin: '0 0 14px' }}><article className="analytics-stat-card"><strong>{adminAITotal.requests}</strong><span>Consultas a Sofía</span></article><article className="analytics-stat-card"><strong>{adminAITotal.tokens.toLocaleString('es-AR')}</strong><span>Tokens usados</span></article><article className="analytics-stat-card warn"><strong>USD {adminAITotal.costUsd.toFixed(4)}</strong><span>Costo estimado</span></article></div>
+              {adminAIUsageLoading ? <p className="flow-hint">Cargando consumo...</p> : adminAIUsage.length === 0 ? <p className="flow-hint">Todavía no hay consumo registrado.</p> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}><thead><tr style={{ textAlign: 'left', borderBottom: '2px solid #d8e2ee' }}><th style={{ padding: '8px 6px' }}>Profesional</th><th style={{ padding: '8px 6px' }}>Consultas</th><th style={{ padding: '8px 6px' }}>Tokens</th><th style={{ padding: '8px 6px' }}>Costo estimado</th><th style={{ padding: '8px 6px' }}>Último uso</th></tr></thead><tbody>{adminAIUsage.map((item) => <tr key={item.professionalId} style={{ borderBottom: '1px solid #eef2f7' }}><td style={{ padding: '8px 6px' }}><strong>{item.fullName}</strong><span style={{ display: 'block', fontSize: '.78rem', color: '#667' }}>@{item.username}</span></td><td style={{ padding: '8px 6px', textAlign: 'center' }}>{item.requests}</td><td style={{ padding: '8px 6px' }}>{item.totalTokens.toLocaleString('es-AR')}</td><td style={{ padding: '8px 6px' }}>USD {item.estimatedCostUsd.toFixed(4)}</td><td style={{ padding: '8px 6px' }}>{item.lastUsedAt ? formatDate(item.lastUsedAt) : 'Nunca'}</td></tr>)}</tbody></table></div>}
             </section>
 
             <ul className="admin-user-list">

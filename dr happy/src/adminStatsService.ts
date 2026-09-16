@@ -20,6 +20,27 @@ export interface AdminUserStats {
   lastAppointmentDate: string | null
 }
 
+export interface AdminAIUsageStats {
+  professionalId: string
+  fullName: string
+  username: string
+  requests: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  estimatedCostUsd: number
+  lastUsedAt: string | null
+}
+
+export async function fetchAdminAIUsage(
+  requesterId: string,
+): Promise<{ success: boolean; message?: string; usage?: AdminAIUsageStats[]; total?: { requests: number; tokens: number; costUsd: number } }> {
+  if (!isSupabaseConfigured || !supabase) return { success: false, message: 'Supabase no está conectado.' }
+  const { data, error } = await supabase.functions.invoke('admin-stats', { body: { action: 'ai-usage', requesterId } })
+  if (error) return { success: false, message: error.message || 'No se pudo cargar el consumo de Sofía.' }
+  return data
+}
+
 export async function fetchAdminUserStats(
   requesterId: string,
 ): Promise<{ success: boolean; message?: string; users?: AdminUserStats[] }> {

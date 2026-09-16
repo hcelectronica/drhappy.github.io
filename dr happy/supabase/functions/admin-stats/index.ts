@@ -11,7 +11,7 @@ import { corsHeaders } from '../_shared/cors.ts'
 // requesterId exista en professionals con is_admin = true.
 
 interface RequestBody {
-  action: 'user-stats'
+  action: 'user-stats' | 'ai-usage'
   requesterId?: string
 }
 
@@ -47,7 +47,7 @@ serve(async (request) => {
   }
 
   try {
-    if (body.action !== 'user-stats') {
+    if (body.action !== 'user-stats' && body.action !== 'ai-usage') {
       return jsonResponse(400, { success: false, message: 'Acción no soportada.' })
     }
 
@@ -64,6 +64,24 @@ serve(async (request) => {
       .maybeSingle()
     if (requesterError || !requester || requester.is_admin !== true) {
       return jsonResponse(403, { success: false, message: 'Solo el administrador puede ver estas métricas.' })
+    }
+
+    if (body.action === 'ai-usage') {
+      const [{ data: usageEvents, error: usageError }, { data: professionals, error: professionalsError }] = await Promise.all([
+        admin.from('ai_usage_events').select('professional_id, input_tokens, output_tokens, total_tokens, estimated_cost_usd, created_at'),
+        admin.from('professionals').select('id, full_name, username'),
+      ])
+      if (usageError || professionalsError) return jsonResponse(500, { success: false, message: usageError?.message || professionalsError?.message })
+      const names = new Map((professionals ?? []).map((professional) => [professional.id, professional]))
+      const usageByProfessional = new Map<string, { requests: number; inputTokens: number; outputTokens: number; totalTokens: number; estimatedCostUsd: number; lastUsedAt: string | null }>()
+      for (const event of usageEvents ?? []) {
+        const current = usageByProfessional.get(event.professional_id) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0, lastUsedAt: null }
+        current.requests += 1; current.inputTokens += Number(event.input_tokens || 0); current.outputTokens += Number(event.output_tokens || 0); current.totalTokens += Number(event.total_tokens || 0); current.estimatedCostUsd += Number(event.estimated_cost_usd || 0)
+        if (!current.lastUsedAt || String(event.created_at) > current.lastUsedAt) current.lastUsedAt = event.created_at
+        usageByProfessional.set(event.professional_id, current)
+      }
+      const usage = Array.from(usageByProfessional.entries()).map(([professionalId, values]) => ({ professionalId, fullName: names.get(professionalId)?.full_name || 'Profesional desconocido', username: names.get(professionalId)?.username || '', ...values })).sort((left, right) => right.estimatedCostUsd - left.estimatedCostUsd)
+      return jsonResponse(200, { success: true, usage, total: usage.reduce((total, item) => ({ requests: total.requests + item.requests, tokens: total.tokens + item.totalTokens, costUsd: total.costUsd + item.estimatedCostUsd }), { requests: 0, tokens: 0, costUsd: 0 }) })
     }
 
     // Datos de profesionales (sin hashes ni contraseñas).
