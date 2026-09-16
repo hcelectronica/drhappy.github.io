@@ -230,7 +230,7 @@ function buildHtmlForType(type: string | undefined, subject: string, templateDat
           ${paymentLink ? `
           <div style="text-align: center; margin: 14px 0;">
             <a href="${paymentLink}" target="_blank" style="display: inline-block; background: #059669; color: #ffffff; text-decoration: none; padding: 12px 26px; border-radius: 8px; font-weight: 700;">
-              Pagar ahora
+              Pagar y confirmar turno
             </a>
           </div>` : ''}
           ${paymentAlias ? `
