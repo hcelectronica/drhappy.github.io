@@ -2659,6 +2659,7 @@ function App() {
     setSofiaBusy(true)
     const result = await askSofia({
       messages: nextMessages,
+      professionalId: activeUserId || undefined,
       professionalName: profile?.fullName || activeUser?.fullName,
       context: 'El profesional está dentro de Dr Happy. En esta primera versión Sofía solo conversa y prepara borradores; todavía no ejecuta acciones sobre turnos o historias clínicas.',
     })
