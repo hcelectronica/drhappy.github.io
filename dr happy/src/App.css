@@ -3006,12 +3006,6 @@ body.theme-night .appt-patient-search > label {
 .sofia-avatar-fallback { display: none; width: 100%; height: 100%; overflow: visible; transform-origin: 50% 85%; }
 .sofia-avatar-image-wrap::after { content: ''; position: absolute; inset: 0; border: 1px solid rgba(255, 255, 255, .72); border-radius: 50%; pointer-events: none; }
 .sofia-avatar-shadow { fill: rgba(30, 64, 175, .16); }
-.sofia-avatar-idle .sofia-avatar-image { animation: sofia-avatar-breathe 4s ease-in-out infinite; }
-.sofia-avatar-listening { box-shadow: 0 0 0 4px rgba(37, 99, 235, .14), 0 0 22px rgba(59, 130, 246, .35); }
-.sofia-avatar-listening .sofia-avatar-image { animation: sofia-avatar-listen 1.2s ease-in-out infinite; }
-.sofia-avatar-thinking .sofia-avatar-image { animation: sofia-avatar-think 1.8s ease-in-out infinite; }
-.sofia-avatar-ready { box-shadow: 0 0 0 4px rgba(16, 185, 129, .14), 0 0 20px rgba(16, 185, 129, .3); }
-.sofia-avatar-ready .sofia-avatar-image { animation: sofia-avatar-ready .7s ease-out both; }
 .sofia-avatar-hair { transform-origin: 90px 55px; }
 .sofia-avatar-curls { animation: sofia-avatar-curls 3s ease-in-out infinite; transform-origin: 90px 45px; }
 .sofia-avatar-stethoscope { stroke-dasharray: 4 2; }
