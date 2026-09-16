@@ -7270,7 +7270,7 @@ function App() {
       blocks: [
         {
           id: crypto.randomUUID(),
-          label: 'Pacientes con cobertura',
+          label: 'Paciente con obra social',
           modality: 'coverage',
           days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
           startTime: '09:00',
@@ -7305,7 +7305,14 @@ function App() {
     try {
       const result = await getPublicBookingSettings(activeUserId)
       if (result.success && result.settings) {
-        setPublicBookingSettings(result.settings)
+        const blocksByModality = new Map(result.settings.blocks.map((block) => [block.modality, block]))
+        setPublicBookingSettings({
+          ...result.settings,
+          blocks: Array.from(blocksByModality.values()).map((block) => ({
+            ...block,
+            label: block.modality === 'private' ? 'Paciente particular' : 'Paciente con obra social',
+          })),
+        })
       } else {
         setPublicBookingSettings(buildDefaultPublicBookingSettings())
       }
@@ -7336,11 +7343,15 @@ function App() {
   }
 
   function addPublicBookingBlock(modality: 'coverage' | 'private'): void {
+    if (publicBookingSettings?.blocks.some((block) => block.modality === modality)) {
+      setPublicBookingError(modality === 'private' ? 'Ya existe el bloque de pacientes particulares.' : 'Ya existe el bloque de pacientes con obra social.')
+      return
+    }
     const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
     const paymentLink = currentProf?.paymentLink?.trim() || ''
     const block: PublicBookingAvailabilityBlock = {
       id: crypto.randomUUID(),
-      label: modality === 'private' ? 'Paciente particular' : 'Pacientes con cobertura',
+      label: modality === 'private' ? 'Paciente particular' : 'Paciente con obra social',
       modality,
       days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
       startTime: modality === 'private' ? '16:00' : '09:00',
@@ -13805,7 +13816,7 @@ function App() {
                       return (
                         <article key={block.id} style={{ border: '1px solid #d8e2ee', borderRadius: 12, padding: 12, background: '#fff' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                            <strong>{block.modality === 'private' ? 'Particular con pago' : 'Cobertura / sin pago online'}</strong>
+                            <strong>{block.modality === 'private' ? 'Paciente particular' : 'Paciente con obra social'}</strong>
                             <button type="button" className="ghost compact" onClick={() => removePublicBookingBlock(block.id)} disabled={publicBookingSettings.blocks.length <= 1}>
                               Eliminar
                             </button>
@@ -13822,7 +13833,7 @@ function App() {
                                   paymentLink: event.target.value === 'private' ? block.paymentLink || profile?.paymentLink?.trim() || '' : undefined,
                                 })}
                               >
-                                <option value="coverage">Cobertura / sin pago online</option>
+                                <option value="coverage">Obra social / sin pago online</option>
                                 <option value="private">Particular / con pago</option>
                               </select>
                             </label>
