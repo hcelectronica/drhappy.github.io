@@ -13951,7 +13951,7 @@ function App() {
               ) : null}
             </section>
 
-            {false ? (<>
+            {freeSlotCapacity ? (<div style={{ display: 'none' }}><>
             <div style={{ margin: '18px 0 10px' }}>
               <span className="section-kicker">Enlace puntual</span>
             </div>
@@ -14168,14 +14168,14 @@ function App() {
                 <p style={{ margin: '0 0 8px', fontWeight: 600 }}>✅ Enlace generado</p>
                 <p style={{ margin: '0 0 10px', wordBreak: 'break-all', fontSize: '0.85rem' }}>{freeSlotGeneratedUrl}</p>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button type="button" onClick={() => handleShareFreeSlotLink(freeSlotGeneratedUrl)}>
+                  <button type="button" onClick={() => handleShareFreeSlotLink(freeSlotGeneratedUrl!)}>
                     💬 Compartir por WhatsApp
                   </button>
                   <button
                     type="button"
                     className="ghost"
                     onClick={() => {
-                      void navigator.clipboard.writeText(freeSlotGeneratedUrl)
+                      void navigator.clipboard.writeText(freeSlotGeneratedUrl!)
                       showSavedFloatingNotice('Enlace copiado al portapapeles')
                     }}
                   >
@@ -14235,7 +14235,7 @@ function App() {
                 </div>
               </div>
             ) : null}
-            </>) : null}
+            </></div>) : null}
           </div>
         </div>
       ) : null}
