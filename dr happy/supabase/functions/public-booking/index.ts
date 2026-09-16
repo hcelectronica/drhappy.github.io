@@ -173,7 +173,7 @@ function normalizeSettings(raw: PublicBookingSettingsPayload | undefined): Publi
   const professionalId = raw?.professionalId?.trim() ?? ''
   const professionalName = raw?.professionalName?.trim() ?? ''
   const slug = normalizeSlug(raw?.slug ?? professionalName)
-  const horizonDays = Math.max(7, Math.min(180, Math.round(Number(raw?.horizonDays) || 60)))
+  const horizonDays = 60
   const blocks = (raw?.blocks ?? []).map(normalizeBlock).filter((block): block is PublicBookingBlock => Boolean(block))
 
   if (!professionalId || !professionalName || !slug || !blocks.length) {
@@ -472,7 +472,7 @@ serve(async (request) => {
         const blocks = (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
           .map(normalizeBlock)
           .filter((block): block is PublicBookingBlock => Boolean(block))
-        const horizonDays = Math.max(7, Math.min(180, Number(settings.horizon_days) || 60))
+        const horizonDays = 60
         const startDate = body.startDate && body.startDate >= todayISO() ? body.startDate : todayISO()
         const requestedDays = Math.max(1, Math.min(35, Number(body.days) || 21))
         const maxDate = addDays(todayISO(), horizonDays - 1)
@@ -569,7 +569,7 @@ serve(async (request) => {
         if (!settings || !settings.enabled) {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
-        if (slotDate < todayISO() || slotDate > addDays(todayISO(), Math.max(7, Math.min(180, Number(settings.horizon_days) || 60)) - 1)) {
+        if (slotDate < todayISO() || slotDate > addDays(todayISO(), 59)) {
           return jsonResponse(409, { success: false, message: 'La fecha elegida está fuera del rango habilitado.' })
         }
 
