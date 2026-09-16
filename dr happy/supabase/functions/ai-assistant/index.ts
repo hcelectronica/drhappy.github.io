@@ -45,17 +45,9 @@ Deno.serve(async (request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-  const authorization = request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '').trim()
-  if (!supabaseUrl || !serviceRoleKey || !authorization) {
-    return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
-  }
-  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
-  const { data: authData } = await admin.auth.getUser(authorization)
-  if (!authData.user) {
-    return jsonResponse(401, { success: false, message: 'Sesión profesional inválida.' })
-  }
+  if (!supabaseUrl || !serviceRoleKey) return jsonResponse(500, { success: false, message: 'Falta configuración de Supabase.' })
 
-  let payload: { action?: string; messages?: unknown; professionalName?: string; context?: string }
+  let payload: { action?: string; messages?: unknown; professionalId?: string; professionalName?: string; context?: string }
   try {
     payload = await request.json()
   } catch {
@@ -65,6 +57,16 @@ Deno.serve(async (request) => {
   if (payload.action !== 'chat') {
     return jsonResponse(400, { success: false, message: 'Acción no soportada.' })
   }
+
+  const professionalId = typeof payload.professionalId === 'string' ? payload.professionalId.trim() : ''
+  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+  if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
+  const { data: professional } = await admin
+    .from('professionals')
+    .select('id, active')
+    .eq('id', professionalId)
+    .maybeSingle()
+  if (!professional || professional.active === false) return jsonResponse(401, { success: false, message: 'Profesional no autorizado.' })
 
   const messages = cleanMessages(payload.messages)
   if (!messages.length || messages[messages.length - 1].role !== 'user') {
