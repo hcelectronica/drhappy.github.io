@@ -7213,6 +7213,11 @@ function App() {
       return
     }
 
+    const toMinutes = (value: string): number => {
+      const [hours, minutes] = value.split(':').map(Number)
+      return hours * 60 + minutes
+    }
+
     const selectedDateDay = new Date(`${appointmentDraft.scheduledDate}T12:00:00`).getDay()
     if (!appointmentDays.includes(selectedDateDay)) {
       setAppError(`Ese día no está habilitado en tu agenda. Días de atención: ${appointmentDaysLabel}.`)
@@ -7232,10 +7237,6 @@ function App() {
       return
     }
 
-    const toMinutes = (value: string): number => {
-      const [hours, minutes] = value.split(':').map(Number)
-      return hours * 60 + minutes
-    }
     const requestedStart = toMinutes(appointmentDraft.scheduledTime)
     const requestedEnd = requestedStart + appointmentDraft.durationMinutes
     const conflict = appointments.find((a) => {
