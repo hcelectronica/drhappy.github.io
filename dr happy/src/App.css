@@ -3844,7 +3844,7 @@ body.theme-night .turnera-card-actions {
 
 .public-booking-config {
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .public-booking-url-row {
