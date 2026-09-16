@@ -48,6 +48,16 @@
     .chip { background: #fff; border: 1px solid var(--line); color: var(--ink); }
     .chip.active { background: #102033; border-color: #102033; color: #fff; }
     .calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; }
+    .calendar-weekday { color: var(--muted); font-size: .76rem; font-weight: 800; text-align: center; text-transform: uppercase; }
+    .month-day { min-height: 78px; display: grid; align-content: space-between; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; text-align: left; color: var(--ink); }
+    .month-day strong { font-size: 1.05rem; }
+    .month-day span { font-size: .72rem; font-weight: 800; }
+    .month-day.day-free { background: #ecfdf5; border-color: #86efac; color: #166534; cursor: pointer; }
+    .month-day.day-busy { background: #fef2f2; border-color: #fca5a5; color: #991b1b; cursor: pointer; }
+    .month-day.day-closed { background: #f8fafc; color: #94a3b8; }
+    .month-day.empty { border: 0; background: transparent; }
+    .first-available { grid-column: 1 / -1; padding: 14px 16px; border: 0; border-radius: 12px; background: #166534; color: white; font-size: .95rem; font-weight: 800; cursor: pointer; }
+    .first-available:disabled { background: #cbd5e1; cursor: not-allowed; }
     .day { padding: 14px; min-height: 180px; }
     .day header { margin-bottom: 10px; }
     .day strong { display: block; text-transform: capitalize; }
@@ -77,6 +87,7 @@
       .hero, .layout { grid-template-columns: 1fr; }
       .calendar { grid-template-columns: 1fr; }
       .day { min-height: auto; }
+      .month-day { min-height: 68px; padding: 8px; }
       .form { position: static; }
     }
   </style>
@@ -136,7 +147,7 @@
     var params = new URLSearchParams(window.location.search);
     var slug = params.get('p') || (window.location.hash || '').replace(/^#\/?/, '') || '';
     var fixedModality = params.get('m') === 'private' || params.get('m') === 'coverage' ? params.get('m') : null;
-    var cursor = todayISO();
+    var cursor = todayISO().slice(0, 7) + '-01';
     var filter = fixedModality || 'all';
     var agenda = null;
     var selected = null;
@@ -156,7 +167,7 @@
     function loadAgenda() {
       if (!slug) { showError('Falta el link público del profesional.'); return; }
       el('loading').style.display = 'block';
-      callFunction({ action: 'get-public-agenda', slug: slug, modality: fixedModality, startDate: cursor, days: 21 }).then(function (result) {
+      callFunction({ action: 'get-public-agenda', slug: slug, modality: fixedModality, startDate: cursor, days: 35 }).then(function (result) {
         if (!result.data.success) { showError(result.data.message); return; }
         agenda = result.data;
         el('title').textContent = 'Turnos de ' + agenda.profile.professionalName;
@@ -170,30 +181,20 @@
 
     function renderAgenda() {
       var days = agenda.days || [];
-      el('rangeLabel').textContent = days.length ? formatDate(days[0].date, { day: 'numeric', month: 'long' }) + ' - ' + formatDate(days[days.length - 1].date, { day: 'numeric', month: 'long' }) : '';
-      el('prevBtn').disabled = cursor <= todayISO();
-      el('nextBtn').disabled = addDays(cursor, 21) > addDays(todayISO(), (agenda.profile.horizonDays || 60) - 1);
+      var monthDate = new Date(Number(cursor.slice(0, 4)), Number(cursor.slice(5, 7)) - 1, 1);
+      el('rangeLabel').textContent = monthDate.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+      el('prevBtn').disabled = cursor <= todayISO().slice(0, 7) + '-01';
+      var nextMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1);
+      el('nextBtn').disabled = nextMonth.toISOString().slice(0, 10) > addDays(todayISO(), (agenda.profile.horizonDays || 60) - 1);
       var calendar = el('calendar');
       calendar.innerHTML = '';
-      days.forEach(function (day) {
-        var card = document.createElement('article');
-        card.className = 'card day';
-        var slots = (day.slots || []).filter(function (slot) { return filter === 'all' || slot.modality === filter; });
-        card.innerHTML = '<header><strong>' + formatDate(day.date, { weekday: 'long' }) + '</strong><small>' + formatDate(day.date, { day: 'numeric', month: 'long' }) + '</small></header>';
-        if (!slots.length) {
-          var empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = 'Sin horarios para esta modalidad.'; card.appendChild(empty);
-        }
-        slots.forEach(function (slot) {
-          var btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'slot' + (selected && selected.date === day.date && selected.time === slot.time && selected.blockId === slot.blockId ? ' selected' : '');
-          btn.disabled = !slot.available;
-          btn.innerHTML = '<span><strong>' + slot.time + ' hs</strong><small>' + slot.label + '</small></span><em class="badge ' + slot.modality + '">' + (slot.modality === 'private' ? '$' + money(slot.amountToCharge || 0) : 'Sin pago online') + '</em>';
-          btn.addEventListener('click', function () { selected = Object.assign({ date: day.date }, slot); renderSelection(); renderAgenda(); });
-          card.appendChild(btn);
-        });
-        calendar.appendChild(card);
-      });
+      calendar.className = 'calendar month-calendar';
+      ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].forEach(function (label) { var heading = document.createElement('div'); heading.className = 'calendar-weekday'; heading.textContent = label; calendar.appendChild(heading); });
+      var firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1); var offset = (firstDay.getDay() + 6) % 7;
+      for (var blank = 0; blank < offset; blank++) { var empty = document.createElement('div'); empty.className = 'month-day empty'; calendar.appendChild(empty); }
+      var daysByDate = {}; days.forEach(function (day) { daysByDate[day.date] = day; }); var daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+      for (var dayNumber = 1; dayNumber <= daysInMonth; dayNumber++) { var date = monthDate.getFullYear() + '-' + String(monthDate.getMonth() + 1).padStart(2, '0') + '-' + String(dayNumber).padStart(2, '0'); var day = daysByDate[date]; var slots = day ? (day.slots || []).filter(function (slot) { return filter === 'all' || slot.modality === filter; }) : []; var available = slots.filter(function (slot) { return slot.available; }); var cell = document.createElement('button'); cell.type = 'button'; cell.className = 'month-day ' + (available.length ? 'day-free' : slots.length ? 'day-busy' : 'day-closed'); cell.innerHTML = '<strong>' + dayNumber + '</strong><span>' + (available.length ? available.length + ' libres' : slots.length ? 'Ocupado' : 'Sin agenda') + '</span>'; cell.disabled = !available.length; cell.addEventListener('click', function (chosenDate, chosenSlots) { return function () { var first = chosenSlots.filter(function (slot) { return slot.available; })[0]; if (first) { selected = Object.assign({ date: chosenDate }, first); renderSelection(); } }; }(date, slots)); calendar.appendChild(cell); }
+      var firstAvailable = days.flatMap(function (day) { return (day.slots || []).filter(function (slot) { return slot.available && (filter === 'all' || slot.modality === filter); }).map(function (slot) { return Object.assign({ date: day.date }, slot); }); })[0]; var firstButton = document.createElement('button'); firstButton.type = 'button'; firstButton.className = 'first-available'; firstButton.textContent = firstAvailable ? '➜ Primer turno disponible: ' + formatDate(firstAvailable.date, { day: 'numeric', month: 'long' }) + ' a las ' + firstAvailable.time + ' hs' : 'No hay turnos libres en este mes'; firstButton.disabled = !firstAvailable; firstButton.addEventListener('click', function () { selected = firstAvailable; renderSelection(); }); calendar.appendChild(firstButton);
     }
 
     function renderSelection() {
@@ -225,8 +226,8 @@
         renderAgenda();
       });
     });
-    el('prevBtn').addEventListener('click', function () { cursor = addDays(cursor, -21); if (cursor < todayISO()) cursor = todayISO(); loadAgenda(); });
-    el('nextBtn').addEventListener('click', function () { cursor = addDays(cursor, 21); loadAgenda(); });
+    el('prevBtn').addEventListener('click', function () { var d = new Date(Number(cursor.slice(0, 4)), Number(cursor.slice(5, 7)) - 2, 1); cursor = d.toISOString().slice(0, 10); loadAgenda(); });
+    el('nextBtn').addEventListener('click', function () { var d = new Date(Number(cursor.slice(0, 4)), Number(cursor.slice(5, 7)), 1); cursor = d.toISOString().slice(0, 10); loadAgenda(); });
     el('confirmBtn').addEventListener('click', function () {
       var patientName = el('patientName').value.trim();
       var patientDni = el('patientDni').value.trim();
@@ -240,7 +241,7 @@
           msg.className = 'msg err'; msg.textContent = result.data.message || 'No pudimos reservar el turno.'; el('confirmBtn').disabled = false; el('confirmBtn').textContent = 'Confirmar turno'; loadAgenda(); return;
         }
         msg.className = 'msg ok';
-        msg.textContent = 'Turno confirmado para el ' + formatDate(result.data.appointment.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' a las ' + result.data.appointment.time + ' hs.' + (result.data.appointment.amountToCharge ? ' Recordá completar el pago indicado por el profesional.' : '');
+        msg.textContent = 'Turno confirmado para el ' + formatDate(result.data.appointment.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' a las ' + result.data.appointment.time + ' hs.' + (result.data.emailSent ? ' Te enviamos la confirmación por email.' : ' Revisá los datos del turno en pantalla.') + (result.data.appointment.amountToCharge ? ' Recordá completar el pago indicado por el profesional.' : '');
         el('confirmBtn').style.display = 'none';
         selected = null;
         loadAgenda();

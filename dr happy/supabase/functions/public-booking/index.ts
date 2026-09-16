@@ -669,6 +669,36 @@ serve(async (request) => {
           return jsonResponse(500, { success: false, message: `No se pudo agendar el turno: ${upsertError.message}` })
         }
 
+        let emailSent = false
+        if (patientEmail) {
+          const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${serviceRoleKey}`,
+              apikey: serviceRoleKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              to: patientEmail,
+              subject: `Turno confirmado con ${settings.professional_name} - ${slotDate} ${slotTime} hs`,
+              type: 'appointment',
+              templateData: {
+                patientName,
+                professionalName: settings.professional_name,
+                specialty: 'Consulta médica',
+                date: slotDate,
+                time: slotTime,
+                location: newAppointment.location,
+                notes: newAppointment.notes,
+                amountToCharge: amount,
+                amountConcept: amount ? block.amountConcept || 'consulta' : undefined,
+                paymentLink: amount ? block.paymentLink || undefined : undefined,
+              },
+            }),
+          })
+          emailSent = emailResponse.ok
+        }
+
         return jsonResponse(200, {
           success: true,
           appointment: {
@@ -681,6 +711,7 @@ serve(async (request) => {
             amountConcept: amount ? block.amountConcept || 'consulta' : null,
             paymentLink: amount ? block.paymentLink || null : null,
           },
+          emailSent,
         })
       }
 
