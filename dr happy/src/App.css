@@ -2986,6 +2986,48 @@ body.theme-night .appt-patient-search > label {
   overflow-y: auto;
 }
 
+.sofia-modal-card {
+  width: min(620px, 100%);
+  max-width: 620px;
+  gap: 12px;
+}
+
+.sofia-intro {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.sofia-messages {
+  display: grid;
+  gap: 10px;
+  max-height: min(430px, 46vh);
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.sofia-message {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #eef5ff;
+  color: #183759;
+}
+
+.sofia-message.user {
+  justify-self: end;
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.sofia-message span { display: block; margin-bottom: 3px; font-size: .7rem; font-weight: 800; opacity: .72; }
+.sofia-message p { margin: 0; white-space: pre-wrap; line-height: 1.45; font-size: .88rem; }
+.sofia-compose { display: grid; gap: 8px; }
+.sofia-compose textarea { width: 100%; resize: vertical; min-height: 78px; padding: 11px 12px; border: 1px solid #b7cae5; border-radius: 12px; font: inherit; box-sizing: border-box; }
+.sofia-disclaimer { color: #64748b; font-size: .72rem; }
+.sofia-nav-button { color: #1d4ed8; font-weight: 800; }
+
 body.theme-night .drhappy-modal-card {
   background: #0f1c30;
   color: #e2e8f0;
