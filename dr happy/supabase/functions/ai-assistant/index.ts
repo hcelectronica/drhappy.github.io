@@ -24,9 +24,24 @@ const tools = [
     input_schema: { type: 'object', properties: { date: { type: 'string', description: 'Fecha YYYY-MM-DD opcional.' }, month: { type: 'string', description: 'Mes YYYY-MM opcional.' } } },
   },
   {
+    name: 'consultar_turnera_publica',
+    description: 'Consulta la turnera pública de solo lectura: si está activa, bloques liberados, modalidad, fechas y horarios disponibles. Nunca modifica ni reserva turnos públicos.',
+    input_schema: { type: 'object', properties: { date: { type: 'string', description: 'Fecha YYYY-MM-DD opcional.' }, modality: { type: 'string', enum: ['coverage', 'private'], description: 'Filtra por obra social o particular.' } } },
+  },
+  {
     name: 'obtener_link_pago_profesional',
     description: 'Obtiene el link o alias de pago que el profesional tiene guardado en su perfil. Nunca inventes uno.',
     input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'buscar_memorias_sofia',
+    description: 'Busca preferencias y temas que el profesional pidió recordar. No incluye historias clínicas ni datos de pacientes.',
+    input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Tema o palabra clave opcional.' } } },
+  },
+  {
+    name: 'guardar_memoria_sofia',
+    description: 'Guarda una preferencia o tema de trabajo que el profesional pidió recordar. Nunca guardes datos clínicos de pacientes. Requiere confirmation=true.',
+    input_schema: { type: 'object', properties: { topic: { type: 'string' }, content: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['topic', 'content', 'confirmation'] },
   },
   {
     name: 'buscar_pacientes',
@@ -68,13 +83,13 @@ const tools = [
   },
   {
     name: 'agendar_turno',
-    description: 'Agenda un turno. Antes de usarla consultá buscar_turnos para verificar disponibilidad. Convertí hoy/mañana a una fecha YYYY-MM-DD usando la fecha actual del sistema. Siempre requiere confirmation=true; si es false, solo prepara una propuesta y no modifica datos.',
-    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD, nunca texto relativo.' }, time: { type: 'string' }, reason: { type: 'string' }, durationMinutes: { type: 'number' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'date', 'time', 'confirmation'] },
+    description: 'Agenda directamente un turno solicitado por el profesional. Convertí hoy/mañana a una fecha YYYY-MM-DD usando la fecha actual del sistema. La hora es opcional: si no se indica, elegí el primer bloque libre de la jornada. No pidas confirmación adicional. Solo detente si el día no atiende, no hay cupo o el horario se superpone con otro turno.',
+    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD, nunca texto relativo.' }, time: { type: 'string', description: 'Hora HH:MM opcional; si falta se asigna el primer bloque libre.' }, reason: { type: 'string' }, durationMinutes: { type: 'number' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'date', 'confirmation'] },
   },
   {
     name: 'crear_paciente_y_agendar_turno',
-    description: 'Registra un paciente nuevo y agenda su primer turno. Requiere confirmation=true; sin confirmación solo prepara una propuesta.',
-    input_schema: { type: 'object', properties: { nombre: { type: 'string' }, apellido: { type: 'string' }, dni: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, obraSocial: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD.' }, time: { type: 'string' }, reason: { type: 'string' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['nombre', 'apellido', 'dni', 'date', 'time', 'confirmation'] },
+    description: 'Registra un paciente nuevo y agenda directamente su primer turno con los datos recibidos. La hora es opcional: si no se indica, elegí el primer bloque libre de la jornada. El DNI y otros datos complementarios son opcionales y pueden completarse después manualmente. No pidas confirmación adicional. Solo detente si el día no atiende, no hay cupo o el horario se superpone.',
+    input_schema: { type: 'object', properties: { nombre: { type: 'string' }, apellido: { type: 'string' }, dni: { type: 'string', description: 'Opcional; se puede completar después manualmente.' }, email: { type: 'string' }, phone: { type: 'string' }, obraSocial: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD.' }, time: { type: 'string', description: 'Hora HH:MM opcional; si falta se asigna el primer bloque libre.' }, reason: { type: 'string' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['nombre', 'apellido', 'date', 'confirmation'] },
   },
   {
     name: 'cancelar_turno',
@@ -110,6 +125,35 @@ function timeToMinutes(value: unknown): number {
   return hours * 60 + minutes
 }
 
+function findFirstAvailableTime(appointments: Array<Record<string, unknown>>, durationMinutes: number, openingTime = '09:00', closingTime = '19:00'): string | null {
+  const openingMinutes = timeToMinutes(openingTime)
+  const closingMinutes = timeToMinutes(closingTime)
+  if (!Number.isFinite(openingMinutes) || !Number.isFinite(closingMinutes) || openingMinutes >= closingMinutes) return null
+  for (let start = openingMinutes; start + durationMinutes <= closingMinutes; start += 30) {
+    const conflict = appointments.some((item) => {
+      const currentStart = timeToMinutes(item.scheduledTime)
+      const currentEnd = currentStart + (Number(item.durationMinutes) || 30)
+      return start < currentEnd && start + durationMinutes > currentStart
+    })
+    if (!conflict) {
+      return `${String(Math.floor(start / 60)).padStart(2, '0')}:${String(start % 60).padStart(2, '0')}`
+    }
+  }
+  return null
+}
+
+function buildPublicSlotTimes(startTime: string, endTime: string, slotCount: number, durationMinutes: number): string[] {
+  const startMinutes = timeToMinutes(startTime)
+  const endMinutes = timeToMinutes(endTime)
+  const step = durationMinutes > 0 ? durationMinutes : slotCount > 1 ? Math.floor((endMinutes - startMinutes) / slotCount) : endMinutes - startMinutes
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || startMinutes >= endMinutes || step <= 0) return []
+  const times: string[] = []
+  for (let cursor = startMinutes; times.length < slotCount && cursor < endMinutes; cursor += step) {
+    times.push(`${String(Math.floor(cursor / 60)).padStart(2, '0')}:${String(cursor % 60).padStart(2, '0')}`)
+  }
+  return times
+}
+
 async function sendAppointmentConfirmation(params: {
   supabaseUrl: string
   serviceRoleKey: string
@@ -129,6 +173,7 @@ async function sendAppointmentConfirmation(params: {
     const response = await fetch(`${params.supabaseUrl}/functions/v1/send-email`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${params.serviceRoleKey}`, apikey: params.serviceRoleKey, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(8000),
       body: JSON.stringify({
         to: params.email.trim(),
         subject: `Turno confirmado con ${params.professionalName} - ${params.date} ${params.time} hs`,
@@ -184,6 +229,8 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const profileData = (profile?.profile_json && typeof profile.profile_json === 'object' ? profile.profile_json : {}) as Record<string, unknown>
     const dailyLimit = Number(profileData.dailyPatientLimit) || 10
     const configuredDays = Array.isArray(profileData.appointmentDays) ? profileData.appointmentDays : [1, 2, 4]
+    const openingTime = typeof profileData.appointmentStartTime === 'string' ? profileData.appointmentStartTime : '09:00'
+    const closingTime = typeof profileData.appointmentEndTime === 'string' ? profileData.appointmentEndTime : '19:00'
     const requestedDate = typeof input.date === 'string' ? input.date : ''
     const requestedMonth = typeof input.month === 'string' ? input.month : ''
     const dates = appointments.map((item) => String(item.scheduledDate || '')).filter(Boolean)
@@ -192,13 +239,79 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
       const count = appointments.filter((item) => item.scheduledDate === date && item.status !== 'cancelled').length
       return { date, occupied: count, available: Math.max(0, dailyLimit - count), limit: dailyLimit }
     })
-    return { dailyLimit, appointmentDays: configuredDays, occupancy }
+    return { dailyLimit, appointmentDays: configuredDays, openingTime, closingTime, occupancy }
   }
 
   if (name === 'obtener_link_pago_profesional') {
     const { data } = await admin.from('user_workspaces').select('profile_json').eq('user_id', professionalId).maybeSingle()
     const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
     return { paymentLink: typeof profile.paymentLink === 'string' ? profile.paymentLink : null }
+  }
+
+  if (name === 'consultar_turnera_publica') {
+    const { data: publicProfile } = await admin.from('public_booking_profiles').select('slug, enabled, professional_name, location, reason, horizon_days, availability_blocks').eq('professional_id', professionalId).maybeSingle()
+    if (!publicProfile) return { enabled: false, message: 'Todavía no hay una turnera pública configurada.' }
+    if (publicProfile.enabled !== true) return { enabled: false, slug: publicProfile.slug, message: 'La turnera pública está configurada pero desactivada.' }
+    const requestedDate = typeof input.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.date) ? input.date : ''
+    const requestedModality = input.modality === 'private' || input.modality === 'coverage' ? input.modality : ''
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+    const blocks = Array.isArray(publicProfile.availability_blocks) ? publicProfile.availability_blocks as Array<Record<string, unknown>> : []
+    const normalizedBlocks = blocks.filter((block) => (!requestedModality || block.modality === requestedModality) && Array.isArray(block.days) && typeof block.startTime === 'string' && typeof block.endTime === 'string')
+    const { data: workspace } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
+    const appointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json as Array<Record<string, unknown>> : []
+    const { data: reservations } = await admin.from('public_booking_reservations').select('slot_date, slot_time, status').eq('professional_id', professionalId).gte('slot_date', today)
+    const occupied = new Set([
+      ...appointments.filter((item) => item.status !== 'cancelled').map((item) => `${item.scheduledDate}|${item.scheduledTime}`),
+      ...(reservations || []).filter((item) => item.status !== 'cancelled').map((item) => `${item.slot_date}|${item.slot_time}`),
+    ])
+    const dates = new Map<string, Array<Record<string, unknown>>>()
+    const horizon = Math.min(Number(publicProfile.horizon_days) || 60, 60)
+    for (let offset = 0; offset < horizon; offset += 1) {
+      const date = new Date(`${today}T12:00:00`)
+      date.setDate(date.getDate() + offset)
+      const dateKey = date.toISOString().slice(0, 10)
+      if (requestedDate && requestedDate !== dateKey) continue
+      const weekday = date.getDay()
+      const slots = normalizedBlocks.flatMap((block) => {
+        const days = block.days as unknown[]
+        if (!days.includes(weekday)) return []
+        const duration = Number(block.durationMinutes) || 30
+        return buildPublicSlotTimes(String(block.startTime), String(block.endTime), Number(block.slotCount) || 1, duration).map((time) => ({
+          time,
+          available: !occupied.has(`${dateKey}|${time}`),
+          label: block.label || 'Turno disponible',
+          modality: block.modality || 'coverage',
+          durationMinutes: duration,
+          location: block.location || publicProfile.location || '',
+          reason: block.reason || publicProfile.reason || '',
+        }))
+      }).sort((left, right) => String(left.time).localeCompare(String(right.time)))
+      if (slots.length) dates.set(dateKey, slots)
+    }
+    return { enabled: true, slug: publicProfile.slug, professionalName: publicProfile.professional_name, location: publicProfile.location, reason: publicProfile.reason, dates: Array.from(dates, ([date, slots]) => ({ date, slots })) }
+  }
+
+  if (name === 'buscar_memorias_sofia') {
+    const { data } = await admin.from('user_workspaces').select('profile_json').eq('user_id', professionalId).maybeSingle()
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const memories = Array.isArray(profile.sofiaMemory) ? profile.sofiaMemory as Array<Record<string, unknown>> : []
+    const query = normalizeSearch(input.query)
+    return { memories: memories.filter((memory) => !query || normalizeSearch(`${memory.topic || ''} ${memory.content || ''}`).includes(query)).slice(-30) }
+  }
+
+  if (name === 'guardar_memoria_sofia') {
+    const topic = String(input.topic || '').trim().slice(0, 120)
+    const content = String(input.content || '').trim().slice(0, 500)
+    if (!topic || !content) return { success: false, message: 'La memoria necesita un tema y un contenido.' }
+    const proposal = { topic, content }
+    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'guardar_memoria_sofia', proposal, message: 'Pedí confirmación antes de guardar esta memoria.' }
+    const { data } = await admin.from('user_workspaces').select('profile_json').eq('user_id', professionalId).maybeSingle()
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const memories = Array.isArray(profile.sofiaMemory) ? profile.sofiaMemory as Array<Record<string, unknown>> : []
+    const nextMemory = { id: crypto.randomUUID(), topic, content, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+    const nextMemories = [...memories.filter((memory) => normalizeSearch(memory.topic) !== normalizeSearch(topic)), nextMemory].slice(-50)
+    const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, profile_json: { ...profile, sofiaMemory: nextMemories } }, { onConflict: 'user_id' })
+    return error ? { success: false, message: error.message } : { success: true, message: `Recordaré el tema "${topic}".` }
   }
 
   if (name === 'buscar_pacientes') {
@@ -280,23 +393,28 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const patient = patients.find((item) => normalizeSearch(`${item.nombre || ''} ${item.apellido || ''} ${item.dni || ''}`).includes(patientQuery))
     if (!patient) return { success: false, message: 'No encontré un paciente que coincida. Pedí nombre completo o DNI.' }
     const proposal = { patient: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), patientId: patient.id, date: input.date, time: input.time, reason: input.reason || 'Consulta médica', durationMinutes: Number(input.durationMinutes) || 30, location: input.location || 'Consultorio médico' }
-    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'agendar_turno', proposal, message: 'Pedí confirmación explícita antes de agendar.' }
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
     const profileData = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
     const dailyLimit = Number(profileData.dailyPatientLimit) || 10
     const appointmentDays = Array.isArray(profileData.appointmentDays) ? profileData.appointmentDays : [1, 2, 4]
+    const openingTime = typeof profileData.appointmentStartTime === 'string' ? profileData.appointmentStartTime : '09:00'
+    const closingTime = typeof profileData.appointmentEndTime === 'string' ? profileData.appointmentEndTime : '19:00'
     if (!appointmentDays.includes(dateWeekday(String(input.date)))) return { success: false, message: 'Ese día no está habilitado en la agenda profesional.' }
     const activeOnDate = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === input.date)
     if (activeOnDate.length >= dailyLimit) return { success: false, message: `El cupo diario está completo (${dailyLimit} turnos).` }
-    const requestedStart = timeToMinutes(input.time)
+    const selectedTime = typeof input.time === 'string' && /^\d{2}:\d{2}$/.test(input.time) ? input.time : findFirstAvailableTime(activeOnDate, proposal.durationMinutes, openingTime, closingTime)
+    if (!selectedTime) return { success: false, message: 'No encontré un bloque libre en la jornada para ese día.' }
+    if (timeToMinutes(selectedTime) < timeToMinutes(openingTime) || timeToMinutes(selectedTime) + proposal.durationMinutes > timeToMinutes(closingTime)) return { success: false, message: `El horario debe estar dentro de tu agenda: ${openingTime} a ${closingTime}.` }
+    proposal.time = selectedTime
+    const requestedStart = timeToMinutes(selectedTime)
     const requestedEnd = requestedStart + proposal.durationMinutes
     const conflict = activeOnDate.some((item) => { const start = timeToMinutes(item.scheduledTime); const end = start + (Number(item.durationMinutes) || 30); return requestedStart < end && requestedEnd > start })
     if (conflict) return { success: false, message: 'Ese horario ya está ocupado.' }
-    const appointment = { id: crypto.randomUUID(), patientId: patient.id, patientName: proposal.patient, patientEmail: patient.email || '', patientDni: patient.dni || '', scheduledDate: input.date, scheduledTime: input.time, scheduledAt: `${input.date}T${input.time}:00`, durationMinutes: proposal.durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
+    const appointment = { id: crypto.randomUUID(), patientId: patient.id, patientName: proposal.patient, patientEmail: patient.email || '', patientDni: patient.dni || '', scheduledDate: input.date, scheduledTime: selectedTime, scheduledAt: `${input.date}T${selectedTime}:00`, durationMinutes: proposal.durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
     const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, appointments_json: [...appointments, appointment] }, { onConflict: 'user_id' })
     if (error) return { success: false, message: error.message }
-    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(patient.email || ''), patientName: proposal.patient, professionalName: String(profileData.fullName || 'Dr Happy'), date: String(input.date), time: String(input.time), location: proposal.location, reason: proposal.reason, paymentLink: typeof profileData.paymentLink === 'string' ? profileData.paymentLink : undefined })
-    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno agendado para ${proposal.patient} el ${input.date} a las ${input.time}.${emailResult.sent ? ' Confirmación enviada por email.' : ` No se pudo enviar el email: ${emailResult.message}`}` }
+    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(patient.email || ''), patientName: proposal.patient, professionalName: String(profileData.fullName || 'Dr Happy'), date: String(input.date), time: selectedTime, location: proposal.location, reason: proposal.reason, paymentLink: typeof profileData.paymentLink === 'string' ? profileData.paymentLink : undefined })
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno agendado para ${proposal.patient} el ${input.date} a las ${selectedTime}.${emailResult.sent ? ' Confirmación enviada por email.' : ` No se pudo enviar el email: ${emailResult.message}`}` }
   }
 
   if (name === 'crear_paciente_y_agendar_turno') {
@@ -304,23 +422,46 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const apellido = String(input.apellido || '').trim()
     const dni = String(input.dni || '').trim()
     const date = String(input.date || '').trim()
-    const time = String(input.time || '').trim()
-    if (!nombre || !apellido || !dni || !date || !time) return { success: false, message: 'Faltan nombre, apellido, DNI, fecha u hora.' }
-    const { data } = await admin.from('user_workspaces').select('patients_json, appointments_json').eq('user_id', professionalId).maybeSingle()
+    const requestedTime = String(input.time || '').trim()
+    if (!nombre || !apellido || !date) return { success: false, message: 'Faltan nombre, apellido o fecha.' }
+    const { data } = await admin.from('user_workspaces').select('patients_json, appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
-    const existing = patients.find((patient) => String(patient.dni || '').trim() === dni)
+    const profileData = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const dailyLimit = Number(profileData.dailyPatientLimit) || 10
+    const appointmentDays = Array.isArray(profileData.appointmentDays) ? profileData.appointmentDays : [1, 2, 4]
+    const openingTime = typeof profileData.appointmentStartTime === 'string' ? profileData.appointmentStartTime : '09:00'
+    const closingTime = typeof profileData.appointmentEndTime === 'string' ? profileData.appointmentEndTime : '19:00'
+    if (!appointmentDays.includes(dateWeekday(date))) return { success: false, message: 'Ese día no está habilitado en la agenda profesional.' }
+    const activeOnDate = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === date)
+    if (activeOnDate.length >= dailyLimit) return { success: false, message: `El cupo diario está completo (${dailyLimit} turnos).` }
+    const durationMinutes = 30
+    const selectedTime = /^\d{2}:\d{2}$/.test(requestedTime) ? requestedTime : findFirstAvailableTime(activeOnDate, durationMinutes, openingTime, closingTime)
+    if (!selectedTime) return { success: false, message: 'No encontré un bloque libre en la jornada para ese día.' }
+    if (timeToMinutes(selectedTime) < timeToMinutes(openingTime) || timeToMinutes(selectedTime) + durationMinutes > timeToMinutes(closingTime)) return { success: false, message: `El horario debe estar dentro de tu agenda: ${openingTime} a ${closingTime}.` }
+    const normalizedName = normalizeSearch(`${nombre} ${apellido}`)
+    const existing = patients.find((patient) => {
+      const exactDni = typeof patient.dni === 'string' && dni && String(patient.dni).trim() === dni
+      const sameName = normalizeSearch(`${patient.nombre || ''} ${patient.apellido || ''}`) === normalizedName
+      return exactDni || sameName
+    })
     const patientId = existing?.id || crypto.randomUUID()
     const patientName = `${apellido}, ${nombre}`
-    const proposal = { patientName, dni, email: input.email || '', date, time, reason: input.reason || 'Consulta médica', location: input.location || 'Consultorio médico' }
-    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'crear_paciente_y_agendar_turno', proposal, message: 'Pedí confirmación explícita antes de registrar al paciente y agendar.' }
-    if (appointments.some((item) => item.status !== 'cancelled' && item.scheduledDate === date && item.scheduledTime === time)) return { success: false, message: 'Ese horario ya está ocupado.' }
-    const patient = existing || { id: patientId, ownerUserId: professionalId, nombre, apellido, dni, email: input.email || '', obraSocial: input.obraSocial || '', numeroAfiliado: '', plan: '', birthDate: '', edad: 0, patologiasConocidas: '', patologiasCronicas: '', ultimaInternacion: '', cirugiasPrevias: '', direccion: '', documents: [], consultations: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-    const appointment = { id: crypto.randomUUID(), patientId, patientName, patientEmail: input.email || '', patientDni: dni, scheduledDate: date, scheduledTime: time, scheduledAt: `${date}T${time}:00`, durationMinutes: 30, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
+    const proposal = { patientName, dni, email: input.email || '', date, time: selectedTime, reason: input.reason || 'Consulta médica', location: input.location || 'Consultorio médico' }
+    const requestedStart = timeToMinutes(selectedTime)
+    const requestedEnd = requestedStart + durationMinutes
+    const conflict = activeOnDate.some((item) => {
+      const start = timeToMinutes(item.scheduledTime)
+      const end = start + (Number(item.durationMinutes) || 30)
+      return requestedStart < end && requestedEnd > start
+    })
+    if (conflict) return { success: false, message: 'Ese horario ya está ocupado.' }
+    const patient = existing || { id: patientId, ownerUserId: professionalId, nombre, apellido, dni: dni || '', email: input.email || '', obraSocial: input.obraSocial || '', numeroAfiliado: '', plan: '', birthDate: '', edad: 0, patologiasConocidas: '', patologiasCronicas: '', ultimaInternacion: '', cirugiasPrevias: '', direccion: '', documents: [], consultations: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+    const appointment = { id: crypto.randomUUID(), patientId, patientName, patientEmail: input.email || '', patientDni: dni || '', scheduledDate: date, scheduledTime: selectedTime, scheduledAt: `${date}T${selectedTime}:00`, durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
     const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, patients_json: existing ? patients : [...patients, patient], appointments_json: [...appointments, appointment] }, { onConflict: 'user_id' })
     if (error) return { success: false, message: error.message }
-    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(input.email || ''), patientName, professionalName: 'Dr Happy', date, time, location: proposal.location, reason: proposal.reason })
-    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Paciente ${patientName} registrado y turno agendado para ${date} a las ${time}.${emailResult.sent ? ' Confirmación enviada por email.' : ` No se pudo enviar el email: ${emailResult.message}`}` }
+    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(input.email || ''), patientName, professionalName: String(profileData.fullName || 'Dr Happy'), date, time: selectedTime, location: proposal.location, reason: proposal.reason })
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Paciente ${patientName} registrado y turno agendado para ${date} a las ${selectedTime}.${emailResult.sent ? ' Confirmación enviada por email.' : ` No se pudo enviar el email: ${emailResult.message}`}` }
   }
 
   if (name === 'cancelar_turno') {
@@ -408,10 +549,27 @@ Deno.serve(async (request) => {
   if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
   const { data: professional } = await admin
     .from('professionals')
-    .select('id, active')
+    .select('id, active, is_admin, subscription_status, subscription_expires_at')
     .eq('id', professionalId)
     .maybeSingle()
   if (!professional || professional.active === false) return jsonResponse(401, { success: false, message: 'Profesional no autorizado.' })
+
+  const now = new Date()
+  const subscriptionExpiresAt = typeof professional.subscription_expires_at === 'string' ? new Date(professional.subscription_expires_at) : null
+  const subscriptionExpired = subscriptionExpiresAt && !Number.isNaN(subscriptionExpiresAt.getTime()) && subscriptionExpiresAt.getTime() <= now.getTime()
+  if (!professional.is_admin && (professional.subscription_status === 'cancelled' || professional.subscription_status === 'expired' || subscriptionExpired)) {
+    return jsonResponse(402, { success: false, message: 'El acceso de Sofía requiere una suscripción activa.' })
+  }
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
+  const { count: monthlyUsage } = await admin
+    .from('ai_usage_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('professional_id', professionalId)
+    .gte('created_at', monthStart)
+  const monthlyLimit = professional.is_admin ? 5000 : professional.subscription_status === 'active' ? 500 : 50
+  if (!professional.is_admin && (monthlyUsage || 0) >= monthlyLimit) {
+    return jsonResponse(429, { success: false, message: `Alcanzaste el límite mensual de Sofía (${monthlyLimit} consultas).`, monthlyUsage, monthlyLimit })
+  }
 
   const messages = cleanMessages(payload.messages)
   if (!messages.length || messages[messages.length - 1].role !== 'user') {
@@ -420,7 +578,6 @@ Deno.serve(async (request) => {
 
   const professionalName = typeof payload.professionalName === 'string' ? payload.professionalName.trim() : 'profesional'
   const context = typeof payload.context === 'string' ? payload.context.trim().slice(0, 8000) : ''
-  const now = new Date()
   const currentDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
   const currentTime = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' }).format(now)
   const system = [
@@ -432,17 +589,20 @@ Deno.serve(async (request) => {
     'En esta primera versión no inventes datos clínicos ni afirmes haber consultado una historia que no recibiste.',
     'No diagnostiques ni indiques tratamientos autónomamente. Separá hechos, sugerencias y datos faltantes.',
     'Cuando el profesional pida una acción que todavía no está conectada, explicá que se incorporará como herramienta en la próxima etapa.',
-    'Nunca ejecutes agendar_turno, cancelar_turno o enviar_notificacion_paciente sin confirmation=true. Primero presentá la propuesta y pedí confirmación explícita.',
+    'Para agendar un turno solicitado directamente por el profesional, ejecutá la acción sin pedir confirmación adicional. Solo informá y detenete si no hay cupo, el día no está habilitado o existe una superposición. Cancelaciones, notificaciones y memorias sí requieren confirmación.',
     'No digas que una acción ocurrió si la herramienta no devolvió success=true. Si una operación falla o requiere confirmación, informalo claramente y no lo presentes como realizado.',
     `Fecha y hora actual de Argentina: ${currentDate} ${currentTime}. Si el profesional dice hoy, mañana o pasado mañana, convertílo a YYYY-MM-DD sin preguntarle qué fecha es.`,
-    'Si preguntan por turnos o agenda, usá siempre buscar_turnos antes de responder. Si piden agendar, primero consultá disponibilidad con buscar_turnos y luego pedí confirmación.',
+    'Si preguntan por turnos o agenda, consultá buscar_turnos cuando necesites informar datos. Si piden agendar, usá directamente la herramienta de agendamiento; no hagas una consulta previa ni pidas confirmación adicional.',
+    'Si preguntan por los turnos liberados al público, la turnera pública o qué horarios puede elegir un paciente, usá consultar_turnera_publica. Es una herramienta de solo lectura: nunca intentes modificarla ni reservar desde Sofía.',
     'Si preguntan por ocupación, cupos o disponibilidad diaria, usá consultar_calendario_ocupacion. Si piden un link de pago, usá obtener_link_pago_profesional.',
-    'Para un paciente nuevo usá crear_paciente_y_agendar_turno; nunca registres ni agendes sin confirmation=true.',
+    'Para un paciente nuevo usá crear_paciente_y_agendar_turno y agendalo directamente con los datos disponibles; no pidas DNI, email, motivo ni otros campos opcionales.',
+    'Si el profesional dice que recuerdes una preferencia o tema de trabajo, proponé guardar_memoria_sofia y pedí confirmación. Nunca guardes datos clínicos de pacientes en esa memoria. Si pregunta por algo que podría haber recordado, usá buscar_memorias_sofia.',
     context ? `Contexto disponible de la sesión:\n${context}` : '',
   ].filter(Boolean).join('\n\n')
 
   let anthropicMessages: unknown[] = messages
   let reply = ''
+  let pendingConfirmation: { action: string; proposal: Record<string, unknown> } | undefined
   let inputTokens = 0
   let outputTokens = 0
   for (let iteration = 0; iteration < 10; iteration += 1) {
@@ -465,9 +625,21 @@ Deno.serve(async (request) => {
     if (!toolUses.length) { reply = text; break }
     anthropicMessages = [...anthropicMessages, { role: 'assistant', content }]
     const toolResults = []
+    let directSchedulingReply = ''
     for (const toolUse of toolUses) {
       const toolData = await runTool(toolUse.name, toolUse.input || {}, admin, professionalId)
+      const toolRecord = toolData && typeof toolData === 'object' ? toolData as Record<string, unknown> : null
+      if (toolRecord?.requiresConfirmation === true && typeof toolRecord.action === 'string' && toolRecord.proposal && typeof toolRecord.proposal === 'object') {
+        pendingConfirmation = { action: toolRecord.action, proposal: toolRecord.proposal as Record<string, unknown> }
+      }
+      if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno') && toolRecord && typeof toolRecord.message === 'string') {
+        directSchedulingReply = toolRecord.message
+      }
       toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(toolData).slice(0, 12000) })
+    }
+    if (directSchedulingReply) {
+      reply = directSchedulingReply
+      break
     }
     anthropicMessages = [...anthropicMessages, { role: 'user', content: toolResults }]
   }
@@ -485,5 +657,5 @@ Deno.serve(async (request) => {
     request_type: 'chat',
   })
 
-  return jsonResponse(200, { success: true, reply })
+  return jsonResponse(200, { success: true, reply, pendingConfirmation })
 })
