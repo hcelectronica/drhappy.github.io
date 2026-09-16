@@ -123,8 +123,8 @@ async function sendAppointmentConfirmation(params: {
   amountToCharge?: number
   amountConcept?: string
   paymentLink?: string
-}): Promise<boolean> {
-  if (!params.email?.trim()) return false
+}): Promise<{ sent: boolean; message?: string }> {
+  if (!params.email?.trim()) return { sent: false, message: 'El paciente no tiene email cargado.' }
   const response = await fetch(`${params.supabaseUrl}/functions/v1/send-email`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${params.serviceRoleKey}`, apikey: params.serviceRoleKey, 'Content-Type': 'application/json' },
@@ -146,7 +146,11 @@ async function sendAppointmentConfirmation(params: {
       },
     }),
   })
-  return response.ok
+  const result = await response.json().catch(() => null)
+  if (!response.ok || !result?.success) {
+    return { sent: false, message: typeof result?.message === 'string' ? result.message : `send-email respondió HTTP ${response.status}.` }
+  }
+  return { sent: true }
 }
 
 async function runTool(name: string, input: Record<string, unknown>, admin: ReturnType<typeof createClient>, professionalId: string): Promise<unknown> {
@@ -286,8 +290,8 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const appointment = { id: crypto.randomUUID(), patientId: patient.id, patientName: proposal.patient, patientEmail: patient.email || '', patientDni: patient.dni || '', scheduledDate: input.date, scheduledTime: input.time, scheduledAt: `${input.date}T${input.time}:00`, durationMinutes: proposal.durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
     const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, appointments_json: [...appointments, appointment] }, { onConflict: 'user_id' })
     if (error) return { success: false, message: error.message }
-    const emailSent = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(patient.email || ''), patientName: proposal.patient, professionalName: String(profileData.fullName || 'Dr Happy'), date: String(input.date), time: String(input.time), location: proposal.location, reason: proposal.reason, paymentLink: typeof profileData.paymentLink === 'string' ? profileData.paymentLink : undefined })
-    return { success: true, emailSent, message: `Turno agendado para ${proposal.patient} el ${input.date} a las ${input.time}.` }
+    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(patient.email || ''), patientName: proposal.patient, professionalName: String(profileData.fullName || 'Dr Happy'), date: String(input.date), time: String(input.time), location: proposal.location, reason: proposal.reason, paymentLink: typeof profileData.paymentLink === 'string' ? profileData.paymentLink : undefined })
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno agendado para ${proposal.patient} el ${input.date} a las ${input.time}.${emailResult.sent ? ' Confirmación enviada por email.' : ` No se pudo enviar el email: ${emailResult.message}`}` }
   }
 
   if (name === 'crear_paciente_y_agendar_turno') {
@@ -309,7 +313,9 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const patient = existing || { id: patientId, ownerUserId: professionalId, nombre, apellido, dni, email: input.email || '', obraSocial: input.obraSocial || '', numeroAfiliado: '', plan: '', birthDate: '', edad: 0, patologiasConocidas: '', patologiasCronicas: '', ultimaInternacion: '', cirugiasPrevias: '', direccion: '', documents: [], consultations: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
     const appointment = { id: crypto.randomUUID(), patientId, patientName, patientEmail: input.email || '', patientDni: dni, scheduledDate: date, scheduledTime: time, scheduledAt: `${date}T${time}:00`, durationMinutes: 30, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
     const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, patients_json: existing ? patients : [...patients, patient], appointments_json: [...appointments, appointment] }, { onConflict: 'user_id' })
-    return error ? { success: false, message: error.message } : { success: true, message: `Paciente ${patientName} registrado y turno agendado para ${date} a las ${time}.` }
+    if (error) return { success: false, message: error.message }
+    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(input.email || ''), patientName, professionalName: 'Dr Happy', date, time, location: proposal.location, reason: proposal.reason })
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Paciente ${patientName} registrado y turno agendado para ${date} a las ${time}.${emailResult.sent ? ' Confirmación enviada por email.' : ` No se pudo enviar el email: ${emailResult.message}`}` }
   }
 
   if (name === 'cancelar_turno') {
