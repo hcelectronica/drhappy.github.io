@@ -56,6 +56,7 @@ interface RequestBody {
   startDate?: string
   days?: number
   blockId?: string
+  modality?: 'coverage' | 'private'
 }
 
 interface PublicBookingBlock {
@@ -463,6 +464,7 @@ serve(async (request) => {
 
       case 'get-public-agenda': {
         const slug = normalizeSlug(body.slug ?? '')
+        const requestedModality = body.modality === 'private' || body.modality === 'coverage' ? body.modality : null
         if (!slug) {
           return jsonResponse(400, { success: false, message: 'Falta el link público del profesional.' })
         }
@@ -484,7 +486,7 @@ serve(async (request) => {
             .map(normalizeBlock)
             .filter((block): block is PublicBookingBlock => Boolean(block))
             .map((block) => [block.modality, block] as const),
-        ).values())
+        ).values()).filter((block) => !requestedModality || block.modality === requestedModality)
         const horizonDays = 60
         const startDate = body.startDate && body.startDate >= todayISO() ? body.startDate : todayISO()
         const requestedDays = Math.max(1, Math.min(35, Number(body.days) || 21))
@@ -562,6 +564,7 @@ serve(async (request) => {
         const slotDate = body.slotDate?.trim() ?? ''
         const slotTime = body.slotTime?.trim() ?? ''
         const blockId = body.blockId?.trim() ?? ''
+        const requestedModality = body.modality === 'private' || body.modality === 'coverage' ? body.modality : null
         const patientName = body.patientName?.trim() ?? ''
         const patientDni = body.patientDni?.trim() ?? ''
         const patientEmail = body.patientEmail?.trim() ?? ''
@@ -593,7 +596,7 @@ serve(async (request) => {
             .map((block) => [block.modality, block] as const),
         ).values())
         const block = blocks.find((entry) => entry.id === blockId)
-        if (!block || !block.days.includes(dateDay(slotDate)) || !buildBlockSlotTimes(block).includes(slotTime)) {
+        if (!block || (requestedModality && block.modality !== requestedModality) || !block.days.includes(dateDay(slotDate)) || !buildBlockSlotTimes(block).includes(slotTime)) {
           return jsonResponse(409, { success: false, message: 'Ese horario ya no está habilitado.' })
         }
 

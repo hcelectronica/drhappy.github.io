@@ -111,9 +111,10 @@ export function buildPublicBookingUrl(token: string): string {
   return `${base}turno-libre.html?t=${token}`
 }
 
-export function buildFixedPublicBookingUrl(slug: string): string {
+export function buildFixedPublicBookingUrl(slug: string, modality?: 'coverage' | 'private'): string {
   const base = `${window.location.origin}${window.location.pathname.replace(/index\.html$/, '')}`
-  return `${base}turnos/?p=${encodeURIComponent(slug)}`
+  const modalityQuery = modality ? `&m=${modality}` : ''
+  return `${base}turnos/?p=${encodeURIComponent(slug)}${modalityQuery}`
 }
 
 export function buildWhatsAppShareUrl(link: string, professionalName?: string): string {
