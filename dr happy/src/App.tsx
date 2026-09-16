@@ -42,6 +42,7 @@ import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
 import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
+import { SofiaAvatar } from './SofiaAvatar'
 import { selfDeleteAccount } from './selfDeleteService'
 import {
   setProfessionalActive,
@@ -104,6 +105,8 @@ const WEEK_DAYS = [
 ]
 const DEFAULT_APPOINTMENT_DAYS = [1, 2, 4]
 const DEFAULT_DAILY_PATIENT_LIMIT = 10
+const DEFAULT_APPOINTMENT_START_TIME = '09:00'
+const DEFAULT_APPOINTMENT_END_TIME = '19:00'
 
 const APP_FLYER_SLIDES = [
   { key: 'ambulance', eyebrow: 'Respuesta inmediata', title: 'Modo Ambulancia', description: 'Gestioná rápidamente traslados, guardias y atención prehospitalaria con protocolos listos para usar.', icon: '🚑', visual: 'ambulance' },
@@ -246,6 +249,8 @@ interface ProfessionalProfile {
   paymentLink?: string
   appointmentDays?: number[]
   dailyPatientLimit?: number
+  appointmentStartTime?: string
+  appointmentEndTime?: string
 }
 
 interface ConsultationEntry {
@@ -1199,6 +1204,12 @@ function normalizeRemoteProfile(raw: unknown, fallback: ProfessionalProfile): Pr
       typeof candidate.dailyPatientLimit === 'number' && candidate.dailyPatientLimit > 0
         ? candidate.dailyPatientLimit
         : DEFAULT_DAILY_PATIENT_LIMIT,
+    appointmentStartTime: typeof candidate.appointmentStartTime === 'string' && /^\d{2}:\d{2}$/.test(candidate.appointmentStartTime)
+      ? candidate.appointmentStartTime
+      : DEFAULT_APPOINTMENT_START_TIME,
+    appointmentEndTime: typeof candidate.appointmentEndTime === 'string' && /^\d{2}:\d{2}$/.test(candidate.appointmentEndTime)
+      ? candidate.appointmentEndTime
+      : DEFAULT_APPOINTMENT_END_TIME,
     matriculaPhoto: normalizeStoredFile(candidate.matriculaPhoto) ?? undefined,
     signatureImage: normalizeStoredFile(candidate.signatureImage) ?? undefined,
     communitySeenMessageIds: normalizeStringList(candidate.communitySeenMessageIds),
@@ -1466,6 +1477,8 @@ function profileFromSeed(user: SeedUser): ProfessionalProfile {
     communitySeenMessageIds: [],
     appointmentDays: DEFAULT_APPOINTMENT_DAYS,
     dailyPatientLimit: DEFAULT_DAILY_PATIENT_LIMIT,
+    appointmentStartTime: DEFAULT_APPOINTMENT_START_TIME,
+    appointmentEndTime: DEFAULT_APPOINTMENT_END_TIME,
   }
 }
 
@@ -2478,6 +2491,8 @@ function App() {
   const [appointmentDateFilter, setAppointmentDateFilter] = useState('')
   const [appointmentDays, setAppointmentDays] = useState<number[]>(DEFAULT_APPOINTMENT_DAYS)
   const [dailyPatientLimit, setDailyPatientLimit] = useState(DEFAULT_DAILY_PATIENT_LIMIT)
+  const [appointmentStartTime, setAppointmentStartTime] = useState(DEFAULT_APPOINTMENT_START_TIME)
+  const [appointmentEndTime, setAppointmentEndTime] = useState(DEFAULT_APPOINTMENT_END_TIME)
   // Prueba piloto: vista alternativa de la Turnera con calendario mensual de ocupación
   // y estadísticas de pacientes atendidos por semana/mes (candidata a feature premium anual).
   const [turneraViewMode, setTurneraViewMode] = useState<'list' | 'calendar' | 'stats' | 'ledger'>('list')
@@ -2575,6 +2590,7 @@ function App() {
   const [patientFormUnlocked, setPatientFormUnlocked] = useState(true)
   const [consultationDraft, setConsultationDraft] =
     useState<ConsultationDraft>(emptyConsultationDraft)
+  const [clinicalSummaryBusy, setClinicalSummaryBusy] = useState(false)
   const consultationDiagnosisVisibleList = useMemo(
     () => buildDiagnosisSuggestions(diagnosisCatalog, consultationDraft.motivoConsulta, 10),
     [consultationDraft.motivoConsulta, diagnosisCatalog],
@@ -2640,10 +2656,53 @@ function App() {
   const [sofiaOpen, setSofiaOpen] = useState(false)
   const [sofiaDraft, setSofiaDraft] = useState('')
   const [sofiaBusy, setSofiaBusy] = useState(false)
+  const [sofiaDictating, setSofiaDictating] = useState(false)
+  const sofiaRecognitionRef = useRef<BrowserSpeechRecognition | null>(null)
   const [sofiaPendingConfirmation, setSofiaPendingConfirmation] = useState<AssistantPendingConfirmation | null>(null)
   const [sofiaMessages, setSofiaMessages] = useState<AssistantMessage[]>([
     { role: 'assistant', content: 'Hola. Soy Sofía, tu secretaria clínica. Puedo ayudarte a ordenar ideas, preparar una consulta o trabajar con la información que me compartas.' },
   ])
+
+  function stopSofiaDictation(): void {
+    sofiaRecognitionRef.current?.stop()
+    sofiaRecognitionRef.current = null
+    setSofiaDictating(false)
+  }
+
+  function toggleSofiaDictation(): void {
+    if (sofiaDictating) {
+      stopSofiaDictation()
+      return
+    }
+    const SpeechRecognitionApi = window.SpeechRecognition ?? window.webkitSpeechRecognition
+    if (!SpeechRecognitionApi) {
+      setAppError('Tu navegador no tiene dictado por voz disponible para Sofía.')
+      return
+    }
+    const recognition = new SpeechRecognitionApi()
+    recognition.lang = 'es-AR'
+    recognition.continuous = true
+    recognition.interimResults = false
+    recognition.onresult = (event) => {
+      const transcripts: string[] = []
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index]
+        if (result?.isFinal) transcripts.push(result[0].transcript)
+      }
+      if (transcripts.length) setSofiaDraft((current) => [current.trim(), transcripts.join(' ').trim()].filter(Boolean).join(' '))
+    }
+    recognition.onerror = (event) => {
+      stopSofiaDictation()
+      setAppError(mapDictationError(event.error))
+    }
+    recognition.onend = () => {
+      sofiaRecognitionRef.current = null
+      setSofiaDictating(false)
+    }
+    sofiaRecognitionRef.current = recognition
+    setSofiaDictating(true)
+    recognition.start()
+  }
   const [adminBroadcastTarget, setAdminBroadcastTarget] = useState<string>('all')
   const [adminPushCount, setAdminPushCount] = useState<number | null>(null)
   const [adminTestingPush, setAdminTestingPush] = useState(false)
@@ -2665,7 +2724,7 @@ function App() {
       messages: nextMessages,
       professionalId: activeUserId || undefined,
       professionalName: profile?.fullName || activeUser?.fullName,
-      context: 'El profesional está dentro de Dr Happy. En esta primera versión Sofía solo conversa y prepara borradores; todavía no ejecuta acciones sobre turnos o historias clínicas.',
+      context: 'El profesional está dentro de Dr Happy. Sofía puede consultar agenda y pacientes, preparar borradores y ejecutar agendamientos directamente. Si el profesional pide un turno, no pidas confirmación ni campos opcionales: usa nombre, apellido y fecha, asigna la primera hora libre si no la indica y detente solo por cupo, día no habilitado o superposición.',
     })
     setSofiaMessages((current) => [...current, {
       role: 'assistant',
@@ -4992,6 +5051,8 @@ function App() {
     if (!profile) return
     setAppointmentDays(profile.appointmentDays?.length ? profile.appointmentDays : DEFAULT_APPOINTMENT_DAYS)
     setDailyPatientLimit(profile.dailyPatientLimit || DEFAULT_DAILY_PATIENT_LIMIT)
+    setAppointmentStartTime(profile.appointmentStartTime || DEFAULT_APPOINTMENT_START_TIME)
+    setAppointmentEndTime(profile.appointmentEndTime || DEFAULT_APPOINTMENT_END_TIME)
   }, [profile])
 
   useEffect(() => {
@@ -6475,6 +6536,44 @@ function App() {
     setConsultationDraft((current) => ({ ...current, [name]: value }))
   }
 
+  async function summarizeClinicalInterview(): Promise<void> {
+    if (!selectedPatient || !consultationDraft.detalleAtencion.trim() || clinicalSummaryBusy) {
+      setAppError('Transcribí primero el interrogatorio del paciente antes de pedir el resumen.')
+      return
+    }
+    setClinicalSummaryBusy(true)
+    setAppError(null)
+    try {
+      const patientName = `${selectedPatient.apellido}, ${selectedPatient.nombre}`.trim()
+      const result = await askSofia({
+        professionalId: activeUserId || undefined,
+        professionalName: profile?.fullName || activeUser?.fullName,
+        messages: [{
+          role: 'user',
+          content: `Convertí la siguiente transcripción de una entrevista clínica en un borrador para revisar. No inventes datos, no diagnostiques y no indiques tratamientos. Devolvé exactamente tres secciones con estos encabezados: MOTIVO:, RESUMEN:, PENSAMIENTO:. En PENSAMIENTO indicá datos faltantes, riesgos o preguntas que el profesional debería verificar, sin afirmar conclusiones. Paciente: ${patientName}. Transcripción:\n${consultationDraft.detalleAtencion.trim()}`,
+        }],
+        context: 'El profesional está completando una evolución clínica. El resultado es un borrador no guardado y debe ser revisado por el profesional antes de incorporarlo a la historia clínica.',
+      })
+      if (!result.success || !result.reply) {
+        setAppError(result.message || 'No se pudo preparar el resumen clínico.')
+        return
+      }
+      const draftText = result.reply.trim()
+      const motivo = draftText.match(/MOTIVO:\s*([\s\S]*?)(?=\n\s*RESUMEN:|$)/i)?.[1]?.trim()
+      const resumen = draftText.match(/RESUMEN:\s*([\s\S]*?)(?=\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
+      const pensamiento = draftText.match(/PENSAMIENTO:\s*([\s\S]*)$/i)?.[1]?.trim()
+      setConsultationDraft((current) => ({
+        ...current,
+        motivoConsulta: motivo || current.motivoConsulta,
+        detalleAtencion: resumen || draftText,
+        pensamientoMedico: pensamiento || current.pensamientoMedico,
+      }))
+      setAppNotice('Sofía preparó un borrador. Revisalo antes de guardar la evolución.')
+    } finally {
+      setClinicalSummaryBusy(false)
+    }
+  }
+
   function stopDictation(): void {
     const recognition = recognitionRef.current
     if (!recognition) {
@@ -6859,16 +6958,26 @@ function App() {
     setAppError(null)
   }
 
-  function saveAppointmentCapacity(nextDays: number[], nextLimit: number): void {
+  function saveAppointmentCapacity(nextDays: number[], nextLimit: number, nextStartTime = appointmentStartTime, nextEndTime = appointmentEndTime): void {
     const normalizedDays = Array.from(new Set(nextDays)).filter((day) => day >= 0 && day <= 6)
     const normalizedLimit = Math.max(1, Math.min(100, Math.round(nextLimit)))
+    const normalizedStartTime = /^\d{2}:\d{2}$/.test(nextStartTime) ? nextStartTime : DEFAULT_APPOINTMENT_START_TIME
+    const normalizedEndTime = /^\d{2}:\d{2}$/.test(nextEndTime) ? nextEndTime : DEFAULT_APPOINTMENT_END_TIME
+    if (normalizedStartTime >= normalizedEndTime) {
+      setAppError('El horario Desde debe ser anterior al horario Hasta.')
+      return
+    }
     setAppointmentDays(normalizedDays)
     setDailyPatientLimit(normalizedLimit)
+    setAppointmentStartTime(normalizedStartTime)
+    setAppointmentEndTime(normalizedEndTime)
     if (!activeUserId || !profile) return
     const nextProfile = {
       ...profile,
       appointmentDays: normalizedDays,
       dailyPatientLimit: normalizedLimit,
+      appointmentStartTime: normalizedStartTime,
+      appointmentEndTime: normalizedEndTime,
     }
     setProfile(nextProfile)
     localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
@@ -7107,6 +7216,12 @@ function App() {
     const selectedDateDay = new Date(`${appointmentDraft.scheduledDate}T12:00:00`).getDay()
     if (!appointmentDays.includes(selectedDateDay)) {
       setAppError(`Ese día no está habilitado en tu agenda. Días de atención: ${appointmentDaysLabel}.`)
+      return
+    }
+    const configuredStart = toMinutes(appointmentStartTime)
+    const configuredEnd = toMinutes(appointmentEndTime)
+    if (toMinutes(appointmentDraft.scheduledTime) < configuredStart || toMinutes(appointmentDraft.scheduledTime) + appointmentDraft.durationMinutes > configuredEnd) {
+      setAppError(`El turno debe quedar dentro del horario de atención: ${appointmentStartTime} a ${appointmentEndTime}.`)
       return
     }
     const dayCount = appointmentCapacityByDate.get(appointmentDraft.scheduledDate) ?? 0
@@ -9649,9 +9764,25 @@ function App() {
             </section>
 
             <section style={{ marginBottom: 24 }}>
-              <div className="panel-header" style={{ marginBottom: 12 }}><div><h3>Consumo de Sofía</h3><p className="flow-hint">Vista privada del administrador. Los profesionales no ven estos datos.</p></div></div>
-              <div className="analytics-summary-grid" style={{ margin: '0 0 14px' }}><article className="analytics-stat-card"><strong>{adminAITotal.requests}</strong><span>Consultas a Sofía</span></article><article className="analytics-stat-card"><strong>{adminAITotal.tokens.toLocaleString('es-AR')}</strong><span>Tokens usados</span></article><article className="analytics-stat-card warn"><strong>USD {adminAITotal.costUsd.toFixed(4)}</strong><span>Costo estimado</span></article></div>
-              {adminAIUsageLoading ? <p className="flow-hint">Cargando consumo...</p> : adminAIUsage.length === 0 ? <p className="flow-hint">Todavía no hay consumo registrado.</p> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}><thead><tr style={{ textAlign: 'left', borderBottom: '2px solid #d8e2ee' }}><th style={{ padding: '8px 6px' }}>Profesional</th><th style={{ padding: '8px 6px' }}>Consultas</th><th style={{ padding: '8px 6px' }}>Tokens</th><th style={{ padding: '8px 6px' }}>Costo estimado</th><th style={{ padding: '8px 6px' }}>Último uso</th></tr></thead><tbody>{adminAIUsage.map((item) => <tr key={item.professionalId} style={{ borderBottom: '1px solid #eef2f7' }}><td style={{ padding: '8px 6px' }}><strong>{item.fullName}</strong><span style={{ display: 'block', fontSize: '.78rem', color: '#667' }}>@{item.username}</span></td><td style={{ padding: '8px 6px', textAlign: 'center' }}>{item.requests}</td><td style={{ padding: '8px 6px' }}>{item.totalTokens.toLocaleString('es-AR')}</td><td style={{ padding: '8px 6px' }}>USD {item.estimatedCostUsd.toFixed(4)}</td><td style={{ padding: '8px 6px' }}>{item.lastUsedAt ? formatDate(item.lastUsedAt) : 'Nunca'}</td></tr>)}</tbody></table></div>}
+              <div className="panel-header" style={{ marginBottom: 12 }}>
+                <div>
+                  <h3>Consumo de Sofía</h3>
+                  <p className="flow-hint">Vista privada del administrador. Los profesionales no ven estos datos.</p>
+                </div>
+              </div>
+              <div className="analytics-summary-grid" style={{ margin: '0 0 14px' }}>
+                <article className="analytics-stat-card"><strong>{adminAITotal.requests}</strong><span>Consultas a Sofía</span></article>
+                <article className="analytics-stat-card"><strong>{adminAITotal.tokens.toLocaleString('es-AR')}</strong><span>Tokens usados</span></article>
+                <article className="analytics-stat-card warn"><strong>USD {adminAITotal.costUsd.toFixed(4)}</strong><span>Costo estimado</span></article>
+              </div>
+              {adminAIUsageLoading ? <p className="flow-hint">Cargando consumo...</p> : adminAIUsage.length === 0 ? <p className="flow-hint">Todavía no hay consumo registrado.</p> : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                    <thead><tr style={{ textAlign: 'left', borderBottom: '2px solid #d8e2ee' }}><th style={{ padding: '8px 6px' }}>Profesional</th><th style={{ padding: '8px 6px' }}>Consultas</th><th style={{ padding: '8px 6px' }}>Tokens</th><th style={{ padding: '8px 6px' }}>Costo estimado</th><th style={{ padding: '8px 6px' }}>Último uso</th></tr></thead>
+                    <tbody>{adminAIUsage.map((item) => <tr key={item.professionalId} style={{ borderBottom: '1px solid #eef2f7' }}><td style={{ padding: '8px 6px' }}><strong>{item.fullName}</strong><span style={{ display: 'block', fontSize: '.78rem', color: '#667' }}>@{item.username}</span></td><td style={{ padding: '8px 6px', textAlign: 'center' }}>{item.requests}</td><td style={{ padding: '8px 6px' }}>{item.totalTokens.toLocaleString('es-AR')}</td><td style={{ padding: '8px 6px' }}>USD {item.estimatedCostUsd.toFixed(4)}</td><td style={{ padding: '8px 6px' }}>{item.lastUsedAt ? formatDate(item.lastUsedAt) : 'Nunca'}</td></tr>)}</tbody>
+                  </table>
+                </div>
+              )}
             </section>
 
             <ul className="admin-user-list">
@@ -10917,6 +11048,22 @@ function App() {
                   onChange={(event) => saveAppointmentCapacity(appointmentDays, Number(event.target.value))}
                 />
               </label>
+              <label>
+                Desde
+                <input
+                  type="time"
+                  value={appointmentStartTime}
+                  onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, event.target.value, appointmentEndTime)}
+                />
+              </label>
+              <label>
+                Hasta
+                <input
+                  type="time"
+                  value={appointmentEndTime}
+                  onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, appointmentStartTime, event.target.value)}
+                />
+              </label>
               <div className="capacity-days">
                 <span>Días de atención</span>
                 <div>
@@ -12165,6 +12312,10 @@ function App() {
                   {!dictationAvailable ? (
                     <small>Tu navegador no soporta transcripción por voz nativa.</small>
                   ) : null}
+                  <button type="button" className="ghost clinical-ai-summary-button" onClick={() => { void summarizeClinicalInterview() }} disabled={clinicalSummaryBusy || !consultationDraft.detalleAtencion.trim()}>
+                    {clinicalSummaryBusy ? 'Sofía está preparando el borrador...' : '✦ Resumir interrogatorio con Sofía'}
+                  </button>
+                  <small>El borrador no se guarda solo. Revisalo y corregilo antes de guardar la evolución.</small>
                 </label>
                 <label>
                   Pensamiento médico (reflexión profesional)
@@ -14299,18 +14450,31 @@ function App() {
             <div className="drhappy-modal-header">
               <div>
                 <span className="section-kicker">Secretaria clínica</span>
-                <h3 id="sofia-title" style={{ margin: 0, fontSize: '1.3rem', color: '#0f172a' }}>✦ Sofía</h3>
+                <div className="sofia-title-group">
+                  <SofiaAvatar state={sofiaBusy ? 'thinking' : sofiaDictating ? 'listening' : sofiaPendingConfirmation ? 'ready' : 'idle'} />
+                  <div>
+                    <h3 id="sofia-title" style={{ margin: 0, fontSize: '1.3rem', color: '#0f172a' }}>✦ Sofía</h3>
+                    <small className="sofia-state-label">{sofiaBusy ? 'Preparando respuesta' : sofiaDictating ? 'Escuchando' : sofiaPendingConfirmation ? 'Lista para confirmar' : 'Disponible'}</small>
+                  </div>
+                </div>
               </div>
               <button type="button" className="drhappy-modal-close-btn" onClick={() => setSofiaOpen(false)} aria-label="Cerrar Sofía">✕</button>
             </div>
-            <p className="sofia-intro">Una primera versión para ordenar ideas, preparar consultas y redactar borradores. Todavía no modifica turnos ni historias clínicas.</p>
+            <p className="sofia-intro">Tu secretaria clínica para consultar la agenda, preparar información y ejecutar acciones con tu confirmación.</p>
             <div className="sofia-messages" aria-live="polite">
               {sofiaMessages.map((message, index) => <div className={`sofia-message ${message.role}`} key={`${message.role}-${index}`}><span>{message.role === 'assistant' ? 'Sofía' : 'Vos'}</span><p>{message.content}</p></div>)}
               {sofiaBusy ? <div className="sofia-message assistant"><span>Sofía</span><p>Estoy pensando...</p></div> : null}
               {sofiaPendingConfirmation ? (
                 <div className="sofia-confirmation-card" role="group" aria-label="Confirmación de acción">
-                  <strong>Confirmar acción</strong>
-                  <span>{String(sofiaPendingConfirmation.proposal.patient || sofiaPendingConfirmation.proposal.patientName || 'Paciente')} · {String(sofiaPendingConfirmation.proposal.date || '')} · {String(sofiaPendingConfirmation.proposal.time || '')} hs</span>
+                  <strong>{sofiaPendingConfirmation.action === 'cancelar_turno' ? 'Confirmar cancelación' : sofiaPendingConfirmation.action === 'enviar_notificacion_paciente' ? 'Confirmar envío' : 'Confirmar agendamiento'}</strong>
+                  <div className="sofia-confirmation-details">
+                    <span><b>Paciente:</b> {String(sofiaPendingConfirmation.proposal.patient || sofiaPendingConfirmation.proposal.patientName || 'Sin identificar')}</span>
+                    {sofiaPendingConfirmation.proposal.date ? <span><b>Fecha:</b> {String(sofiaPendingConfirmation.proposal.date)}</span> : null}
+                    {sofiaPendingConfirmation.proposal.time ? <span><b>Hora:</b> {String(sofiaPendingConfirmation.proposal.time)} hs</span> : null}
+                    {sofiaPendingConfirmation.proposal.reason ? <span><b>Motivo:</b> {String(sofiaPendingConfirmation.proposal.reason)}</span> : null}
+                    {sofiaPendingConfirmation.proposal.email ? <span><b>Email:</b> {String(sofiaPendingConfirmation.proposal.email)}</span> : null}
+                  </div>
+                  <small>La acción se ejecutará solo cuando confirmes.</small>
                   <div>
                     <button type="button" onClick={() => { setSofiaDraft('Sí, confirmo la acción propuesta.'); setSofiaPendingConfirmation(null) }} disabled={sofiaBusy}>Confirmar</button>
                     <button type="button" className="ghost" onClick={() => setSofiaPendingConfirmation(null)} disabled={sofiaBusy}>Cancelar</button>
@@ -14319,8 +14483,11 @@ function App() {
               ) : null}
             </div>
             <form className="sofia-compose" onSubmit={(event) => { event.preventDefault(); void handleAskSofia() }}>
-              <textarea value={sofiaDraft} onChange={(event) => setSofiaDraft(event.target.value)} placeholder="Ej: ayudame a ordenar esta consulta..." rows={3} disabled={sofiaBusy} />
-              <button type="submit" disabled={sofiaBusy || !sofiaDraft.trim()}>{sofiaBusy ? 'Consultando...' : 'Preguntar a Sofía'}</button>
+              <textarea value={sofiaDraft} onChange={(event) => setSofiaDraft(event.target.value)} placeholder="Ej: agendá a María López para el jueves..." rows={3} disabled={sofiaBusy} />
+              <div className="sofia-compose-actions">
+                <button type="button" className="ghost" onClick={toggleSofiaDictation} disabled={sofiaBusy}>{sofiaDictating ? '⏹ Detener audio' : '🎙 Dictar a Sofía'}</button>
+                <button type="submit" disabled={sofiaBusy || !sofiaDraft.trim()}>{sofiaBusy ? 'Consultando...' : 'Preguntar a Sofía'}</button>
+              </div>
             </form>
             <small className="sofia-disclaimer">Revisá toda respuesta antes de incorporarla a una historia clínica.</small>
           </div>

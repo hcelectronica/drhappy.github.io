@@ -2198,6 +2198,12 @@ body.theme-night .admin-modules-hint {
   flex-wrap: wrap;
 }
 
+.clinical-ai-summary-button {
+  justify-self: start;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
 .signature-pad-group {
   display: grid;
   gap: 8px;
@@ -2986,14 +2992,84 @@ body.theme-night .appt-patient-search > label {
   overflow-y: auto;
 }
 
-.sofia-modal-card { width: min(620px, 100%); max-width: 620px; gap: 12px; }
-.sofia-intro { margin: 0; color: #64748b; font-size: .86rem; line-height: 1.5; }
-.sofia-messages { display: grid; gap: 10px; max-height: min(430px, 46vh); overflow-y: auto; padding: 4px; }
-.sofia-message { max-width: 88%; padding: 10px 12px; border-radius: 14px; background: #eef5ff; color: #183759; }
-.sofia-message.user { justify-self: end; background: #1d4ed8; color: #fff; }
+.sofia-modal-card {
+  width: min(620px, 100%);
+  max-width: 620px;
+  gap: 12px;
+}
+
+.sofia-title-group { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sofia-state-label { display: block; margin-top: 2px; color: #64748b; font-size: .72rem; font-weight: 700; }
+.sofia-avatar { position: relative; width: 56px; height: 56px; flex: 0 0 56px; border-radius: 50%; background: linear-gradient(145deg, #e4f7ff, #c7e6f6); overflow: visible; isolation: isolate; }
+.sofia-avatar-image-wrap { position: absolute; inset: 0; overflow: hidden; border-radius: 50%; background: #d9f1fb; }
+.sofia-avatar-image { position: absolute; left: 0; top: -13px; width: 170px; max-width: none; height: auto; transform-origin: 28px 42px; }
+.sofia-avatar-fallback { display: none; width: 100%; height: 100%; overflow: visible; transform-origin: 50% 85%; }
+.sofia-avatar-image-wrap::after { content: ''; position: absolute; inset: 0; border: 1px solid rgba(255, 255, 255, .72); border-radius: 50%; pointer-events: none; }
+.sofia-avatar-shadow { fill: rgba(30, 64, 175, .16); }
+.sofia-avatar-idle .sofia-avatar-image { animation: sofia-avatar-breathe 4s ease-in-out infinite; }
+.sofia-avatar-listening { box-shadow: 0 0 0 4px rgba(37, 99, 235, .14), 0 0 22px rgba(59, 130, 246, .35); }
+.sofia-avatar-listening .sofia-avatar-image { animation: sofia-avatar-listen 1.2s ease-in-out infinite; }
+.sofia-avatar-thinking .sofia-avatar-image { animation: sofia-avatar-think 1.8s ease-in-out infinite; }
+.sofia-avatar-ready { box-shadow: 0 0 0 4px rgba(16, 185, 129, .14), 0 0 20px rgba(16, 185, 129, .3); }
+.sofia-avatar-ready .sofia-avatar-image { animation: sofia-avatar-ready .7s ease-out both; }
+.sofia-avatar-hair { transform-origin: 90px 55px; }
+.sofia-avatar-curls { animation: sofia-avatar-curls 3s ease-in-out infinite; transform-origin: 90px 45px; }
+.sofia-avatar-stethoscope { stroke-dasharray: 4 2; }
+.sofia-avatar-wave { position: absolute; right: -5px; bottom: -2px; display: flex; align-items: center; gap: 2px; height: 14px; padding: 0 4px; border-radius: 8px; background: #2563eb; }
+.sofia-avatar-wave i { display: block; width: 2px; height: 5px; border-radius: 2px; background: #fff; animation: sofia-avatar-wave 0.8s ease-in-out infinite alternate; }
+.sofia-avatar-wave i:nth-child(2) { animation-delay: .2s; height: 10px; }
+.sofia-avatar-wave i:nth-child(3) { animation-delay: .4s; height: 7px; }
+@keyframes sofia-avatar-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes sofia-avatar-listen { 0%, 100% { transform: rotate(-2deg) translateY(0); } 50% { transform: rotate(2deg) translateY(-2px); } }
+@keyframes sofia-avatar-think { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-2px) rotate(-3deg); } }
+@keyframes sofia-avatar-ready { 0% { transform: scale(.9); } 70% { transform: scale(1.06); } 100% { transform: scale(1); } }
+@keyframes sofia-avatar-curls { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(2deg); } }
+@keyframes sofia-avatar-wave { from { transform: scaleY(.6); } to { transform: scaleY(1.2); } }
+@media (prefers-reduced-motion: reduce) {
+  .sofia-avatar-image, .sofia-avatar-curls, .sofia-avatar-wave i { animation: none; }
+}
+
+.sofia-intro {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.sofia-messages {
+  display: grid;
+  gap: 10px;
+  max-height: min(430px, 46vh);
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.sofia-message {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #eef5ff;
+  color: #183759;
+}
+
+.sofia-message.user {
+  justify-self: end;
+  background: #1d4ed8;
+  color: #fff;
+}
+
 .sofia-message span { display: block; margin-bottom: 3px; font-size: .7rem; font-weight: 800; opacity: .72; }
 .sofia-message p { margin: 0; white-space: pre-wrap; line-height: 1.45; font-size: .88rem; }
+.sofia-confirmation-card { display: grid; gap: 8px; padding: 14px; border: 1px solid #93c5fd; border-radius: 12px; background: #eff6ff; color: #16345c; }
+.sofia-confirmation-card strong { font-size: .92rem; }
+.sofia-confirmation-card small { color: #536b87; font-size: .75rem; }
+.sofia-confirmation-details { display: grid; gap: 3px; font-size: .82rem; }
+.sofia-confirmation-card > div:last-child { display: flex; gap: 8px; flex-wrap: wrap; }
+.sofia-confirmation-card button { min-height: 36px; }
+body.theme-night .sofia-confirmation-card { background: #132c4d; border-color: #3b82f6; color: #dbeafe; }
+body.theme-night .sofia-confirmation-card small { color: #a8c1df; }
 .sofia-compose { display: grid; gap: 8px; }
+.sofia-compose-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .sofia-compose textarea { width: 100%; resize: vertical; min-height: 78px; padding: 11px 12px; border: 1px solid #b7cae5; border-radius: 12px; font: inherit; box-sizing: border-box; }
 .sofia-disclaimer { color: #64748b; font-size: .72rem; }
 .sofia-usage { color: #536b87; font-size: .72rem; font-weight: 700; }
@@ -3938,9 +4014,9 @@ body.theme-night .turnera-card-actions {
   gap: 14px;
 }
 
-.turnera-form-group {
-  display: flex;
-  flex-direction: column;
+  height: auto;
+  max-height: calc(100svh - 32px);
+  overflow-y: auto !important;
   gap: 4px;
 }
 
