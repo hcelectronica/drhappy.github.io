@@ -93,10 +93,15 @@ function dateWeekday(date: string): number { return new Date(`${date}T12:00:00`)
 function timeToMinutes(value: unknown): number { const [hours, minutes] = String(value || '').split(':').map(Number); return hours * 60 + minutes }
 async function sendAppointmentConfirmation(params: { supabaseUrl: string; serviceRoleKey: string; email?: string; patientName: string; professionalName: string; date: string; time: string; location: string; reason: string; amountToCharge?: number; amountConcept?: string; paymentLink?: string }): Promise<{ sent: boolean; message?: string }> {
   if (!params.email?.trim()) return { sent: false, message: 'El paciente no tiene email cargado.' }
-  const response = await fetch(`${params.supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${params.serviceRoleKey}`, apikey: params.serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: params.email.trim(), subject: `Turno confirmado con ${params.professionalName} - ${params.date} ${params.time} hs`, type: 'appointment', templateData: { patientName: params.patientName, professionalName: params.professionalName, specialty: 'Consulta médica', date: params.date, time: params.time, location: params.location, notes: params.reason, amountToCharge: params.amountToCharge, amountConcept: params.amountConcept, paymentLink: params.paymentLink } }) })
-  const result = await response.json().catch(() => null)
-  if (!response.ok || !result?.success) return { sent: false, message: typeof result?.message === 'string' ? result.message : `send-email respondió HTTP ${response.status}.` }
-  return { sent: true }
+  try {
+    const response = await fetch(`${params.supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${params.serviceRoleKey}`, apikey: params.serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: params.email.trim(), subject: `Turno confirmado con ${params.professionalName} - ${params.date} ${params.time} hs`, type: 'appointment', templateData: { patientName: params.patientName, professionalName: params.professionalName, specialty: 'Consulta médica', date: params.date, time: params.time, location: params.location, notes: params.reason, amountToCharge: params.amountToCharge, amountConcept: params.amountConcept, paymentLink: params.paymentLink } }) })
+    const result = await response.json().catch(() => null)
+    if (!response.ok || !result?.success) return { sent: false, message: typeof result?.message === 'string' ? result.message : `send-email respondió HTTP ${response.status}.` }
+    return { sent: true }
+  } catch (error) {
+    console.error('No se pudo invocar send-email después de crear el turno', error)
+    return { sent: false, message: error instanceof Error ? error.message : 'No se pudo conectar con el servicio de email.' }
+  }
 }
 
 async function runTool(name: string, input: Record<string, unknown>, admin: ReturnType<typeof createClient>, professionalId: string): Promise<unknown> {
