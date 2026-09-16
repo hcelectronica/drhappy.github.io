@@ -10823,7 +10823,7 @@ function App() {
                 ➕ Nuevo turno
               </button> : null}
               {turneraViewMode !== 'ledger' ? <button type="button" className="ghost" onClick={handleOpenFreeSlotModal}>
-                📲 Enviar turnera libre al paciente
+                📅 Administrar turnera pública
               </button> : null}
               <button type="button" className="ghost" onClick={handleBackToOverview}>
                 Volver
@@ -13728,11 +13728,11 @@ function App() {
             </div>
 
             <p className="flow-hint" style={{ marginTop: 0 }}>
-              Generá un enlace para compartir por WhatsApp. El paciente elige un horario dentro del rango que
-              vos habilites y se auto-agenda; el turno queda cargado automáticamente en tu Turnera.
+              Configurá una agenda pública permanente. El paciente podrá elegir semanas futuras y la reserva se
+              cargará automáticamente en tu Turnera.
             </p>
 
-            <section className="panel" style={{ margin: '14px 0', padding: 16, background: '#f8fbff' }}>
+            <section className="panel public-booking-config" style={{ margin: '14px 0', padding: 16, background: '#f8fbff' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div>
                   <span className="section-kicker">Link fijo profesional</span>
@@ -13762,8 +13762,8 @@ function App() {
                   <div className="turnera-form-row" style={{ marginTop: 12 }}>
                     <label style={{ flex: 1.2 }}>
                       Link corto
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ color: '#64748b', fontSize: '0.86rem', whiteSpace: 'nowrap' }}>drhappy.com.ar/turnos/?p=</span>
+                      <div className="public-booking-url-row">
+                        <span>drhappy.com.ar/turnos/?p=</span>
                         <input
                           type="text"
                           value={publicBookingSettings.slug}
@@ -13951,6 +13951,7 @@ function App() {
               ) : null}
             </section>
 
+            {false ? (<>
             <div style={{ margin: '18px 0 10px' }}>
               <span className="section-kicker">Enlace puntual</span>
             </div>
@@ -14234,6 +14235,7 @@ function App() {
                 </div>
               </div>
             ) : null}
+            </>) : null}
           </div>
         </div>
       ) : null}
