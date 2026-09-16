@@ -18,6 +18,34 @@ export interface PublicBookingLinkSummary {
   bookedSlots: number
 }
 
+export interface PublicBookingAvailabilityBlock {
+  id: string
+  label: string
+  modality: 'coverage' | 'private'
+  days: number[]
+  startTime: string
+  endTime: string
+  durationMinutes: number
+  slotCount: number
+  location?: string
+  reason?: string
+  amountToCharge?: number
+  amountConcept?: 'sena' | 'consulta'
+  paymentLink?: string
+}
+
+export interface PublicBookingSettings {
+  professionalId: string
+  slug: string
+  enabled: boolean
+  professionalName: string
+  location?: string
+  reason?: string
+  horizonDays: number
+  blocks: PublicBookingAvailabilityBlock[]
+  updatedAt?: string
+}
+
 interface ActionResult {
   success: boolean
   message?: string
@@ -66,9 +94,26 @@ export async function cancelPublicBookingLink(params: {
   return invokePublicBooking({ action: 'cancel-link', ...params })
 }
 
+export async function getPublicBookingSettings(
+  professionalId: string,
+): Promise<ActionResult & { settings?: PublicBookingSettings }> {
+  return invokePublicBooking({ action: 'get-public-settings', professionalId })
+}
+
+export async function savePublicBookingSettings(
+  settings: PublicBookingSettings,
+): Promise<ActionResult & { settings?: PublicBookingSettings }> {
+  return invokePublicBooking({ action: 'save-public-settings', settings })
+}
+
 export function buildPublicBookingUrl(token: string): string {
   const base = `${window.location.origin}${window.location.pathname.replace(/index\.html$/, '')}`
   return `${base}turno-libre.html?t=${token}`
+}
+
+export function buildFixedPublicBookingUrl(slug: string): string {
+  const base = `${window.location.origin}${window.location.pathname.replace(/index\.html$/, '')}`
+  return `${base}turnos/?p=${encodeURIComponent(slug)}`
 }
 
 export function buildWhatsAppShareUrl(link: string, professionalName?: string): string {
