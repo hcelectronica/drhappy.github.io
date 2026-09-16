@@ -37,6 +37,41 @@ const tools = [
     },
   },
   {
+    name: 'consultar_balance_pagos',
+    description: 'Consulta el balance de pagos del profesional, con tratamientos, montos cobrados y saldos. Usala para preguntas administrativas sobre cobros.',
+    input_schema: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Nombre del paciente opcional.' } },
+    },
+  },
+  {
+    name: 'preparar_borrador_evolucion',
+    description: 'Prepara un borrador de evolución clínica a partir de información que el profesional proporciona. Nunca lo guarda automáticamente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        patient: { type: 'string', description: 'Nombre o DNI del paciente.' },
+        notes: { type: 'string', description: 'Notas o contenido de la consulta.' },
+      },
+      required: ['patient', 'notes'],
+    },
+  },
+  {
+    name: 'agendar_turno',
+    description: 'Agenda un turno. Siempre requiere confirmation=true; si es false, solo prepara una propuesta y no modifica datos.',
+    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string' }, time: { type: 'string' }, reason: { type: 'string' }, durationMinutes: { type: 'number' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'date', 'time', 'confirmation'] },
+  },
+  {
+    name: 'cancelar_turno',
+    description: 'Cancela un turno. Siempre requiere confirmation=true; si es false, solo prepara una propuesta y no modifica datos.',
+    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string' }, time: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'confirmation'] },
+  },
+  {
+    name: 'enviar_notificacion_paciente',
+    description: 'Envía un email a un paciente. Siempre requiere confirmation=true; si es false, solo prepara una propuesta y no envía nada.',
+    input_schema: { type: 'object', properties: { patient: { type: 'string' }, subject: { type: 'string' }, message: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'subject', 'message', 'confirmation'] },
+  },
+  {
     name: 'buscar_vademecum',
     description: 'Busca medicamentos en el vademécum de Dr Happy. Devuelve coincidencias informativas; no reemplaza el criterio profesional.',
     input_schema: {
@@ -121,6 +156,66 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     }
   }
 
+  if (name === 'consultar_balance_pagos') {
+    const query = normalizeSearch(input.query)
+    const { data } = await admin.from('user_workspaces').select('treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
+    const entries = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
+    const matches = entries.filter((entry) => !query || normalizeSearch(`${entry.patientName || ''} ${entry.intervention || ''}`).includes(query)).slice(0, 50).map((entry) => ({ patient: entry.patientName, date: entry.date, intervention: entry.intervention, total: entry.totalAmount, paid: entry.paidAmount, pending: Number(entry.totalAmount || 0) - Number(entry.paidAmount || 0), notes: entry.notes }))
+    return { count: matches.length, entries: matches }
+  }
+
+  if (name === 'preparar_borrador_evolucion') {
+    return {
+      draft: {
+        patient: String(input.patient || ''),
+        date: new Date().toISOString().slice(0, 10),
+        content: String(input.notes || ''),
+      },
+      instruction: 'Presentá el borrador con secciones claras y pedí al profesional que lo revise antes de guardarlo. No lo guardes.',
+    }
+  }
+
+  if (name === 'agendar_turno') {
+    const patientQuery = normalizeSearch(input.patient)
+    const { data } = await admin.from('user_workspaces').select('patients_json, appointments_json').eq('user_id', professionalId).maybeSingle()
+    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const patient = patients.find((item) => normalizeSearch(`${item.nombre || ''} ${item.apellido || ''} ${item.dni || ''}`).includes(patientQuery))
+    if (!patient) return { success: false, message: 'No encontré un paciente que coincida. Pedí nombre completo o DNI.' }
+    const proposal = { patient: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), patientId: patient.id, date: input.date, time: input.time, reason: input.reason || 'Consulta médica', durationMinutes: Number(input.durationMinutes) || 30, location: input.location || 'Consultorio médico' }
+    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'agendar_turno', proposal, message: 'Pedí confirmación explícita antes de agendar.' }
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const conflict = appointments.some((item) => item.status !== 'cancelled' && item.scheduledDate === input.date && item.scheduledTime === input.time)
+    if (conflict) return { success: false, message: 'Ese horario ya está ocupado.' }
+    const appointment = { id: crypto.randomUUID(), patientId: patient.id, patientName: proposal.patient, patientEmail: patient.email || '', patientDni: patient.dni || '', scheduledDate: input.date, scheduledTime: input.time, scheduledAt: `${input.date}T${input.time}:00`, durationMinutes: proposal.durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
+    const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, appointments_json: [...appointments, appointment] }, { onConflict: 'user_id' })
+    return error ? { success: false, message: error.message } : { success: true, message: `Turno agendado para ${proposal.patient} el ${input.date} a las ${input.time}.` }
+  }
+
+  if (name === 'cancelar_turno') {
+    const query = normalizeSearch(input.patient)
+    const { data } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const match = appointments.find((item) => item.status !== 'cancelled' && normalizeSearch(`${item.patientName || ''} ${item.patientDni || ''}`).includes(query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time))
+    if (!match) return { success: false, message: 'No encontré ese turno.' }
+    const proposal = { patient: match.patientName, date: match.scheduledDate, time: match.scheduledTime, reason: match.reason }
+    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'cancelar_turno', proposal, message: 'Pedí confirmación explícita antes de cancelar.' }
+    const nextAppointments = appointments.map((item) => item.id === match.id ? { ...item, status: 'cancelled' } : item)
+    const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, appointments_json: nextAppointments }, { onConflict: 'user_id' })
+    return error ? { success: false, message: error.message } : { success: true, message: `Turno cancelado para ${match.patientName} el ${match.scheduledDate} a las ${match.scheduledTime}.` }
+  }
+
+  if (name === 'enviar_notificacion_paciente') {
+    const query = normalizeSearch(input.patient)
+    const { data } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
+    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const patient = patients.find((item) => normalizeSearch(`${item.nombre || ''} ${item.apellido || ''} ${item.dni || ''}`).includes(query))
+    if (!patient || typeof patient.email !== 'string' || !patient.email.trim()) return { success: false, message: 'No encontré un paciente con email cargado.' }
+    const proposal = { patient: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), email: patient.email, subject: input.subject, message: input.message }
+    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'enviar_notificacion_paciente', proposal, message: 'Pedí confirmación explícita antes de enviar.' }
+    const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: patient.email, subject: input.subject, type: 'custom', text: input.message }) })
+    return emailResponse.ok ? { success: true, message: `Email enviado a ${proposal.patient}.` } : { success: false, message: 'No se pudo enviar el email.' }
+  }
+
   return { error: 'Herramienta no disponible.' }
 }
 
@@ -200,6 +295,7 @@ Deno.serve(async (request) => {
     'En esta primera versión no inventes datos clínicos ni afirmes haber consultado una historia que no recibiste.',
     'No diagnostiques ni indiques tratamientos autónomamente. Separá hechos, sugerencias y datos faltantes.',
     'Cuando el profesional pida una acción que todavía no está conectada, explicá que se incorporará como herramienta en la próxima etapa.',
+    'Nunca ejecutes agendar_turno, cancelar_turno o enviar_notificacion_paciente sin confirmation=true. Primero presentá la propuesta y pedí confirmación explícita.',
     context ? `Contexto disponible de la sesión:\n${context}` : '',
   ].filter(Boolean).join('\n\n')
 
