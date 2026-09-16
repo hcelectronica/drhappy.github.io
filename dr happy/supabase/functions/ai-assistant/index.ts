@@ -163,6 +163,8 @@ Deno.serve(async (request) => {
 
   let anthropicMessages: unknown[] = messages
   let reply = ''
+  let inputTokens = 0
+  let outputTokens = 0
   for (let iteration = 0; iteration < 4; iteration += 1) {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -176,6 +178,8 @@ Deno.serve(async (request) => {
       return jsonResponse(502, { success: false, message: `Claude rechazó la solicitud (${response.status}): ${providerMessage}` })
     }
     const content = Array.isArray(result?.content) ? result.content : []
+    inputTokens += Number(result?.usage?.input_tokens || 0)
+    outputTokens += Number(result?.usage?.output_tokens || 0)
     const toolUses = content.filter((item: { type?: string }) => item.type === 'tool_use')
     const text = content.filter((item: { type?: string }) => item.type === 'text').map((item: { text?: string }) => item.text || '').join('\n').trim()
     if (!toolUses.length) { reply = text; break }
@@ -189,5 +193,9 @@ Deno.serve(async (request) => {
   }
   if (!reply) return jsonResponse(502, { success: false, message: 'Sofía recibió una respuesta vacía.' })
 
-  return jsonResponse(200, { success: true, reply })
+  const totalTokens = inputTokens + outputTokens
+  const estimatedCostUsd = (inputTokens * 3 + outputTokens * 15) / 1_000_000
+  await admin.from('ai_usage_events').insert({ professional_id: professionalId, model, input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: totalTokens, estimated_cost_usd: estimatedCostUsd, request_type: 'chat' })
+
+  return jsonResponse(200, { success: true, reply, usage: { inputTokens, outputTokens, totalTokens, estimatedCostUsd } })
 })

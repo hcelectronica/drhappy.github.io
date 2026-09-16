@@ -9,6 +9,12 @@ interface AssistantResult {
   success: boolean
   message?: string
   reply?: string
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+    estimatedCostUsd: number
+  }
 }
 
 export async function askSofia(params: {
