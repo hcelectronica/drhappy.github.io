@@ -197,5 +197,5 @@ Deno.serve(async (request) => {
   const estimatedCostUsd = (inputTokens * 3 + outputTokens * 15) / 1_000_000
   await admin.from('ai_usage_events').insert({ professional_id: professionalId, model, input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: totalTokens, estimated_cost_usd: estimatedCostUsd, request_type: 'chat' })
 
-  return jsonResponse(200, { success: true, reply, usage: { inputTokens, outputTokens, totalTokens, estimatedCostUsd } })
+  return jsonResponse(200, { success: true, reply })
 })
