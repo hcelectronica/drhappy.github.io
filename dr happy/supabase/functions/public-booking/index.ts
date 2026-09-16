@@ -174,7 +174,17 @@ function normalizeSettings(raw: PublicBookingSettingsPayload | undefined): Publi
   const professionalName = raw?.professionalName?.trim() ?? ''
   const slug = normalizeSlug(raw?.slug ?? professionalName)
   const horizonDays = 60
-  const blocks = (raw?.blocks ?? []).map(normalizeBlock).filter((block): block is PublicBookingBlock => Boolean(block))
+  const blocks = Array.from(
+    new Map(
+      (raw?.blocks ?? [])
+        .map(normalizeBlock)
+        .filter((block): block is PublicBookingBlock => Boolean(block))
+        .map((block) => [block.modality, block] as const),
+    ).values(),
+  ).map((block) => ({
+    ...block,
+    label: block.modality === 'private' ? 'Paciente particular' : 'Paciente con obra social',
+  }))
 
   if (!professionalId || !professionalName || !slug || !blocks.length) {
     return null
@@ -469,9 +479,12 @@ serve(async (request) => {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
 
-        const blocks = (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
-          .map(normalizeBlock)
-          .filter((block): block is PublicBookingBlock => Boolean(block))
+        const blocks = Array.from(new Map(
+          (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
+            .map(normalizeBlock)
+            .filter((block): block is PublicBookingBlock => Boolean(block))
+            .map((block) => [block.modality, block] as const),
+        ).values())
         const horizonDays = 60
         const startDate = body.startDate && body.startDate >= todayISO() ? body.startDate : todayISO()
         const requestedDays = Math.max(1, Math.min(35, Number(body.days) || 21))
@@ -573,9 +586,12 @@ serve(async (request) => {
           return jsonResponse(409, { success: false, message: 'La fecha elegida está fuera del rango habilitado.' })
         }
 
-        const blocks = (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
-          .map(normalizeBlock)
-          .filter((block): block is PublicBookingBlock => Boolean(block))
+        const blocks = Array.from(new Map(
+          (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
+            .map(normalizeBlock)
+            .filter((block): block is PublicBookingBlock => Boolean(block))
+            .map((block) => [block.modality, block] as const),
+        ).values())
         const block = blocks.find((entry) => entry.id === blockId)
         if (!block || !block.days.includes(dateDay(slotDate)) || !buildBlockSlotTimes(block).includes(slotTime)) {
           return jsonResponse(409, { success: false, message: 'Ese horario ya no está habilitado.' })
