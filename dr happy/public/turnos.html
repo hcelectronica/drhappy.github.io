@@ -135,8 +135,9 @@
     var FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/public-booking';
     var params = new URLSearchParams(window.location.search);
     var slug = params.get('p') || (window.location.hash || '').replace(/^#\/?/, '') || '';
+    var fixedModality = params.get('m') === 'private' || params.get('m') === 'coverage' ? params.get('m') : null;
     var cursor = todayISO();
-    var filter = 'all';
+    var filter = fixedModality || 'all';
     var agenda = null;
     var selected = null;
 
@@ -155,7 +156,7 @@
     function loadAgenda() {
       if (!slug) { showError('Falta el link público del profesional.'); return; }
       el('loading').style.display = 'block';
-      callFunction({ action: 'get-public-agenda', slug: slug, startDate: cursor, days: 21 }).then(function (result) {
+      callFunction({ action: 'get-public-agenda', slug: slug, modality: fixedModality, startDate: cursor, days: 21 }).then(function (result) {
         if (!result.data.success) { showError(result.data.message); return; }
         agenda = result.data;
         el('title').textContent = 'Turnos de ' + agenda.profile.professionalName;
@@ -213,6 +214,9 @@
       }
     }
 
+    if (fixedModality) {
+      document.querySelectorAll('.chip').forEach(function (button) { button.style.display = 'none'; });
+    }
     document.querySelectorAll('.chip').forEach(function (button) {
       button.addEventListener('click', function () {
         filter = button.getAttribute('data-filter');
@@ -231,7 +235,7 @@
       if (!patientName || !patientDni) { msg.className = 'msg err'; msg.textContent = 'Completá nombre y DNI.'; return; }
       el('confirmBtn').disabled = true;
       el('confirmBtn').textContent = 'Confirmando...';
-      callFunction({ action: 'book-public-slot', slug: slug, slotDate: selected.date, slotTime: selected.time, blockId: selected.blockId, patientName: patientName, patientDni: patientDni, patientPhone: el('patientPhone').value.trim(), patientEmail: el('patientEmail').value.trim() }).then(function (result) {
+      callFunction({ action: 'book-public-slot', slug: slug, modality: fixedModality, slotDate: selected.date, slotTime: selected.time, blockId: selected.blockId, patientName: patientName, patientDni: patientDni, patientPhone: el('patientPhone').value.trim(), patientEmail: el('patientEmail').value.trim() }).then(function (result) {
         if (!result.data.success) {
           msg.className = 'msg err'; msg.textContent = result.data.message || 'No pudimos reservar el turno.'; el('confirmBtn').disabled = false; el('confirmBtn').textContent = 'Confirmar turno'; loadAgenda(); return;
         }

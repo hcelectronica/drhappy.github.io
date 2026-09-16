@@ -13920,34 +13920,33 @@ function App() {
                   </div>
 
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-                    <button type="button" className="ghost" onClick={() => addPublicBookingBlock('coverage')}>+ Liberar turnos PAMI</button>
-                    <button type="button" className="ghost" onClick={() => addPublicBookingBlock('private')}>+ Liberar turnos particulares</button>
                   </div>
 
                   {publicBookingError ? <p style={{ color: '#c62828', fontSize: '0.9rem' }}>{publicBookingError}</p> : null}
                   {publicBookingNotice ? <p className="payment-info-note ok">✅ {publicBookingNotice}</p> : null}
 
-                  <div className="turnera-form-group" style={{ background: '#edf7ff', borderRadius: 10, padding: 12, marginTop: 12 }}>
-                    <p style={{ margin: '0 0 8px', fontWeight: 700 }}>Link fijo</p>
-                    <p style={{ margin: '0 0 10px', wordBreak: 'break-all', fontSize: '0.86rem' }}>{buildFixedPublicBookingUrl(publicBookingSettings.slug)}</p>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" onClick={() => void handleSavePublicBookingSettings()} disabled={publicBookingSaving}>
-                        {publicBookingSaving ? 'Guardando...' : 'Guardar turnera pública'}
-                      </button>
-                      <button type="button" className="ghost" onClick={() => handleShareFixedPublicBookingLink()}>
-                        WhatsApp
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(buildFixedPublicBookingUrl(publicBookingSettings.slug))
-                          showSavedFloatingNotice('Link fijo copiado')
-                        }}
-                      >
-                        Copiar
-                      </button>
-                    </div>
+                  <div className="public-booking-links-grid">
+                    {(['coverage', 'private'] as const).map((modality) => {
+                      const url = buildFixedPublicBookingUrl(publicBookingSettings.slug, modality)
+                      const label = modality === 'coverage' ? 'Turnera libre para obra social' : 'Turnera libre para particular'
+                      return (
+                        <div className="public-booking-link-card" key={modality}>
+                          <strong>{label}</strong>
+                          <span>{url}</span>
+                          <div>
+                            <button type="button" onClick={() => void handleSavePublicBookingSettings()} disabled={publicBookingSaving}>
+                              {publicBookingSaving ? 'Guardando...' : 'Guardar turnera'}
+                            </button>
+                            <button type="button" className="ghost" onClick={() => window.open(buildWhatsAppShareUrl(url, publicBookingSettings.professionalName), '_blank', 'noopener,noreferrer')}>
+                              WhatsApp
+                            </button>
+                            <button type="button" className="ghost" onClick={() => { void navigator.clipboard.writeText(url); showSavedFloatingNotice('Link copiado') }}>
+                              Copiar link
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </>
               ) : null}

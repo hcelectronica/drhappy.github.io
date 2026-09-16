@@ -3876,6 +3876,35 @@ body.theme-night .turnera-card-actions {
   font-weight: 700;
 }
 
+.public-booking-links-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.public-booking-link-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #cbd9ed;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.public-booking-link-card > span {
+  overflow-wrap: anywhere;
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
+.public-booking-link-card > div {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .turnera-modal-form {
   display: flex;
   flex-direction: column;
@@ -3919,6 +3948,10 @@ body.theme-night .turnera-card-actions {
 
   .public-booking-horizon-note {
     align-self: stretch;
+  }
+
+  .public-booking-links-grid {
+    grid-template-columns: 1fr;
   }
 }
 
