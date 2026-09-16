@@ -2959,13 +2959,10 @@ body.theme-night .appt-patient-search > label {
   z-index: 9500;
   background: rgba(10, 25, 47, 0.65);
   backdrop-filter: blur(8px);
-  display: flex;
-  align-items: flex-start;
+  display: block;
   justify-content: center;
   padding: 16px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
+  overflow: hidden;
   animation: modal-fade-in 0.2s ease-out;
 }
 
@@ -3831,6 +3828,8 @@ body.theme-night .turnera-card-actions {
 }
 
 .turnera-modal-card {
+  position: relative;
+  margin: 0 auto;
   width: min(900px, 100%);
   max-width: 900px;
   min-height: 0;

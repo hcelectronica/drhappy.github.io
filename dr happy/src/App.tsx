@@ -13130,6 +13130,13 @@ function App() {
           <div
             className="drhappy-modal-card turnera-modal-card"
             onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => {
+              const element = e.currentTarget
+              if (element.scrollHeight > element.clientHeight) {
+                element.scrollTop += e.deltaY
+                e.preventDefault()
+              }
+            }}
             role="dialog"
             aria-modal="true"
             aria-labelledby="ledger-modal-title"
@@ -13451,6 +13458,13 @@ function App() {
           <div
             className="drhappy-modal-card turnera-modal-card"
             onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => {
+              const element = e.currentTarget
+              if (element.scrollHeight > element.clientHeight) {
+                element.scrollTop += e.deltaY
+                e.preventDefault()
+              }
+            }}
             role="dialog"
             aria-modal="true"
             aria-labelledby="appointment-modal-title"
