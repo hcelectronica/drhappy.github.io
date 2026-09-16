@@ -59,7 +59,6 @@ export function SofiaAvatar({ state = 'idle', variant = 'compact' }: SofiaAvatar
         <circle cx="56" cy="108" r="7" fill="#cbd5e1" stroke="#334155" strokeWidth="3" />
       </svg>
       {state === 'listening' ? <span className="sofia-avatar-wave" aria-hidden="true"><i /><i /><i /></span> : null}
-      {variant === 'scene' ? <span className="sofia-avatar-greeting" aria-hidden="true">👋</span> : null}
     </div>
   )
 }
