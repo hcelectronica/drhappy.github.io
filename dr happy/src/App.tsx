@@ -6752,6 +6752,7 @@ function App() {
     }
     stopDictation()
     setCommunityOpen(false)
+    setTurneraViewMode('list')
     setWorkspaceLayer('appointments')
     setAppError(null)
   }
