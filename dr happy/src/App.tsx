@@ -41,7 +41,7 @@ import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBo
 import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
-import type { AssistantMessage } from './aiAssistantService'
+import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { selfDeleteAccount } from './selfDeleteService'
 import {
   setProfessionalActive,
@@ -2640,6 +2640,7 @@ function App() {
   const [sofiaOpen, setSofiaOpen] = useState(false)
   const [sofiaDraft, setSofiaDraft] = useState('')
   const [sofiaBusy, setSofiaBusy] = useState(false)
+  const [sofiaPendingConfirmation, setSofiaPendingConfirmation] = useState<AssistantPendingConfirmation | null>(null)
   const [sofiaMessages, setSofiaMessages] = useState<AssistantMessage[]>([
     { role: 'assistant', content: 'Hola. Soy Sofía, tu secretaria clínica. Puedo ayudarte a ordenar ideas, preparar una consulta o trabajar con la información que me compartas.' },
   ])
@@ -2670,6 +2671,7 @@ function App() {
       role: 'assistant',
       content: result.success ? result.reply || 'No recibí una respuesta.' : (result.message || 'No pude responder en este momento.'),
     }])
+    setSofiaPendingConfirmation(result.success ? result.pendingConfirmation || null : null)
     if (result.success && activeUser) {
       void loadWorkspaceForUser(activeUser)
     }
@@ -14305,6 +14307,16 @@ function App() {
             <div className="sofia-messages" aria-live="polite">
               {sofiaMessages.map((message, index) => <div className={`sofia-message ${message.role}`} key={`${message.role}-${index}`}><span>{message.role === 'assistant' ? 'Sofía' : 'Vos'}</span><p>{message.content}</p></div>)}
               {sofiaBusy ? <div className="sofia-message assistant"><span>Sofía</span><p>Estoy pensando...</p></div> : null}
+              {sofiaPendingConfirmation ? (
+                <div className="sofia-confirmation-card" role="group" aria-label="Confirmación de acción">
+                  <strong>Confirmar acción</strong>
+                  <span>{String(sofiaPendingConfirmation.proposal.patient || sofiaPendingConfirmation.proposal.patientName || 'Paciente')} · {String(sofiaPendingConfirmation.proposal.date || '')} · {String(sofiaPendingConfirmation.proposal.time || '')} hs</span>
+                  <div>
+                    <button type="button" onClick={() => { setSofiaDraft('Sí, confirmo la acción propuesta.'); setSofiaPendingConfirmation(null) }} disabled={sofiaBusy}>Confirmar</button>
+                    <button type="button" className="ghost" onClick={() => setSofiaPendingConfirmation(null)} disabled={sofiaBusy}>Cancelar</button>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <form className="sofia-compose" onSubmit={(event) => { event.preventDefault(); void handleAskSofia() }}>
               <textarea value={sofiaDraft} onChange={(event) => setSofiaDraft(event.target.value)} placeholder="Ej: ayudame a ordenar esta consulta..." rows={3} disabled={sofiaBusy} />

@@ -5,10 +5,16 @@ export interface AssistantMessage {
   content: string
 }
 
+export interface AssistantPendingConfirmation {
+  action: string
+  proposal: Record<string, unknown>
+}
+
 interface AssistantResult {
   success: boolean
   message?: string
   reply?: string
+  pendingConfirmation?: AssistantPendingConfirmation
 }
 
 export async function askSofia(params: {
