@@ -6,8 +6,21 @@ interface SofiaAvatarProps {
 }
 
 export function SofiaAvatar({ state = 'idle', variant = 'compact' }: SofiaAvatarProps) {
+  const label = `Sofía ${state === 'listening' ? 'está escuchando' : state === 'thinking' ? 'está pensando' : state === 'ready' ? 'terminó de responder' : 'está disponible'}`
+  if (variant === 'scene') {
+    return (
+      <div className={`sofia-avatar-3d sofia-avatar-3d-${state}`} aria-label={label} role="img">
+        <div className="sofia-avatar-3d-stage">
+          {['front', 'left', 'back', 'right'].map((face) => (
+            <div key={face} className={`sofia-avatar-3d-face sofia-avatar-3d-face-${face}`} style={{ backgroundImage: `url(${sofiaReference})` }} aria-hidden="true" />
+          ))}
+        </div>
+        <span className="sofia-avatar-3d-ground" aria-hidden="true" />
+      </div>
+    )
+  }
   return (
-    <div className={`sofia-avatar sofia-avatar-${variant} sofia-avatar-${state}`} aria-label={`Sofía ${state === 'listening' ? 'está escuchando' : state === 'thinking' ? 'está pensando' : state === 'ready' ? 'terminó de responder' : 'está disponible'}`} role="img">
+    <div className={`sofia-avatar sofia-avatar-${variant} sofia-avatar-${state}`} aria-label={label} role="img">
       <div className="sofia-avatar-image-wrap" aria-hidden="true">
         <img className="sofia-avatar-image" src={sofiaReference} alt="" />
       </div>

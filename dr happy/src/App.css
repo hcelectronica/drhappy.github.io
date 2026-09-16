@@ -3019,7 +3019,24 @@ body.theme-night .appt-patient-search > label {
 .sofia-avatar-wave i { display: block; width: 2px; height: 5px; border-radius: 2px; background: #fff; animation: sofia-avatar-wave 0.8s ease-in-out infinite alternate; }
 .sofia-avatar-wave i:nth-child(2) { animation-delay: .2s; height: 10px; }
 .sofia-avatar-wave i:nth-child(3) { animation-delay: .4s; height: 7px; }
-.sofia-avatar-stage { display: flex; align-items: flex-end; justify-content: center; width: 112px; height: 104px; flex: 0 0 112px; border-radius: 22px; background: linear-gradient(160deg, #e4f8ff, #c8e8f6); overflow: hidden; position: relative; box-shadow: inset 0 -8px 0 rgba(255, 255, 255, .5); }
+.sofia-avatar-3d { position: relative; width: 112px; height: 140px; flex: 0 0 112px; perspective: 720px; perspective-origin: 50% 46%; }
+.sofia-avatar-3d-stage { position: absolute; left: 15px; top: 0; width: 82px; height: 132px; transform-style: preserve-3d; transform-origin: 50% 82%; }
+.sofia-avatar-3d-face { position: absolute; inset: 0; width: 82px; height: 132px; backface-visibility: hidden; background-repeat: no-repeat; background-size: 328px 179px; background-position-y: -25px; transform-origin: 50% 82%; }
+.sofia-avatar-3d-face-front { background-position-x: 0; transform: translateZ(41px); }
+.sofia-avatar-3d-face-back { background-position-x: -82px; transform: rotateY(180deg) translateZ(41px); }
+.sofia-avatar-3d-face-left { background-position-x: -164px; transform: rotateY(-90deg) translateZ(41px); }
+.sofia-avatar-3d-face-right { background-position-x: -246px; transform: rotateY(90deg) translateZ(41px); }
+.sofia-avatar-3d-ground { position: absolute; left: 16px; bottom: 4px; width: 80px; height: 12px; border-radius: 50%; background: rgba(38, 91, 120, .2); filter: blur(4px); transform: rotateX(72deg); }
+.sofia-avatar-3d-idle .sofia-avatar-3d-stage { animation: sofia-avatar-3d-turn 11s linear infinite, sofia-avatar-3d-step 2.2s ease-in-out infinite; }
+.sofia-avatar-3d-listening .sofia-avatar-3d-stage { animation: sofia-avatar-3d-listen 1.4s ease-in-out infinite; }
+.sofia-avatar-3d-thinking .sofia-avatar-3d-stage { animation: sofia-avatar-3d-think 1.7s ease-in-out infinite; }
+.sofia-avatar-3d-ready .sofia-avatar-3d-stage { animation: sofia-avatar-3d-greet 1.3s ease-in-out 2; }
+@keyframes sofia-avatar-3d-turn { to { transform: rotateY(360deg); } }
+@keyframes sofia-avatar-3d-step { 0%, 100% { translate: -7px 2px; } 50% { translate: 7px -1px; } }
+@keyframes sofia-avatar-3d-listen { 0%, 100% { transform: rotateY(-7deg) translateY(0); } 50% { transform: rotateY(9deg) translateY(-3px); } }
+@keyframes sofia-avatar-3d-think { 0%, 100% { transform: rotateY(-18deg) translateY(0); } 50% { transform: rotateY(18deg) translateY(-3px); } }
+@keyframes sofia-avatar-3d-greet { 0%, 100% { transform: rotateY(-12deg) rotateZ(0); } 35% { transform: rotateY(18deg) rotateZ(-2deg); } 70% { transform: rotateY(-4deg) rotateZ(2deg); } }
+.sofia-avatar-stage { display: flex; align-items: flex-end; justify-content: center; width: 112px; height: 140px; flex: 0 0 112px; border-radius: 22px; background: linear-gradient(160deg, #e4f8ff, #c8e8f6); overflow: hidden; position: relative; box-shadow: inset 0 -8px 0 rgba(255, 255, 255, .5); }
 .sofia-avatar-scene { width: 112px; height: 104px; flex: 0 0 112px; border-radius: 0; background: transparent; overflow: visible; }
 .sofia-avatar-scene .sofia-avatar-image-wrap { border-radius: 0; inset: 0; background: transparent; }
 .sofia-avatar-scene .sofia-avatar-image { width: 300px; left: 0; top: -18px; transform-origin: 55px 75px; }
@@ -3043,7 +3060,7 @@ body.theme-night .appt-patient-search > label {
 @keyframes sofia-avatar-curls { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(2deg); } }
 @keyframes sofia-avatar-wave { from { transform: scaleY(.6); } to { transform: scaleY(1.2); } }
 @media (prefers-reduced-motion: reduce) {
-  .sofia-avatar-image, .sofia-avatar-curls, .sofia-avatar-wave i, .sofia-avatar-greeting { animation: none; }
+  .sofia-avatar-image, .sofia-avatar-curls, .sofia-avatar-wave i, .sofia-avatar-greeting, .sofia-avatar-3d-stage { animation: none; }
 }
 
 .sofia-intro {
