@@ -388,6 +388,7 @@ interface AppointmentRecord {
   // Monto a cobrar informado al paciente (opcional). Dr Happy no procesa el pago.
   amountToCharge?: number
   amountConcept?: 'sena' | 'consulta'
+  publicBookingModality?: 'coverage' | 'private'
 }
 
 interface AppointmentDraft {
@@ -1486,9 +1487,14 @@ function appointmentSortKey(appointment: AppointmentRecord): string {
 }
 
 function normalizeAppointmentRecord(appointment: AppointmentRecord): AppointmentRecord {
+  const inferredModality = appointment.publicBookingModality ?? (
+    appointment.notes?.toLowerCase().includes('particular') ? 'private' :
+      appointment.notes?.toLowerCase().includes('cobertura') ? 'coverage' : undefined
+  )
   if (appointment.scheduledDate && appointment.scheduledTime) {
     return {
       ...appointment,
+      publicBookingModality: inferredModality,
       durationMinutes: appointment.durationMinutes ?? 30,
       scheduledAt: appointment.scheduledAt ?? `${appointment.scheduledDate}T${appointment.scheduledTime}:00`,
     }
@@ -1507,6 +1513,7 @@ function normalizeAppointmentRecord(appointment: AppointmentRecord): Appointment
 
   return {
     ...appointment,
+    publicBookingModality: inferredModality,
     durationMinutes: appointment.durationMinutes ?? 30,
     scheduledDate: localDateKey(scheduledDateTime),
     scheduledTime: `${String(scheduledDateTime.getHours()).padStart(2, '0')}:${String(scheduledDateTime.getMinutes()).padStart(2, '0')}`,
@@ -3146,6 +3153,17 @@ function App() {
     return map
   }, [appointments])
 
+  const appointmentModalityCountByDate = useMemo(() => {
+    const map = new Map<string, { coverage: number; private: number }>()
+    for (const appointment of appointments) {
+      const current = map.get(appointment.scheduledDate) ?? { coverage: 0, private: 0 }
+      if (appointment.publicBookingModality === 'private') current.private += 1
+      else if (appointment.publicBookingModality === 'coverage') current.coverage += 1
+      map.set(appointment.scheduledDate, current)
+    }
+    return map
+  }, [appointments])
+
   const calendarWeeks = useMemo(() => {
     const year = calendarMonthCursor.getFullYear()
     const month = calendarMonthCursor.getMonth()
@@ -3155,21 +3173,24 @@ function App() {
     const daysInMonth = new Date(year, month + 1, 0).getDate()
     const todayStr = new Date().toISOString().slice(0, 10)
 
-    const cells: Array<{ dateStr: string | null; day: number | null; count: number; isToday: boolean } > = []
+    const cells: Array<{ dateStr: string | null; day: number | null; count: number; coverage: number; private: number; isToday: boolean } > = []
     for (let i = 0; i < firstWeekday; i++) {
-      cells.push({ dateStr: null, day: null, count: 0, isToday: false })
+      cells.push({ dateStr: null, day: null, count: 0, coverage: 0, private: 0, isToday: false })
     }
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      const modalityCounts = appointmentModalityCountByDate.get(dateStr) ?? { coverage: 0, private: 0 }
       cells.push({
         dateStr,
         day,
         count: appointmentCountByDate.get(dateStr) ?? 0,
+        coverage: modalityCounts.coverage,
+        private: modalityCounts.private,
         isToday: dateStr === todayStr,
       })
     }
     while (cells.length % 7 !== 0) {
-      cells.push({ dateStr: null, day: null, count: 0, isToday: false })
+      cells.push({ dateStr: null, day: null, count: 0, coverage: 0, private: 0, isToday: false })
     }
 
     const weeks: typeof cells[] = []
@@ -3177,7 +3198,7 @@ function App() {
       weeks.push(cells.slice(i, i + 7))
     }
     return weeks
-  }, [calendarMonthCursor, appointmentCountByDate])
+  }, [calendarMonthCursor, appointmentCountByDate, appointmentModalityCountByDate])
 
   const calendarMonthLabel = useMemo(() => {
     return calendarMonthCursor.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
@@ -11115,6 +11136,11 @@ function App() {
                       >
                         <span className="turnera-calendar-day-number">{cell.day}</span>
                         {cell.count > 0 ? <span className="turnera-calendar-day-count">{cell.count}</span> : null}
+                        {cell.coverage > 0 || cell.private > 0 ? (
+                          <span className="turnera-calendar-day-breakdown">
+                            {cell.coverage > 0 ? `OS ${cell.coverage}` : ''}{cell.coverage > 0 && cell.private > 0 ? ' · ' : ''}{cell.private > 0 ? `Part. ${cell.private}` : ''}
+                          </span>
+                        ) : null}
                       </button>
                     )
                   })
@@ -11132,6 +11158,7 @@ function App() {
                 <div className="turnera-calendar-day-detail">
                   <strong>
                     {formatDate(selectedCalendarDay)}: {appointmentCountByDate.get(selectedCalendarDay) ?? 0} paciente(s) agendado(s)
+                    {(() => { const counts = appointmentModalityCountByDate.get(selectedCalendarDay) ?? { coverage: 0, private: 0 }; return <small className="turnera-calendar-day-breakdown-detail">Obra social: {counts.coverage} · Particular: {counts.private}</small> })()}
                   </strong>
                   <button
                     type="button"

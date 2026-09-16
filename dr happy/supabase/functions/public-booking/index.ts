@@ -657,6 +657,7 @@ serve(async (request) => {
           status: amount ? 'pending' : 'confirmed',
           createdAt: new Date().toISOString(),
           createdByUserId: settings.professional_id,
+          publicBookingModality: block.modality,
           ...(amount ? { amountToCharge: amount, amountConcept: block.amountConcept || 'consulta' } : {}),
         }
 
