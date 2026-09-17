@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
 import { corsHeaders } from '../_shared/cors.ts'
+import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 const VAPID_PUBLIC_KEY =
   Deno.env.get('VAPID_PUBLIC_KEY')?.trim() ||
@@ -41,6 +42,8 @@ serve(async (request) => {
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey)
+  const senderUserId = await resolveProfessionalId(request, supabase)
+  if (!senderUserId) return jsonResponse(401, { message: 'Sesión profesional requerida.' })
 
   let body: Record<string, unknown> = {}
   try {
@@ -52,7 +55,7 @@ serve(async (request) => {
   const action = String(body.action || 'send')
 
   if (action === 'subscribe') {
-    const userId = String(body.userId || '').trim()
+    const userId = senderUserId
     const subscription = body.subscription as {
       endpoint?: string
       keys?: { p256dh?: string; auth?: string }
@@ -93,6 +96,10 @@ serve(async (request) => {
 
   if (!isBroadcast && !recipientUserId) {
     return jsonResponse(400, { message: 'Se requiere recipientUserId o broadcast: true' })
+  }
+  if (isBroadcast) {
+    const { data: sender } = await supabase.from('professionals').select('is_admin, active').eq('id', senderUserId).maybeSingle()
+    if (!sender || sender.is_admin !== true || sender.active === false) return jsonResponse(403, { message: 'Solo un administrador activo puede enviar un broadcast.' })
   }
 
   let query = supabase.from('user_push_subscriptions').select('endpoint, subscription_json')
