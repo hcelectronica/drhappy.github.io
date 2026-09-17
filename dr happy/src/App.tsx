@@ -4868,6 +4868,14 @@ function App() {
     if (loadingUsers || !isSupabaseConfigured || !supabase) {
       return
     }
+    const oauthParams = new URLSearchParams(window.location.search)
+    const oauthHash = new URLSearchParams(window.location.hash.replace(/^#/, '?'))
+    const oauthError = oauthParams.get('error_description') || oauthHash.get('error_description')
+    if (oauthError) {
+      setAuthError(`Google no pudo iniciar sesión: ${oauthError.replace(/\+/g, ' ')}`)
+      window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`)
+      return
+    }
     // Al volver del redirect de Google, Supabase deja la sesión activa; la resolvemos
     // buscando/creando el profesional correspondiente al email de Google.
     const storedUserId = localStorage.getItem(SESSION_USER_KEY)
@@ -5687,10 +5695,13 @@ function App() {
       return
     }
     setAuthError(null)
+    const isGitHubProjectPage = window.location.hostname === 'hcelectronica.github.io'
+    const redirectPath = isGitHubProjectPage ? '/drhappy.github.io/' : window.location.pathname || '/'
+    const redirectUrl = `${window.location.origin}${redirectPath}`
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.href.split('#')[0],
+        redirectTo: redirectUrl,
         queryParams: {
           prompt: 'select_account',
         },
