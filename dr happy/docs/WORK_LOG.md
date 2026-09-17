@@ -37,6 +37,10 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - `admin-professionals` también dejó de aceptar `requesterId` del body como identidad.
 - Checkout de Mercado Pago endurecido: resuelve el profesional desde sesión y toma email/nombre desde `professionals`; ya no confía en `userId`, email o nombre enviados por el cliente.
 - Build frontend correcto; `admin-professionals`, `admin-stats` y checkout desplegados solo en desarrollo.
+- `self-delete-account` ahora resuelve el usuario desde sesión y no acepta `userId` arbitrario.
+- `send-push-notification` exige sesión, asocia suscripciones al usuario autenticado y limita broadcasts a admins.
+- El frontend dejó de escribir directamente en `user_push_subscriptions`; usa la Edge Function autenticada.
+- Build correcto y funciones de self-delete/push desplegadas solo en desarrollo.
 
 ## Formato de cada entrada
 
