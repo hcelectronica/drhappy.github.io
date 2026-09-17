@@ -2,12 +2,19 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { AppErrorBoundary } from './AppErrorBoundary'
+import { installRuntimeErrorLogging, logRuntime } from './runtimeLogger'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
   </StrictMode>,
 )
+
+installRuntimeErrorLogging()
+logRuntime('info', 'app.started', { buildId: import.meta.env.VITE_BUILD_ID })
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

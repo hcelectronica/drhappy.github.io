@@ -27,7 +27,9 @@ export async function askSofia(params: {
     return { success: false, message: 'Sofía todavía no está conectada al servicio de IA en este entorno.' }
   }
 
+  const sessionToken = sessionStorage.getItem('drhappy-professional-session') || ''
   const { data, error } = await supabase.functions.invoke('ai-assistant', {
+    headers: sessionToken ? { 'x-drhappy-session': sessionToken } : undefined,
     body: {
       action: 'chat',
       professionalId: params.professionalId,

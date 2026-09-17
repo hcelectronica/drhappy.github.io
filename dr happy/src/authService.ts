@@ -21,6 +21,7 @@ interface AuthActionResult {
   success: boolean
   message?: string
   professional?: AuthProfessionalPublic
+  sessionToken?: string
 }
 
 async function invokeAuthProfessional(body: Record<string, unknown>): Promise<AuthActionResult> {

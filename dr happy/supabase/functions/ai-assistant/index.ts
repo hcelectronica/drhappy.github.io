@@ -1,5 +1,6 @@
 import { corsHeaders } from '../_shared/cors.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 interface AssistantMessage {
   role: 'user' | 'assistant'
@@ -544,8 +545,8 @@ Deno.serve(async (request) => {
     return jsonResponse(400, { success: false, message: 'Acción no soportada.' })
   }
 
-  const professionalId = typeof payload.professionalId === 'string' ? payload.professionalId.trim() : ''
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+  const professionalId = await resolveProfessionalId(request, admin)
   if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
   const { data: professional } = await admin
     .from('professionals')

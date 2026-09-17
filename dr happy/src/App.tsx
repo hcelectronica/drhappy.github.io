@@ -4868,6 +4868,14 @@ function App() {
     if (loadingUsers || !isSupabaseConfigured || !supabase) {
       return
     }
+    const oauthParams = new URLSearchParams(window.location.search)
+    const oauthHash = new URLSearchParams(window.location.hash.replace(/^#/, '?'))
+    const oauthError = oauthParams.get('error_description') || oauthHash.get('error_description')
+    if (oauthError) {
+      setAuthError(`Google no pudo iniciar sesión: ${oauthError.replace(/\+/g, ' ')}`)
+      window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`)
+      return
+    }
     // Al volver del redirect de Google, Supabase deja la sesión activa; la resolvemos
     // buscando/creando el profesional correspondiente al email de Google.
     const storedUserId = localStorage.getItem(SESSION_USER_KEY)
@@ -5687,10 +5695,14 @@ function App() {
       return
     }
     setAuthError(null)
+    const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+    const redirectUrl = isLocalDevelopment
+      ? `${window.location.origin}${window.location.pathname || '/'}`
+      : 'https://www.drhappy.com.ar/'
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.href.split('#')[0],
+        redirectTo: redirectUrl,
         queryParams: {
           prompt: 'select_account',
         },
@@ -5906,6 +5918,9 @@ function App() {
       }
       const user = mapAuthProfessionalPublic(result.professional)
       try {
+        if (result.sessionToken) {
+          sessionStorage.setItem('drhappy-professional-session', result.sessionToken)
+        }
         localStorage.setItem(SESSION_USER_KEY, user.id)
         await loadWorkspaceForUser(user)
         setWorkspaceLayer('overview')
@@ -6124,6 +6139,7 @@ function App() {
     }
     localStorage.removeItem(SESSION_USER_KEY)
     localStorage.removeItem(SESSION_USER_CACHE_KEY)
+    sessionStorage.removeItem('drhappy-professional-session')
     setGoogleIdentity(null)
     setActiveUserId(null)
     setProfile(null)
@@ -7213,6 +7229,11 @@ function App() {
       return
     }
 
+    const toMinutes = (value: string): number => {
+      const [hours, minutes] = value.split(':').map(Number)
+      return hours * 60 + minutes
+    }
+
     const selectedDateDay = new Date(`${appointmentDraft.scheduledDate}T12:00:00`).getDay()
     if (!appointmentDays.includes(selectedDateDay)) {
       setAppError(`Ese día no está habilitado en tu agenda. Días de atención: ${appointmentDaysLabel}.`)
@@ -7232,10 +7253,6 @@ function App() {
       return
     }
 
-    const toMinutes = (value: string): number => {
-      const [hours, minutes] = value.split(':').map(Number)
-      return hours * 60 + minutes
-    }
     const requestedStart = toMinutes(appointmentDraft.scheduledTime)
     const requestedEnd = requestedStart + appointmentDraft.durationMinutes
     const conflict = appointments.find((a) => {
