@@ -5695,9 +5695,12 @@ function App() {
       return
     }
     setAuthError(null)
-    const isGitHubProjectPage = window.location.hostname === 'hcelectronica.github.io'
-    const redirectPath = isGitHubProjectPage ? '/drhappy.github.io/' : window.location.pathname || '/'
-    const redirectUrl = `${window.location.origin}${redirectPath}`
+    const hostname = window.location.hostname.toLowerCase()
+    const redirectUrl = hostname === 'hcelectronica.github.io'
+      ? 'https://hcelectronica.github.io/drhappy.github.io/'
+      : hostname === 'drhappy.com.ar' || hostname === 'www.drhappy.com.ar'
+        ? 'https://www.drhappy.com.ar/'
+        : `${window.location.origin}${window.location.pathname || '/'}`
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
