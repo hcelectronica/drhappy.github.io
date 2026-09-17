@@ -31,6 +31,8 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - La prueba final de dos usuarios con alta de paciente quedó pendiente por fallo del script temporal/terminal; no se marca como aprobada hasta obtener una ejecución estructurada válida.
 - Se agregó manejo de excepciones por herramienta en `ai-assistant`: los fallos ya no deben convertirse en HTTP 500 opacos; se registra solo el nombre de la herramienta y se devuelve un error controlado.
 - Se probó login con la cuenta admin autorizada y un usuario temporal; ambas sesiones fueron válidas y el usuario temporal fue eliminado. La comparación de datos sigue pendiente porque el alta de paciente no completó.
+- Prueba con cuentas reales `admin` y `betatester`: ambos logins válidos. Se ejecutaron llamadas cruzadas (token de beta + ID admin, token admin + ID beta) y ambas respuestas consultaron la agenda de la sesión efectiva. Las dos agendas estaban vacías, por lo que no se compararon registros concretos.
+- Resultado: aislamiento de identidad a nivel de Edge Function aprobado; aislamiento RLS/base de datos todavía pendiente.
 
 ## Formato de cada entrada
 
