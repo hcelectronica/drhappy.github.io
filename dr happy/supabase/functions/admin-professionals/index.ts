@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 // Operaciones privilegiadas sobre professionals que ANTES hacía el navegador
 // con la clave pública. Eso permitía que cualquiera se auto-otorgara is_admin
@@ -58,14 +59,12 @@ serve(async (request) => {
   }
 
   try {
-    const requesterId = body.requesterId?.trim()
     const targetId = body.targetId?.trim()
-    if (!requesterId) {
-      return jsonResponse(400, { success: false, message: 'Falta el identificador del solicitante.' })
-    }
     if (!targetId) {
       return jsonResponse(400, { success: false, message: 'Falta el usuario a modificar.' })
     }
+    const requesterId = await resolveProfessionalId(request, admin)
+    if (!requesterId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
 
     const { data: requester, error: requesterError } = await admin
       .from('professionals')

@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 // Métricas de uso por usuario para el panel de administración.
 // IMPORTANTÍSIMO: esta función devuelve SOLO estadísticas agregadas
@@ -51,10 +52,8 @@ serve(async (request) => {
       return jsonResponse(400, { success: false, message: 'Acción no soportada.' })
     }
 
-    const requesterId = body.requesterId?.trim()
-    if (!requesterId) {
-      return jsonResponse(400, { success: false, message: 'Falta el identificador del solicitante.' })
-    }
+    const requesterId = await resolveProfessionalId(request, admin)
+    if (!requesterId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
 
     // Verificación de que quien pide las métricas es administrador.
     const { data: requester, error: requesterError } = await admin

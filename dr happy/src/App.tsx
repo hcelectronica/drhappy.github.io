@@ -5736,6 +5736,7 @@ function App() {
     setSubscriptionCheckoutLoading(plan)
     try {
       const { data, error } = await supabase.functions.invoke('create-mercadopago-checkout', {
+        headers: sessionStorage.getItem('drhappy-professional-session') ? { 'x-drhappy-session': sessionStorage.getItem('drhappy-professional-session') as string } : undefined,
         body: {
           userId: activeUserId,
           plan,

@@ -33,6 +33,10 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Se probó login con la cuenta admin autorizada y un usuario temporal; ambas sesiones fueron válidas y el usuario temporal fue eliminado. La comparación de datos sigue pendiente porque el alta de paciente no completó.
 - Prueba con cuentas reales `admin` y `betatester`: ambos logins válidos. Se ejecutaron llamadas cruzadas (token de beta + ID admin, token admin + ID beta) y ambas respuestas consultaron la agenda de la sesión efectiva. Las dos agendas estaban vacías, por lo que no se compararon registros concretos.
 - Resultado: aislamiento de identidad a nivel de Edge Function aprobado; aislamiento RLS/base de datos todavía pendiente.
+- `admin-stats` endurecida y desplegada en desarrollo: admin autenticado respondió HTTP 200; `betatester` con `requesterId` del admin respondió HTTP 403.
+- `admin-professionals` también dejó de aceptar `requesterId` del body como identidad.
+- Checkout de Mercado Pago endurecido: resuelve el profesional desde sesión y toma email/nombre desde `professionals`; ya no confía en `userId`, email o nombre enviados por el cliente.
+- Build frontend correcto; `admin-professionals`, `admin-stats` y checkout desplegados solo en desarrollo.
 
 ## Formato de cada entrada
 
