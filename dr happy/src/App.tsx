@@ -2850,8 +2850,6 @@ function App() {
     [isAdminSession, activeUser],
   )
 
-  // Capacidad real del rango horario elegido para la turnera libre:
-  // cuántos turnos de `durationMinutes` entran realmente entre "Desde" y "Hasta".
   const freeSlotCapacity = useMemo(() => {
     const parseMinutes = (value: string): number | null => {
       const [h, m] = value.split(':').map(Number)
@@ -2862,22 +2860,9 @@ function App() {
     const endMinutes = parseMinutes(freeSlotDraft.endTime)
     const duration = Number(freeSlotDraft.durationMinutes)
     const requested = Number(freeSlotDraft.slotCount)
-
-    if (startMinutes === null || endMinutes === null || !duration) {
-      return null
-    }
-
+    if (startMinutes === null || endMinutes === null || !duration) return null
     const rangeMinutes = endMinutes - startMinutes
-    if (rangeMinutes <= 0) {
-      return {
-        rangeMinutes,
-        maxSlots: 0,
-        requested,
-        fits: false,
-        invalidRange: true,
-        requiredMinutes: requested * duration,
-      }
-    }
+    if (rangeMinutes <= 0) return { rangeMinutes, maxSlots: 0, requested, fits: false, invalidRange: true, requiredMinutes: requested * duration }
 
     const maxSlots = Math.floor(rangeMinutes / duration)
     return {
