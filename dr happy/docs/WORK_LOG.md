@@ -29,6 +29,8 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - La prueba de aislamiento con creación de paciente devolvió HTTP 500 antes de completar la comparación; no se considera aprobada y queda como error de Sofía a diagnosticar.
 - Diagnóstico posterior de Sofía: conversación simple y solicitud de turno devolvieron HTTP 200; la cuenta temporal fue eliminada correctamente. El HTTP 500 no se reprodujo.
 - La prueba final de dos usuarios con alta de paciente quedó pendiente por fallo del script temporal/terminal; no se marca como aprobada hasta obtener una ejecución estructurada válida.
+- Se agregó manejo de excepciones por herramienta en `ai-assistant`: los fallos ya no deben convertirse en HTTP 500 opacos; se registra solo el nombre de la herramienta y se devuelve un error controlado.
+- Se probó login con la cuenta admin autorizada y un usuario temporal; ambas sesiones fueron válidas y el usuario temporal fue eliminado. La comparación de datos sigue pendiente porque el alta de paciente no completó.
 
 ## Formato de cada entrada
 
