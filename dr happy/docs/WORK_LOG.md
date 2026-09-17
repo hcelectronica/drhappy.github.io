@@ -23,6 +23,8 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Validación: build frontend y diagnósticos limpios.
 - Pendiente: probar login propio, Sofía, Google y aislamiento entre profesionales antes de tocar producción o RLS.
 - Prueba negativa ejecutada contra `ai-assistant` sin sesión: respondió HTTP 401 (`UNAUTHORIZED_NO_AUTH_HEADER`).
+- Prueba de manipulación ejecutada: `professionalId` inventado + `x-drhappy-session` falso respondió HTTP 401 (`Sesión profesional requerida`).
+- La prueba entre dos profesionales reales queda pendiente hasta contar con dos sesiones de prueba y limpieza controlada.
 
 ## Formato de cada entrada
 
