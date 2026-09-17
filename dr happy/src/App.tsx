@@ -5695,12 +5695,10 @@ function App() {
       return
     }
     setAuthError(null)
-    const hostname = window.location.hostname.toLowerCase()
-    const redirectUrl = hostname === 'hcelectronica.github.io'
-      ? 'https://hcelectronica.github.io/drhappy.github.io/'
-      : hostname === 'drhappy.com.ar' || hostname === 'www.drhappy.com.ar'
-        ? 'https://www.drhappy.com.ar/'
-        : `${window.location.origin}${window.location.pathname || '/'}`
+    const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+    const redirectUrl = isLocalDevelopment
+      ? `${window.location.origin}${window.location.pathname || '/'}`
+      : 'https://www.drhappy.com.ar/'
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
