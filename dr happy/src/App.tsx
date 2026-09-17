@@ -4168,16 +4168,7 @@ function App() {
             }
           }
         } else {
-          const response = await fetch(`${import.meta.env.BASE_URL}users.json`)
-          if (!response.ok) {
-            throw new Error('No se pudo cargar users.json')
-          }
-          const payload = (await response.json()) as { users: SeedUser[] }
-          merged = payload.users.map((user) => ({
-            ...user,
-            isAdmin: isAdminUser(user),
-            active: localActiveOverrides[user.id] ?? user.active ?? true,
-          }))
+          merged = []
           for (const localUser of localUsers) {
             const normalizedLocalUser: SeedUser = {
               ...localUser,
