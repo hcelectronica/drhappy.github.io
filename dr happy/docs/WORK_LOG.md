@@ -44,6 +44,8 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Administración de turnera pública endurecida: crear/listar/cancelar/configurar ahora usa identidad de sesión; consulta y reserva pública siguen sin requerir sesión.
 - `public-booking` desplegada en desarrollo y build frontend correcto.
 - RLS permanece pendiente deliberadamente: el cliente todavía tiene lecturas/escrituras directas que deben migrarse antes de cerrar políticas permisivas.
+- Auditoría administrativa completada en las funciones revisadas: Sofía, admin, checkout, self-delete, push y administración de turnera pública ya derivan identidad desde sesión en desarrollo.
+- Se mantiene RLS abierto de forma temporal porque `App.tsx` todavía accede directamente a workspace, profesionales y comunidad; cerrarlo ahora rompería flujos.
 - Eliminados `public/users.json` y `public/patients.json` del sitio: no se publican credenciales ni pacientes demo.
 - Build correcto después de la limpieza.
 
