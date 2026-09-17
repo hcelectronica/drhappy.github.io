@@ -25,6 +25,8 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Prueba negativa ejecutada contra `ai-assistant` sin sesión: respondió HTTP 401 (`UNAUTHORIZED_NO_AUTH_HEADER`).
 - Prueba de manipulación ejecutada: `professionalId` inventado + `x-drhappy-session` falso respondió HTTP 401 (`Sesión profesional requerida`).
 - La prueba entre dos profesionales reales queda pendiente hasta contar con dos sesiones de prueba y limpieza controlada.
+- Se crearon dos usuarios temporales, se obtuvieron sesiones reales y se eliminaron correctamente (`cleanupA=true`, `cleanupB=true`).
+- La prueba de aislamiento con creación de paciente devolvió HTTP 500 antes de completar la comparación; no se considera aprobada y queda como error de Sofía a diagnosticar.
 
 ## Formato de cada entrada
 
