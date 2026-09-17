@@ -27,6 +27,8 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - La prueba entre dos profesionales reales queda pendiente hasta contar con dos sesiones de prueba y limpieza controlada.
 - Se crearon dos usuarios temporales, se obtuvieron sesiones reales y se eliminaron correctamente (`cleanupA=true`, `cleanupB=true`).
 - La prueba de aislamiento con creación de paciente devolvió HTTP 500 antes de completar la comparación; no se considera aprobada y queda como error de Sofía a diagnosticar.
+- Diagnóstico posterior de Sofía: conversación simple y solicitud de turno devolvieron HTTP 200; la cuenta temporal fue eliminada correctamente. El HTTP 500 no se reprodujo.
+- La prueba final de dos usuarios con alta de paciente quedó pendiente por fallo del script temporal/terminal; no se marca como aprobada hasta obtener una ejecución estructurada válida.
 
 ## Formato de cada entrada
 
