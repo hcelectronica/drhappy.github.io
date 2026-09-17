@@ -41,6 +41,9 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - `send-push-notification` exige sesión, asocia suscripciones al usuario autenticado y limita broadcasts a admins.
 - El frontend dejó de escribir directamente en `user_push_subscriptions`; usa la Edge Function autenticada.
 - Build correcto y funciones de self-delete/push desplegadas solo en desarrollo.
+- Administración de turnera pública endurecida: crear/listar/cancelar/configurar ahora usa identidad de sesión; consulta y reserva pública siguen sin requerir sesión.
+- `public-booking` desplegada en desarrollo y build frontend correcto.
+- RLS permanece pendiente deliberadamente: el cliente todavía tiene lecturas/escrituras directas que deben migrarse antes de cerrar políticas permisivas.
 
 ## Formato de cada entrada
 
