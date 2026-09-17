@@ -22,6 +22,7 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Migración aplicada y funciones `auth-professional`/`ai-assistant` desplegadas solo en Supabase de desarrollo.
 - Validación: build frontend y diagnósticos limpios.
 - Pendiente: probar login propio, Sofía, Google y aislamiento entre profesionales antes de tocar producción o RLS.
+- Prueba negativa ejecutada contra `ai-assistant` sin sesión: respondió HTTP 401 (`UNAUTHORIZED_NO_AUTH_HEADER`).
 
 ## Formato de cada entrada
 
