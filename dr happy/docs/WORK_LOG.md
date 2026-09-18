@@ -65,6 +65,7 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Se agregaron sugerencias CIE-10 locales y revisables después del resumen; el profesional puede aceptar o editar una sugerencia y nada se guarda automáticamente.
 - Build y diagnósticos correctos en desarrollo.
 - La prueba sintética de tres entrevistas clínicas quedó inconclusa por falta de salida del runner temporal; no se marcó como aprobada ni se promovió a producción.
+- Se levantó la app de desarrollo para prueba manual del flujo clínico en `http://127.0.0.1:5174/`; no se usaron cuentas reales ni datos clínicos de producción.
 - Revisión previa al cierre de RLS: el único acceso directo restante a `user_workspaces` está en el archivo legal de eliminación administrativa; debe migrarse a una función admin antes de bloquear la tabla.
 - RLS de `user_workspaces` no se aplicó todavía para evitar romper ese flujo pendiente.
 - Archivo legal administrativo migrado a `admin-professionals` (`archive-delete-professional`): lee, envía el archivo y elimina con Service Role; el frontend ya no usa el acceso directo durante el flujo normal.
