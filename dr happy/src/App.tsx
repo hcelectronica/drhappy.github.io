@@ -43,6 +43,8 @@ import { askSofia } from './aiAssistantService'
 import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
 import { communityRequest } from './communityService'
 import { parseClinicalSummary } from './clinicalSummaryParser'
+import { calculateTrialInfo, hasPremiumTurneraAccess as calculatePremiumTurneraAccess } from './subscriptionAccess'
+import { removePatientFromWorkspace } from './patientWorkspaceUtils'
 import { loadProfessionals, loadOwnProfessional, updateOwnProfessionalProfile } from './professionalsService'
 import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
@@ -2755,92 +2757,11 @@ function App() {
   }
 
   // --- Trial / Suscripción ---
-  const trialInfo = useMemo(() => {
-    const TRIAL_DAYS = 14
-    const TRIAL_PATIENTS = 15
-    const user = seedUsers.find((u) => u.id === activeUserId)
-    if (!user) return null
-    if (user.isAdmin) {
-      return {
-        status: 'admin' as const,
-        daysLeft: Infinity,
-        patientsLeft: Infinity,
-        expired: false,
-        expiredByTime: false,
-        expiredByPatients: false,
-        expiredBySubscription: false,
-      }
-    }
-    if (user.subscriptionStatus === 'active') {
-      if (user.subscriptionExpiresAt) {
-        const millisecondsLeft = new Date(user.subscriptionExpiresAt).getTime() - Date.now()
-        const daysLeft = Math.max(0, Math.ceil(millisecondsLeft / DAY_IN_MS))
-        const expired = millisecondsLeft <= 0
-        return {
-          status: expired ? ('expired' as const) : ('active' as const),
-          daysLeft,
-          patientsLeft: Infinity,
-          expired,
-          expiredByTime: false,
-          expiredByPatients: false,
-          expiredBySubscription: expired,
-        }
-      }
-      return {
-        status: 'active' as const,
-        daysLeft: Infinity,
-        patientsLeft: Infinity,
-        expired: false,
-        expiredByTime: false,
-        expiredByPatients: false,
-        expiredBySubscription: false,
-      }
-    }
-    if (user.subscriptionStatus === 'cancelled' || user.subscriptionStatus === 'expired') {
-      return {
-        status: 'expired' as const,
-        daysLeft: 0,
-        patientsLeft: 0,
-        expired: true,
-        expiredByTime: false,
-        expiredByPatients: false,
-        expiredBySubscription: true,
-      }
-    }
-    if (!user.trialStartedAt) {
-      return {
-        status: 'legacy' as const,
-        daysLeft: Infinity,
-        patientsLeft: Infinity,
-        expired: false,
-        expiredByTime: false,
-        expiredByPatients: false,
-        expiredBySubscription: false,
-      }
-    }
-
-    const daysPassed = Math.floor((Date.now() - new Date(user.trialStartedAt).getTime()) / DAY_IN_MS)
-    const daysLeft = Math.max(0, TRIAL_DAYS - daysPassed)
-
-    // Contar solo los pacientes propios del usuario
-    const ownPatientCount = patients.filter((p) => p.ownerUserId === activeUserId).length
-    const patientsLeft = Math.max(0, TRIAL_PATIENTS - ownPatientCount)
-
-    const expiredByTime = daysPassed >= TRIAL_DAYS
-    const expiredByPatients = ownPatientCount >= TRIAL_PATIENTS
-    const expired = expiredByTime || expiredByPatients
-
-    return {
-      status: expired ? ('expired' as const) : ('trial' as const),
-      daysLeft,
-      patientsLeft,
-      ownPatientCount,
-      expiredByTime,
-      expiredByPatients,
-      expiredBySubscription: false,
-      expired,
-    }
-  }, [seedUsers, activeUserId, patients])
+  const trialUser = seedUsers.find((user) => user.id === activeUserId) ?? null
+  const trialInfo = useMemo(
+    () => calculateTrialInfo(trialUser, patients),
+    [trialUser, patients],
+  )
 
   const activeUser = useMemo(
     () => seedUsers.find((user) => user.id === activeUserId) ?? null,
@@ -2849,7 +2770,7 @@ function App() {
   const isAdminSession = isAdminUser(activeUser)
   // Acceso a la Turnera Premium (calendario de ocupación + estadísticas): solo suscripción activa,
   // no incluye usuarios en período de prueba (trial) ni vencidos.
-  const hasPremiumTurneraAccess = Boolean(isAdminSession || activeUser?.subscriptionStatus === 'active')
+  const hasPremiumTurneraAccess = calculatePremiumTurneraAccess(activeUser)
 
   // Módulos visibles para el usuario activo. El admin siempre los ve todos, y
   // un usuario sin configuración (undefined) también, para no romper cuentas previas.
@@ -5424,13 +5345,17 @@ function App() {
     if (!window.confirm(`Se eliminará la ficha de ${patientName || 'este paciente'}, sus turnos y su balance asociado. Esta acción no se puede deshacer. ¿Continuar?`)) {
       return
     }
-    const nextPatients = patients.filter((patient) => patient.id !== selectedPatient.id)
+    const removal = removePatientFromWorkspace(
+      selectedPatient.id,
+      selectedPatient.dni,
+      patients,
+      appointments,
+      treatmentLedger,
+    )
+    const nextPatients = removal.patients
     const nextAvailablePatients = availablePatients.filter((patient) => patient.id !== selectedPatient.id)
-    const nextAppointments = appointments.filter((appointment) => (
-      appointment.patientId !== selectedPatient.id &&
-      (!selectedPatient.dni || appointment.patientDni !== selectedPatient.dni)
-    ))
-    const nextLedger = treatmentLedger.filter((entry) => entry.patientId !== selectedPatient.id)
+    const nextAppointments = removal.appointments
+    const nextLedger = removal.ledger
     const ownerIndex = readJsonStorage<string[]>(patientIndexStorageKey(activeUserId), [])
     const registry = readJsonStorage<string[]>(PATIENT_REGISTRY_KEY, [])
     localStorage.removeItem(patientGlobalStorageKey(selectedPatient.id))
