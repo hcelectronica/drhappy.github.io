@@ -95,8 +95,8 @@ const tools = [
   },
   {
     name: 'crear_paciente_y_agendar_turno',
-    description: 'Registra un paciente nuevo y agenda directamente su primer turno con los datos recibidos. La hora es opcional: si no se indica, elegí el primer bloque libre de la jornada. El DNI y otros datos complementarios son opcionales y pueden completarse después manualmente. No pidas confirmación adicional. Solo detente si el día no atiende, no hay cupo o el horario se superpone.',
-    input_schema: { type: 'object', properties: { nombre: { type: 'string' }, apellido: { type: 'string' }, dni: { type: 'string', description: 'Opcional; se puede completar después manualmente.' }, email: { type: 'string' }, phone: { type: 'string' }, obraSocial: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD.' }, time: { type: 'string', description: 'Hora HH:MM opcional; si falta se asigna el primer bloque libre.' }, reason: { type: 'string' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['nombre', 'apellido', 'date', 'confirmation'] },
+    description: 'Registra un paciente nuevo y agenda directamente su primer turno con los datos recibidos. Fecha y hora son opcionales: si faltan, elegí el primer día habilitado con cupo y su primer bloque libre. El DNI y otros datos complementarios son opcionales y pueden completarse después manualmente. No pidas confirmación adicional. Solo detente si no existe disponibilidad.',
+    input_schema: { type: 'object', properties: { nombre: { type: 'string' }, apellido: { type: 'string' }, dni: { type: 'string', description: 'Opcional; se puede completar después manualmente.' }, email: { type: 'string' }, phone: { type: 'string' }, obraSocial: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD opcional; si falta, se busca el próximo día disponible.' }, time: { type: 'string', description: 'Hora HH:MM opcional; si falta se asigna el primer bloque libre.' }, reason: { type: 'string' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['nombre', 'apellido', 'confirmation'] },
   },
   {
     name: 'cancelar_turno',
@@ -444,9 +444,9 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const nombre = String(input.nombre || '').trim()
     const apellido = String(input.apellido || '').trim()
     const dni = String(input.dni || '').trim()
-    const date = String(input.date || '').trim()
+    let date = String(input.date || '').trim()
     const requestedTime = String(input.time || '').trim()
-    if (!nombre || !apellido || !date) return { success: false, message: 'Faltan nombre, apellido o fecha.' }
+    if (!nombre || !apellido) return { success: false, message: 'Faltan nombre o apellido.' }
     const { data } = await admin.from('user_workspaces').select('patients_json, appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
@@ -455,11 +455,29 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const appointmentDays = Array.isArray(profileData.appointmentDays) ? profileData.appointmentDays : [1, 2, 4]
     const openingTime = typeof profileData.appointmentStartTime === 'string' ? profileData.appointmentStartTime : '09:00'
     const closingTime = typeof profileData.appointmentEndTime === 'string' ? profileData.appointmentEndTime : '19:00'
+    let automaticallySelectedTime = ''
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+      for (let offset = 0; offset < 60; offset += 1) {
+        const candidate = new Date(`${today}T12:00:00`)
+        candidate.setDate(candidate.getDate() + offset)
+        const candidateDate = candidate.toISOString().slice(0, 10)
+        if (!appointmentDays.includes(dateWeekday(candidateDate))) continue
+        const candidateAppointments = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === candidateDate)
+        if (candidateAppointments.length >= dailyLimit) continue
+        const candidateTime = findFirstAvailableTime(candidateAppointments, 30, openingTime, closingTime)
+        if (!candidateTime) continue
+        date = candidateDate
+        automaticallySelectedTime = candidateTime
+        break
+      }
+      if (!date) return { success: false, message: 'No encontré disponibilidad en los próximos 60 días.' }
+    }
     if (!appointmentDays.includes(dateWeekday(date))) return { success: false, message: 'Ese día no está habilitado en la agenda profesional.' }
     const activeOnDate = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === date)
     if (activeOnDate.length >= dailyLimit) return { success: false, message: `El cupo diario está completo (${dailyLimit} turnos).` }
     const durationMinutes = 30
-    const selectedTime = /^\d{2}:\d{2}$/.test(requestedTime) ? requestedTime : findFirstAvailableTime(activeOnDate, durationMinutes, openingTime, closingTime)
+    const selectedTime = /^\d{2}:\d{2}$/.test(requestedTime) ? requestedTime : automaticallySelectedTime || findFirstAvailableTime(activeOnDate, durationMinutes, openingTime, closingTime)
     if (!selectedTime) return { success: false, message: 'No encontré un bloque libre en la jornada para ese día.' }
     if (timeToMinutes(selectedTime) < timeToMinutes(openingTime) || timeToMinutes(selectedTime) + durationMinutes > timeToMinutes(closingTime)) return { success: false, message: `El horario debe estar dentro de tu agenda: ${openingTime} a ${closingTime}.` }
     const normalizedName = normalizeSearch(`${nombre} ${apellido}`)
@@ -678,6 +696,7 @@ Deno.serve(async (request) => {
       }
       if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno') && toolRecord && typeof toolRecord.message === 'string') {
         directSchedulingReply = toolRecord.message
+        if (toolRecord.success === true) break
       }
       toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(toolData).slice(0, 12000) })
     }
