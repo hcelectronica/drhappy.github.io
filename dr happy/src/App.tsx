@@ -6,7 +6,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from 'react'
 import { BrowserPDF417Reader, BrowserQRCodeReader } from '@zxing/browser'
-import * as XLSX from 'xlsx'
+import * as ExcelJS from 'exceljs'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
 import {
@@ -1726,13 +1726,13 @@ function asText(value: unknown): string {
 }
 
 function excelDateToIso(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10)
+  }
   if (typeof value === 'number') {
-    const parsed = XLSX.SSF.parse_date_code(value)
-    if (parsed) {
-      const month = String(parsed.m).padStart(2, '0')
-      const day = String(parsed.d).padStart(2, '0')
-      return `${parsed.y}-${month}-${day}`
-    }
+    const excelEpoch = Date.UTC(1899, 11, 30)
+    const parsed = new Date(excelEpoch + value * 86400000)
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10)
   }
 
   const text = asText(value)
@@ -8260,17 +8260,27 @@ function App() {
     }
 
     const buffer = await file.arrayBuffer()
-    const workbook = XLSX.read(buffer, { type: 'array' })
-    const firstSheet = workbook.SheetNames[0]
-    if (!firstSheet) {
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.load(buffer)
+    const worksheet = workbook.worksheets[0]
+    if (!worksheet) {
       setAppError('El Excel no tiene hojas con datos.')
       return
     }
 
-    const sheet = workbook.Sheets[firstSheet]
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-      defval: '',
-      raw: true,
+    const headerValues: string[] = []
+    worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+      headerValues[columnNumber - 1] = asText(cell.value)
+    })
+    const rows: Array<Record<string, unknown>> = []
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return
+      const record: Record<string, unknown> = {}
+      row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+        const header = headerValues[columnNumber - 1]
+        if (header) record[header] = cell.value instanceof Date ? cell.value : asText(cell.value)
+      })
+      if (Object.keys(record).length > 0) rows.push(record)
     })
 
     if (rows.length === 0) {
