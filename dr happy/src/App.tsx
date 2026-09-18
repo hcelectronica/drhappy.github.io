@@ -42,7 +42,8 @@ import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
 import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
 import { communityRequest } from './communityService'
-import { loadProfessionals } from './professionalsService'
+import { parseClinicalSummary } from './clinicalSummaryParser'
+import { loadProfessionals, loadOwnProfessional, updateOwnProfessionalProfile } from './professionalsService'
 import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
 import { selfDeleteAccount } from './selfDeleteService'
@@ -3495,21 +3496,8 @@ function App() {
       // El alta de cuentas ocurre en la Edge Function auth-professional (Service Role).
       // Desde el cliente solo se refrescan los campos del propio perfil: id y username
       // no son actualizables, y los privilegiados los maneja admin-professionals.
-      const { error: professionalError } = await supabase
-        .from('professionals')
-        .update({
-          full_name: user.fullName,
-          specialty: user.specialty,
-          license_number: user.licenseNumber,
-          dni: user.dni ?? null,
-          email: user.email,
-          network_memberships_json: user.networkMemberships ?? [],
-          last_seen_at: new Date().toISOString(),
-        })
-        .eq('id', user.id)
-      if (professionalError) {
-        throw new Error(`No se pudo sincronizar el profesional: ${professionalError.message}`)
-      }
+      const professionalUpdate = await updateOwnProfessionalProfile({ fullName: user.fullName, specialty: user.specialty, licenseNumber: user.licenseNumber, dni: user.dni ?? null, email: user.email, networkMemberships: user.networkMemberships ?? [] })
+      if (!professionalUpdate.success) throw new Error(`No se pudo sincronizar el profesional: ${professionalUpdate.message}`)
 
       const workspaceResult = await loadWorkspaceData()
       if (!workspaceResult.success) throw new Error(`No se pudo cargar la base personal del profesional: ${workspaceResult.message}`)
@@ -3589,21 +3577,12 @@ function App() {
       return null
     }
 
-    const { data, error } = await supabase
-      .from('professionals')
-      .select(PROFESSIONAL_SELECT_COLUMNS)
-      .eq('id', userId)
-      .maybeSingle()
-
-    if (error) {
-      throw new Error(`No se pudo refrescar la suscripción del profesional: ${error.message}`)
-    }
-
-    if (!data) {
+    const result = await loadOwnProfessional()
+    if (!result.success) throw new Error(`No se pudo refrescar la suscripción del profesional: ${result.message}`)
+    if (!result.professional) {
       return null
     }
-
-    return mapRemoteProfessional(data as RemoteProfessionalRow)
+    return mapRemoteProfessional(result.professional as RemoteProfessionalRow)
   }
 
   function removeLocalUserArtifacts(userId: string, ownedPatients: PatientRecord[]): void {
@@ -5359,18 +5338,8 @@ function App() {
     const nextEmail = nextProfile.email.trim()
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase
-        .from('professionals')
-        .update({
-          full_name: nextFullName,
-          specialty: nextSpecialty,
-          license_number: nextLicenseNumber,
-          email: nextEmail,
-        })
-        .eq('id', activeUserId)
-      if (error) {
-        throw new Error(`No se pudo sincronizar el perfil profesional: ${error.message}`)
-      }
+      const result = await updateOwnProfessionalProfile({ fullName: nextFullName, specialty: nextSpecialty, licenseNumber: nextLicenseNumber, email: nextEmail })
+      if (!result.success) throw new Error(`No se pudo sincronizar el perfil profesional: ${result.message}`)
     }
 
     setSeedUsers((current) =>
@@ -6520,26 +6489,16 @@ function App() {
         setAppError(result.message || 'No se pudo preparar el resumen clínico.')
         return
       }
-      const draftText = result.reply.trim()
-      const normalizedDraft = draftText
-        .replace(/\r/g, '')
-        .replace(/\*\*/g, '')
-        .replace(/\s+(MOTIVO:|RESUMEN(?: DE HOY)?:|ANTECEDENTES RELEVANTES:|PENSAMIENTO:)/gi, '\n$1')
-      const motivo = normalizedDraft.match(/MOTIVO:\s*([\s\S]*?)(?=\n\s*RESUMEN(?: DE HOY)?:|$)/i)?.[1]?.trim()
-      const enfermedadActual = normalizedDraft.match(/ENFERMEDAD ACTUAL:\s*([\s\S]*?)(?=\n\s*EXAMEN FÍSICO:|$)/i)?.[1]?.trim()
-      const examenFisico = normalizedDraft.match(/EXAMEN FÍSICO:\s*([\s\S]*?)(?=\n\s*IMPRESIÓN DIAGNÓSTICA:|$)/i)?.[1]?.trim()
-      const impresionDiagnostica = normalizedDraft.match(/IMPRESIÓN DIAGNÓSTICA:\s*([\s\S]*?)(?=\n\s*PLAN DE MANEJO:|$)/i)?.[1]?.trim()
-      const planManejo = normalizedDraft.match(/PLAN DE MANEJO:\s*([\s\S]*?)(?=\n\s*ANTECEDENTES RELEVANTES:|\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
-      const antecedentes = normalizedDraft.match(/ANTECEDENTES RELEVANTES:\s*([\s\S]*?)(?=\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
-      const pensamiento = normalizedDraft.match(/PENSAMIENTO:\s*([\s\S]*)$/i)?.[1]?.trim()
+      const parsedSummary = parseClinicalSummary(result.reply)
+      const { motivo, enfermedadActual, examenFisico, impresionDiagnostica, planManejo, antecedentes, pensamiento } = parsedSummary
       if (!enfermedadActual && !pensamiento) {
         setAppError('Sofía respondió, pero no pudo separar el borrador en secciones. Conservé la transcripción original para que la revises.')
         return
       }
       setConsultationDraft((current) => ({
         ...current,
-        motivoConsulta: motivo ? normalizeConsultationReason(motivo) : current.motivoConsulta,
-        diagnostico: current.diagnostico,
+        motivoConsulta: motivo || current.motivoConsulta,
+  diagnostico: current.diagnostico,
         detalleAtencion: enfermedadActual ? `${enfermedadActual}${antecedentes ? `\n\nAntecedentes relevantes:\n${antecedentes}` : ''}` : current.detalleAtencion,
         enfermedadActual: enfermedadActual || current.enfermedadActual,
         examenFisico: examenFisico || current.examenFisico,

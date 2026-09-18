@@ -58,6 +58,20 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Canal Realtime directo retirado; comunidad usa polling mediante `community-data`.
 - Migración `20260918020000_lock_community_direct_access.sql` aplicada en desarrollo: se revocó acceso directo a `community_messages` y `user_push_subscriptions`.
 - RLS de workspace, comunidad y push ya está cerrado en desarrollo.
+- Perfil y listado de profesionales migrados a `professionals-data`; `App.tsx` ya no accede directamente a `professionals`.
+- Migración `20260918030000_lock_professionals_direct_access.sql` aplicada en desarrollo: se revocó acceso directo a `professionals`.
+- Paso 3 de RLS queda cerrado en desarrollo; el acceso administrativo continúa por Edge Functions con sesión validada.
+- Inicio del tramo clínico 2: el resumen de entrevista ahora recibe antecedentes estructurados y hasta cinco evoluciones previas.
+- La salida exige separar `RESUMEN DE HOY`, `ANTECEDENTES RELEVANTES` y `PENSAMIENTO`; sigue siendo borrador no guardado.
+- Se agregaron plantillas iniciales: consulta general, pediatría y odontología.
+- Build y diagnósticos correctos en desarrollo; no se promovió a producción.
+- Se agregaron sugerencias CIE-10 locales y revisables después del resumen; el profesional puede aceptar o editar una sugerencia y nada se guarda automáticamente.
+- Build y diagnósticos correctos en desarrollo.
+- La prueba sintética de tres entrevistas clínicas quedó inconclusa por falta de salida del runner temporal; no se marcó como aprobada ni se promovió a producción.
+- Evolución clínica estructurada integrada: MC, enfermedad actual, examen físico, impresión diagnóstica y plan de manejo. Las evoluciones antiguas mantienen compatibilidad con sus campos previos.
+- La ficha general permanece separada de las evoluciones fechadas; cada nueva evolución agrega la novedad sin modificar el pasado.
+- Build validado y publicado en desarrollo (`c82189d`) y producción (`bba3401`).
+- Se levantó la app de desarrollo para prueba manual del flujo clínico en `http://127.0.0.1:5174/`; no se usaron cuentas reales ni datos clínicos de producción.
 - Revisión previa al cierre de RLS: el único acceso directo restante a `user_workspaces` está en el archivo legal de eliminación administrativa; debe migrarse a una función admin antes de bloquear la tabla.
 - RLS de `user_workspaces` no se aplicó todavía para evitar romper ese flujo pendiente.
 - Archivo legal administrativo migrado a `admin-professionals` (`archive-delete-professional`): lee, envía el archivo y elimina con Service Role; el frontend ya no usa el acceso directo durante el flujo normal.
