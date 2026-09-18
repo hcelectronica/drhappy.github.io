@@ -113,7 +113,8 @@ body.theme-night {
 .flyer-tool strong { font-size: .88rem; }
 .flyer-tool small { color: #68809d; font-size: .72rem; line-height: 1.4; }
 .flyer-tool-ambulance { border-color: #8bb8a4; background: linear-gradient(145deg, #f3fff8, #e6f7ed); }
-.flyer-slide { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .9fr); gap: 28px; align-items: center; min-height: 370px; animation: flyer-slide-in 420ms ease both; }
+.flyer-slide { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .9fr); gap: 28px; align-items: center; min-height: 370px; animation: flyer-slide-in 420ms ease both; cursor: grab; touch-action: pan-y; user-select: none; }
+.flyer-slide:active { cursor: grabbing; }
 .flyer-slide::before { content: ''; position: absolute; top: -48px; left: -48px; width: 110px; height: 7px; border-radius: 0 8px 8px 0; background: var(--flyer-accent, #1d4ed8); box-shadow: 0 0 0 10px color-mix(in srgb, var(--flyer-accent, #1d4ed8) 12%, transparent); }
 .flyer-slide-ambulance { --flyer-accent: #15945f; }
 .flyer-slide-patient { --flyer-accent: #2563eb; }
@@ -144,6 +145,7 @@ body.theme-night {
 .flyer-sofia-copy b { color: #0f766e; font-size: .68rem; }
 .flyer-sofia-image { position: relative; align-self: stretch; min-height: 218px; overflow: hidden; }
 .flyer-sofia-image img { position: absolute; top: -43px; left: -7px; width: 620px; max-width: none; height: auto; }
+.flyer-sofia-image::after { content: ''; position: absolute; top: 0; right: 0; left: 0; height: 32px; background: #e6faf7; pointer-events: none; }
 .flyer-slide-dots { position: absolute; bottom: -4px; left: 50%; display: flex; gap: 6px; transform: translateX(-50%); }
 .flyer-slide-dots span { width: 7px; height: 7px; border-radius: 50%; background: #b9cde7; }
 .flyer-slide-dots span.active { width: 20px; border-radius: 5px; background: var(--flyer-accent, #1d4ed8); }

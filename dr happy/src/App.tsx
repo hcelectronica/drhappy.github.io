@@ -2580,6 +2580,7 @@ function App() {
   const [adminAIUsageLoading, setAdminAIUsageLoading] = useState(false)
   const [adminAITotal, setAdminAITotal] = useState({ requests: 0, tokens: 0, costUsd: 0 })
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
+  const flyerPointerStartRef = useRef<number | null>(null)
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
   const [myPatientsQuery, setMyPatientsQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -4355,6 +4356,23 @@ function App() {
     }, 6500)
     return () => window.clearInterval(intervalId)
   }, [workspaceLayer])
+
+  function handleFlyerPointerDown(event: ReactPointerEvent<HTMLElement>): void {
+    flyerPointerStartRef.current = event.clientX
+  }
+
+  function handleFlyerPointerUp(event: ReactPointerEvent<HTMLElement>): void {
+    const start = flyerPointerStartRef.current
+    flyerPointerStartRef.current = null
+    if (start === null) return
+    const distance = event.clientX - start
+    if (Math.abs(distance) < 48) return
+    setFlyerSlideIndex((current) => (
+      distance < 0
+        ? (current + 1) % APP_FLYER_SLIDES.length
+        : (current - 1 + APP_FLYER_SLIDES.length) % APP_FLYER_SLIDES.length
+    ))
+  }
 
   useEffect(() => {
     if (!selectedMedicationId) {
@@ -10824,7 +10842,12 @@ function App() {
             {(() => {
               const slide = APP_FLYER_SLIDES[flyerSlideIndex]
               return (
-                <article className={`flyer-slide flyer-slide-${slide.visual}`}>
+                <article
+                  className={`flyer-slide flyer-slide-${slide.visual}`}
+                  onPointerDown={handleFlyerPointerDown}
+                  onPointerUp={handleFlyerPointerUp}
+                  onPointerCancel={() => { flyerPointerStartRef.current = null }}
+                >
                   <div className="flyer-slide-copy">
                     <span className="section-kicker">{slide.eyebrow}</span>
                     <h2>{slide.icon} {slide.title}</h2>
