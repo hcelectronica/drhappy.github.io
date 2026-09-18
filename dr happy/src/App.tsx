@@ -1720,6 +1720,11 @@ function normalizeHeader(header: string): string {
     .replace(/[^a-z0-9]/g, '')
 }
 
+function normalizeConsultationReason(value: string): string {
+  const cleaned = value.replace(/\*\*/g, '').replace(/^[-•#\s]+/, '').split(/[\n.;:!?]/)[0].trim()
+  return cleaned.split(/\s+/).filter(Boolean).slice(0, 4).join(' ')
+}
+
 function asText(value: unknown): string {
   if (value === null || value === undefined) {
     return ''
@@ -6495,7 +6500,7 @@ function App() {
         professionalName: profile?.fullName || activeUser?.fullName,
         messages: [{
           role: 'user',
-          content: `Convertí la entrevista en un borrador clínico revisable. No inventes datos, no diagnostiques ni indiques tratamientos. Devolvé exactamente cuatro secciones: MOTIVO:, RESUMEN DE HOY:, ANTECEDENTES RELEVANTES:, PENSAMIENTO:. RESUMEN DE HOY debe usar solo la transcripción actual. ANTECEDENTES RELEVANTES debe usar solo los antecedentes previos proporcionados. PENSAMIENTO debe indicar datos faltantes, contradicciones, riesgos o preguntas para verificar, sin conclusiones. ${templateInstructions}\nPaciente: ${patientName}\nAntecedentes: ${JSON.stringify(patientBackground)}\nÚltimas evoluciones: ${JSON.stringify(priorConsultations)}\nTranscripción actual:\n${consultationDraft.detalleAtencion.trim()}`,
+          content: `Convertí la entrevista en un borrador clínico revisable. No inventes datos, no diagnostiques ni indiques tratamientos. Devolvé exactamente cuatro secciones: MOTIVO:, RESUMEN DE HOY:, ANTECEDENTES RELEVANTES:, PENSAMIENTO:. MOTIVO debe ser únicamente una etiqueta clínica breve de 1 a 4 palabras; nunca escribas una oración o párrafo en MOTIVO. El relato textual debe quedar en RESUMEN DE HOY. ${templateInstructions}\nPaciente: ${patientName}\nAntecedentes: ${JSON.stringify(patientBackground)}\nÚltimas evoluciones: ${JSON.stringify(priorConsultations)}\nTranscripción actual:\n${consultationDraft.detalleAtencion.trim()}`,
         }],
         context: `El profesional está completando una evolución clínica. El resultado es un borrador no guardado. No mezcles lo dicho hoy con antecedentes. Datos estructurados previos: ${JSON.stringify(patientBackground)}. Últimas evoluciones: ${JSON.stringify(priorConsultations)}. Plantilla: ${clinicalSummaryTemplate}. Debe ser revisado por el profesional antes de incorporarlo a la historia clínica.`,
       })
@@ -6518,7 +6523,7 @@ function App() {
       }
       setConsultationDraft((current) => ({
         ...current,
-        motivoConsulta: motivo || current.motivoConsulta,
+        motivoConsulta: motivo ? normalizeConsultationReason(motivo) : current.motivoConsulta,
         diagnostico: current.diagnostico,
         detalleAtencion: resumen ? `${resumen}${antecedentes ? `\n\nAntecedentes relevantes:\n${antecedentes}` : ''}` : current.detalleAtencion,
         pensamientoMedico: pensamiento || current.pensamientoMedico,
