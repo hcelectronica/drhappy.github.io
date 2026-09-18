@@ -3397,6 +3397,7 @@ function App() {
       .map(normalizeTreatmentLedgerEntry)
       .filter((entry): entry is TreatmentLedgerEntry => Boolean(entry))
     const localSeenIds = readJsonStorage<string[]>(communitySeenStorageKey(user.id), [])
+    let remoteWorkspaceLoaded = false
 
     localStorage.setItem(SESSION_USER_KEY, user.id)
     localStorage.setItem(SESSION_USER_CACHE_KEY, JSON.stringify(user))
@@ -3420,9 +3421,13 @@ function App() {
       const data = workspaceResult.workspace as RemoteWorkspaceRow | null
 
       if (data) {
+        remoteWorkspaceLoaded = true
         const workspace = data as RemoteWorkspaceRow
         loadedProfile = {
           ...normalizeRemoteProfile(workspace.profile_json, profileFromSeed(user)),
+          fullName: user.fullName,
+          specialty: user.specialty,
+          licenseNumber: user.licenseNumber,
           email: user.email,
         }
         const remotePatients = Array.isArray(workspace.patients_json)
@@ -3489,6 +3494,9 @@ function App() {
     setAppointments(loadedAppointments)
     setTreatmentLedger(loadedLedger)
     localStorage.setItem(treatmentLedgerStorageKey(user.id), JSON.stringify(loadedLedger))
+    if (isSupabaseConfigured && remoteWorkspaceLoaded) {
+      void persistWorkspaceRemote(user.id, loadedProfile, patientsList, loadedAppointments, loadedLedger)
+    }
   }
 
   async function fetchRemoteProfessionalById(): Promise<SeedUser | null> {
