@@ -43,6 +43,7 @@ import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
 import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
 import { communityRequest } from './communityService'
+import { loadProfessionals } from './professionalsService'
 import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
 import { selfDeleteAccount } from './selfDeleteService'
@@ -4135,14 +4136,9 @@ function App() {
         let merged: SeedUser[] = []
 
         if (isSupabaseConfigured && supabase) {
-          const { data, error } = await supabase
-            .from('professionals')
-            .select(PROFESSIONAL_SELECT_COLUMNS)
-            .order('full_name', { ascending: true })
-          if (error) {
-            throw new Error(`No se pudo cargar profesionales remotos: ${error.message}`)
-          }
-          for (const row of data ?? []) {
+          const result = await loadProfessionals()
+          if (!result.success) throw new Error(`No se pudo cargar profesionales remotos: ${result.message}`)
+          for (const row of result.professionals ?? []) {
             const remoteUser = mapRemoteProfessional(row as RemoteProfessionalRow)
             if (
               !merged.some(
@@ -5229,46 +5225,6 @@ function App() {
       void scanUnread()
     }, 2500)
 
-    let realtimeChannel: RealtimeChannel | null = null
-    if (isSupabaseConfigured && supabase) {
-      realtimeChannel = supabase
-        .channel(`incoming-messages-${activeUserId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'community_messages',
-            filter: `recipient_id=eq.${activeUserId}`,
-          },
-          (payload) => {
-            const newRow = payload.new as RemoteCommunityMessageRow
-            const message = mapRemoteCommunityMessage(newRow)
-            const sender = seedUsers.find((user) => user.id === message.senderId)
-            const isBroadcast = message.text.startsWith('📢')
-            const notifTitle = isBroadcast
-              ? '📢 Dr Happy: Novedades de la plataforma'
-              : sender
-                ? `${sender.fullName} te ha enviado un mensaje`
-                : 'Nuevo mensaje en Dr Happy'
-            const notifBody = message.text
-              ? message.text.length > 90
-                ? message.text.slice(0, 87) + '...'
-                : message.text
-              : message.attachments?.length
-                ? 'Te ha enviado un archivo adjunto'
-                : 'Tienes un nuevo mensaje'
-
-            void showAppNotification(notifTitle, {
-              body: notifBody,
-              tag: `drhappy-chat-${message.senderId}`,
-            })
-            void scanUnread()
-          },
-        )
-        .subscribe()
-    }
-
     const handleVisibilityOrOnline = () => {
       if (navigator.onLine) {
         void scanUnread()
@@ -5279,9 +5235,6 @@ function App() {
 
     return () => {
       window.clearInterval(intervalId)
-      if (realtimeChannel && supabase) {
-        void supabase.removeChannel(realtimeChannel)
-      }
       document.removeEventListener('visibilitychange', handleVisibilityOrOnline)
       window.removeEventListener('online', handleVisibilityOrOnline)
     }
