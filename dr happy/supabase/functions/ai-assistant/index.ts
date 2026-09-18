@@ -128,6 +128,10 @@ function normalizeSearch(value: unknown): string {
   return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 }
 
+function normalizeIdentity(value: unknown): string {
+  return normalizeSearch(value).replace(/[^a-z0-9]/g, '')
+}
+
 function dateWeekday(date: string): number {
   return new Date(`${date}T12:00:00`).getDay()
 }
@@ -242,7 +246,7 @@ async function recoverPersistedAppointment(
   const { data } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
   const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
   const requestedPatient = normalizeSearch(input.patient || `${input.apellido || ''} ${input.nombre || ''}`)
-  const requestedDni = normalizeSearch(input.dni)
+  const requestedDni = normalizeIdentity(input.dni)
   const requestedEmail = normalizeSearch(input.email)
   const requestedTokens = requestedPatient.split(/\s+/).filter(Boolean)
   const requestedDate = String(input.date || '').trim()
@@ -250,14 +254,15 @@ async function recoverPersistedAppointment(
   const cutoff = Date.now() - 5 * 60 * 1000
   return appointments
     .filter((appointment) => {
-      const createdAt = Date.parse(String(appointment.createdAt || ''))
       const appointmentName = normalizeSearch(appointment.patientName)
       const appointmentTokens = appointmentName.split(/\s+/).filter(Boolean)
       const patientMatches = !requestedPatient ||
-        (requestedDni && normalizeSearch(appointment.patientDni) === requestedDni) ||
+        (requestedDni && normalizeIdentity(appointment.patientDni) === requestedDni) ||
         (requestedEmail && normalizeSearch(appointment.patientEmail) === requestedEmail) ||
         requestedTokens.every((token) => appointmentTokens.includes(token))
-      return appointment.status !== 'cancelled' && patientMatches && (!requestedDate || appointment.scheduledDate === requestedDate) && (!requestedTime || appointment.scheduledTime === requestedTime) && Number.isFinite(createdAt) && createdAt >= cutoff
+      const exactIdentity = (requestedDni && normalizeIdentity(appointment.patientDni) === requestedDni) || (requestedEmail && normalizeSearch(appointment.patientEmail) === requestedEmail)
+      const recentEnough = Date.parse(String(appointment.createdAt || '')) >= cutoff
+      return appointment.status !== 'cancelled' && patientMatches && (!requestedDate || appointment.scheduledDate === requestedDate) && (!requestedTime || appointment.scheduledTime === requestedTime) && (exactIdentity || recentEnough)
     })
     .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')))[0] || null
 }
@@ -780,9 +785,28 @@ Deno.serve(async (request) => {
         console.error('[ai-assistant] tool failed', { tool: toolUse.name, message: error instanceof Error ? error.message : String(error) })
         const schedulingTool = toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno'
         const recovered = schedulingTool ? await recoverPersistedAppointment(admin, professionalId, toolUse.input || {}) : null
-        toolData = recovered
-          ? { success: true, message: `Turno confirmado para ${recovered.patientName} el ${recovered.scheduledDate} a las ${recovered.scheduledTime}. El turno quedó guardado; revisá la turnera si necesitás reenviar el email.` }
-          : { success: false, message: schedulingTool ? 'No pude confirmar el turno. No se encontró una reserva nueva en la agenda.' : 'No pude completar esa acción por un error interno.' }
+        if (recovered) {
+          const recoveredEmail = String(recovered.patientEmail || toolUse.input?.email || '').trim()
+          const emailResult = recoveredEmail
+            ? await sendAppointmentConfirmation({
+              supabaseUrl,
+              serviceRoleKey,
+              email: recoveredEmail,
+              patientName: String(recovered.patientName || 'Paciente'),
+              professionalName: 'Dr Happy',
+              date: String(recovered.scheduledDate || ''),
+              time: String(recovered.scheduledTime || ''),
+              location: String(recovered.location || 'Consultorio médico'),
+              reason: String(recovered.reason || 'Consulta médica'),
+            })
+            : { sent: false, message: 'No hay email válido cargado.' }
+          toolData = {
+            success: true,
+            message: `Turno confirmado para ${recovered.patientName} el ${recovered.scheduledDate} a las ${recovered.scheduledTime}.${emailResult.sent ? ` Confirmación enviada a ${recoveredEmail}.` : ` El turno quedó guardado, pero no se pudo enviar el email: ${emailResult.message || 'error de envío'}.`}`,
+          }
+        } else {
+          toolData = { success: false, message: schedulingTool ? 'No pude confirmar el turno. No se encontró una reserva nueva en la agenda.' : 'No pude completar esa acción por un error interno.' }
+        }
       }
       const toolRecord = toolData && typeof toolData === 'object' ? toolData as Record<string, unknown> : null
       if (toolRecord?.requiresConfirmation === true && typeof toolRecord.action === 'string' && toolRecord.proposal && typeof toolRecord.proposal === 'object') {
