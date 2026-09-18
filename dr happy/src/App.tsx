@@ -6547,7 +6547,7 @@ function App() {
         planManejo: planManejo || current.planManejo,
         pensamientoMedico: pensamiento || current.pensamientoMedico,
       }))
-      const suggestionQuery = [motivo, resumen].filter(Boolean).join(' ')
+      const suggestionQuery = [motivo, enfermedadActual, impresionDiagnostica].filter(Boolean).join(' ')
       setClinicalCieSuggestions(buildDiagnosisSuggestions(diagnosisCatalog, suggestionQuery, 5))
       setAppNotice('Sofía preparó un borrador. Revisalo antes de guardar la evolución.')
     } finally {
