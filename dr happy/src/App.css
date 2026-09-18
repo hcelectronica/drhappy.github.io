@@ -4014,12 +4014,6 @@ body.theme-night .turnera-card-actions {
   gap: 14px;
 }
 
-  height: auto;
-  max-height: calc(100svh - 32px);
-  overflow-y: auto !important;
-  gap: 4px;
-}
-
 .turnera-form-group label,
 .turnera-form-row label {
   display: flex;
