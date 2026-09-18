@@ -21,7 +21,7 @@ export interface SendEmailResult {
 }
 
 /**
- * Sends an email using the Supabase Edge Function connected to Hostinger SMTP (soporte@drhappy.com.ar).
+ * Sends email through the Hostinger SMTP account selected by the message type.
  */
 export async function sendEmail(options: SendEmailOptions): Promise<SendEmailResult> {
   if (!isSupabaseConfigured || !supabase) {

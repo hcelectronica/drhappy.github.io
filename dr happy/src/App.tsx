@@ -7638,7 +7638,7 @@ function App() {
             void persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)
           }
         }
-        setAppNotice(`Confirmación de turno enviada con éxito a ${record.patientEmail} desde soporte@drhappy.com.ar.`)
+        setAppNotice(`Confirmación de turno enviada con éxito a ${record.patientEmail} desde turnos@drhappy.com.ar.`)
         showSavedFloatingNotice('Email de turno enviado')
       } else {
         setAppError(`No se pudo enviar el correo: ${res.message || 'Error SMTP'}`)
@@ -10984,7 +10984,7 @@ function App() {
               <p className="flow-hint">
                 {turneraViewMode === 'ledger'
                   ? 'Registro exclusivo de cobros, saldos pendientes y deuda acumulada por paciente.'
-                  : 'Gestión de turnos clínicos, agenda diaria y recordatorios automáticos por email desde soporte@drhappy.com.ar.'}
+                  : 'Gestión de turnos clínicos, agenda diaria y recordatorios automáticos por email desde turnos@drhappy.com.ar.'}
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -13950,7 +13950,7 @@ function App() {
                 />
                 <span className="toggle-switch" />
                 <span>
-                  Enviar confirmación automática por email (<strong>soporte@drhappy.com.ar</strong>)
+                  Enviar confirmación automática por email (<strong>turnos@drhappy.com.ar</strong>)
                 </span>
               </label>
 
