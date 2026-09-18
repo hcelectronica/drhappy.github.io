@@ -5339,33 +5339,7 @@ function App() {
 
     const currentSeen = new Set(communitySeenIds)
     const markSeen = async () => {
-      let incomingForMember: CommunityMessage[] = []
-      if (isSupabaseConfigured && supabase) {
-        try {
-          const { data, error } = await supabase
-            .from('community_messages')
-            .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
-            .eq('sender_id', memberId)
-            .eq('recipient_id', activeUserId)
-            .order('sent_at', { ascending: true })
-          if (error) {
-            console.warn('No se pudieron actualizar mensajes vistos:', error.message)
-            return
-          }
-          incomingForMember = (data ?? []).map((row) =>
-            mapRemoteCommunityMessage(row as RemoteCommunityMessageRow),
-          )
-        } catch (err) {
-          console.warn('Fallo de red al marcar mensajes vistos:', err)
-          return
-        }
-      } else {
-        const thread: CommunityMessage[] = readJsonStorage<CommunityMessage[]>(
-          communityThreadStorageKey(activeUserId, memberId),
-          [],
-        )
-        incomingForMember = thread.filter((message) => message.recipientId === activeUserId)
-      }
+      const incomingForMember = communityMessages.filter((message) => message.senderId === memberId && message.recipientId === activeUserId)
 
       let marked = 0
       for (const message of incomingForMember) {

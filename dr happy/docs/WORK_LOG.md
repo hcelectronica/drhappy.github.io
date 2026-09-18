@@ -52,6 +52,8 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Se creó `community-data` autenticada para leer conversaciones, contar no leídos y enviar mensajes.
 - La conversación, no leídos y broadcasts de `App.tsx` ya usan `community-data`; los vistos siguen locales temporalmente.
 - `community-data` quedó desplegada solo en desarrollo y el build pasó.
+- El marcado de vistos dejó de leer directamente `community_messages`; usa el hilo ya cargado y el estado local.
+- Quedan dos bloqueos antes de cerrar RLS de comunidad: listado de profesionales y canal Realtime de Postgres.
 - Revisión previa al cierre de RLS: el único acceso directo restante a `user_workspaces` está en el archivo legal de eliminación administrativa; debe migrarse a una función admin antes de bloquear la tabla.
 - RLS de `user_workspaces` no se aplicó todavía para evitar romper ese flujo pendiente.
 - Archivo legal administrativo migrado a `admin-professionals` (`archive-delete-professional`): lee, envía el archivo y elimina con Service Role; el frontend ya no usa el acceso directo durante el flujo normal.
