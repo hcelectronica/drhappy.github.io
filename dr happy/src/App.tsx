@@ -3870,9 +3870,22 @@ function App() {
       return
     }
     const isBroadcast = adminBroadcastTarget === 'all'
+    let availableUsers = seedUsers
+    if (isSupabaseConfigured) {
+      const freshUsers = await loadProfessionals()
+      if (!freshUsers.success) {
+        setAppError(freshUsers.message || 'No se pudo actualizar la lista de destinatarios.')
+        return
+      }
+      availableUsers = (freshUsers.professionals || []).map((row) => mapRemoteProfessional(row as RemoteProfessionalRow))
+      setSeedUsers(availableUsers)
+    }
+    const uniqueActiveUsers = Array.from(new Map(
+      availableUsers.filter((user) => user.active !== false).map((user) => [user.id, user]),
+    ).values())
     const recipients = isBroadcast
-      ? seedUsers.filter((u) => u.id !== activeUserId)
-      : seedUsers.filter((u) => u.id === adminBroadcastTarget)
+      ? uniqueActiveUsers.filter((user) => user.id !== activeUserId)
+      : uniqueActiveUsers.filter((user) => user.id === adminBroadcastTarget)
 
     if (recipients.length === 0) {
       setAppError('No se encontraron profesionales destinatarios.')

@@ -29,6 +29,6 @@ Deno.serve(async (request) => {
     const { data, error } = await admin.from('professionals').select('id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, enabled_modules_json, trial_started_at, subscription_status, subscription_expires_at').eq('id', professionalId).maybeSingle()
     return error ? jsonResponse(500, { success: false, message: error.message }) : jsonResponse(200, { success: true, professional: data })
   }
-  const { data, error } = await admin.from('professionals').select('id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, enabled_modules_json, trial_started_at, subscription_status, subscription_expires_at').eq('active', true).order('full_name', { ascending: true })
+  const { data, error } = await admin.from('professionals').select('id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, enabled_modules_json, trial_started_at, subscription_status, subscription_expires_at').order('full_name', { ascending: true })
   return error ? jsonResponse(500, { success: false, message: error.message }) : jsonResponse(200, { success: true, professionals: data || [] })
 })
