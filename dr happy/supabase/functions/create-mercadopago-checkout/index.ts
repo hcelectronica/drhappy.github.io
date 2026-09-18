@@ -1,5 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { corsHeaders } from '../_shared/cors.ts'
+import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 type SubscriptionPlan = 'monthly' | 'semiannual' | 'annual'
 
@@ -31,8 +33,9 @@ serve(async (request) => {
   const semiannualPriceRaw = Deno.env.get('MP_SEMIANNUAL_PRICE_ARS')?.trim()
   const annualPriceRaw = Deno.env.get('MP_ANNUAL_PRICE_ARS')?.trim()
   const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim()
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim()
 
-  if (!mpAccessToken || !appBaseUrl || !successUrl || !pendingUrl || !failureUrl || !supabaseUrl) {
+  if (!mpAccessToken || !appBaseUrl || !successUrl || !pendingUrl || !failureUrl || !supabaseUrl || !serviceRoleKey) {
     return jsonResponse(500, { message: 'Faltan secrets obligatorios de MercadoPago o APP_BASE_URL.' })
   }
 
@@ -43,14 +46,18 @@ serve(async (request) => {
     return jsonResponse(400, { message: 'Body JSON inválido.' })
   }
 
-  const userId = typeof payload.userId === 'string' ? payload.userId.trim() : ''
-  const email = typeof payload.email === 'string' ? payload.email.trim() : ''
-  const fullName = typeof payload.fullName === 'string' ? payload.fullName.trim() : ''
+  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+  const userId = await resolveProfessionalId(request, admin)
+  if (!userId) return jsonResponse(401, { message: 'Sesión profesional requerida.' })
+  const { data: professional } = await admin.from('professionals').select('email, full_name, active').eq('id', userId).maybeSingle()
+  if (!professional || professional.active === false) return jsonResponse(403, { message: 'Profesional no autorizado.' })
+  const email = String(professional.email || '').trim()
+  const fullName = String(professional.full_name || '').trim()
   const plan =
     payload.plan === 'annual' ? 'annual' : payload.plan === 'semiannual' ? 'semiannual' : 'monthly'
 
-  if (!userId || !email) {
-    return jsonResponse(400, { message: 'Faltan userId o email para generar el checkout.' })
+  if (!email) {
+    return jsonResponse(400, { message: 'El profesional no tiene email configurado.' })
   }
 
   const planConfig =

@@ -1,5 +1,6 @@
 import { corsHeaders } from '../_shared/cors.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 interface AssistantMessage {
   role: 'user' | 'assistant'
@@ -544,8 +545,8 @@ Deno.serve(async (request) => {
     return jsonResponse(400, { success: false, message: 'Acción no soportada.' })
   }
 
-  const professionalId = typeof payload.professionalId === 'string' ? payload.professionalId.trim() : ''
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+  const professionalId = await resolveProfessionalId(request, admin)
   if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
   const { data: professional } = await admin
     .from('professionals')
@@ -627,7 +628,13 @@ Deno.serve(async (request) => {
     const toolResults = []
     let directSchedulingReply = ''
     for (const toolUse of toolUses) {
-      const toolData = await runTool(toolUse.name, toolUse.input || {}, admin, professionalId)
+      let toolData: unknown
+      try {
+        toolData = await runTool(toolUse.name, toolUse.input || {}, admin, professionalId)
+      } catch (error) {
+        console.error('[ai-assistant] tool failed', { tool: toolUse.name, message: error instanceof Error ? error.message : String(error) })
+        toolData = { success: false, message: 'No pude completar esa acción por un error interno. El turno no fue confirmado.' }
+      }
       const toolRecord = toolData && typeof toolData === 'object' ? toolData as Record<string, unknown> : null
       if (toolRecord?.requiresConfirmation === true && typeof toolRecord.action === 'string' && toolRecord.proposal && typeof toolRecord.proposal === 'object') {
         pendingConfirmation = { action: toolRecord.action, proposal: toolRecord.proposal as Record<string, unknown> }

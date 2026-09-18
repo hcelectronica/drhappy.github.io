@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import bcrypt from 'npm:bcryptjs@2.4.3'
 import { corsHeaders } from '../_shared/cors.ts'
+import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 // Auto-eliminación de cuenta por el propio usuario (requisito de Google Play).
 // Flujo idéntico a la baja administrativa: genera el archivo legal, lo envía
@@ -53,10 +54,10 @@ serve(async (request) => {
       return jsonResponse(400, { success: false, message: 'Acción no soportada.' })
     }
 
-    const userId = body.userId?.trim()
+    const userId = await resolveProfessionalId(request, admin)
     const password = body.password
     if (!userId || !password) {
-      return jsonResponse(400, { success: false, message: 'Falta el usuario o la contraseña de confirmación.' })
+      return jsonResponse(401, { success: false, message: 'Sesión profesional y contraseña de confirmación requeridas.' })
     }
 
     // 1) Verificamos la contraseña del usuario (bcrypt) — solo él puede borrarse.

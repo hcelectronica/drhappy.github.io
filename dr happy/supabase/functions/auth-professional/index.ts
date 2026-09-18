@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import bcrypt from 'npm:bcryptjs@2.4.3'
 import { corsHeaders } from '../_shared/cors.ts'
+import { createProfessionalSession } from '../_shared/professionalSession.ts'
 
 // Esta función es la ÚNICA parte del sistema que puede leer o escribir el hash
 // de contraseña de un profesional. Usa la Service Role Key (nunca expuesta al
@@ -176,7 +177,8 @@ serve(async (request) => {
         }
 
         const { password_hash: _omit, ...sanitized } = data as Record<string, unknown>
-        return jsonResponse(200, { success: true, professional: sanitized })
+        const sessionToken = await createProfessionalSession(admin, String(sanitized.id))
+        return jsonResponse(200, { success: true, professional: sanitized, sessionToken })
       }
 
       case 'change-password': {

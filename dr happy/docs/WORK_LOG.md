@@ -1,0 +1,78 @@
+# Dr Happy Work Log
+
+Registro operativo y de decisiones del endurecimiento de la aplicación.
+
+## 2026-09-17
+
+- Inicio del tramo de seguridad y estabilidad.
+- Se detectó que varias funciones reciben IDs de usuario desde el cliente y los usan como identidad.
+- Se detectaron políticas RLS permisivas con `USING (true)` en datos sensibles.
+- Se decidió agregar observabilidad segura antes de modificar autenticación o RLS.
+- Regla de seguridad: no registrar contraseñas, tokens, claves, historias clínicas ni contenido completo de pacientes.
+- Se agregó `runtimeLogger.ts` con redacción de campos sensibles, buffer local limitado a 200 eventos y salida de consola.
+- Se agregó `AppErrorBoundary.tsx` para capturar errores de renderizado y ofrecer recuperación visible.
+- Se conectó captura global de `window.error` y `unhandledrejection` desde `main.tsx`.
+- Validación: diagnósticos limpios y `npm run build` correcto en desarrollo.
+- Auditoría de identidad: el login propio autentica en `auth-professional`, pero el resto de la sesión se basa en un `professionalId` del navegador; Sofía todavía no recibe una prueba criptográfica de identidad.
+- Se creó `SECURITY_IDENTITY_PLAN.md` con la migración por etapas hacia identidad verificable.
+- Se agregó la tabla `professional_sessions` con tokens opacos hasheados, expiración de 12 horas y revocación.
+- `auth-professional` ahora entrega un token de sesión al login propio.
+- `ai-assistant` ahora resuelve identidad desde `x-drhappy-session` o bearer de Supabase Auth; deja de confiar en `professionalId` del body.
+- El cliente envía la sesión opaca a Sofía y la elimina al cerrar sesión.
+- Migración aplicada y funciones `auth-professional`/`ai-assistant` desplegadas solo en Supabase de desarrollo.
+- Validación: build frontend y diagnósticos limpios.
+- Pendiente: probar login propio, Sofía, Google y aislamiento entre profesionales antes de tocar producción o RLS.
+- Prueba negativa ejecutada contra `ai-assistant` sin sesión: respondió HTTP 401 (`UNAUTHORIZED_NO_AUTH_HEADER`).
+- Prueba de manipulación ejecutada: `professionalId` inventado + `x-drhappy-session` falso respondió HTTP 401 (`Sesión profesional requerida`).
+- La prueba entre dos profesionales reales queda pendiente hasta contar con dos sesiones de prueba y limpieza controlada.
+- Se crearon dos usuarios temporales, se obtuvieron sesiones reales y se eliminaron correctamente (`cleanupA=true`, `cleanupB=true`).
+- La prueba de aislamiento con creación de paciente devolvió HTTP 500 antes de completar la comparación; no se considera aprobada y queda como error de Sofía a diagnosticar.
+- Diagnóstico posterior de Sofía: conversación simple y solicitud de turno devolvieron HTTP 200; la cuenta temporal fue eliminada correctamente. El HTTP 500 no se reprodujo.
+- La prueba final de dos usuarios con alta de paciente quedó pendiente por fallo del script temporal/terminal; no se marca como aprobada hasta obtener una ejecución estructurada válida.
+- Se agregó manejo de excepciones por herramienta en `ai-assistant`: los fallos ya no deben convertirse en HTTP 500 opacos; se registra solo el nombre de la herramienta y se devuelve un error controlado.
+- Se probó login con la cuenta admin autorizada y un usuario temporal; ambas sesiones fueron válidas y el usuario temporal fue eliminado. La comparación de datos sigue pendiente porque el alta de paciente no completó.
+- Prueba con cuentas reales `admin` y `betatester`: ambos logins válidos. Se ejecutaron llamadas cruzadas (token de beta + ID admin, token admin + ID beta) y ambas respuestas consultaron la agenda de la sesión efectiva. Las dos agendas estaban vacías, por lo que no se compararon registros concretos.
+- Resultado: aislamiento de identidad a nivel de Edge Function aprobado; aislamiento RLS/base de datos todavía pendiente.
+- `admin-stats` endurecida y desplegada en desarrollo: admin autenticado respondió HTTP 200; `betatester` con `requesterId` del admin respondió HTTP 403.
+- `admin-professionals` también dejó de aceptar `requesterId` del body como identidad.
+- Checkout de Mercado Pago endurecido: resuelve el profesional desde sesión y toma email/nombre desde `professionals`; ya no confía en `userId`, email o nombre enviados por el cliente.
+- Build frontend correcto; `admin-professionals`, `admin-stats` y checkout desplegados solo en desarrollo.
+- `self-delete-account` ahora resuelve el usuario desde sesión y no acepta `userId` arbitrario.
+- `send-push-notification` exige sesión, asocia suscripciones al usuario autenticado y limita broadcasts a admins.
+- El frontend dejó de escribir directamente en `user_push_subscriptions`; usa la Edge Function autenticada.
+- Build correcto y funciones de self-delete/push desplegadas solo en desarrollo.
+- Administración de turnera pública endurecida: crear/listar/cancelar/configurar ahora usa identidad de sesión; consulta y reserva pública siguen sin requerir sesión.
+- `public-booking` desplegada en desarrollo y build frontend correcto.
+- RLS permanece pendiente deliberadamente: el cliente todavía tiene lecturas/escrituras directas que deben migrarse antes de cerrar políticas permisivas.
+- Auditoría administrativa completada en las funciones revisadas: Sofía, admin, checkout, self-delete, push y administración de turnera pública ya derivan identidad desde sesión en desarrollo.
+- Se mantiene RLS abierto de forma temporal porque `App.tsx` todavía accede directamente a workspace, profesionales y comunidad; cerrarlo ahora rompería flujos.
+- Se creó `workspace-data` autenticada para cargar/guardar el workspace principal.
+- La carga y persistencia principal de `App.tsx` ya usan `workspace-data`; quedan accesos directos de perfil y comunidad para la siguiente unidad.
+- `workspace-data` quedó desplegada solo en desarrollo y el build pasó.
+- Se creó `community-data` autenticada para leer conversaciones, contar no leídos y enviar mensajes.
+- La conversación, no leídos y broadcasts de `App.tsx` ya usan `community-data`; los vistos siguen locales temporalmente.
+- `community-data` quedó desplegada solo en desarrollo y el build pasó.
+- El marcado de vistos dejó de leer directamente `community_messages`; usa el hilo ya cargado y el estado local.
+- Quedan dos bloqueos antes de cerrar RLS de comunidad: listado de profesionales y canal Realtime de Postgres.
+- Listado de profesionales migrado a `professionals-data` autenticada.
+- Canal Realtime directo retirado; comunidad usa polling mediante `community-data`.
+- Migración `20260918020000_lock_community_direct_access.sql` aplicada en desarrollo: se revocó acceso directo a `community_messages` y `user_push_subscriptions`.
+- RLS de workspace, comunidad y push ya está cerrado en desarrollo.
+- Revisión previa al cierre de RLS: el único acceso directo restante a `user_workspaces` está en el archivo legal de eliminación administrativa; debe migrarse a una función admin antes de bloquear la tabla.
+- RLS de `user_workspaces` no se aplicó todavía para evitar romper ese flujo pendiente.
+- Archivo legal administrativo migrado a `admin-professionals` (`archive-delete-professional`): lee, envía el archivo y elimina con Service Role; el frontend ya no usa el acceso directo durante el flujo normal.
+- Build correcto y `admin-professionals` desplegada en desarrollo con el nuevo flujo.
+- Migración `20260918010000_lock_workspace_public_access.sql` aplicada en desarrollo: se revocó acceso directo anon/authenticated a `user_workspaces`.
+- Se detectó que la copia de producción tiene cambios parciales de self-delete/push sin `professionalSession.ts`; no se promocionan ni se aceptan como producción válida.
+- Desarrollo conserva la corrección CSS validada en `6d9c3bf`; archivos generados, ZIP y migraciones ajenas quedan fuera del tramo de seguridad.
+- Eliminados `public/users.json` y `public/patients.json` del sitio: no se publican credenciales ni pacientes demo.
+- Build correcto después de la limpieza.
+
+## Formato de cada entrada
+
+- Fecha y hora.
+- Área afectada.
+- Cambio realizado.
+- Validación ejecutada.
+- Resultado.
+- Riesgo pendiente.

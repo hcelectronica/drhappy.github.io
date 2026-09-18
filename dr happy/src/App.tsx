@@ -41,6 +41,9 @@ import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBo
 import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
+import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
+import { communityRequest } from './communityService'
+import { loadProfessionals } from './professionalsService'
 import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
 import { selfDeleteAccount } from './selfDeleteService'
@@ -49,6 +52,7 @@ import {
   setProfessionalSubscription,
   setProfessionalModules,
   deleteProfessionalAsAdmin,
+  archiveAndDeleteProfessional,
 } from './adminProfessionalsService'
 import { buildSignatureSeal } from './signatureSeal'
 import {
@@ -2850,8 +2854,6 @@ function App() {
     [isAdminSession, activeUser],
   )
 
-  // Capacidad real del rango horario elegido para la turnera libre:
-  // cuántos turnos de `durationMinutes` entran realmente entre "Desde" y "Hasta".
   const freeSlotCapacity = useMemo(() => {
     const parseMinutes = (value: string): number | null => {
       const [h, m] = value.split(':').map(Number)
@@ -2862,22 +2864,9 @@ function App() {
     const endMinutes = parseMinutes(freeSlotDraft.endTime)
     const duration = Number(freeSlotDraft.durationMinutes)
     const requested = Number(freeSlotDraft.slotCount)
-
-    if (startMinutes === null || endMinutes === null || !duration) {
-      return null
-    }
-
+    if (startMinutes === null || endMinutes === null || !duration) return null
     const rangeMinutes = endMinutes - startMinutes
-    if (rangeMinutes <= 0) {
-      return {
-        rangeMinutes,
-        maxSlots: 0,
-        requested,
-        fits: false,
-        invalidRange: true,
-        requiredMinutes: requested * duration,
-      }
-    }
+    if (rangeMinutes <= 0) return { rangeMinutes, maxSlots: 0, requested, fits: false, invalidRange: true, requiredMinutes: requested * duration }
 
     const maxSlots = Math.floor(rangeMinutes / duration)
     return {
@@ -3441,19 +3430,14 @@ function App() {
       return
     }
     try {
-      const { error } = await supabase.from('user_workspaces').upsert(
-        {
-          user_id: userId,
-          profile_json: nextProfile,
-          patients_json: nextPatients,
-          appointments_json: nextAppointments,
-          treatment_ledger_json:
-            nextLedger ?? readJsonStorage<TreatmentLedgerEntry[]>(treatmentLedgerStorageKey(userId), []),
-        },
-        { onConflict: 'user_id' },
-      )
-      if (error) {
-        console.warn('No se pudo guardar la base personal en la nube:', error.message)
+      const result = await saveWorkspaceData({
+        profile: nextProfile,
+        patients: nextPatients,
+        appointments: nextAppointments,
+        treatmentLedger: nextLedger ?? readJsonStorage<TreatmentLedgerEntry[]>(treatmentLedgerStorageKey(userId), []),
+      })
+      if (!result.success) {
+        console.warn('No se pudo guardar la base personal en la nube:', result.message)
       }
     } catch (err) {
       console.warn('Fallo de conexión al sincronizar workspace en la nube:', err)
@@ -3507,14 +3491,9 @@ function App() {
         throw new Error(`No se pudo sincronizar el profesional: ${professionalError.message}`)
       }
 
-      const { data, error } = await supabase
-        .from('user_workspaces')
-        .select('user_id, profile_json, patients_json, appointments_json, treatment_ledger_json')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (error) {
-        throw new Error(`No se pudo cargar la base personal del profesional: ${error.message}`)
-      }
+      const workspaceResult = await loadWorkspaceData()
+      if (!workspaceResult.success) throw new Error(`No se pudo cargar la base personal del profesional: ${workspaceResult.message}`)
+      const data = workspaceResult.workspace as RemoteWorkspaceRow | null
 
       if (data) {
         const workspace = data as RemoteWorkspaceRow
@@ -3634,6 +3613,19 @@ function App() {
     setAdminBusyUserId(targetUser.id)
 
     try {
+      if (isSupabaseConfigured && supabase) {
+        const archiveDeleteResult = await archiveAndDeleteProfessional(targetUser.id)
+        if (!archiveDeleteResult.success) {
+          throw new Error(archiveDeleteResult.message ?? 'No se pudo archivar y eliminar el usuario.')
+        }
+        const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
+        localStorage.setItem(CREATED_USERS_KEY, JSON.stringify(localUsers.filter((user) => user.id !== targetUser.id)))
+        removeLocalUserArtifacts(targetUser.id, [])
+        setSeedUsers((current) => current.filter((user) => user.id !== targetUser.id))
+        setAppNotice(`Usuario eliminado definitivamente: ${targetUser.fullName}.`)
+        showSavedFloatingNotice()
+        return
+      }
       if (isSupabaseConfigured && supabase) {
         const [{ data: workspaceData, error: workspaceError }, { data: messagesData, error: messagesError }] =
           await Promise.all([
@@ -3968,16 +3960,11 @@ function App() {
 
     try {
       if (isSupabaseConfigured && supabase) {
-        const rows = recipients.map((r) => ({
-          sender_id: activeUserId,
-          recipient_id: r.id,
-          text: formattedText,
-          attachments_json: [],
-          sent_at: sentAt,
-        }))
-        const { error } = await supabase.from('community_messages').insert(rows)
-        if (error) {
-          throw new Error(error.message)
+        for (const recipient of recipients) {
+          const result = await communityRequest({ action: 'send', recipientId: recipient.id, text: formattedText })
+          if (!result.success) {
+            throw new Error(result.message || 'No se pudo enviar el mensaje.')
+          }
         }
       } else {
         recipients.forEach((r) => {
@@ -4149,14 +4136,9 @@ function App() {
         let merged: SeedUser[] = []
 
         if (isSupabaseConfigured && supabase) {
-          const { data, error } = await supabase
-            .from('professionals')
-            .select(PROFESSIONAL_SELECT_COLUMNS)
-            .order('full_name', { ascending: true })
-          if (error) {
-            throw new Error(`No se pudo cargar profesionales remotos: ${error.message}`)
-          }
-          for (const row of data ?? []) {
+          const result = await loadProfessionals()
+          if (!result.success) throw new Error(`No se pudo cargar profesionales remotos: ${result.message}`)
+          for (const row of result.professionals ?? []) {
             const remoteUser = mapRemoteProfessional(row as RemoteProfessionalRow)
             if (
               !merged.some(
@@ -4168,16 +4150,7 @@ function App() {
             }
           }
         } else {
-          const response = await fetch(`${import.meta.env.BASE_URL}users.json`)
-          if (!response.ok) {
-            throw new Error('No se pudo cargar users.json')
-          }
-          const payload = (await response.json()) as { users: SeedUser[] }
-          merged = payload.users.map((user) => ({
-            ...user,
-            isAdmin: isAdminUser(user),
-            active: localActiveOverrides[user.id] ?? user.active ?? true,
-          }))
+          merged = []
           for (const localUser of localUsers) {
             const normalizedLocalUser: SeedUser = {
               ...localUser,
@@ -5089,18 +5062,12 @@ function App() {
 
       if (isSupabaseConfigured && supabase) {
         try {
-          const { data, error } = await supabase
-            .from('community_messages')
-            .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
-            .or(
-              `and(sender_id.eq.${activeUserId},recipient_id.eq.${communityTargetId}),and(sender_id.eq.${communityTargetId},recipient_id.eq.${activeUserId})`,
-            )
-            .order('sent_at', { ascending: true })
-          if (error) {
-            console.warn('Error leyendo chat de comunidad:', error.message)
+          const result = await communityRequest({ action: 'thread', memberId: communityTargetId })
+          if (!result.success) {
+            console.warn('Error leyendo chat de comunidad:', result.message)
             return
           }
-          const ordered = (data ?? []).map((row) =>
+          const ordered = (result.messages ?? []).map((row) =>
             mapRemoteCommunityMessage(row as RemoteCommunityMessageRow),
           )
           setCommunityMessages(ordered)
@@ -5165,16 +5132,12 @@ function App() {
 
       if (isSupabaseConfigured && supabase) {
         try {
-          const { data, error } = await supabase
-            .from('community_messages')
-            .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
-            .eq('recipient_id', activeUserId)
-            .order('sent_at', { ascending: true })
-          if (error) {
-            console.warn('No se pudieron escanear mensajes nuevos en Supabase:', error.message)
+          const result = await communityRequest({ action: 'unread' })
+          if (!result.success) {
+            console.warn('No se pudieron escanear mensajes nuevos en Supabase:', result.message)
             return
           }
-          for (const row of data ?? []) {
+          for (const row of result.messages ?? []) {
             const message = mapRemoteCommunityMessage(row as RemoteCommunityMessageRow)
             if (seenIds.has(message.id)) {
               continue
@@ -5262,46 +5225,6 @@ function App() {
       void scanUnread()
     }, 2500)
 
-    let realtimeChannel: RealtimeChannel | null = null
-    if (isSupabaseConfigured && supabase) {
-      realtimeChannel = supabase
-        .channel(`incoming-messages-${activeUserId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'community_messages',
-            filter: `recipient_id=eq.${activeUserId}`,
-          },
-          (payload) => {
-            const newRow = payload.new as RemoteCommunityMessageRow
-            const message = mapRemoteCommunityMessage(newRow)
-            const sender = seedUsers.find((user) => user.id === message.senderId)
-            const isBroadcast = message.text.startsWith('📢')
-            const notifTitle = isBroadcast
-              ? '📢 Dr Happy: Novedades de la plataforma'
-              : sender
-                ? `${sender.fullName} te ha enviado un mensaje`
-                : 'Nuevo mensaje en Dr Happy'
-            const notifBody = message.text
-              ? message.text.length > 90
-                ? message.text.slice(0, 87) + '...'
-                : message.text
-              : message.attachments?.length
-                ? 'Te ha enviado un archivo adjunto'
-                : 'Tienes un nuevo mensaje'
-
-            void showAppNotification(notifTitle, {
-              body: notifBody,
-              tag: `drhappy-chat-${message.senderId}`,
-            })
-            void scanUnread()
-          },
-        )
-        .subscribe()
-    }
-
     const handleVisibilityOrOnline = () => {
       if (navigator.onLine) {
         void scanUnread()
@@ -5312,9 +5235,6 @@ function App() {
 
     return () => {
       window.clearInterval(intervalId)
-      if (realtimeChannel && supabase) {
-        void supabase.removeChannel(realtimeChannel)
-      }
       document.removeEventListener('visibilitychange', handleVisibilityOrOnline)
       window.removeEventListener('online', handleVisibilityOrOnline)
     }
@@ -5372,33 +5292,7 @@ function App() {
 
     const currentSeen = new Set(communitySeenIds)
     const markSeen = async () => {
-      let incomingForMember: CommunityMessage[] = []
-      if (isSupabaseConfigured && supabase) {
-        try {
-          const { data, error } = await supabase
-            .from('community_messages')
-            .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
-            .eq('sender_id', memberId)
-            .eq('recipient_id', activeUserId)
-            .order('sent_at', { ascending: true })
-          if (error) {
-            console.warn('No se pudieron actualizar mensajes vistos:', error.message)
-            return
-          }
-          incomingForMember = (data ?? []).map((row) =>
-            mapRemoteCommunityMessage(row as RemoteCommunityMessageRow),
-          )
-        } catch (err) {
-          console.warn('Fallo de red al marcar mensajes vistos:', err)
-          return
-        }
-      } else {
-        const thread: CommunityMessage[] = readJsonStorage<CommunityMessage[]>(
-          communityThreadStorageKey(activeUserId, memberId),
-          [],
-        )
-        incomingForMember = thread.filter((message) => message.recipientId === activeUserId)
-      }
+      const incomingForMember = communityMessages.filter((message) => message.senderId === memberId && message.recipientId === activeUserId)
 
       let marked = 0
       for (const message of incomingForMember) {
@@ -5736,6 +5630,7 @@ function App() {
     setSubscriptionCheckoutLoading(plan)
     try {
       const { data, error } = await supabase.functions.invoke('create-mercadopago-checkout', {
+        headers: sessionStorage.getItem('drhappy-professional-session') ? { 'x-drhappy-session': sessionStorage.getItem('drhappy-professional-session') as string } : undefined,
         body: {
           userId: activeUserId,
           plan,
@@ -5918,6 +5813,9 @@ function App() {
       }
       const user = mapAuthProfessionalPublic(result.professional)
       try {
+        if (result.sessionToken) {
+          sessionStorage.setItem('drhappy-professional-session', result.sessionToken)
+        }
         localStorage.setItem(SESSION_USER_KEY, user.id)
         await loadWorkspaceForUser(user)
         setWorkspaceLayer('overview')
@@ -6136,6 +6034,7 @@ function App() {
     }
     localStorage.removeItem(SESSION_USER_KEY)
     localStorage.removeItem(SESSION_USER_CACHE_KEY)
+    sessionStorage.removeItem('drhappy-professional-session')
     setGoogleIdentity(null)
     setActiveUserId(null)
     setProfile(null)

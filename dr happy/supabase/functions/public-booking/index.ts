@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 // Función NUEVA e independiente de la Turnera existente.
 // Permite a un profesional generar un enlace público de "turnos libres"
@@ -277,7 +278,7 @@ serve(async (request) => {
   try {
     switch (body.action) {
       case 'create-link': {
-        const professionalId = body.professionalId?.trim()
+        const professionalId = await resolveProfessionalId(request, admin)
         const slotDate = body.slotDate?.trim()
         const startTime = body.startTime?.trim()
         const endTime = body.endTime?.trim()
@@ -349,7 +350,7 @@ serve(async (request) => {
       }
 
       case 'list-links': {
-        const professionalId = body.professionalId?.trim()
+        const professionalId = await resolveProfessionalId(request, admin)
         if (!professionalId) {
           return jsonResponse(400, { success: false, message: 'Falta el identificador del profesional.' })
         }
@@ -390,7 +391,7 @@ serve(async (request) => {
 
       case 'cancel-link': {
         const linkId = body.linkId?.trim()
-        const professionalId = body.professionalId?.trim()
+        const professionalId = await resolveProfessionalId(request, admin)
         if (!linkId || !professionalId) {
           return jsonResponse(400, { success: false, message: 'Faltan datos para cancelar el enlace.' })
         }
@@ -406,7 +407,7 @@ serve(async (request) => {
       }
 
       case 'get-public-settings': {
-        const professionalId = body.professionalId?.trim()
+        const professionalId = await resolveProfessionalId(request, admin)
         if (!professionalId) {
           return jsonResponse(400, { success: false, message: 'Falta el identificador del profesional.' })
         }
@@ -432,6 +433,9 @@ serve(async (request) => {
             message: 'Configurá nombre, link público y al menos un bloque horario válido.',
           })
         }
+        const professionalId = await resolveProfessionalId(request, admin)
+        if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
+        settings.professionalId = professionalId
 
         const { data: saved, error } = await admin
           .from('public_booking_profiles')

@@ -63,20 +63,13 @@ export async function registerPushSubscription(userId: string): Promise<boolean>
 
     if (subscription && isSupabaseConfigured && supabase) {
       const subJson = subscription.toJSON()
-      // Guardar en la base de datos Supabase con el origen y usuario actual
-      const { error } = await supabase.from('user_push_subscriptions').upsert(
-        {
-          user_id: userId,
-          endpoint: subJson.endpoint,
-          p256dh: subJson.keys?.p256dh || null,
-          auth: subJson.keys?.auth || null,
-          subscription_json: subJson,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'endpoint' },
-      )
+      const sessionToken = sessionStorage.getItem('drhappy-professional-session') || ''
+      const { error } = await supabase.functions.invoke('send-push-notification', {
+        headers: sessionToken ? { 'x-drhappy-session': sessionToken } : undefined,
+        body: { action: 'subscribe', userId, subscription: subJson },
+      })
       if (error) {
-        console.warn('Error al guardar suscripción en Supabase:', error.message)
+        console.warn('Error al guardar suscripción push en Supabase:', error.message)
       }
       return true
     }

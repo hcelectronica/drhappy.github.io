@@ -16,7 +16,8 @@ async function invokeAdminAction(body: Record<string, unknown>): Promise<AdminAc
   if (!isSupabaseConfigured || !supabase) {
     return { success: false, message: 'Supabase no está conectado.' }
   }
-  const { data, error } = await supabase.functions.invoke('admin-professionals', { body })
+  const sessionToken = sessionStorage.getItem('drhappy-professional-session') || ''
+  const { data, error } = await supabase.functions.invoke('admin-professionals', { body, headers: sessionToken ? { 'x-drhappy-session': sessionToken } : undefined })
   if (error) {
     // Las respuestas de error traen el motivo en el cuerpo; lo recuperamos para
     // mostrar un mensaje útil en lugar de un genérico "non-2xx status code".
@@ -41,7 +42,7 @@ export function setProfessionalAdmin(
   targetId: string,
   isAdmin: boolean,
 ): Promise<AdminActionResult> {
-  return invokeAdminAction({ action: 'set-admin', requesterId, targetId, isAdmin })
+  return invokeAdminAction({ action: 'set-admin', targetId, isAdmin })
 }
 
 export function setProfessionalActive(
@@ -49,7 +50,7 @@ export function setProfessionalActive(
   targetId: string,
   active: boolean,
 ): Promise<AdminActionResult> {
-  return invokeAdminAction({ action: 'set-active', requesterId, targetId, active })
+  return invokeAdminAction({ action: 'set-active', targetId, active })
 }
 
 export function setProfessionalSubscription(
@@ -60,7 +61,6 @@ export function setProfessionalSubscription(
 ): Promise<AdminActionResult> {
   return invokeAdminAction({
     action: 'set-subscription',
-    requesterId,
     targetId,
     subscriptionStatus,
     subscriptionExpiresAt,
@@ -72,12 +72,16 @@ export function setProfessionalModules(
   targetId: string,
   enabledModules: string[] | null,
 ): Promise<AdminActionResult> {
-  return invokeAdminAction({ action: 'set-modules', requesterId, targetId, enabledModules })
+  return invokeAdminAction({ action: 'set-modules', targetId, enabledModules })
 }
 
 export function deleteProfessionalAsAdmin(
   requesterId: string,
   targetId: string,
 ): Promise<AdminActionResult> {
-  return invokeAdminAction({ action: 'delete-professional', requesterId, targetId })
+  return invokeAdminAction({ action: 'delete-professional', targetId })
+}
+
+export function archiveAndDeleteProfessional(targetId: string): Promise<AdminActionResult> {
+  return invokeAdminAction({ action: 'archive-delete-professional', targetId })
 }

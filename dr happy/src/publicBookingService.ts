@@ -55,7 +55,8 @@ async function invokePublicBooking(body: Record<string, unknown>): Promise<any> 
   if (!isSupabaseConfigured || !supabase) {
     return { success: false, message: 'Supabase no está conectado en este entorno.' }
   }
-  const { data, error } = await supabase.functions.invoke('public-booking', { body })
+  const sessionToken = sessionStorage.getItem('drhappy-professional-session') || ''
+  const { data, error } = await supabase.functions.invoke('public-booking', { body, headers: sessionToken ? { 'x-drhappy-session': sessionToken } : undefined })
   if (error) {
     return { success: false, message: error.message || 'Error invocando el servicio de turnos libres.' }
   }

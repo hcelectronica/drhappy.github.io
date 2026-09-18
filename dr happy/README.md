@@ -20,7 +20,7 @@ npm run dev
 - Usuario: `admin`
 - Contraseña: `admin`
 
-Los datos iniciales de usuarios están en `public/users.json` y la base local de pacientes en `public/patients.json`.
+El modo operativo usa Supabase. No se publican usuarios, contraseñas ni pacientes demo dentro de `public`.
 
 ## Comunidad compartida (Supabase)
 
