@@ -41,6 +41,7 @@ import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBo
 import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
+import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
 import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
 import { selfDeleteAccount } from './selfDeleteService'
@@ -3426,19 +3427,14 @@ function App() {
       return
     }
     try {
-      const { error } = await supabase.from('user_workspaces').upsert(
-        {
-          user_id: userId,
-          profile_json: nextProfile,
-          patients_json: nextPatients,
-          appointments_json: nextAppointments,
-          treatment_ledger_json:
-            nextLedger ?? readJsonStorage<TreatmentLedgerEntry[]>(treatmentLedgerStorageKey(userId), []),
-        },
-        { onConflict: 'user_id' },
-      )
-      if (error) {
-        console.warn('No se pudo guardar la base personal en la nube:', error.message)
+      const result = await saveWorkspaceData({
+        profile: nextProfile,
+        patients: nextPatients,
+        appointments: nextAppointments,
+        treatmentLedger: nextLedger ?? readJsonStorage<TreatmentLedgerEntry[]>(treatmentLedgerStorageKey(userId), []),
+      })
+      if (!result.success) {
+        console.warn('No se pudo guardar la base personal en la nube:', result.message)
       }
     } catch (err) {
       console.warn('Fallo de conexión al sincronizar workspace en la nube:', err)
@@ -3492,14 +3488,9 @@ function App() {
         throw new Error(`No se pudo sincronizar el profesional: ${professionalError.message}`)
       }
 
-      const { data, error } = await supabase
-        .from('user_workspaces')
-        .select('user_id, profile_json, patients_json, appointments_json, treatment_ledger_json')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (error) {
-        throw new Error(`No se pudo cargar la base personal del profesional: ${error.message}`)
-      }
+      const workspaceResult = await loadWorkspaceData()
+      if (!workspaceResult.success) throw new Error(`No se pudo cargar la base personal del profesional: ${workspaceResult.message}`)
+      const data = workspaceResult.workspace as RemoteWorkspaceRow | null
 
       if (data) {
         const workspace = data as RemoteWorkspaceRow

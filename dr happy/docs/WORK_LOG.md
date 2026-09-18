@@ -46,6 +46,9 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - RLS permanece pendiente deliberadamente: el cliente todavía tiene lecturas/escrituras directas que deben migrarse antes de cerrar políticas permisivas.
 - Auditoría administrativa completada en las funciones revisadas: Sofía, admin, checkout, self-delete, push y administración de turnera pública ya derivan identidad desde sesión en desarrollo.
 - Se mantiene RLS abierto de forma temporal porque `App.tsx` todavía accede directamente a workspace, profesionales y comunidad; cerrarlo ahora rompería flujos.
+- Se creó `workspace-data` autenticada para cargar/guardar el workspace principal.
+- La carga y persistencia principal de `App.tsx` ya usan `workspace-data`; quedan accesos directos de perfil y comunidad para la siguiente unidad.
+- `workspace-data` quedó desplegada solo en desarrollo y el build pasó.
 - Eliminados `public/users.json` y `public/patients.json` del sitio: no se publican credenciales ni pacientes demo.
 - Build correcto después de la limpieza.
 
