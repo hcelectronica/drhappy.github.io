@@ -55,10 +55,16 @@ const tools = [
   },
   {
     name: 'consultar_historia_paciente',
-    description: 'Consulta la ficha e historial clínico resumido de un paciente del profesional autenticado. Usala sólo cuando el profesional pregunte por un paciente concreto o sus antecedentes.',
+    description: 'Consulta la ficha e historial clínico de un paciente del profesional autenticado. Por defecto devuelve las últimas 10 evoluciones; si el profesional pregunta por algo antiguo, usa topic o dateFrom/dateTo para buscar hasta 50 evoluciones relevantes.',
     input_schema: {
       type: 'object',
-      properties: { query: { type: 'string', description: 'Nombre, apellido o DNI del paciente.' } },
+      properties: {
+        query: { type: 'string', description: 'Nombre, apellido o DNI del paciente.' },
+        topic: { type: 'string', description: 'Tema clínico para buscar en todo el historial, por ejemplo anemia, cirugía o embarazo.' },
+        dateFrom: { type: 'string', description: 'Fecha inicial YYYY-MM-DD opcional.' },
+        dateTo: { type: 'string', description: 'Fecha final YYYY-MM-DD opcional.' },
+        limit: { type: 'number', description: 'Máximo de evoluciones; entre 1 y 50. Por defecto 10 o 50 cuando se busca tema/fecha.' },
+      },
       required: ['query'],
     },
   },
@@ -340,6 +346,11 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     if (query.length < 2) return { matches: [], message: 'La búsqueda necesita al menos 2 caracteres.' }
     const { data } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const topic = normalizeSearch(input.topic)
+    const dateFrom = typeof input.dateFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.dateFrom) ? input.dateFrom : ''
+    const dateTo = typeof input.dateTo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.dateTo) ? input.dateTo : ''
+    const requestedLimit = Number(input.limit)
+    const historyLimit = Math.min(50, Math.max(1, Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : topic || dateFrom || dateTo ? 50 : 10))
     const matches = patients.filter((patient) => normalizeSearch(`${patient.nombre || ''} ${patient.apellido || ''} ${patient.dni || ''}`).includes(query)).slice(0, 5)
     return {
       count: matches.length,
@@ -356,10 +367,21 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
         patologiasConocidas: patient.patologiasConocidas,
         patologiasCronicas: patient.patologiasCronicas,
         consultations: Array.isArray(patient.consultations)
-          ? patient.consultations.slice(-10).map((consultation: Record<string, unknown>) => ({
+          ? patient.consultations
+            .filter((consultation: Record<string, unknown>) => {
+              const date = typeof consultation.date === 'string' ? consultation.date : ''
+              const text = normalizeSearch(JSON.stringify(consultation))
+              return (!dateFrom || date >= dateFrom) && (!dateTo || date <= dateTo) && (!topic || text.includes(topic))
+            })
+            .slice(-historyLimit)
+            .map((consultation: Record<string, unknown>) => ({
             date: consultation.date,
             motivoConsulta: consultation.motivoConsulta,
             diagnostico: consultation.diagnostico,
+            enfermedadActual: consultation.enfermedadActual,
+            examenFisico: consultation.examenFisico,
+            impresionDiagnostica: consultation.impresionDiagnostica,
+            planManejo: consultation.planManejo,
             detalleAtencion: consultation.detalleAtencion,
             pensamientoMedico: consultation.pensamientoMedico,
           }))
@@ -600,6 +622,7 @@ Deno.serve(async (request) => {
     'No digas que una acción ocurrió si la herramienta no devolvió success=true. Si una operación falla o requiere confirmación, informalo claramente y no lo presentes como realizado.',
     `Fecha y hora actual de Argentina: ${currentDate} ${currentTime}. Si el profesional dice hoy, mañana o pasado mañana, convertílo a YYYY-MM-DD sin preguntarle qué fecha es.`,
     'Si preguntan por turnos o agenda, consultá buscar_turnos cuando necesites informar datos. Si piden agendar, usá directamente la herramienta de agendamiento; no hagas una consulta previa ni pidas confirmación adicional.',
+    'Para una pregunta histórica específica sobre un paciente, usá consultar_historia_paciente con topic o dateFrom/dateTo. Por defecto usa las últimas evoluciones; si piden algo antiguo, buscá explícitamente en todo el historial permitido y aclarà qué encontraste.',
     'Si preguntan por los turnos liberados al público, la turnera pública o qué horarios puede elegir un paciente, usá consultar_turnera_publica. Es una herramienta de solo lectura: nunca intentes modificarla ni reservar desde Sofía.',
     'Si preguntan por ocupación, cupos o disponibilidad diaria, usá consultar_calendario_ocupacion. Si piden un link de pago, usá obtener_link_pago_profesional.',
     'Para un paciente nuevo usá crear_paciente_y_agendar_turno y agendalo directamente con los datos disponibles; no pidas DNI, email, motivo ni otros campos opcionales.',
