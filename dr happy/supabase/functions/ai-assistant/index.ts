@@ -597,6 +597,14 @@ Deno.serve(async (request) => {
   const usageLimit = professional.is_admin ? 5000 : professional.subscription_status === 'active' ? 500 : 3
   if (!professional.is_admin && (monthlyUsage || 0) >= usageLimit) {
     const limitDescription = professional.subscription_status === 'active' ? 'mensual' : 'de prueba'
+    if (professional.subscription_status !== 'active') {
+      return jsonResponse(429, {
+        success: false,
+        message: 'Tus 3 preguntas gratuitas de Sofía ya terminaron. Activá una suscripción para seguir usando a la asistente.',
+        monthlyUsage,
+        monthlyLimit: usageLimit,
+      })
+    }
     return jsonResponse(429, { success: false, message: `Alcanzaste el límite ${limitDescription} de Sofía (${usageLimit} consultas).`, monthlyUsage, monthlyLimit: usageLimit })
   }
 

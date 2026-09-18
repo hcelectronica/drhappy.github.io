@@ -17,6 +17,21 @@ interface AssistantResult {
   pendingConfirmation?: AssistantPendingConfirmation
 }
 
+function normalizeSofiaErrorMessage(message: string): string {
+  const normalized = message.trim()
+  const lower = normalized.toLowerCase()
+
+  if (lower.includes('non-2xx') || lower.includes('edge function returned') || lower.includes('limit') && lower.includes('prueba')) {
+    return 'Tus 3 preguntas gratuitas de Sofía ya terminaron. Activá una suscripción para seguir usando a la asistente.'
+  }
+
+  if (lower.includes('suscripción activa') || lower.includes('requiere una suscripción')) {
+    return 'Sofía requiere una suscripción activa para seguir respondiendo. Activá tu plan para continuar.'
+  }
+
+  return normalized || 'No se pudo conectar con Sofía.'
+}
+
 export async function askSofia(params: {
   messages: AssistantMessage[]
   professionalId?: string
@@ -38,7 +53,22 @@ export async function askSofia(params: {
   })
 
   if (error) {
-    return { success: false, message: error.message || 'No se pudo conectar con Sofía.' }
+    const context = (error as { context?: { json?: () => Promise<unknown> } }).context
+    if (context && typeof context.json === 'function') {
+      try {
+        const payload = await context.json() as { message?: string }
+        if (payload && typeof payload.message === 'string' && payload.message.trim()) {
+          return { success: false, message: normalizeSofiaErrorMessage(payload.message) }
+        }
+      } catch {
+        // Ignoramos el parse fallido y usamos el fallback del error original.
+      }
+    }
+
+    return {
+      success: false,
+      message: normalizeSofiaErrorMessage(typeof error.message === 'string' ? error.message : 'No se pudo conectar con Sofía.'),
+    }
   }
 
   return data as AssistantResult
