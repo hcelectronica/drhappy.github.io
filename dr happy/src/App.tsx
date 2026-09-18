@@ -264,6 +264,10 @@ interface ConsultationEntry {
   diagnostico?: string
   detalleAtencion: string
   pensamientoMedico: string
+  enfermedadActual?: string
+  examenFisico?: string
+  impresionDiagnostica?: string
+  planManejo?: string
   professionalSignature: {
     fullName: string
     licenseNumber: string
@@ -326,6 +330,10 @@ interface ConsultationDraft {
   diagnostico: string
   detalleAtencion: string
   pensamientoMedico: string
+  enfermedadActual: string
+  examenFisico: string
+  impresionDiagnostica: string
+  planManejo: string
 }
 
 interface CommunityMessage {
@@ -537,6 +545,10 @@ const emptyConsultationDraft: ConsultationDraft = {
   diagnostico: '',
   detalleAtencion: '',
   pensamientoMedico: '',
+  enfermedadActual: '',
+  examenFisico: '',
+  impresionDiagnostica: '',
+  planManejo: '',
 }
 
 const emptyRegisterDraft: RegisterDraft = {
@@ -1717,6 +1729,11 @@ function normalizeHeader(header: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
+}
+
+function normalizeConsultationReason(value: string): string {
+  const cleaned = value.replace(/\*\*/g, '').replace(/^[-•#\s]+/, '').split(/[\n.;:!?]/)[0].trim()
+  return cleaned.split(/\s+/).filter(Boolean).slice(0, 4).join(' ')
 }
 
 function asText(value: unknown): string {
@@ -6461,7 +6478,7 @@ function App() {
         professionalName: profile?.fullName || activeUser?.fullName,
         messages: [{
           role: 'user',
-          content: `Convertí la siguiente transcripción de una entrevista clínica en un borrador para revisar. No inventes datos, no diagnostiques y no indiques tratamientos. Devolvé exactamente tres secciones con estos encabezados: MOTIVO:, RESUMEN:, PENSAMIENTO:. En PENSAMIENTO indicá datos faltantes, riesgos o preguntas que el profesional debería verificar, sin afirmar conclusiones. Paciente: ${patientName}. Transcripción:\n${consultationDraft.detalleAtencion.trim()}`,
+          content: `Convertí la entrevista en una evolución clínica revisable. No inventes datos, no diagnostiques ni indiques tratamientos. Devolvé exactamente: MOTIVO:, ENFERMEDAD ACTUAL:, EXAMEN FÍSICO:, IMPRESIÓN DIAGNÓSTICA:, PLAN DE MANEJO:, ANTECEDENTES RELEVANTES: y PENSAMIENTO:. MOTIVO debe ser una etiqueta breve de 1 a 4 palabras. ENFERMEDAD ACTUAL debe contener solo lo relatado hoy. En examen, impresión y plan indicá No consignado o A revisar si faltan datos. ${patientName}. Transcripción:\n${consultationDraft.detalleAtencion.trim()}`,
         }],
         context: 'El profesional está completando una evolución clínica. El resultado es un borrador no guardado y debe ser revisado por el profesional antes de incorporarlo a la historia clínica.',
       })
@@ -6470,19 +6487,26 @@ function App() {
         return
       }
       const draftText = result.reply.trim()
-      const normalizedDraft = draftText.replace(/\r/g, '').replace(/\*\*/g, '').replace(/\s+(MOTIVO:|RESUMEN(?: DE HOY)?:|ANTECEDENTES RELEVANTES:|PENSAMIENTO:)/gi, '\n$1')
+      const normalizedDraft = draftText.replace(/\r/g, '').replace(/\*\*/g, '').replace(/\s+(MOTIVO:|ENFERMEDAD ACTUAL:|EXAMEN FÍSICO:|IMPRESIÓN DIAGNÓSTICA:|PLAN DE MANEJO:|ANTECEDENTES RELEVANTES:|PENSAMIENTO:)/gi, '\n$1')
       const motivo = normalizedDraft.match(/MOTIVO:\s*([\s\S]*?)(?=\n\s*RESUMEN(?: DE HOY)?:|$)/i)?.[1]?.trim()
-      const resumen = normalizedDraft.match(/RESUMEN(?: DE HOY)?:\s*([\s\S]*?)(?=\n\s*ANTECEDENTES RELEVANTES:|\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
+      const enfermedadActual = normalizedDraft.match(/ENFERMEDAD ACTUAL:\s*([\s\S]*?)(?=\n\s*EXAMEN FÍSICO:|$)/i)?.[1]?.trim()
+      const examenFisico = normalizedDraft.match(/EXAMEN FÍSICO:\s*([\s\S]*?)(?=\n\s*IMPRESIÓN DIAGNÓSTICA:|$)/i)?.[1]?.trim()
+      const impresionDiagnostica = normalizedDraft.match(/IMPRESIÓN DIAGNÓSTICA:\s*([\s\S]*?)(?=\n\s*PLAN DE MANEJO:|$)/i)?.[1]?.trim()
+      const planManejo = normalizedDraft.match(/PLAN DE MANEJO:\s*([\s\S]*?)(?=\n\s*ANTECEDENTES RELEVANTES:|\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
       const antecedentes = normalizedDraft.match(/ANTECEDENTES RELEVANTES:\s*([\s\S]*?)(?=\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
       const pensamiento = normalizedDraft.match(/PENSAMIENTO:\s*([\s\S]*)$/i)?.[1]?.trim()
-      if (!resumen && !pensamiento) {
+      if (!enfermedadActual && !pensamiento) {
         setAppError('Sofía respondió, pero no pudo separar el borrador en secciones. Conservé la transcripción original para que la revises.')
         return
       }
       setConsultationDraft((current) => ({
         ...current,
-        motivoConsulta: motivo || current.motivoConsulta,
-        detalleAtencion: resumen ? `${resumen}${antecedentes ? `\n\nAntecedentes relevantes:\n${antecedentes}` : ''}` : current.detalleAtencion,
+        motivoConsulta: motivo ? normalizeConsultationReason(motivo) : current.motivoConsulta,
+        detalleAtencion: enfermedadActual ? `${enfermedadActual}${antecedentes ? `\n\nAntecedentes relevantes:\n${antecedentes}` : ''}` : current.detalleAtencion,
+        enfermedadActual: enfermedadActual || current.enfermedadActual,
+        examenFisico: examenFisico || current.examenFisico,
+        impresionDiagnostica: impresionDiagnostica || current.impresionDiagnostica,
+        planManejo: planManejo || current.planManejo,
         pensamientoMedico: pensamiento || current.pensamientoMedico,
       }))
       setAppNotice('Sofía preparó un borrador. Revisalo antes de guardar la evolución.')
@@ -8085,6 +8109,10 @@ function App() {
       diagnostico: nextMotivo,
       detalleAtencion: consultationDraft.detalleAtencion,
       pensamientoMedico: consultationDraft.pensamientoMedico,
+      enfermedadActual: consultationDraft.enfermedadActual,
+      examenFisico: consultationDraft.examenFisico,
+      impresionDiagnostica: consultationDraft.impresionDiagnostica,
+      planManejo: consultationDraft.planManejo,
       professionalSignature: {
         fullName: profile.fullName,
         licenseNumber: profile.licenseNumber,
@@ -12205,6 +12233,22 @@ function App() {
                   ) : null}
                 </label>
                 <label>
+                  Enfermedad actual (EA)
+                  <textarea name="enfermedadActual" value={consultationDraft.enfermedadActual} onChange={handleConsultationDraftChange} placeholder="Relato cronológico de la novedad de hoy..." />
+                </label>
+                <label>
+                  Examen físico
+                  <textarea name="examenFisico" value={consultationDraft.examenFisico} onChange={handleConsultationDraftChange} placeholder="Signos vitales y hallazgos de hoy; dejá constancia si no se realizó." />
+                </label>
+                <label>
+                  Impresión diagnóstica
+                  <textarea name="impresionDiagnostica" value={consultationDraft.impresionDiagnostica} onChange={handleConsultationDraftChange} placeholder="Impresión o diferenciales para revisar, sin automatismos." />
+                </label>
+                <label>
+                  Plan de manejo
+                  <textarea name="planManejo" value={consultationDraft.planManejo} onChange={handleConsultationDraftChange} placeholder="Estudios, conducta, pautas de alarma y control." />
+                </label>
+                <label>
                   Resumen de atención
                   <div className="dictation-actions">
                     <button
@@ -12286,7 +12330,10 @@ function App() {
                       <span>Motivo: {entry.motivoConsulta}</span>
                     </header>
                     {entry.diagnostico ? <p><strong>Diagnóstico:</strong> {entry.diagnostico}</p> : null}
-                    <p>{entry.detalleAtencion}</p>
+                    {entry.enfermedadActual ? <p><strong>Enfermedad actual:</strong> {entry.enfermedadActual}</p> : <p>{entry.detalleAtencion}</p>}
+                    {entry.examenFisico ? <p><strong>Examen físico:</strong> {entry.examenFisico}</p> : null}
+                    {entry.impresionDiagnostica ? <p><strong>Impresión diagnóstica:</strong> {entry.impresionDiagnostica}</p> : null}
+                    {entry.planManejo ? <p><strong>Plan de manejo:</strong> {entry.planManejo}</p> : null}
                     <p>
                       <strong>Pensamiento médico:</strong> {entry.pensamientoMedico}
                     </p>
