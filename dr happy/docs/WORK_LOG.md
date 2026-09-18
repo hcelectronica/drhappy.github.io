@@ -58,6 +58,9 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Canal Realtime directo retirado; comunidad usa polling mediante `community-data`.
 - Migración `20260918020000_lock_community_direct_access.sql` aplicada en desarrollo: se revocó acceso directo a `community_messages` y `user_push_subscriptions`.
 - RLS de workspace, comunidad y push ya está cerrado en desarrollo.
+- Perfil y listado de profesionales migrados a `professionals-data`; `App.tsx` ya no accede directamente a `professionals`.
+- Migración `20260918030000_lock_professionals_direct_access.sql` aplicada en desarrollo: se revocó acceso directo a `professionals`.
+- Paso 3 de RLS queda cerrado en desarrollo; el acceso administrativo continúa por Edge Functions con sesión validada.
 - Inicio del tramo clínico 2: el resumen de entrevista ahora recibe antecedentes estructurados y hasta cinco evoluciones previas.
 - La salida exige separar `RESUMEN DE HOY`, `ANTECEDENTES RELEVANTES` y `PENSAMIENTO`; sigue siendo borrador no guardado.
 - Se agregaron plantillas iniciales: consulta general, pediatría y odontología.
