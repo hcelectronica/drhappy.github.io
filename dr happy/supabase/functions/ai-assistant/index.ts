@@ -185,7 +185,7 @@ async function sendAppointmentConfirmation(params: {
     const response = await fetch(`${params.supabaseUrl}/functions/v1/send-email`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${params.serviceRoleKey}`, apikey: params.serviceRoleKey, 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(30000),
       body: JSON.stringify({
         to: params.email.trim(),
         subject: `Turno confirmado con ${params.professionalName} - ${params.date} ${params.time} hs`,
@@ -232,6 +232,26 @@ async function saveWorkspaceAndVerifyAppointment(
   return appointments.some((appointment) => appointment.id === appointmentId)
     ? { success: true }
     : { success: false, message: 'No se pudo confirmar la persistencia del turno.' }
+}
+
+async function recoverPersistedAppointment(
+  admin: ReturnType<typeof createClient>,
+  professionalId: string,
+  input: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  const { data } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
+  const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+  const requestedPatient = normalizeSearch(input.patient || `${input.apellido || ''} ${input.nombre || ''}`)
+  const requestedDate = String(input.date || '').trim()
+  const requestedTime = String(input.time || '').trim()
+  const cutoff = Date.now() - 5 * 60 * 1000
+  return appointments
+    .filter((appointment) => {
+      const createdAt = Date.parse(String(appointment.createdAt || ''))
+      const patientMatches = !requestedPatient || normalizeSearch(appointment.patientName).includes(requestedPatient) || requestedPatient.includes(normalizeSearch(appointment.patientName))
+      return appointment.status !== 'cancelled' && patientMatches && (!requestedDate || appointment.scheduledDate === requestedDate) && (!requestedTime || appointment.scheduledTime === requestedTime) && Number.isFinite(createdAt) && createdAt >= cutoff
+    })
+    .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')))[0] || null
 }
 
 async function runTool(name: string, input: Record<string, unknown>, admin: ReturnType<typeof createClient>, professionalId: string): Promise<unknown> {
@@ -750,7 +770,11 @@ Deno.serve(async (request) => {
         toolData = await runTool(toolUse.name, toolUse.input || {}, admin, professionalId)
       } catch (error) {
         console.error('[ai-assistant] tool failed', { tool: toolUse.name, message: error instanceof Error ? error.message : String(error) })
-        toolData = { success: false, message: 'No pude completar esa acción por un error interno. El turno no fue confirmado.' }
+        const schedulingTool = toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno'
+        const recovered = schedulingTool ? await recoverPersistedAppointment(admin, professionalId, toolUse.input || {}) : null
+        toolData = recovered
+          ? { success: true, message: `Turno confirmado para ${recovered.patientName} el ${recovered.scheduledDate} a las ${recovered.scheduledTime}. El turno quedó guardado; revisá la turnera si necesitás reenviar el email.` }
+          : { success: false, message: schedulingTool ? 'No pude confirmar el turno. No se encontró una reserva nueva en la agenda.' : 'No pude completar esa acción por un error interno.' }
       }
       const toolRecord = toolData && typeof toolData === 'object' ? toolData as Record<string, unknown> : null
       if (toolRecord?.requiresConfirmation === true && typeof toolRecord.action === 'string' && toolRecord.proposal && typeof toolRecord.proposal === 'object') {
