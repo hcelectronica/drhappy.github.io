@@ -5414,6 +5414,43 @@ function App() {
     persistPatientsBatch([nextPatient])
   }
 
+  function handleDeletePatient(): void {
+    if (!activeUserId || !selectedPatient) return
+    if (selectedPatient.ownerUserId !== activeUserId) {
+      setAppError('Solo puedes eliminar pacientes propios.')
+      return
+    }
+    const patientName = `${selectedPatient.apellido}, ${selectedPatient.nombre}`.trim()
+    if (!window.confirm(`Se eliminará la ficha de ${patientName || 'este paciente'}, sus turnos y su balance asociado. Esta acción no se puede deshacer. ¿Continuar?`)) {
+      return
+    }
+    const nextPatients = patients.filter((patient) => patient.id !== selectedPatient.id)
+    const nextAvailablePatients = availablePatients.filter((patient) => patient.id !== selectedPatient.id)
+    const nextAppointments = appointments.filter((appointment) => (
+      appointment.patientId !== selectedPatient.id &&
+      (!selectedPatient.dni || appointment.patientDni !== selectedPatient.dni)
+    ))
+    const nextLedger = treatmentLedger.filter((entry) => entry.patientId !== selectedPatient.id)
+    const ownerIndex = readJsonStorage<string[]>(patientIndexStorageKey(activeUserId), [])
+    const registry = readJsonStorage<string[]>(PATIENT_REGISTRY_KEY, [])
+    localStorage.removeItem(patientGlobalStorageKey(selectedPatient.id))
+    localStorage.setItem(patientIndexStorageKey(activeUserId), JSON.stringify(ownerIndex.filter((id) => id !== selectedPatient.id)))
+    localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(registry.filter((id) => id !== selectedPatient.id)))
+    localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
+    localStorage.setItem(treatmentLedgerStorageKey(activeUserId), JSON.stringify(nextLedger))
+    setPatients(nextPatients)
+    setAvailablePatients(nextAvailablePatients)
+    setAppointments(nextAppointments)
+    setTreatmentLedger(nextLedger)
+    setSelectedPatientId(null)
+    setWorkspaceLayer('my-patients')
+    const workspaceProfile = profile ?? (activeUser ? profileFromSeed(activeUser) : null)
+    if (workspaceProfile) {
+      void persistWorkspaceRemote(activeUserId, workspaceProfile, nextPatients, nextAppointments, nextLedger)
+    }
+    setAppNotice('Paciente eliminado correctamente.')
+  }
+
   function persistPatientConsultation(patientId: string, entry: ConsultationEntry): void {
     const patient = patients.find((p) => p.id === patientId)
     if (!patient) {
@@ -11823,6 +11860,15 @@ function App() {
                 disabled={!selectedPatient}
               >
                 + Evolucionar paciente
+              </button>
+              <button
+                type="button"
+                className="ghost danger-action"
+                onClick={handleDeletePatient}
+                disabled={!selectedPatient || !canEditSelectedPatientRecord}
+                title="Eliminar la ficha propia, sus turnos y su balance"
+              >
+                Eliminar paciente
               </button>
             </div>
           </section>

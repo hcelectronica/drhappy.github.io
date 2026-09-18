@@ -550,7 +550,7 @@ Deno.serve(async (request) => {
   if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
   const { data: professional } = await admin
     .from('professionals')
-    .select('id, active, is_admin, subscription_status, subscription_expires_at')
+    .select('id, active, is_admin, trial_started_at, subscription_status, subscription_expires_at')
     .eq('id', professionalId)
     .maybeSingle()
   if (!professional || professional.active === false) return jsonResponse(401, { success: false, message: 'Profesional no autorizado.' })
@@ -561,15 +561,21 @@ Deno.serve(async (request) => {
   if (!professional.is_admin && (professional.subscription_status === 'cancelled' || professional.subscription_status === 'expired' || subscriptionExpired)) {
     return jsonResponse(402, { success: false, message: 'El acceso de Sofía requiere una suscripción activa.' })
   }
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
-  const { count: monthlyUsage } = await admin
+  const trialStartedAt = typeof professional.trial_started_at === 'string' ? new Date(professional.trial_started_at) : null
+  const trialStart = trialStartedAt && !Number.isNaN(trialStartedAt.getTime()) ? trialStartedAt.toISOString() : null
+  const usageSince = professional.subscription_status === 'active'
+    ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
+    : trialStart
+  let usageQuery = admin
     .from('ai_usage_events')
     .select('id', { count: 'exact', head: true })
     .eq('professional_id', professionalId)
-    .gte('created_at', monthStart)
-  const monthlyLimit = professional.is_admin ? 5000 : professional.subscription_status === 'active' ? 500 : 50
-  if (!professional.is_admin && (monthlyUsage || 0) >= monthlyLimit) {
-    return jsonResponse(429, { success: false, message: `Alcanzaste el límite mensual de Sofía (${monthlyLimit} consultas).`, monthlyUsage, monthlyLimit })
+  if (usageSince) usageQuery = usageQuery.gte('created_at', usageSince)
+  const { count: monthlyUsage } = await usageQuery
+  const usageLimit = professional.is_admin ? 5000 : professional.subscription_status === 'active' ? 500 : 3
+  if (!professional.is_admin && (monthlyUsage || 0) >= usageLimit) {
+    const limitDescription = professional.subscription_status === 'active' ? 'mensual' : 'de prueba'
+    return jsonResponse(429, { success: false, message: `Alcanzaste el límite ${limitDescription} de Sofía (${usageLimit} consultas).`, monthlyUsage, monthlyLimit: usageLimit })
   }
 
   const messages = cleanMessages(payload.messages)
