@@ -31,9 +31,5 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId),
     },
     plugins: [react()],
-    preview: {
-      // Permite acceder desde túneles temporales de demostración (trycloudflare.com)
-      allowedHosts: ['.trycloudflare.com'],
-    },
   }
 })
