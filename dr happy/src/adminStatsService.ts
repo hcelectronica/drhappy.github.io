@@ -33,7 +33,7 @@ export interface AdminAIUsageStats {
 }
 
 export async function fetchAdminAIUsage(
-  requesterId: string,
+  _requesterId: string,
 ): Promise<{ success: boolean; message?: string; usage?: AdminAIUsageStats[]; total?: { requests: number; tokens: number; costUsd: number } }> {
   if (!isSupabaseConfigured || !supabase) return { success: false, message: 'Supabase no está conectado.' }
   const sessionToken = sessionStorage.getItem('drhappy-professional-session') || ''
@@ -43,7 +43,7 @@ export async function fetchAdminAIUsage(
 }
 
 export async function fetchAdminUserStats(
-  requesterId: string,
+  _requesterId: string,
 ): Promise<{ success: boolean; message?: string; users?: AdminUserStats[] }> {
   if (!isSupabaseConfigured || !supabase) {
     return { success: false, message: 'Supabase no está conectado.' }

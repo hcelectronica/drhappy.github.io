@@ -9,7 +9,6 @@ import { BrowserPDF417Reader, BrowserQRCodeReader } from '@zxing/browser'
 import * as XLSX from 'xlsx'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
-import type { RealtimeChannel } from '@supabase/supabase-js'
 import {
   getNotificationPermission,
   getPushSubscriptionsCount,
