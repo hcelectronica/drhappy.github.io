@@ -109,6 +109,11 @@ const tools = [
     input_schema: { type: 'object', properties: { patient: { type: 'string' }, subject: { type: 'string' }, message: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'subject', 'message', 'confirmation'] },
   },
   {
+    name: 'completar_email_y_enviar_confirmacion',
+    description: 'Guarda el email real de un paciente recién agendado y envía la confirmación de su próximo turno ya existente. No crea otro turno.',
+    input_schema: { type: 'object', properties: { patient: { type: 'string' }, email: { type: 'string' } }, required: ['patient', 'email'] },
+  },
+  {
     name: 'buscar_vademecum',
     description: 'Busca medicamentos en el vademécum de Dr Happy. Devuelve coincidencias informativas; no reemplaza el criterio profesional.',
     input_schema: {
@@ -208,6 +213,25 @@ async function sendAppointmentConfirmation(params: {
     console.error('No se pudo invocar send-email después de crear el turno', error)
     return { sent: false, message: error instanceof Error ? error.message : 'No se pudo conectar con el servicio de email.' }
   }
+}
+
+async function saveWorkspaceAndVerifyAppointment(
+  admin: ReturnType<typeof createClient>,
+  professionalId: string,
+  update: Record<string, unknown>,
+  appointmentId: string,
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, ...update }, { onConflict: 'user_id' })
+    if (!error) return { success: true }
+  } catch (error) {
+    console.error('[ai-assistant] workspace upsert response failed', error)
+  }
+  const { data } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
+  const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+  return appointments.some((appointment) => appointment.id === appointmentId)
+    ? { success: true }
+    : { success: false, message: 'No se pudo confirmar la persistencia del turno.' }
 }
 
 async function runTool(name: string, input: Record<string, unknown>, admin: ReturnType<typeof createClient>, professionalId: string): Promise<unknown> {
@@ -434,8 +458,8 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const conflict = activeOnDate.some((item) => { const start = timeToMinutes(item.scheduledTime); const end = start + (Number(item.durationMinutes) || 30); return requestedStart < end && requestedEnd > start })
     if (conflict) return { success: false, message: 'Ese horario ya está ocupado.' }
     const appointment = { id: crypto.randomUUID(), patientId: patient.id, patientName: proposal.patient, patientEmail: patient.email || '', patientDni: patient.dni || '', scheduledDate: input.date, scheduledTime: selectedTime, scheduledAt: `${input.date}T${selectedTime}:00`, durationMinutes: proposal.durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
-    const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, appointments_json: [...appointments, appointment] }, { onConflict: 'user_id' })
-    if (error) return { success: false, message: error.message }
+    const saved = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: [...appointments, appointment] }, String(appointment.id))
+    if (!saved.success) return saved
     const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(patient.email || ''), patientName: proposal.patient, professionalName: String(profileData.fullName || 'Dr Happy'), date: String(input.date), time: selectedTime, location: proposal.location, reason: proposal.reason, paymentLink: typeof profileData.paymentLink === 'string' ? profileData.paymentLink : undefined })
     return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno confirmado para ${proposal.patient} el ${input.date} a las ${selectedTime}.${emailResult.sent ? ' Confirmación enviada por email.' : ' El turno quedó guardado, pero no se envió email porque el paciente no tiene una dirección válida cargada.'}` }
   }
@@ -499,10 +523,10 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     if (conflict) return { success: false, message: 'Ese horario ya está ocupado.' }
     const patient = existing || { id: patientId, ownerUserId: professionalId, nombre, apellido, dni: dni || '', email: input.email || '', obraSocial: input.obraSocial || '', numeroAfiliado: '', plan: '', birthDate: '', edad: 0, patologiasConocidas: '', patologiasCronicas: '', ultimaInternacion: '', cirugiasPrevias: '', direccion: '', documents: [], consultations: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
     const appointment = { id: crypto.randomUUID(), patientId, patientName, patientEmail: input.email || '', patientDni: dni || '', scheduledDate: date, scheduledTime: selectedTime, scheduledAt: `${date}T${selectedTime}:00`, durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
-    const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, patients_json: existing ? patients : [...patients, patient], appointments_json: [...appointments, appointment] }, { onConflict: 'user_id' })
-    if (error) return { success: false, message: error.message }
+    const saved = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { patients_json: existing ? patients : [...patients, patient], appointments_json: [...appointments, appointment] }, String(appointment.id))
+    if (!saved.success) return saved
     const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(input.email || ''), patientName, professionalName: String(profileData.fullName || 'Dr Happy'), date, time: selectedTime, location: proposal.location, reason: proposal.reason })
-    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Paciente ${patientName} registrado y turno confirmado para ${date} a las ${selectedTime}.${emailResult.sent ? ' Confirmación enviada por email.' : ' El turno quedó guardado, pero no se envió email porque no se cargó una dirección válida.'}` }
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Paciente ${patientName} registrado y turno confirmado para ${date} a las ${selectedTime}.${emailResult.sent ? ' Confirmación enviada por email.' : ' Si me das un email real del paciente, puedo enviarle la confirmación del turno en este momento.'}` }
   }
 
   if (name === 'cancelar_turno') {
@@ -528,6 +552,31 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     if (input.confirmation !== true) return { requiresConfirmation: true, action: 'enviar_notificacion_paciente', proposal, message: 'Pedí confirmación explícita antes de enviar.' }
     const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: patient.email, subject: input.subject, type: 'custom', text: input.message }) })
     return emailResponse.ok ? { success: true, message: `Email enviado a ${proposal.patient}.` } : { success: false, message: 'No se pudo enviar el email.' }
+  }
+
+  if (name === 'completar_email_y_enviar_confirmacion') {
+    const query = normalizeSearch(input.patient)
+    const email = String(input.email || '').trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { success: false, message: 'Necesito un email válido para enviar la confirmación.' }
+    const { data } = await admin.from('user_workspaces').select('patients_json, appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
+    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const patient = patients.find((item) => normalizeSearch(`${item.nombre || ''} ${item.apellido || ''} ${item.dni || ''}`).includes(query))
+    if (!patient) return { success: false, message: 'No encontré al paciente para completar el email.' }
+    const appointment = appointments
+      .filter((item) => item.patientId === patient.id && item.status !== 'cancelled')
+      .sort((left, right) => String(left.scheduledAt || '').localeCompare(String(right.scheduledAt || '')))[0]
+    if (!appointment) return { success: false, message: 'El paciente quedó guardado, pero no encontré un turno vigente para confirmar.' }
+    const nextPatients = patients.map((item) => item.id === patient.id ? { ...item, email, updatedAt: new Date().toISOString() } : item)
+    const nextAppointments = appointments.map((item) => item.id === appointment.id ? { ...item, patientEmail: email } : item)
+    const saved = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { patients_json: nextPatients, appointments_json: nextAppointments }, String(appointment.id))
+    if (!saved.success) return saved
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const patientName = String(appointment.patientName || `${patient.apellido || ''}, ${patient.nombre || ''}`).trim()
+    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email, patientName, professionalName: String(profile.fullName || 'Dr Happy'), date: String(appointment.scheduledDate || ''), time: String(appointment.scheduledTime || ''), location: String(appointment.location || 'Consultorio médico'), reason: String(appointment.reason || 'Consulta médica'), paymentLink: typeof profile.paymentLink === 'string' ? profile.paymentLink : undefined })
+    return emailResult.sent
+      ? { success: true, message: `Email guardado para ${patientName}. Confirmación enviada a ${email}. El turno sigue agendado para ${appointment.scheduledDate} a las ${appointment.scheduledTime}.` }
+      : { success: false, message: `El email quedó guardado, pero no se pudo enviar la confirmación: ${emailResult.message || 'error de envío'}.` }
   }
 
   return { error: 'Herramienta no disponible.' }
@@ -651,7 +700,7 @@ Deno.serve(async (request) => {
     'Para una pregunta histórica específica sobre un paciente, usá consultar_historia_paciente con topic o dateFrom/dateTo. Por defecto usa las últimas evoluciones; si piden algo antiguo, buscá explícitamente en todo el historial permitido y aclarà qué encontraste.',
     'Si preguntan por los turnos liberados al público, la turnera pública o qué horarios puede elegir un paciente, usá consultar_turnera_publica. Es una herramienta de solo lectura: nunca intentes modificarla ni reservar desde Sofía.',
     'Si preguntan por ocupación, cupos o disponibilidad diaria, usá consultar_calendario_ocupacion. Si piden un link de pago, usá obtener_link_pago_profesional.',
-    'Para un paciente nuevo usá crear_paciente_y_agendar_turno y agendalo directamente con los datos disponibles; no pidas DNI, email, motivo ni otros campos opcionales.',
+    'Para un paciente nuevo usá crear_paciente_y_agendar_turno y agendalo directamente con los datos disponibles; no pidas DNI, email, motivo ni otros campos opcionales. Si se confirmó sin email, informá fecha y hora y ofrecé textualmente: "Si me das un email real del paciente, puedo enviarle la confirmación del turno en este momento". Si luego te dan el email, usá completar_email_y_enviar_confirmacion; no vuelvas a crear ni agendar al paciente.',
     'Si el profesional dice que recuerdes una preferencia o tema de trabajo, proponé guardar_memoria_sofia y pedí confirmación. Nunca guardes datos clínicos de pacientes en esa memoria. Si pregunta por algo que podría haber recordado, usá buscar_memorias_sofia.',
     context ? `Contexto disponible de la sesión:\n${context}` : '',
   ].filter(Boolean).join('\n\n')
