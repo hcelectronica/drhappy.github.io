@@ -49,6 +49,9 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Se creó `workspace-data` autenticada para cargar/guardar el workspace principal.
 - La carga y persistencia principal de `App.tsx` ya usan `workspace-data`; quedan accesos directos de perfil y comunidad para la siguiente unidad.
 - `workspace-data` quedó desplegada solo en desarrollo y el build pasó.
+- Se creó `community-data` autenticada para leer conversaciones, contar no leídos y enviar mensajes.
+- La conversación, no leídos y broadcasts de `App.tsx` ya usan `community-data`; los vistos siguen locales temporalmente.
+- `community-data` quedó desplegada solo en desarrollo y el build pasó.
 - Eliminados `public/users.json` y `public/patients.json` del sitio: no se publican credenciales ni pacientes demo.
 - Build correcto después de la limpieza.
 

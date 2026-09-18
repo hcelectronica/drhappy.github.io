@@ -42,6 +42,7 @@ import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
 import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
+import { communityRequest } from './communityService'
 import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
 import { selfDeleteAccount } from './selfDeleteService'
@@ -3944,16 +3945,11 @@ function App() {
 
     try {
       if (isSupabaseConfigured && supabase) {
-        const rows = recipients.map((r) => ({
-          sender_id: activeUserId,
-          recipient_id: r.id,
-          text: formattedText,
-          attachments_json: [],
-          sent_at: sentAt,
-        }))
-        const { error } = await supabase.from('community_messages').insert(rows)
-        if (error) {
-          throw new Error(error.message)
+        for (const recipient of recipients) {
+          const result = await communityRequest({ action: 'send', recipientId: recipient.id, text: formattedText })
+          if (!result.success) {
+            throw new Error(result.message || 'No se pudo enviar el mensaje.')
+          }
         }
       } else {
         recipients.forEach((r) => {
@@ -5056,18 +5052,12 @@ function App() {
 
       if (isSupabaseConfigured && supabase) {
         try {
-          const { data, error } = await supabase
-            .from('community_messages')
-            .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
-            .or(
-              `and(sender_id.eq.${activeUserId},recipient_id.eq.${communityTargetId}),and(sender_id.eq.${communityTargetId},recipient_id.eq.${activeUserId})`,
-            )
-            .order('sent_at', { ascending: true })
-          if (error) {
-            console.warn('Error leyendo chat de comunidad:', error.message)
+          const result = await communityRequest({ action: 'thread', memberId: communityTargetId })
+          if (!result.success) {
+            console.warn('Error leyendo chat de comunidad:', result.message)
             return
           }
-          const ordered = (data ?? []).map((row) =>
+          const ordered = (result.messages ?? []).map((row) =>
             mapRemoteCommunityMessage(row as RemoteCommunityMessageRow),
           )
           setCommunityMessages(ordered)
@@ -5132,16 +5122,12 @@ function App() {
 
       if (isSupabaseConfigured && supabase) {
         try {
-          const { data, error } = await supabase
-            .from('community_messages')
-            .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
-            .eq('recipient_id', activeUserId)
-            .order('sent_at', { ascending: true })
-          if (error) {
-            console.warn('No se pudieron escanear mensajes nuevos en Supabase:', error.message)
+          const result = await communityRequest({ action: 'unread' })
+          if (!result.success) {
+            console.warn('No se pudieron escanear mensajes nuevos en Supabase:', result.message)
             return
           }
-          for (const row of data ?? []) {
+          for (const row of result.messages ?? []) {
             const message = mapRemoteCommunityMessage(row as RemoteCommunityMessageRow)
             if (seenIds.has(message.id)) {
               continue
