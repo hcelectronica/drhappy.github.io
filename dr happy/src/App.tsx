@@ -43,6 +43,7 @@ import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
 import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
 import { communityRequest } from './communityService'
+import { parseClinicalSummary } from './clinicalSummaryParser'
 import { loadProfessionals } from './professionalsService'
 import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
@@ -1729,11 +1730,6 @@ function normalizeHeader(header: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
-}
-
-function normalizeConsultationReason(value: string): string {
-  const cleaned = value.replace(/\*\*/g, '').replace(/^[-•#\s]+/, '').split(/[\n.;:!?]/)[0].trim()
-  return cleaned.split(/\s+/).filter(Boolean).slice(0, 4).join(' ')
 }
 
 function asText(value: unknown): string {
@@ -6486,22 +6482,15 @@ function App() {
         setAppError(result.message || 'No se pudo preparar el resumen clínico.')
         return
       }
-      const draftText = result.reply.trim()
-      const normalizedDraft = draftText.replace(/\r/g, '').replace(/\*\*/g, '').replace(/\s+(MOTIVO:|ENFERMEDAD ACTUAL:|EXAMEN FÍSICO:|IMPRESIÓN DIAGNÓSTICA:|PLAN DE MANEJO:|ANTECEDENTES RELEVANTES:|PENSAMIENTO:)/gi, '\n$1')
-      const motivo = normalizedDraft.match(/MOTIVO:\s*([\s\S]*?)(?=\n\s*RESUMEN(?: DE HOY)?:|$)/i)?.[1]?.trim()
-      const enfermedadActual = normalizedDraft.match(/ENFERMEDAD ACTUAL:\s*([\s\S]*?)(?=\n\s*EXAMEN FÍSICO:|$)/i)?.[1]?.trim()
-      const examenFisico = normalizedDraft.match(/EXAMEN FÍSICO:\s*([\s\S]*?)(?=\n\s*IMPRESIÓN DIAGNÓSTICA:|$)/i)?.[1]?.trim()
-      const impresionDiagnostica = normalizedDraft.match(/IMPRESIÓN DIAGNÓSTICA:\s*([\s\S]*?)(?=\n\s*PLAN DE MANEJO:|$)/i)?.[1]?.trim()
-      const planManejo = normalizedDraft.match(/PLAN DE MANEJO:\s*([\s\S]*?)(?=\n\s*ANTECEDENTES RELEVANTES:|\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
-      const antecedentes = normalizedDraft.match(/ANTECEDENTES RELEVANTES:\s*([\s\S]*?)(?=\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
-      const pensamiento = normalizedDraft.match(/PENSAMIENTO:\s*([\s\S]*)$/i)?.[1]?.trim()
+      const parsedSummary = parseClinicalSummary(result.reply)
+      const { motivo, enfermedadActual, examenFisico, impresionDiagnostica, planManejo, antecedentes, pensamiento } = parsedSummary
       if (!enfermedadActual && !pensamiento) {
         setAppError('Sofía respondió, pero no pudo separar el borrador en secciones. Conservé la transcripción original para que la revises.')
         return
       }
       setConsultationDraft((current) => ({
         ...current,
-        motivoConsulta: motivo ? normalizeConsultationReason(motivo) : current.motivoConsulta,
+        motivoConsulta: motivo || current.motivoConsulta,
         detalleAtencion: enfermedadActual ? `${enfermedadActual}${antecedentes ? `\n\nAntecedentes relevantes:\n${antecedentes}` : ''}` : current.detalleAtencion,
         enfermedadActual: enfermedadActual || current.enfermedadActual,
         examenFisico: examenFisico || current.examenFisico,
