@@ -4135,6 +4135,14 @@ function App() {
         let merged: SeedUser[] = []
 
         if (isSupabaseConfigured && supabase) {
+          const hasOwnSession = Boolean(
+            sessionStorage.getItem('drhappy-professional-session') || (await supabase.auth.getSession()).data.session,
+          )
+          if (!hasOwnSession) {
+            setSeedUsers([])
+            setLoadingUsers(false)
+            return
+          }
           const result = await loadProfessionals()
           if (!result.success) throw new Error(`No se pudo cargar profesionales remotos: ${result.message}`)
           for (const row of result.professionals ?? []) {
@@ -5815,6 +5823,7 @@ function App() {
         if (result.sessionToken) {
           sessionStorage.setItem('drhappy-professional-session', result.sessionToken)
         }
+        setSeedUsers((current) => current.some((entry) => entry.id === user.id) ? current : [...current, user])
         localStorage.setItem(SESSION_USER_KEY, user.id)
         await loadWorkspaceForUser(user)
         setWorkspaceLayer('overview')
