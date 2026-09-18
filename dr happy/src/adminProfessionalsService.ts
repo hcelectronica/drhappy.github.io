@@ -81,3 +81,7 @@ export function deleteProfessionalAsAdmin(
 ): Promise<AdminActionResult> {
   return invokeAdminAction({ action: 'delete-professional', targetId })
 }
+
+export function archiveAndDeleteProfessional(targetId: string): Promise<AdminActionResult> {
+  return invokeAdminAction({ action: 'archive-delete-professional', targetId })
+}

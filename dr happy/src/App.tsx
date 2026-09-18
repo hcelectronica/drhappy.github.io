@@ -51,6 +51,7 @@ import {
   setProfessionalSubscription,
   setProfessionalModules,
   deleteProfessionalAsAdmin,
+  archiveAndDeleteProfessional,
 } from './adminProfessionalsService'
 import { buildSignatureSeal } from './signatureSeal'
 import {
@@ -3611,6 +3612,19 @@ function App() {
     setAdminBusyUserId(targetUser.id)
 
     try {
+      if (isSupabaseConfigured && supabase) {
+        const archiveDeleteResult = await archiveAndDeleteProfessional(targetUser.id)
+        if (!archiveDeleteResult.success) {
+          throw new Error(archiveDeleteResult.message ?? 'No se pudo archivar y eliminar el usuario.')
+        }
+        const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
+        localStorage.setItem(CREATED_USERS_KEY, JSON.stringify(localUsers.filter((user) => user.id !== targetUser.id)))
+        removeLocalUserArtifacts(targetUser.id, [])
+        setSeedUsers((current) => current.filter((user) => user.id !== targetUser.id))
+        setAppNotice(`Usuario eliminado definitivamente: ${targetUser.fullName}.`)
+        showSavedFloatingNotice()
+        return
+      }
       if (isSupabaseConfigured && supabase) {
         const [{ data: workspaceData, error: workspaceError }, { data: messagesData, error: messagesError }] =
           await Promise.all([

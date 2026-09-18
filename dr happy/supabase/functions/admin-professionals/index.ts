@@ -14,6 +14,7 @@ type Action =
   | 'set-subscription'
   | 'set-modules'
   | 'delete-professional'
+  | 'archive-delete-professional'
 
 interface RequestBody {
   action: Action
@@ -34,6 +35,11 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
+}
+
+function archiveFileName(username: string, fullName: string, dni: string, deletedAt: string): string {
+  const clean = (value: string) => value.trim().replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'sin-dato'
+  return `archivo-legal-${clean(username)}-${clean(fullName)}-${clean(dni)}-${deletedAt.slice(0, 10)}.json`
 }
 
 serve(async (request) => {
@@ -155,6 +161,25 @@ serve(async (request) => {
         if (target.is_admin === true) {
           return jsonResponse(400, { success: false, message: 'No se puede eliminar a otro administrador.' })
         }
+        const { error } = await admin.from('professionals').delete().eq('id', targetId)
+        if (error) return jsonResponse(500, { success: false, message: error.message })
+        return jsonResponse(200, { success: true })
+      }
+
+      case 'archive-delete-professional': {
+        if (targetId === requesterId) return jsonResponse(400, { success: false, message: 'No podés eliminar tu propia cuenta desde el panel.' })
+        if (target.is_admin === true) return jsonResponse(400, { success: false, message: 'No se puede eliminar a otro administrador.' })
+        const [{ data: professional }, { data: workspace }, { data: messages }] = await Promise.all([
+          admin.from('professionals').select('id, username, full_name, dni, email, specialty, license_number, network_memberships_json, active, is_admin, trial_started_at, subscription_status, subscription_expires_at').eq('id', targetId).maybeSingle(),
+          admin.from('user_workspaces').select('user_id, profile_json, patients_json, appointments_json, treatment_ledger_json').eq('user_id', targetId).maybeSingle(),
+          admin.from('community_messages').select('id, sender_id, recipient_id, text, attachments_json, sent_at').or(`sender_id.eq.${targetId},recipient_id.eq.${targetId}`).order('sent_at', { ascending: true }),
+        ])
+        if (!professional) return jsonResponse(404, { success: false, message: 'No se encontró el profesional.' })
+        const deletedAt = new Date().toISOString()
+        const archive = { exportedAt: deletedAt, deletedBy: requester, user: professional, workspace: workspace || null, communityMessages: messages || [] }
+        const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: [professional.email], subject: `Archivo legal - ${professional.full_name} - DNI ${professional.dni || 'no informado'}`, text: `Se adjunta el archivo legal correspondiente a la eliminación del usuario ${professional.full_name}.`, type: 'legal_archive', attachments: [{ filename: archiveFileName(professional.username, professional.full_name, professional.dni || '', deletedAt), content: JSON.stringify(archive, null, 2), contentType: 'application/json' }] }) })
+        const emailResult = await emailResponse.json().catch(() => null)
+        if (!emailResponse.ok || !emailResult?.success) return jsonResponse(502, { success: false, message: emailResult?.message || 'No se pudo enviar el archivo legal.' })
         const { error } = await admin.from('professionals').delete().eq('id', targetId)
         if (error) return jsonResponse(500, { success: false, message: error.message })
         return jsonResponse(200, { success: true })
