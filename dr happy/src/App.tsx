@@ -3421,7 +3421,10 @@ function App() {
 
       if (data) {
         const workspace = data as RemoteWorkspaceRow
-        loadedProfile = normalizeRemoteProfile(workspace.profile_json, profileFromSeed(user))
+        loadedProfile = {
+          ...normalizeRemoteProfile(workspace.profile_json, profileFromSeed(user)),
+          email: user.email,
+        }
         const remotePatients = Array.isArray(workspace.patients_json)
           ? workspace.patients_json
               .map((item) => normalizeRemotePatient(item, user.id))
@@ -5676,12 +5679,13 @@ function App() {
     }
 
     const email = googleUser.email.toLowerCase()
-    const matchingUsers = seedUsers.filter((entry) => entry.email.trim().toLowerCase() === email)
-    if (matchingUsers.length > 1) {
-      setAuthError('Este email está asociado a más de un usuario. Un administrador debe corregir la duplicación antes de iniciar sesión con Google.')
-      return
-    }
-    const existing = matchingUsers[0]
+    // Google es la identidad vigente: no debe quedar asociado a un token
+    // manual anterior que pudiera pertenecer a otra cuenta del navegador.
+    sessionStorage.removeItem('drhappy-professional-session')
+    const remoteSelf = await loadOwnProfessional()
+    const existing = remoteSelf.success && remoteSelf.professional
+      ? mapRemoteProfessional(remoteSelf.professional as RemoteProfessionalRow)
+      : null
 
     if (existing) {
       const metadata =
