@@ -42,6 +42,7 @@ export async function askSofia(params: {
     return { success: false, message: 'Sofía todavía no está conectada al servicio de IA en este entorno.' }
   }
 
+  const sessionToken = sessionStorage.getItem('drhappy-professional-session') || ''
   const { data, error } = await supabase.functions.invoke('ai-assistant', {
     body: {
       action: 'chat',
@@ -50,6 +51,7 @@ export async function askSofia(params: {
       professionalName: params.professionalName,
       context: params.context,
     },
+    headers: sessionToken ? { 'x-drhappy-session': sessionToken } : undefined,
   })
 
   if (error) {
