@@ -6066,6 +6066,7 @@ function App() {
     setCommunityUnreadCount(0)
     setCommunityUnreadByMember({})
     setWorkspaceLayer('overview')
+    setAppError(null)
     setAppNotice(null)
   }
 
