@@ -95,8 +95,8 @@ const tools = [
   },
   {
     name: 'crear_paciente_y_agendar_turno',
-    description: 'Registra un paciente nuevo y agenda directamente su primer turno con los datos recibidos. Fecha y hora son opcionales: si faltan, elegí el primer día habilitado con cupo y su primer bloque libre. El DNI y otros datos complementarios son opcionales y pueden completarse después manualmente. No pidas confirmación adicional. Solo detente si no existe disponibilidad.',
-    input_schema: { type: 'object', properties: { nombre: { type: 'string' }, apellido: { type: 'string' }, dni: { type: 'string', description: 'Opcional; se puede completar después manualmente.' }, email: { type: 'string' }, phone: { type: 'string' }, obraSocial: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD opcional; si falta, se busca el próximo día disponible.' }, time: { type: 'string', description: 'Hora HH:MM opcional; si falta se asigna el primer bloque libre.' }, reason: { type: 'string' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['nombre', 'apellido', 'confirmation'] },
+    description: 'Registra un paciente nuevo y agenda su primer turno. Antes de ejecutarla son obligatorios nombre, apellido, DNI y email válido. Fecha y hora son opcionales: si faltan, elegí el primer día habilitado con cupo y su primer bloque libre.',
+    input_schema: { type: 'object', properties: { nombre: { type: 'string' }, apellido: { type: 'string' }, dni: { type: 'string', description: 'DNI obligatorio del paciente.' }, email: { type: 'string', description: 'Email válido obligatorio para enviar la confirmación.' }, phone: { type: 'string' }, obraSocial: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD opcional; si falta, se busca el próximo día disponible.' }, time: { type: 'string', description: 'Hora HH:MM opcional; si falta se asigna el primer bloque libre.' }, reason: { type: 'string' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['nombre', 'apellido', 'dni', 'email', 'confirmation'] },
   },
   {
     name: 'cancelar_turno',
@@ -439,6 +439,13 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
     const patient = patients.find((item) => normalizeSearch(`${item.nombre || ''} ${item.apellido || ''} ${item.dni || ''}`).includes(patientQuery))
     if (!patient) return { success: false, message: 'No encontré un paciente que coincida. Pedí nombre completo o DNI.' }
+    const missingPatientData = [
+      !String(patient.nombre || '').trim() ? 'nombre' : '',
+      !String(patient.apellido || '').trim() ? 'apellido' : '',
+      !String(patient.dni || '').trim() ? 'DNI' : '',
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(patient.email || '').trim()) ? 'email válido' : '',
+    ].filter(Boolean)
+    if (missingPatientData.length > 0) return { success: false, message: `Antes de agendar necesito completar: ${missingPatientData.join(', ')}.` }
     const proposal = { patient: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), patientId: patient.id, date: input.date, time: input.time, reason: input.reason || 'Consulta médica', durationMinutes: Number(input.durationMinutes) || 30, location: input.location || 'Consultorio médico' }
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
     const profileData = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
@@ -468,9 +475,12 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const nombre = String(input.nombre || '').trim()
     const apellido = String(input.apellido || '').trim()
     const dni = String(input.dni || '').trim()
+    const email = String(input.email || '').trim().toLowerCase()
     let date = String(input.date || '').trim()
     const requestedTime = String(input.time || '').trim()
-    if (!nombre || !apellido) return { success: false, message: 'Faltan nombre o apellido.' }
+    const missingData = [!nombre ? 'nombre' : '', !apellido ? 'apellido' : '', !dni ? 'DNI' : '', !email ? 'email' : ''].filter(Boolean)
+    if (missingData.length > 0) return { success: false, message: `Para dar un turno necesito nombre, apellido, DNI y email. Falta: ${missingData.join(', ')}.` }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { success: false, message: 'El email no es válido. Necesito nombre, apellido, DNI y un email real antes de dar el turno.' }
     const { data } = await admin.from('user_workspaces').select('patients_json, appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
@@ -512,7 +522,7 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     })
     const patientId = existing?.id || crypto.randomUUID()
     const patientName = `${apellido}, ${nombre}`
-    const proposal = { patientName, dni, email: input.email || '', date, time: selectedTime, reason: input.reason || 'Consulta médica', location: input.location || 'Consultorio médico' }
+    const proposal = { patientName, dni, email, date, time: selectedTime, reason: input.reason || 'Consulta médica', location: input.location || 'Consultorio médico' }
     const requestedStart = timeToMinutes(selectedTime)
     const requestedEnd = requestedStart + durationMinutes
     const conflict = activeOnDate.some((item) => {
@@ -521,12 +531,15 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
       return requestedStart < end && requestedEnd > start
     })
     if (conflict) return { success: false, message: 'Ese horario ya está ocupado.' }
-    const patient = existing || { id: patientId, ownerUserId: professionalId, nombre, apellido, dni: dni || '', email: input.email || '', obraSocial: input.obraSocial || '', numeroAfiliado: '', plan: '', birthDate: '', edad: 0, patologiasConocidas: '', patologiasCronicas: '', ultimaInternacion: '', cirugiasPrevias: '', direccion: '', documents: [], consultations: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-    const appointment = { id: crypto.randomUUID(), patientId, patientName, patientEmail: input.email || '', patientDni: dni || '', scheduledDate: date, scheduledTime: selectedTime, scheduledAt: `${date}T${selectedTime}:00`, durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
-    const saved = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { patients_json: existing ? patients : [...patients, patient], appointments_json: [...appointments, appointment] }, String(appointment.id))
+    const patient = existing
+      ? { ...existing, nombre, apellido, dni, email, updatedAt: new Date().toISOString() }
+      : { id: patientId, ownerUserId: professionalId, nombre, apellido, dni, email, obraSocial: input.obraSocial || '', numeroAfiliado: '', plan: '', birthDate: '', edad: 0, patologiasConocidas: '', patologiasCronicas: '', ultimaInternacion: '', cirugiasPrevias: '', direccion: '', documents: [], consultations: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+    const appointment = { id: crypto.randomUUID(), patientId, patientName, patientEmail: email, patientDni: dni, scheduledDate: date, scheduledTime: selectedTime, scheduledAt: `${date}T${selectedTime}:00`, durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
+    const nextPatients = existing ? patients.map((item) => item.id === existing.id ? patient : item) : [...patients, patient]
+    const saved = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { patients_json: nextPatients, appointments_json: [...appointments, appointment] }, String(appointment.id))
     if (!saved.success) return saved
-    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(input.email || ''), patientName, professionalName: String(profileData.fullName || 'Dr Happy'), date, time: selectedTime, location: proposal.location, reason: proposal.reason })
-    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Paciente ${patientName} registrado y turno confirmado para ${date} a las ${selectedTime}.${emailResult.sent ? ' Confirmación enviada por email.' : ' Si me das un email real del paciente, puedo enviarle la confirmación del turno en este momento.'}` }
+    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email, patientName, professionalName: String(profileData.fullName || 'Dr Happy'), date, time: selectedTime, location: proposal.location, reason: proposal.reason })
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Paciente ${patientName} registrado con DNI ${dni} y turno confirmado para ${date} a las ${selectedTime}.${emailResult.sent ? ` Confirmación enviada a ${email}.` : ` El turno quedó confirmado, pero no se pudo enviar el email: ${emailResult.message || 'error de envío'}.`}` }
   }
 
   if (name === 'cancelar_turno') {
@@ -700,7 +713,7 @@ Deno.serve(async (request) => {
     'Para una pregunta histórica específica sobre un paciente, usá consultar_historia_paciente con topic o dateFrom/dateTo. Por defecto usa las últimas evoluciones; si piden algo antiguo, buscá explícitamente en todo el historial permitido y aclarà qué encontraste.',
     'Si preguntan por los turnos liberados al público, la turnera pública o qué horarios puede elegir un paciente, usá consultar_turnera_publica. Es una herramienta de solo lectura: nunca intentes modificarla ni reservar desde Sofía.',
     'Si preguntan por ocupación, cupos o disponibilidad diaria, usá consultar_calendario_ocupacion. Si piden un link de pago, usá obtener_link_pago_profesional.',
-    'Para un paciente nuevo usá crear_paciente_y_agendar_turno y agendalo directamente con los datos disponibles; no pidas DNI, email, motivo ni otros campos opcionales. Si se confirmó sin email, informá fecha y hora y ofrecé textualmente: "Si me das un email real del paciente, puedo enviarle la confirmación del turno en este momento". Si luego te dan el email, usá completar_email_y_enviar_confirmacion; no vuelvas a crear ni agendar al paciente.',
+    'PROTOCOLO OBLIGATORIO DE TURNOS: antes de crear un paciente o asignar cualquier turno debés tener nombre, apellido, DNI y email válido. Si falta cualquiera, pedí todos los datos faltantes juntos y no llames a ninguna herramienta de agendamiento. Recién cuando estén los cuatro datos, usá crear_paciente_y_agendar_turno. Para pacientes existentes, agendar_turno verificará que su ficha tenga esos cuatro datos; si falta alguno, pedí completarlo antes de reintentar. Fecha y hora pueden omitirse para elegir el primer turno disponible.',
     'Si el profesional dice que recuerdes una preferencia o tema de trabajo, proponé guardar_memoria_sofia y pedí confirmación. Nunca guardes datos clínicos de pacientes en esa memoria. Si pregunta por algo que podría haber recordado, usá buscar_memorias_sofia.',
     context ? `Contexto disponible de la sesión:\n${context}` : '',
   ].filter(Boolean).join('\n\n')
