@@ -1,4 +1,4 @@
-import sofiaReference from './assets/sofia-reference.png'
+import sofiaFace from './assets/sofia-face.png'
 
 interface SofiaAvatarProps {
   state?: 'idle' | 'listening' | 'thinking' | 'ready'
@@ -9,7 +9,7 @@ export function SofiaAvatar({ state = 'idle' }: SofiaAvatarProps) {
   return (
     <div className="sofia-avatar" aria-label={label} role="img">
       <div className="sofia-avatar-image-wrap" aria-hidden="true">
-        <img className="sofia-avatar-image" src={sofiaReference} alt="" />
+        <img className="sofia-avatar-image" src={sofiaFace} alt="" />
       </div>
       <svg className="sofia-avatar-fallback" viewBox="0 0 180 180" aria-hidden="true">
         <defs>
