@@ -2203,6 +2203,8 @@ body.theme-night .admin-modules-hint {
   border-color: #93c5fd;
   color: #1d4ed8;
 }
+.clinical-template-control { display: flex; flex-direction: column; gap: 4px; max-width: 260px; font-size: .78rem; font-weight: 700; color: #536b87; }
+.clinical-template-control select { min-height: 34px; padding: 6px 9px; border: 1px solid #b7cae5; border-radius: 8px; background: #fff; color: #183759; font: inherit; }
 
 .signature-pad-group {
   display: grid;
