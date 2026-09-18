@@ -18,8 +18,12 @@ Deno.serve(async (request) => {
   try { body = await request.json() } catch { /* list defaults */ }
   if (body.action === 'profile-update') {
     const profile = body.profile && typeof body.profile === 'object' ? body.profile as Record<string, unknown> : {}
-    const { error } = await admin.from('professionals').update({ full_name: profile.fullName, specialty: profile.specialty, license_number: profile.licenseNumber, email: profile.email, dni: profile.dni ?? null, network_memberships_json: profile.networkMemberships ?? [], last_seen_at: new Date().toISOString() }).eq('id', professionalId)
-    return error ? jsonResponse(500, { success: false, message: error.message }) : jsonResponse(200, { success: true })
+    const email = typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : ''
+    if (!email) return jsonResponse(400, { success: false, message: 'El perfil necesita un email válido.' })
+    const { data: duplicate } = await admin.from('professionals').select('id').ilike('email', email).neq('id', professionalId).limit(1)
+    if (duplicate && duplicate.length > 0) return jsonResponse(409, { success: false, message: 'Ese email ya está asociado a otro usuario.' })
+    const { error } = await admin.from('professionals').update({ full_name: profile.fullName, specialty: profile.specialty, license_number: profile.licenseNumber, email, dni: profile.dni ?? null, network_memberships_json: profile.networkMemberships ?? [], last_seen_at: new Date().toISOString() }).eq('id', professionalId)
+    return error ? jsonResponse(error.code === '23505' ? 409 : 500, { success: false, message: error.code === '23505' ? 'Ese email ya está asociado a otro usuario.' : error.message }) : jsonResponse(200, { success: true })
   }
   if (body.action === 'get-one') {
     const { data, error } = await admin.from('professionals').select('id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, enabled_modules_json, trial_started_at, subscription_status, subscription_expires_at').eq('id', professionalId).maybeSingle()

@@ -5683,6 +5683,10 @@ function App() {
     // manual anterior que pudiera pertenecer a otra cuenta del navegador.
     sessionStorage.removeItem('drhappy-professional-session')
     const remoteSelf = await loadOwnProfessional()
+    if (!remoteSelf.success) {
+      setAuthError(`Google autenticó correctamente, pero no se pudo resolver tu cuenta profesional: ${remoteSelf.message || 'respuesta inválida del servidor.'}`)
+      return
+    }
     const existing = remoteSelf.success && remoteSelf.professional
       ? mapRemoteProfessional(remoteSelf.professional as RemoteProfessionalRow)
       : null

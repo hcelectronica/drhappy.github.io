@@ -4,7 +4,18 @@ async function requestProfessionals(body: Record<string, unknown>): Promise<{ su
   if (!isSupabaseConfigured || !supabase) return { success: false, message: 'Supabase no está conectado.' }
   const token = sessionStorage.getItem('drhappy-professional-session') || ''
   const { data, error } = await supabase.functions.invoke('professionals-data', { body, headers: token ? { 'x-drhappy-session': token } : undefined })
-  if (error) return { success: false, message: error.message || 'No se pudo consultar profesionales.' }
+  if (error) {
+    const context = (error as { context?: Response }).context
+    if (context && typeof context.json === 'function') {
+      try {
+        const payload = await context.json() as { message?: unknown }
+        if (typeof payload.message === 'string' && payload.message.trim()) return { success: false, message: payload.message }
+      } catch {
+        // Conserva el mensaje genérico si la respuesta no es JSON.
+      }
+    }
+    return { success: false, message: error.message || 'No se pudo consultar profesionales.' }
+  }
   return data
 }
 

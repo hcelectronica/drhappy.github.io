@@ -435,6 +435,9 @@ serve(async (request) => {
         }
         const professionalId = await resolveProfessionalId(request, admin)
         if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
+        const { data: professional } = await admin.from('professionals').select('full_name').eq('id', professionalId).maybeSingle()
+        if (!professional) return jsonResponse(404, { success: false, message: 'No se encontró el profesional.' })
+        settings.professionalName = String(professional.full_name || settings.professionalName).trim()
         settings.professionalId = professionalId
 
         const { data: saved, error } = await admin
@@ -484,6 +487,8 @@ serve(async (request) => {
         if (!settings || !settings.enabled) {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
+        const { data: professional } = await admin.from('professionals').select('full_name, active').eq('id', settings.professional_id).maybeSingle()
+        if (!professional || professional.active === false) return jsonResponse(404, { success: false, message: 'El profesional de esta turnera ya no está disponible.' })
 
         const blocks = Array.from(new Map(
           (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
@@ -554,7 +559,7 @@ serve(async (request) => {
           success: true,
           profile: {
             slug: settings.slug,
-            professionalName: settings.professional_name,
+            professionalName: professional.full_name || settings.professional_name,
             location: settings.location,
             reason: settings.reason,
             horizonDays,
@@ -589,6 +594,8 @@ serve(async (request) => {
         if (!settings || !settings.enabled) {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
+        const { data: professional } = await admin.from('professionals').select('full_name, active').eq('id', settings.professional_id).maybeSingle()
+        if (!professional || professional.active === false) return jsonResponse(404, { success: false, message: 'El profesional de esta turnera ya no está disponible.' })
         if (slotDate < todayISO() || slotDate > addDays(todayISO(), 59)) {
           return jsonResponse(409, { success: false, message: 'La fecha elegida está fuera del rango habilitado.' })
         }
