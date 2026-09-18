@@ -2205,6 +2205,10 @@ body.theme-night .admin-modules-hint {
 }
 .clinical-template-control { display: flex; flex-direction: column; gap: 4px; max-width: 260px; font-size: .78rem; font-weight: 700; color: #536b87; }
 .clinical-template-control select { min-height: 34px; padding: 6px 9px; border: 1px solid #b7cae5; border-radius: 8px; background: #fff; color: #183759; font: inherit; }
+.clinical-cie-suggestions { display: grid; gap: 6px; padding: 10px; border: 1px solid #bfdbfe; border-radius: 10px; background: #f8fbff; color: #24496d; }
+.clinical-cie-suggestions > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.clinical-cie-suggestions button { font-size: .76rem; text-align: left; }
+.clinical-cie-suggestions small { color: #64748b; font-size: .72rem; }
 
 .signature-pad-group {
   display: grid;

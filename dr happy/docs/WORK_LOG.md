@@ -62,6 +62,8 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - La salida exige separar `RESUMEN DE HOY`, `ANTECEDENTES RELEVANTES` y `PENSAMIENTO`; sigue siendo borrador no guardado.
 - Se agregaron plantillas iniciales: consulta general, pediatría y odontología.
 - Build y diagnósticos correctos en desarrollo; no se promovió a producción.
+- Se agregaron sugerencias CIE-10 locales y revisables después del resumen; el profesional puede aceptar o editar una sugerencia y nada se guarda automáticamente.
+- Build y diagnósticos correctos en desarrollo.
 - Revisión previa al cierre de RLS: el único acceso directo restante a `user_workspaces` está en el archivo legal de eliminación administrativa; debe migrarse a una función admin antes de bloquear la tabla.
 - RLS de `user_workspaces` no se aplicó todavía para evitar romper ese flujo pendiente.
 - Archivo legal administrativo migrado a `admin-professionals` (`archive-delete-professional`): lee, envía el archivo y elimina con Service Role; el frontend ya no usa el acceso directo durante el flujo normal.
