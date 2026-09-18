@@ -478,9 +478,6 @@ interface RemoteProfessionalRow {
   subscription_expires_at?: string | null
 }
 
-const PROFESSIONAL_SELECT_COLUMNS =
-  'id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, enabled_modules_json, trial_started_at, subscription_status, subscription_expires_at'
-
 interface RemoteWorkspaceRow {
   user_id: string
   profile_json: unknown
@@ -1731,11 +1728,6 @@ function normalizeHeader(header: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
-}
-
-function normalizeConsultationReason(value: string): string {
-  const cleaned = value.replace(/\*\*/g, '').replace(/^[-•#\s]+/, '').split(/[\n.;:!?]/)[0].trim()
-  return cleaned.split(/\s+/).filter(Boolean).slice(0, 4).join(' ')
 }
 
 function asText(value: unknown): string {
@@ -3572,7 +3564,7 @@ function App() {
     localStorage.setItem(treatmentLedgerStorageKey(user.id), JSON.stringify(loadedLedger))
   }
 
-  async function fetchRemoteProfessionalById(userId: string): Promise<SeedUser | null> {
+  async function fetchRemoteProfessionalById(): Promise<SeedUser | null> {
     if (!isSupabaseConfigured || !supabase) {
       return null
     }
@@ -3915,7 +3907,7 @@ function App() {
       )
 
       if (activeUserId === userId) {
-        const refreshed = await fetchRemoteProfessionalById(userId)
+        const refreshed = await fetchRemoteProfessionalById()
         if (refreshed) {
           await loadWorkspaceForUser(refreshed)
         }
@@ -4755,7 +4747,7 @@ function App() {
     const verifySubscriptionActivation = async (): Promise<void> => {
       const maxAttempts = 6
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const refreshedUser = await fetchRemoteProfessionalById(activeUserId)
+        const refreshedUser = await fetchRemoteProfessionalById()
         if (cancelled) {
           return
         }
@@ -4801,7 +4793,7 @@ function App() {
           throw new Error(`MercadoPago aprobó el pago, pero no se pudo activar la suscripción: ${activationError.message}`)
         }
 
-        const refreshedUser = await fetchRemoteProfessionalById(activeUserId)
+        const refreshedUser = await fetchRemoteProfessionalById()
         if (cancelled) {
           return
         }
