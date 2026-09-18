@@ -1764,7 +1764,7 @@ function mapDictationError(errorCode?: string): string {
     case 'audio-capture':
       return 'No se detectó micrófono disponible.'
     case 'network':
-      return 'El servicio de voz no respondió (error de red). Reintenta en unos segundos.'
+      return 'El servicio de voz del navegador no está disponible. Podés escribir la entrevista manualmente y usar Sofía para resumirla, o probar Chrome con conexión activa.'
     case 'no-speech':
       return 'No se detectó voz. Verifica volumen del micrófono y vuelve a intentar.'
     case 'aborted':
@@ -6470,13 +6470,19 @@ function App() {
         return
       }
       const draftText = result.reply.trim()
-      const motivo = draftText.match(/MOTIVO:\s*([\s\S]*?)(?=\n\s*RESUMEN:|$)/i)?.[1]?.trim()
-      const resumen = draftText.match(/RESUMEN:\s*([\s\S]*?)(?=\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
-      const pensamiento = draftText.match(/PENSAMIENTO:\s*([\s\S]*)$/i)?.[1]?.trim()
+      const normalizedDraft = draftText.replace(/\r/g, '').replace(/\*\*/g, '').replace(/\s+(MOTIVO:|RESUMEN(?: DE HOY)?:|ANTECEDENTES RELEVANTES:|PENSAMIENTO:)/gi, '\n$1')
+      const motivo = normalizedDraft.match(/MOTIVO:\s*([\s\S]*?)(?=\n\s*RESUMEN(?: DE HOY)?:|$)/i)?.[1]?.trim()
+      const resumen = normalizedDraft.match(/RESUMEN(?: DE HOY)?:\s*([\s\S]*?)(?=\n\s*ANTECEDENTES RELEVANTES:|\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
+      const antecedentes = normalizedDraft.match(/ANTECEDENTES RELEVANTES:\s*([\s\S]*?)(?=\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
+      const pensamiento = normalizedDraft.match(/PENSAMIENTO:\s*([\s\S]*)$/i)?.[1]?.trim()
+      if (!resumen && !pensamiento) {
+        setAppError('Sofía respondió, pero no pudo separar el borrador en secciones. Conservé la transcripción original para que la revises.')
+        return
+      }
       setConsultationDraft((current) => ({
         ...current,
         motivoConsulta: motivo || current.motivoConsulta,
-        detalleAtencion: resumen || draftText,
+        detalleAtencion: resumen ? `${resumen}${antecedentes ? `\n\nAntecedentes relevantes:\n${antecedentes}` : ''}` : current.detalleAtencion,
         pensamientoMedico: pensamiento || current.pensamientoMedico,
       }))
       setAppNotice('Sofía preparó un borrador. Revisalo antes de guardar la evolución.')
