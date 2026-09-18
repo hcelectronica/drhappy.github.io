@@ -65,6 +65,9 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Se agregaron sugerencias CIE-10 locales y revisables después del resumen; el profesional puede aceptar o editar una sugerencia y nada se guarda automáticamente.
 - Build y diagnósticos correctos en desarrollo.
 - La prueba sintética de tres entrevistas clínicas quedó inconclusa por falta de salida del runner temporal; no se marcó como aprobada ni se promovió a producción.
+- Evolución clínica estructurada integrada: MC, enfermedad actual, examen físico, impresión diagnóstica y plan de manejo. Las evoluciones antiguas mantienen compatibilidad con sus campos previos.
+- La ficha general permanece separada de las evoluciones fechadas; cada nueva evolución agrega la novedad sin modificar el pasado.
+- Build validado y publicado en desarrollo (`c82189d`) y producción (`bba3401`).
 - Se levantó la app de desarrollo para prueba manual del flujo clínico en `http://127.0.0.1:5174/`; no se usaron cuentas reales ni datos clínicos de producción.
 - Revisión previa al cierre de RLS: el único acceso directo restante a `user_workspaces` está en el archivo legal de eliminación administrativa; debe migrarse a una función admin antes de bloquear la tabla.
 - RLS de `user_workspaces` no se aplicó todavía para evitar romper ese flujo pendiente.
