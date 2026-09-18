@@ -161,6 +161,9 @@ serve(async (request) => {
         if (target.is_admin === true) {
           return jsonResponse(400, { success: false, message: 'No se puede eliminar a otro administrador.' })
         }
+        await admin.from('professional_sessions').delete().eq('professional_id', targetId)
+        await admin.from('user_workspaces').delete().eq('user_id', targetId)
+        await admin.from('community_messages').delete().or(`sender_id.eq.${targetId},recipient_id.eq.${targetId}`)
         const { error } = await admin.from('professionals').delete().eq('id', targetId)
         if (error) return jsonResponse(500, { success: false, message: error.message })
         return jsonResponse(200, { success: true })
@@ -180,6 +183,9 @@ serve(async (request) => {
         const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: [professional.email], subject: `Archivo legal - ${professional.full_name} - DNI ${professional.dni || 'no informado'}`, text: `Se adjunta el archivo legal correspondiente a la eliminación del usuario ${professional.full_name}.`, type: 'legal_archive', attachments: [{ filename: archiveFileName(professional.username, professional.full_name, professional.dni || '', deletedAt), content: JSON.stringify(archive, null, 2), contentType: 'application/json' }] }) })
         const emailResult = await emailResponse.json().catch(() => null)
         if (!emailResponse.ok || !emailResult?.success) return jsonResponse(502, { success: false, message: emailResult?.message || 'No se pudo enviar el archivo legal.' })
+        await admin.from('professional_sessions').delete().eq('professional_id', targetId)
+        await admin.from('user_workspaces').delete().eq('user_id', targetId)
+        await admin.from('community_messages').delete().or(`sender_id.eq.${targetId},recipient_id.eq.${targetId}`)
         const { error } = await admin.from('professionals').delete().eq('id', targetId)
         if (error) return jsonResponse(500, { success: false, message: error.message })
         return jsonResponse(200, { success: true })

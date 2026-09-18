@@ -28,7 +28,14 @@ export async function resolveProfessionalId(request: Request, admin: SupabaseCli
       .is('revoked_at', null)
       .gt('expires_at', new Date().toISOString())
       .maybeSingle()
-    if (data?.professional_id) return data.professional_id
+    if (data?.professional_id) {
+      const { data: professional } = await admin
+        .from('professionals')
+        .select('id, active')
+        .eq('id', data.professional_id)
+        .maybeSingle()
+      if (professional?.id && professional.active !== false) return professional.id
+    }
   }
 
   const authorization = request.headers.get('Authorization')
