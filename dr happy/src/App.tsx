@@ -5656,7 +5656,12 @@ function App() {
     }
 
     const email = googleUser.email.toLowerCase()
-    const existing = seedUsers.find((entry) => entry.email.toLowerCase() === email)
+    const matchingUsers = seedUsers.filter((entry) => entry.email.trim().toLowerCase() === email)
+    if (matchingUsers.length > 1) {
+      setAuthError('Este email está asociado a más de un usuario. Un administrador debe corregir la duplicación antes de iniciar sesión con Google.')
+      return
+    }
+    const existing = matchingUsers[0]
 
     if (existing) {
       const metadata =

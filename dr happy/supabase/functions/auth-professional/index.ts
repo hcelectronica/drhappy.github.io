@@ -103,15 +103,15 @@ serve(async (request) => {
           return jsonResponse(409, { success: false, message: 'Ese nombre de usuario ya existe.' })
         }
 
-        const { data: existingEmail, error: existingEmailError } = await admin
+        const { data: existingEmails, error: existingEmailError } = await admin
           .from('professionals')
           .select('id')
           .ilike('email', email)
-          .maybeSingle()
+          .limit(2)
         if (existingEmailError) {
           return jsonResponse(500, { success: false, message: `No se pudo validar el email: ${existingEmailError.message}` })
         }
-        if (existingEmail) {
+        if ((existingEmails || []).length > 0) {
           return jsonResponse(409, { success: false, message: 'Ese email ya está asociado a otro usuario.' })
         }
 
