@@ -242,13 +242,21 @@ async function recoverPersistedAppointment(
   const { data } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
   const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
   const requestedPatient = normalizeSearch(input.patient || `${input.apellido || ''} ${input.nombre || ''}`)
+  const requestedDni = normalizeSearch(input.dni)
+  const requestedEmail = normalizeSearch(input.email)
+  const requestedTokens = requestedPatient.split(/\s+/).filter(Boolean)
   const requestedDate = String(input.date || '').trim()
   const requestedTime = String(input.time || '').trim()
   const cutoff = Date.now() - 5 * 60 * 1000
   return appointments
     .filter((appointment) => {
       const createdAt = Date.parse(String(appointment.createdAt || ''))
-      const patientMatches = !requestedPatient || normalizeSearch(appointment.patientName).includes(requestedPatient) || requestedPatient.includes(normalizeSearch(appointment.patientName))
+      const appointmentName = normalizeSearch(appointment.patientName)
+      const appointmentTokens = appointmentName.split(/\s+/).filter(Boolean)
+      const patientMatches = !requestedPatient ||
+        (requestedDni && normalizeSearch(appointment.patientDni) === requestedDni) ||
+        (requestedEmail && normalizeSearch(appointment.patientEmail) === requestedEmail) ||
+        requestedTokens.every((token) => appointmentTokens.includes(token))
       return appointment.status !== 'cancelled' && patientMatches && (!requestedDate || appointment.scheduledDate === requestedDate) && (!requestedTime || appointment.scheduledTime === requestedTime) && Number.isFinite(createdAt) && createdAt >= cutoff
     })
     .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')))[0] || null
