@@ -48,6 +48,7 @@ import { removePatientFromWorkspace } from './patientWorkspaceUtils'
 import { loadProfessionals, loadOwnProfessional, updateOwnProfessionalProfile } from './professionalsService'
 import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
+import sofiaReference from './assets/sofia-reference.png'
 import { selfDeleteAccount } from './selfDeleteService'
 import {
   setProfessionalActive,
@@ -117,6 +118,7 @@ const DEFAULT_APPOINTMENT_END_TIME = '19:00'
 const APP_FLYER_SLIDES = [
   { key: 'ambulance', eyebrow: 'Respuesta inmediata', title: 'Modo Ambulancia', description: 'Gestioná rápidamente traslados, guardias y atención prehospitalaria con protocolos listos para usar.', icon: '🚑', visual: 'ambulance' },
   { key: 'attention', eyebrow: 'Historia clínica', title: 'Atención médica', description: 'Encontrá pacientes, registrá evoluciones y mantené toda la información clínica organizada.', icon: '♙', visual: 'patient' },
+  { key: 'sofia', eyebrow: 'Asistencia inteligente', title: 'Sofía, secretaria clínica IA', description: 'Consultá tu agenda, ordená información clínica y prepará borradores con una asistente pensada para tu práctica profesional.', icon: '✦', visual: 'sofia' },
   { key: 'appointments', eyebrow: 'Agenda inteligente', title: 'Turnera médica', description: 'Organizá tus días, definí cupos y ofrecé turnos libres con horarios segmentados.', icon: '◷', visual: 'calendar' },
   { key: 'tools', eyebrow: 'Decisiones clínicas', title: 'Herramientas clínicas', description: 'Consultá protocolos, vademécum y patologías desde un mismo espacio profesional.', icon: '✦', visual: 'tools' },
   { key: 'patients', eyebrow: 'Tu base clínica', title: 'Mis pacientes', description: 'Accedé rápidamente a tus pacientes, buscá por DNI y continuá una atención cuando quieras.', icon: '♧', visual: 'patients' },
@@ -10837,6 +10839,7 @@ function App() {
                     {slide.visual === 'tools' ? <><div className="flyer-mock-tools"><b>Herramientas clínicas</b><span>✦ Protocolos</span><span>▣ Vademécum</span><span>⌕ Patologías</span></div></> : null}
                     {slide.visual === 'patients' ? <><div className="flyer-mock-patient-list"><b>Mis pacientes <em>19</em></b><span>García, María</span><span>Rodríguez, Ana</span><span>Martínez, Carlos</span></div></> : null}
                     {slide.visual === 'ledger' ? <><div className="flyer-mock-ledger"><b>Balance de pagos</b><span>✓ Sin deuda&nbsp;&nbsp; 12</span><span>! Pendientes&nbsp;&nbsp; 3</span><strong>Total adeudado&nbsp; $ 125.000</strong></div></> : null}
+                    {slide.visual === 'sofia' ? <div className="flyer-sofia-visual"><div className="flyer-sofia-copy"><strong>Hola, soy Sofía</strong><span>Tu secretaria clínica para agenda, pacientes y borradores.</span><b>✦ Disponible para ayudarte</b></div><div className="flyer-sofia-image"><img src={sofiaReference} alt="Sofía, secretaria clínica de Dr Happy" /></div></div> : null}
                   </div>
                   <div className="flyer-slide-dots">{APP_FLYER_SLIDES.map((item, index) => <span key={item.key} className={index === flyerSlideIndex ? 'active' : ''} />)}</div>
                 </article>

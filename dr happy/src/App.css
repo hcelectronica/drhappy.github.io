@@ -119,6 +119,7 @@ body.theme-night {
 .flyer-slide-patient { --flyer-accent: #2563eb; }
 .flyer-slide-calendar { --flyer-accent: #d97706; }
 .flyer-slide-tools { --flyer-accent: #7c3aed; }
+.flyer-slide-sofia { --flyer-accent: #0f766e; }
 .flyer-slide-patients { --flyer-accent: #0891b2; }
 .flyer-slide-ledger { --flyer-accent: #dc2626; }
 .flyer-slide-copy { display: grid; gap: 12px; max-width: 520px; }
@@ -136,6 +137,13 @@ body.theme-night {
 .flyer-mock-calendar b, .flyer-mock-tools b, .flyer-mock-patient-list b, .flyer-mock-ledger b { color: var(--flyer-accent, #1d4ed8); }
 .flyer-mock-patient-list em { margin-left: 5px; padding: 2px 6px; border-radius: 99px; background: #e7efff; color: #1d4ed8; font-style: normal; }
 .flyer-mock-ledger strong { color: #c2410c; font-size: .75rem; }
+.flyer-sofia-visual { display: grid; grid-template-columns: minmax(0, 1fr) 150px; align-items: center; gap: 8px; min-height: 218px; overflow: hidden; border-radius: 13px; background: linear-gradient(145deg, #e6faf7, #f7fffd 58%, #dbeafe); }
+.flyer-sofia-copy { display: grid; gap: 10px; padding: 18px 4px 18px 18px; color: #164e63; font-size: .76rem; line-height: 1.4; }
+.flyer-sofia-copy strong { color: #0f766e; font-size: 1.05rem; }
+.flyer-sofia-copy span { color: #527386; }
+.flyer-sofia-copy b { color: #0f766e; font-size: .68rem; }
+.flyer-sofia-image { position: relative; align-self: stretch; min-height: 218px; overflow: hidden; }
+.flyer-sofia-image img { position: absolute; top: -43px; left: -7px; width: 620px; max-width: none; height: auto; }
 .flyer-slide-dots { position: absolute; bottom: -4px; left: 50%; display: flex; gap: 6px; transform: translateX(-50%); }
 .flyer-slide-dots span { width: 7px; height: 7px; border-radius: 50%; background: #b9cde7; }
 .flyer-slide-dots span.active { width: 20px; border-radius: 5px; background: var(--flyer-accent, #1d4ed8); }
