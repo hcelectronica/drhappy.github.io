@@ -327,6 +327,8 @@ interface ConsultationDraft {
   pensamientoMedico: string
 }
 
+type ClinicalSummaryTemplate = 'general' | 'pediatria' | 'odontologia'
+
 interface CommunityMessage {
   id: string
   senderId: string
@@ -1763,7 +1765,7 @@ function mapDictationError(errorCode?: string): string {
     case 'audio-capture':
       return 'No se detectó micrófono disponible.'
     case 'network':
-      return 'El servicio de voz no respondió (error de red). Reintenta en unos segundos.'
+      return 'El servicio de voz del navegador no está disponible. Podés escribir la entrevista manualmente y usar Sofía para resumirla, o probar Chrome con conexión activa.'
     case 'no-speech':
       return 'No se detectó voz. Verifica volumen del micrófono y vuelve a intentar.'
     case 'aborted':
@@ -2594,6 +2596,8 @@ function App() {
   const [consultationDraft, setConsultationDraft] =
     useState<ConsultationDraft>(emptyConsultationDraft)
   const [clinicalSummaryBusy, setClinicalSummaryBusy] = useState(false)
+  const [clinicalSummaryTemplate, setClinicalSummaryTemplate] = useState<ClinicalSummaryTemplate>('general')
+  const [clinicalCieSuggestions, setClinicalCieSuggestions] = useState<string[]>([])
   const consultationDiagnosisVisibleList = useMemo(
     () => buildDiagnosisSuggestions(diagnosisCatalog, consultationDraft.motivoConsulta, 10),
     [consultationDraft.motivoConsulta, diagnosisCatalog],
@@ -6465,29 +6469,62 @@ function App() {
     setAppError(null)
     try {
       const patientName = `${selectedPatient.apellido}, ${selectedPatient.nombre}`.trim()
+      const priorConsultations = selectedPatient.consultations.slice(-5).map((consultation) => ({
+        date: consultation.date,
+        reason: consultation.motivoConsulta,
+        diagnosis: consultation.diagnostico || '',
+        summary: consultation.detalleAtencion,
+        professionalThought: consultation.pensamientoMedico,
+      }))
+      const patientBackground = {
+        diagnosis: selectedPatient.diagnosticoPrincipal || '',
+        knownConditions: selectedPatient.patologiasConocidas,
+        chronicConditions: selectedPatient.patologiasCronicas,
+        lastHospitalization: selectedPatient.ultimaInternacion,
+        previousSurgeries: selectedPatient.cirugiasPrevias,
+        birthDate: selectedPatient.birthDate,
+        age: selectedPatient.edad || calculateAge(selectedPatient.birthDate),
+      }
+      const templateInstructions = clinicalSummaryTemplate === 'pediatria'
+        ? 'Usá enfoque pediátrico solo con datos presentes: edad, acompañante, desarrollo, alimentación, vacunas y signos de alarma.'
+        : clinicalSummaryTemplate === 'odontologia'
+          ? 'Usá enfoque odontológico solo con datos presentes: pieza o zona, dolor, evolución, hallazgos e higiene.'
+          : 'Usá enfoque clínico general y ordená los datos por problema.'
       const result = await askSofia({
         professionalId: activeUserId || undefined,
         professionalName: profile?.fullName || activeUser?.fullName,
         messages: [{
           role: 'user',
-          content: `Convertí la siguiente transcripción de una entrevista clínica en un borrador para revisar. No inventes datos, no diagnostiques y no indiques tratamientos. Devolvé exactamente tres secciones con estos encabezados: MOTIVO:, RESUMEN:, PENSAMIENTO:. En PENSAMIENTO indicá datos faltantes, riesgos o preguntas que el profesional debería verificar, sin afirmar conclusiones. Paciente: ${patientName}. Transcripción:\n${consultationDraft.detalleAtencion.trim()}`,
+          content: `Convertí la entrevista en un borrador clínico revisable. No inventes datos, no diagnostiques ni indiques tratamientos. Devolvé exactamente cuatro secciones: MOTIVO:, RESUMEN DE HOY:, ANTECEDENTES RELEVANTES:, PENSAMIENTO:. RESUMEN DE HOY debe usar solo la transcripción actual. ANTECEDENTES RELEVANTES debe usar solo los antecedentes previos proporcionados. PENSAMIENTO debe indicar datos faltantes, contradicciones, riesgos o preguntas para verificar, sin conclusiones. ${templateInstructions}\nPaciente: ${patientName}\nAntecedentes: ${JSON.stringify(patientBackground)}\nÚltimas evoluciones: ${JSON.stringify(priorConsultations)}\nTranscripción actual:\n${consultationDraft.detalleAtencion.trim()}`,
         }],
-        context: 'El profesional está completando una evolución clínica. El resultado es un borrador no guardado y debe ser revisado por el profesional antes de incorporarlo a la historia clínica.',
+        context: `El profesional está completando una evolución clínica. El resultado es un borrador no guardado. No mezcles lo dicho hoy con antecedentes. Datos estructurados previos: ${JSON.stringify(patientBackground)}. Últimas evoluciones: ${JSON.stringify(priorConsultations)}. Plantilla: ${clinicalSummaryTemplate}. Debe ser revisado por el profesional antes de incorporarlo a la historia clínica.`,
       })
       if (!result.success || !result.reply) {
         setAppError(result.message || 'No se pudo preparar el resumen clínico.')
         return
       }
       const draftText = result.reply.trim()
-      const motivo = draftText.match(/MOTIVO:\s*([\s\S]*?)(?=\n\s*RESUMEN:|$)/i)?.[1]?.trim()
-      const resumen = draftText.match(/RESUMEN:\s*([\s\S]*?)(?=\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
-      const pensamiento = draftText.match(/PENSAMIENTO:\s*([\s\S]*)$/i)?.[1]?.trim()
+      const normalizedDraft = draftText
+        .replace(/\r/g, '')
+        .replace(/\*\*/g, '')
+        .replace(/\s+(MOTIVO:|RESUMEN(?: DE HOY)?:|ANTECEDENTES RELEVANTES:|PENSAMIENTO:)/gi, '\n$1')
+      const motivo = normalizedDraft.match(/MOTIVO:\s*([\s\S]*?)(?=\n\s*RESUMEN(?: DE HOY)?:|$)/i)?.[1]?.trim()
+      const resumen = normalizedDraft.match(/RESUMEN(?: DE HOY)?:\s*([\s\S]*?)(?=\n\s*ANTECEDENTES RELEVANTES:|\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
+      const antecedentes = normalizedDraft.match(/ANTECEDENTES RELEVANTES:\s*([\s\S]*?)(?=\n\s*PENSAMIENTO:|$)/i)?.[1]?.trim()
+      const pensamiento = normalizedDraft.match(/PENSAMIENTO:\s*([\s\S]*)$/i)?.[1]?.trim()
+      if (!resumen && !pensamiento) {
+        setAppError('Sofía respondió, pero no pudo separar el borrador en secciones. Conservé la transcripción original para que la revises.')
+        return
+      }
       setConsultationDraft((current) => ({
         ...current,
         motivoConsulta: motivo || current.motivoConsulta,
-        detalleAtencion: resumen || draftText,
+        diagnostico: current.diagnostico,
+        detalleAtencion: resumen ? `${resumen}${antecedentes ? `\n\nAntecedentes relevantes:\n${antecedentes}` : ''}` : current.detalleAtencion,
         pensamientoMedico: pensamiento || current.pensamientoMedico,
       }))
+      const suggestionQuery = [motivo, resumen].filter(Boolean).join(' ')
+      setClinicalCieSuggestions(buildDiagnosisSuggestions(diagnosisCatalog, suggestionQuery, 5))
       setAppNotice('Sofía preparó un borrador. Revisalo antes de guardar la evolución.')
     } finally {
       setClinicalSummaryBusy(false)
@@ -12208,6 +12245,15 @@ function App() {
                   ) : null}
                 </label>
                 <label>
+                  Diagnóstico / CIE-10 a revisar
+                  <input
+                    name="diagnostico"
+                    value={consultationDraft.diagnostico}
+                    onChange={handleConsultationDraftChange}
+                    placeholder="Elegí una sugerencia o escribí para revisar..."
+                  />
+                </label>
+                <label>
                   Resumen de atención
                   <div className="dictation-actions">
                     <button
@@ -12243,9 +12289,30 @@ function App() {
                   {!dictationAvailable ? (
                     <small>Tu navegador no soporta transcripción por voz nativa.</small>
                   ) : null}
+                  <label className="clinical-template-control">
+                    Plantilla de resumen
+                    <select value={clinicalSummaryTemplate} onChange={(event) => setClinicalSummaryTemplate(event.target.value as ClinicalSummaryTemplate)}>
+                      <option value="general">Consulta general</option>
+                      <option value="pediatria">Pediatría</option>
+                      <option value="odontologia">Odontología</option>
+                    </select>
+                  </label>
                   <button type="button" className="ghost clinical-ai-summary-button" onClick={() => { void summarizeClinicalInterview() }} disabled={clinicalSummaryBusy || !consultationDraft.detalleAtencion.trim()}>
                     {clinicalSummaryBusy ? 'Sofía está preparando el borrador...' : '✦ Resumir interrogatorio con Sofía'}
                   </button>
+                  {clinicalCieSuggestions.length > 0 ? (
+                    <div className="clinical-cie-suggestions">
+                      <strong>Sugerencias CIE-10 para revisar</strong>
+                      <div>
+                        {clinicalCieSuggestions.map((suggestion) => (
+                          <button key={suggestion} type="button" className="ghost" onClick={() => setConsultationDraft((current) => ({ ...current, diagnostico: suggestion }))}>
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                      <small>No se guarda automáticamente ni reemplaza el criterio profesional.</small>
+                    </div>
+                  ) : null}
                   <small>El borrador no se guarda solo. Revisalo y corregilo antes de guardar la evolución.</small>
                 </label>
                 <label>
