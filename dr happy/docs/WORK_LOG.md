@@ -54,6 +54,8 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - `community-data` quedó desplegada solo en desarrollo y el build pasó.
 - Revisión previa al cierre de RLS: el único acceso directo restante a `user_workspaces` está en el archivo legal de eliminación administrativa; debe migrarse a una función admin antes de bloquear la tabla.
 - RLS de `user_workspaces` no se aplicó todavía para evitar romper ese flujo pendiente.
+- Se detectó que la copia de producción tiene cambios parciales de self-delete/push sin `professionalSession.ts`; no se promocionan ni se aceptan como producción válida.
+- Desarrollo conserva la corrección CSS validada en `6d9c3bf`; archivos generados, ZIP y migraciones ajenas quedan fuera del tramo de seguridad.
 - Eliminados `public/users.json` y `public/patients.json` del sitio: no se publican credenciales ni pacientes demo.
 - Build correcto después de la limpieza.
 
