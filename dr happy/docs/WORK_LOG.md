@@ -52,6 +52,8 @@ Registro operativo y de decisiones del endurecimiento de la aplicación.
 - Se creó `community-data` autenticada para leer conversaciones, contar no leídos y enviar mensajes.
 - La conversación, no leídos y broadcasts de `App.tsx` ya usan `community-data`; los vistos siguen locales temporalmente.
 - `community-data` quedó desplegada solo en desarrollo y el build pasó.
+- Revisión previa al cierre de RLS: el único acceso directo restante a `user_workspaces` está en el archivo legal de eliminación administrativa; debe migrarse a una función admin antes de bloquear la tabla.
+- RLS de `user_workspaces` no se aplicó todavía para evitar romper ese flujo pendiente.
 - Eliminados `public/users.json` y `public/patients.json` del sitio: no se publican credenciales ni pacientes demo.
 - Build correcto después de la limpieza.
 
