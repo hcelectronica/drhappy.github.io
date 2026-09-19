@@ -975,7 +975,7 @@ Deno.serve(async (request) => {
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!supabaseUrl || !serviceRoleKey) return jsonResponse(500, { success: false, message: 'Falta configuración de Supabase.' })
 
-  let payload: { action?: string; messages?: unknown; professionalId?: string; professionalName?: string; context?: string }
+  let payload: { action?: string; messages?: unknown; professionalId?: string; professionalName?: string; context?: string; confirmation?: { action?: string; input?: Record<string, unknown> } }
   try {
     payload = await request.json()
   } catch {
@@ -984,6 +984,10 @@ Deno.serve(async (request) => {
 
   if (payload.action !== 'chat') {
     return jsonResponse(400, { success: false, message: 'Acción no soportada.' })
+  }
+
+  if (payload.confirmation?.action && payload.confirmation.input && typeof payload.confirmation.input === 'object') {
+    payload.confirmation.input.confirmation = true
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
@@ -1025,6 +1029,20 @@ Deno.serve(async (request) => {
       })
     }
     return jsonResponse(429, { success: false, message: `Alcanzaste el límite ${limitDescription} de Sofía (${usageLimit} consultas).`, monthlyUsage, monthlyLimit: usageLimit })
+  }
+
+  if (payload.confirmation?.action && payload.confirmation.input && typeof payload.confirmation.input === 'object') {
+    try {
+      const confirmedData = await runTool(payload.confirmation.action, payload.confirmation.input, admin, professionalId)
+      const confirmedRecord = confirmedData && typeof confirmedData === 'object' ? confirmedData as Record<string, unknown> : null
+      if (confirmedRecord?.success === true && typeof confirmedRecord.message === 'string') {
+        return jsonResponse(200, { success: true, reply: confirmedRecord.message })
+      }
+      return jsonResponse(200, { success: false, message: typeof confirmedRecord?.message === 'string' ? confirmedRecord.message : 'No se pudo ejecutar la acción confirmada.' })
+    } catch (error) {
+      console.error('[ai-assistant] confirmed tool failed', { tool: payload.confirmation.action, message: error instanceof Error ? error.message : String(error) })
+      return jsonResponse(500, { success: false, message: 'No se pudo ejecutar la acción confirmada.' })
+    }
   }
 
   const messages = cleanMessages(payload.messages)

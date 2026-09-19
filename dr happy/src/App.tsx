@@ -2750,6 +2750,24 @@ function App() {
     setSofiaBusy(false)
   }
 
+  async function handleConfirmSofiaAction(): Promise<void> {
+    if (!sofiaPendingConfirmation || sofiaBusy) return
+    setSofiaBusy(true)
+    const confirmation = sofiaPendingConfirmation
+    const result = await askSofia({
+      messages: sofiaMessages,
+      professionalName: profile?.fullName || activeUser?.fullName,
+      context: 'Ejecutá la acción pendiente exactamente con los parámetros confirmados.',
+      confirmation: { action: confirmation.action, input: { ...confirmation.proposal } },
+    })
+    setSofiaMessages((current) => [...current, { role: 'user', content: 'Confirmo la acción propuesta.' }, {
+      role: 'assistant',
+      content: result.success ? result.reply || 'Acción completada.' : (result.message || 'No se pudo completar la acción.'),
+    }])
+    setSofiaPendingConfirmation(null)
+    setSofiaBusy(false)
+  }
+
   // --- Trial / Suscripción ---
   const trialInfo = useMemo(() => {
     const TRIAL_DAYS = 14
@@ -14410,7 +14428,7 @@ function App() {
                   </div>
                   <small>La acción se ejecutará solo cuando confirmes.</small>
                   <div>
-                    <button type="button" onClick={() => { setSofiaDraft('Sí, confirmo la acción propuesta.'); setSofiaPendingConfirmation(null) }} disabled={sofiaBusy}>Confirmar</button>
+                    <button type="button" onClick={() => { void handleConfirmSofiaAction() }} disabled={sofiaBusy}>Confirmar</button>
                     <button type="button" className="ghost" onClick={() => setSofiaPendingConfirmation(null)} disabled={sofiaBusy}>Cancelar</button>
                   </div>
                 </div>
