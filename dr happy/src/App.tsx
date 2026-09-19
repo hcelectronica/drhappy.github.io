@@ -2744,7 +2744,6 @@ function App() {
     setSofiaBusy(true)
     const result = await askSofia({
       messages: nextMessages,
-      professionalId: activeUserId || undefined,
       professionalName: profile?.fullName || activeUser?.fullName,
       context: 'El profesional está dentro de Dr Happy. Sofía puede consultar agenda y pacientes, preparar borradores y ejecutar agendamientos directamente. Si el profesional pide un turno, no pidas confirmación ni campos opcionales: usa nombre, apellido y fecha, asigna la primera hora libre si no la indica y detente solo por cupo, día no habilitado o superposición.',
     })
@@ -6485,7 +6484,6 @@ function App() {
           ? 'Usá enfoque odontológico solo con datos presentes: pieza o zona, dolor, evolución, hallazgos e higiene.'
           : 'Usá enfoque clínico general y ordená los datos por problema.'
       const result = await askSofia({
-        professionalId: activeUserId || undefined,
         professionalName: profile?.fullName || activeUser?.fullName,
         messages: [{
           role: 'user',
