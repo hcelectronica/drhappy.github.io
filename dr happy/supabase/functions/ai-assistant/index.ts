@@ -638,7 +638,11 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const { data } = await admin.from('user_workspaces').select('appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
     const match = appointments.find((item) => item.status !== 'cancelled' && matchesPatientQuery(item.patientName, item.patientDni, query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time))
-    if (!match) return { success: false, message: 'No encontré ese turno.' }
+    if (!match) {
+      const alreadyRescheduled = appointments.find((item) => item.status !== 'cancelled' && item.scheduledDate === newDate && item.previousAppointmentId && matchesPatientQuery(item.patientName, item.patientDni, query))
+      if (alreadyRescheduled) return { success: true, idempotent: true, message: `El turno de ${alreadyRescheduled.patientName} ya estaba reprogramado para el ${alreadyRescheduled.scheduledDate} a las ${alreadyRescheduled.scheduledTime}. No hice cambios adicionales.` }
+      return { success: false, message: 'No encontré ese turno.' }
+    }
     const proposal = { patient: match.patientName, date: match.scheduledDate, time: match.scheduledTime, reason: match.reason }
     if (input.confirmation !== true) return { requiresConfirmation: true, action: 'cancelar_turno', proposal, message: 'Pedí confirmación explícita antes de cancelar.' }
     const nextAppointments = appointments.map((item) => item.id === match.id ? { ...item, status: 'cancelled' } : item)
@@ -995,7 +999,7 @@ Deno.serve(async (request) => {
       if (toolRecord?.requiresConfirmation === true && typeof toolRecord.action === 'string' && toolRecord.proposal && typeof toolRecord.proposal === 'object') {
         pendingConfirmation = { action: toolRecord.action, proposal: toolRecord.proposal as Record<string, unknown> }
       }
-      if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno') && toolRecord && typeof toolRecord.message === 'string') {
+      if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno' || toolUse.name === 'reprogramar_turno' || toolUse.name === 'reprogramar_turnos_de_fecha') && toolRecord && typeof toolRecord.message === 'string') {
         directSchedulingReply = toolRecord.message
         if (toolRecord.success === true) break
       }
