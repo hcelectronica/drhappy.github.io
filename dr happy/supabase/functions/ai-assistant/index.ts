@@ -100,8 +100,13 @@ const tools = [
   },
   {
     name: 'cancelar_turno',
-    description: 'Cancela un turno. Siempre requiere confirmation=true; si es false, solo prepara una propuesta y no modifica datos.',
+    description: 'Cancela un turno y avisa por email al paciente si tiene email cargado. Siempre requiere confirmation=true; si es false, solo prepara una propuesta y no modifica datos.',
     input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string' }, time: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'confirmation'] },
+  },
+  {
+    name: 'reprogramar_turno',
+    description: 'Cambia un turno existente a otra fecha u horario, valida la agenda y avisa por email al paciente. Siempre requiere confirmation=true; si es false, solo prepara una propuesta.',
+    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string' }, time: { type: 'string' }, newDate: { type: 'string' }, newTime: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'newDate', 'confirmation'] },
   },
   {
     name: 'enviar_notificacion_paciente',
@@ -236,6 +241,30 @@ async function saveWorkspaceAndVerifyAppointment(
   return appointments.some((appointment) => appointment.id === appointmentId)
     ? { success: true }
     : { success: false, message: 'No se pudo confirmar la persistencia del turno.' }
+}
+
+async function sendAppointmentNotice(params: {
+  supabaseUrl: string
+  serviceRoleKey: string
+  email?: string
+  subject: string
+  message: string
+}): Promise<{ sent: boolean; message?: string }> {
+  if (!params.email?.trim()) return { sent: false, message: 'El paciente no tiene email cargado.' }
+  try {
+    const response = await fetch(`${params.supabaseUrl}/functions/v1/send-email`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${params.serviceRoleKey}`, apikey: params.serviceRoleKey, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({ to: params.email.trim(), subject: params.subject, type: 'custom', text: params.message, templateData: { message: params.message } }),
+    })
+    const result = await response.json().catch(() => null)
+    if (!response.ok || !result?.success) return { sent: false, message: typeof result?.message === 'string' ? result.message : `send-email respondió HTTP ${response.status}.` }
+    return { sent: true }
+  } catch (error) {
+    console.error('No se pudo enviar el aviso de turno', error)
+    return { sent: false, message: error instanceof Error ? error.message : 'No se pudo conectar con el servicio de email.' }
+  }
 }
 
 async function recoverPersistedAppointment(
@@ -577,15 +606,66 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
 
   if (name === 'cancelar_turno') {
     const query = normalizeSearch(input.patient)
-    const { data } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
+    const { data } = await admin.from('user_workspaces').select('appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
     const match = appointments.find((item) => item.status !== 'cancelled' && normalizeSearch(`${item.patientName || ''} ${item.patientDni || ''}`).includes(query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time))
     if (!match) return { success: false, message: 'No encontré ese turno.' }
     const proposal = { patient: match.patientName, date: match.scheduledDate, time: match.scheduledTime, reason: match.reason }
     if (input.confirmation !== true) return { requiresConfirmation: true, action: 'cancelar_turno', proposal, message: 'Pedí confirmación explícita antes de cancelar.' }
     const nextAppointments = appointments.map((item) => item.id === match.id ? { ...item, status: 'cancelled' } : item)
-    const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, appointments_json: nextAppointments }, { onConflict: 'user_id' })
-    return error ? { success: false, message: error.message } : { success: true, message: `Turno cancelado para ${match.patientName} el ${match.scheduledDate} a las ${match.scheduledTime}.` }
+    const saved = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: nextAppointments }, String(match.id))
+    if (!saved.success) return saved
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const emailResult = await sendAppointmentNotice({
+      supabaseUrl,
+      serviceRoleKey,
+      email: String(match.patientEmail || ''),
+      subject: `Turno cancelado con ${String(profile.fullName || 'Dr Happy')}`,
+      message: `Hola ${String(match.patientName || 'Paciente')},\n\nTe informamos que tu turno con ${String(profile.fullName || 'Dr Happy')} del ${String(match.scheduledDate)} a las ${String(match.scheduledTime)} hs fue cancelado.\n\nPor favor comunicate con el profesional para coordinar una nueva fecha.`,
+    })
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno cancelado para ${match.patientName} el ${match.scheduledDate} a las ${match.scheduledTime}.${emailResult.sent ? ' Aviso enviado por email.' : ` No se pudo enviar el aviso: ${emailResult.message}`}` }
+  }
+
+  if (name === 'reprogramar_turno') {
+    const query = normalizeSearch(input.patient)
+    const newDate = String(input.newDate || '').trim()
+    const requestedTime = String(input.newTime || '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return { success: false, message: 'La nueva fecha debe tener formato YYYY-MM-DD.' }
+    const { data } = await admin.from('user_workspaces').select('appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const match = appointments.find((item) => item.status !== 'cancelled' && normalizeSearch(`${item.patientName || ''} ${item.patientDni || ''}`).includes(query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time))
+    if (!match) return { success: false, message: 'No encontré ese turno.' }
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const dailyLimit = Number(profile.dailyPatientLimit) || 10
+    const appointmentDays = Array.isArray(profile.appointmentDays) ? profile.appointmentDays : [1, 2, 4]
+    const openingTime = typeof profile.appointmentStartTime === 'string' ? profile.appointmentStartTime : '09:00'
+    const closingTime = typeof profile.appointmentEndTime === 'string' ? profile.appointmentEndTime : '19:00'
+    if (!appointmentDays.includes(dateWeekday(newDate))) return { success: false, message: 'La nueva fecha no está habilitada en la agenda profesional.' }
+    const activeOnDate = appointments.filter((item) => item.id !== match.id && item.status !== 'cancelled' && item.scheduledDate === newDate)
+    if (activeOnDate.length >= dailyLimit) return { success: false, message: `El cupo diario está completo (${dailyLimit} turnos).` }
+    const durationMinutes = Number(match.durationMinutes) || 30
+    const selectedTime = /^\d{2}:\d{2}$/.test(requestedTime) ? requestedTime : findFirstAvailableTime(activeOnDate, durationMinutes, openingTime, closingTime)
+    if (!selectedTime) return { success: false, message: 'No encontré un bloque libre en la nueva fecha.' }
+    const start = timeToMinutes(selectedTime)
+    const end = start + durationMinutes
+    if (start < timeToMinutes(openingTime) || end > timeToMinutes(closingTime)) return { success: false, message: `El horario debe estar dentro de tu agenda: ${openingTime} a ${closingTime}.` }
+    if (activeOnDate.some((item) => { const itemStart = timeToMinutes(item.scheduledTime); const itemEnd = itemStart + (Number(item.durationMinutes) || 30); return start < itemEnd && end > itemStart })) return { success: false, message: 'Ese horario ya está ocupado.' }
+    const proposal = { patient: match.patientName, fromDate: match.scheduledDate, fromTime: match.scheduledTime, toDate: newDate, toTime: selectedTime }
+    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'reprogramar_turno', proposal, message: 'Pedí confirmación antes de cambiar el turno.' }
+    const rescheduledAt = new Date().toISOString()
+    const cancelledAppointment = { ...match, status: 'cancelled', cancellationReason: 'Reprogramado por el profesional', cancelledAt: rescheduledAt, updatedAt: rescheduledAt }
+    const newAppointment = { ...match, id: crypto.randomUUID(), scheduledDate: newDate, scheduledTime: selectedTime, scheduledAt: `${newDate}T${selectedTime}:00`, status: 'confirmed', previousAppointmentId: match.id, rescheduledAt, updatedAt: rescheduledAt }
+    const nextAppointments = appointments.flatMap((item) => item.id === match.id ? [cancelledAppointment, newAppointment] : [item])
+    const saved = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: nextAppointments }, String(newAppointment.id))
+    if (!saved.success) return saved
+    const emailResult = await sendAppointmentNotice({
+      supabaseUrl,
+      serviceRoleKey,
+      email: String(match.patientEmail || ''),
+      subject: `Turno reprogramado con ${String(profile.fullName || 'Dr Happy')}`,
+      message: `Hola ${String(match.patientName || 'Paciente')},\n\nTu turno con ${String(profile.fullName || 'Dr Happy')} fue reprogramado.\n\nFecha anterior: ${String(match.scheduledDate)} a las ${String(match.scheduledTime)} hs\nNueva fecha: ${newDate} a las ${selectedTime} hs\n\nSi necesitás modificarlo nuevamente, comunicate con el profesional.`,
+    })
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno reprogramado para ${match.patientName}: ${newDate} a las ${selectedTime}.${emailResult.sent ? ' Aviso enviado por email.' : ` No se pudo enviar el aviso: ${emailResult.message}`}` }
   }
 
   if (name === 'enviar_notificacion_paciente') {
@@ -740,6 +820,7 @@ Deno.serve(async (request) => {
     'No diagnostiques ni indiques tratamientos autónomamente. Separá hechos, sugerencias y datos faltantes.',
     'Cuando el profesional pida una acción que todavía no está conectada, explicá que se incorporará como herramienta en la próxima etapa.',
     'Para agendar un turno solicitado directamente por el profesional, ejecutá la acción sin pedir confirmación adicional. Solo informá y detenete si no hay cupo, el día no está habilitado o existe una superposición. Cancelaciones, notificaciones y memorias sí requieren confirmación.',
+    'Si el profesional pide cambiar, mover o pasar un turno a otra fecha, usá reprogramar_turno. No lo canceles ni crees otro turno separado: la herramienta cancela el registro anterior, crea un único turno nuevo y avisa al paciente.',
     'No digas que una acción ocurrió si la herramienta no devolvió success=true. Si una operación falla o requiere confirmación, informalo claramente y no lo presentes como realizado.',
     `Fecha y hora actual de Argentina: ${currentDate} ${currentTime}. Si el profesional dice hoy, mañana o pasado mañana, convertílo a YYYY-MM-DD sin preguntarle qué fecha es.`,
     'Si preguntan por turnos o agenda, consultá buscar_turnos cuando necesites informar datos. Si piden agendar, usá directamente la herramienta de agendamiento; no hagas una consulta previa ni pidas confirmación adicional.',
