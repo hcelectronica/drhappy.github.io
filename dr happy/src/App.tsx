@@ -43,12 +43,9 @@ import { askSofia } from './aiAssistantService'
 import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
 import { communityRequest } from './communityService'
 import { parseClinicalSummary } from './clinicalSummaryParser'
-import { calculateTrialInfo, hasPremiumTurneraAccess as calculatePremiumTurneraAccess } from './subscriptionAccess'
-import { removePatientFromWorkspace } from './patientWorkspaceUtils'
 import { loadProfessionals, loadOwnProfessional, updateOwnProfessionalProfile } from './professionalsService'
 import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
-import sofiaReference from './assets/sofia-reference.png'
 import { selfDeleteAccount } from './selfDeleteService'
 import {
   setProfessionalActive,
@@ -118,7 +115,6 @@ const DEFAULT_APPOINTMENT_END_TIME = '19:00'
 const APP_FLYER_SLIDES = [
   { key: 'ambulance', eyebrow: 'Respuesta inmediata', title: 'Modo Ambulancia', description: 'Gestioná rápidamente traslados, guardias y atención prehospitalaria con protocolos listos para usar.', icon: '🚑', visual: 'ambulance' },
   { key: 'attention', eyebrow: 'Historia clínica', title: 'Atención médica', description: 'Encontrá pacientes, registrá evoluciones y mantené toda la información clínica organizada.', icon: '♙', visual: 'patient' },
-  { key: 'sofia', eyebrow: 'Asistencia inteligente', title: 'Sofía, secretaria clínica IA', description: 'Consultá tu agenda, ordená información clínica y prepará borradores con una asistente pensada para tu práctica profesional.', icon: '✦', visual: 'sofia' },
   { key: 'appointments', eyebrow: 'Agenda inteligente', title: 'Turnera médica', description: 'Organizá tus días, definí cupos y ofrecé turnos libres con horarios segmentados.', icon: '◷', visual: 'calendar' },
   { key: 'tools', eyebrow: 'Decisiones clínicas', title: 'Herramientas clínicas', description: 'Consultá protocolos, vademécum y patologías desde un mismo espacio profesional.', icon: '✦', visual: 'tools' },
   { key: 'patients', eyebrow: 'Tu base clínica', title: 'Mis pacientes', description: 'Accedé rápidamente a tus pacientes, buscá por DNI y continuá una atención cuando quieras.', icon: '♧', visual: 'patients' },
@@ -340,8 +336,6 @@ interface ConsultationDraft {
   planManejo: string
 }
 
-type ClinicalSummaryTemplate = 'general' | 'pediatria' | 'odontologia'
-
 interface CommunityMessage {
   id: string
   senderId: string
@@ -507,6 +501,7 @@ interface RemotePasswordRecoveryRow {
 
 const SESSION_USER_KEY = 'drhappy-active-user'
 const SESSION_USER_CACHE_KEY = 'drhappy-active-user-cache'
+const SESSION_TOKEN_KEY = 'drhappy-professional-session'
 const CREATED_USERS_KEY = 'drhappy-created-users'
 const THEME_MODE_KEY = 'drhappy-theme-mode'
 const PATIENT_REGISTRY_KEY = 'drhappy-patient-registry'
@@ -2580,7 +2575,6 @@ function App() {
   const [adminAIUsageLoading, setAdminAIUsageLoading] = useState(false)
   const [adminAITotal, setAdminAITotal] = useState({ requests: 0, tokens: 0, costUsd: 0 })
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
-  const flyerPointerStartRef = useRef<number | null>(null)
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
   const [myPatientsQuery, setMyPatientsQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -2611,8 +2605,6 @@ function App() {
   const [consultationDraft, setConsultationDraft] =
     useState<ConsultationDraft>(emptyConsultationDraft)
   const [clinicalSummaryBusy, setClinicalSummaryBusy] = useState(false)
-  const [clinicalSummaryTemplate, setClinicalSummaryTemplate] = useState<ClinicalSummaryTemplate>('general')
-  const [clinicalCieSuggestions, setClinicalCieSuggestions] = useState<string[]>([])
   const consultationDiagnosisVisibleList = useMemo(
     () => buildDiagnosisSuggestions(diagnosisCatalog, consultationDraft.motivoConsulta, 10),
     [consultationDraft.motivoConsulta, diagnosisCatalog],
@@ -2759,11 +2751,92 @@ function App() {
   }
 
   // --- Trial / Suscripción ---
-  const trialUser = seedUsers.find((user) => user.id === activeUserId) ?? null
-  const trialInfo = useMemo(
-    () => calculateTrialInfo(trialUser, patients),
-    [trialUser, patients],
-  )
+  const trialInfo = useMemo(() => {
+    const TRIAL_DAYS = 14
+    const TRIAL_PATIENTS = 15
+    const user = seedUsers.find((u) => u.id === activeUserId)
+    if (!user) return null
+    if (user.isAdmin) {
+      return {
+        status: 'admin' as const,
+        daysLeft: Infinity,
+        patientsLeft: Infinity,
+        expired: false,
+        expiredByTime: false,
+        expiredByPatients: false,
+        expiredBySubscription: false,
+      }
+    }
+    if (user.subscriptionStatus === 'active') {
+      if (user.subscriptionExpiresAt) {
+        const millisecondsLeft = new Date(user.subscriptionExpiresAt).getTime() - Date.now()
+        const daysLeft = Math.max(0, Math.ceil(millisecondsLeft / DAY_IN_MS))
+        const expired = millisecondsLeft <= 0
+        return {
+          status: expired ? ('expired' as const) : ('active' as const),
+          daysLeft,
+          patientsLeft: Infinity,
+          expired,
+          expiredByTime: false,
+          expiredByPatients: false,
+          expiredBySubscription: expired,
+        }
+      }
+      return {
+        status: 'active' as const,
+        daysLeft: Infinity,
+        patientsLeft: Infinity,
+        expired: false,
+        expiredByTime: false,
+        expiredByPatients: false,
+        expiredBySubscription: false,
+      }
+    }
+    if (user.subscriptionStatus === 'cancelled' || user.subscriptionStatus === 'expired') {
+      return {
+        status: 'expired' as const,
+        daysLeft: 0,
+        patientsLeft: 0,
+        expired: true,
+        expiredByTime: false,
+        expiredByPatients: false,
+        expiredBySubscription: true,
+      }
+    }
+    if (!user.trialStartedAt) {
+      return {
+        status: 'legacy' as const,
+        daysLeft: Infinity,
+        patientsLeft: Infinity,
+        expired: false,
+        expiredByTime: false,
+        expiredByPatients: false,
+        expiredBySubscription: false,
+      }
+    }
+
+    const daysPassed = Math.floor((Date.now() - new Date(user.trialStartedAt).getTime()) / DAY_IN_MS)
+    const daysLeft = Math.max(0, TRIAL_DAYS - daysPassed)
+
+    // Contar solo los pacientes propios del usuario
+    const ownPatientCount = patients.filter((p) => p.ownerUserId === activeUserId).length
+    const patientsLeft = Math.max(0, TRIAL_PATIENTS - ownPatientCount)
+
+    const expiredByTime = daysPassed >= TRIAL_DAYS
+    const expiredByPatients = ownPatientCount >= TRIAL_PATIENTS
+    const expired = expiredByTime || expiredByPatients
+
+    return {
+      status: expired ? ('expired' as const) : ('trial' as const),
+      daysLeft,
+      patientsLeft,
+      ownPatientCount,
+      expiredByTime,
+      expiredByPatients,
+      expiredBySubscription: false,
+      expired,
+    }
+  }, [seedUsers, activeUserId, patients])
 
   const activeUser = useMemo(
     () => seedUsers.find((user) => user.id === activeUserId) ?? null,
@@ -2772,7 +2845,7 @@ function App() {
   const isAdminSession = isAdminUser(activeUser)
   // Acceso a la Turnera Premium (calendario de ocupación + estadísticas): solo suscripción activa,
   // no incluye usuarios en período de prueba (trial) ni vencidos.
-  const hasPremiumTurneraAccess = calculatePremiumTurneraAccess(activeUser)
+  const hasPremiumTurneraAccess = Boolean(isAdminSession || activeUser?.subscriptionStatus === 'active')
 
   // Módulos visibles para el usuario activo. El admin siempre los ve todos, y
   // un usuario sin configuración (undefined) también, para no romper cuentas previas.
@@ -3396,7 +3469,6 @@ function App() {
       .map(normalizeTreatmentLedgerEntry)
       .filter((entry): entry is TreatmentLedgerEntry => Boolean(entry))
     const localSeenIds = readJsonStorage<string[]>(communitySeenStorageKey(user.id), [])
-    let remoteWorkspaceLoaded = false
 
     localStorage.setItem(SESSION_USER_KEY, user.id)
     localStorage.setItem(SESSION_USER_CACHE_KEY, JSON.stringify(user))
@@ -3420,15 +3492,8 @@ function App() {
       const data = workspaceResult.workspace as RemoteWorkspaceRow | null
 
       if (data) {
-        remoteWorkspaceLoaded = true
         const workspace = data as RemoteWorkspaceRow
-        loadedProfile = {
-          ...normalizeRemoteProfile(workspace.profile_json, profileFromSeed(user)),
-          fullName: user.fullName,
-          specialty: user.specialty,
-          licenseNumber: user.licenseNumber,
-          email: user.email,
-        }
+        loadedProfile = normalizeRemoteProfile(workspace.profile_json, profileFromSeed(user))
         const remotePatients = Array.isArray(workspace.patients_json)
           ? workspace.patients_json
               .map((item) => normalizeRemotePatient(item, user.id))
@@ -3493,12 +3558,10 @@ function App() {
     setAppointments(loadedAppointments)
     setTreatmentLedger(loadedLedger)
     localStorage.setItem(treatmentLedgerStorageKey(user.id), JSON.stringify(loadedLedger))
-    if (isSupabaseConfigured && remoteWorkspaceLoaded) {
-      void persistWorkspaceRemote(user.id, loadedProfile, patientsList, loadedAppointments, loadedLedger)
-    }
   }
 
-  async function fetchRemoteProfessionalById(): Promise<SeedUser | null> {
+  async function fetchRemoteProfessionalById(userId: string): Promise<SeedUser | null> {
+    void userId
     if (!isSupabaseConfigured || !supabase) {
       return null
     }
@@ -3841,7 +3904,7 @@ function App() {
       )
 
       if (activeUserId === userId) {
-        const refreshed = await fetchRemoteProfessionalById()
+        const refreshed = await fetchRemoteProfessionalById(userId)
         if (refreshed) {
           await loadWorkspaceForUser(refreshed)
         }
@@ -3869,22 +3932,9 @@ function App() {
       return
     }
     const isBroadcast = adminBroadcastTarget === 'all'
-    let availableUsers = seedUsers
-    if (isSupabaseConfigured) {
-      const freshUsers = await loadProfessionals()
-      if (!freshUsers.success) {
-        setAppError(freshUsers.message || 'No se pudo actualizar la lista de destinatarios.')
-        return
-      }
-      availableUsers = (freshUsers.professionals || []).map((row) => mapRemoteProfessional(row as RemoteProfessionalRow))
-      setSeedUsers(availableUsers)
-    }
-    const uniqueActiveUsers = Array.from(new Map(
-      availableUsers.filter((user) => user.active !== false).map((user) => [user.id, user]),
-    ).values())
     const recipients = isBroadcast
-      ? uniqueActiveUsers.filter((user) => user.id !== activeUserId)
-      : uniqueActiveUsers.filter((user) => user.id === adminBroadcastTarget)
+      ? seedUsers.filter((u) => u.id !== activeUserId)
+      : seedUsers.filter((u) => u.id === adminBroadcastTarget)
 
     if (recipients.length === 0) {
       setAppError('No se encontraron profesionales destinatarios.')
@@ -4063,6 +4113,10 @@ function App() {
 
   useEffect(() => {
     const loadSeedUsers = async () => {
+      const persistedSessionToken = localStorage.getItem(SESSION_TOKEN_KEY)
+      if (persistedSessionToken && !sessionStorage.getItem(SESSION_TOKEN_KEY)) {
+        sessionStorage.setItem(SESSION_TOKEN_KEY, persistedSessionToken)
+      }
       const storedUserId = localStorage.getItem(SESSION_USER_KEY)
       const cachedSessionUser = readJsonStorage<SeedUser | null>(SESSION_USER_CACHE_KEY, null)
       try {
@@ -4074,14 +4128,6 @@ function App() {
         let merged: SeedUser[] = []
 
         if (isSupabaseConfigured && supabase) {
-          const hasOwnSession = Boolean(
-            sessionStorage.getItem('drhappy-professional-session') || (await supabase.auth.getSession()).data.session,
-          )
-          if (!hasOwnSession) {
-            setSeedUsers([])
-            setLoadingUsers(false)
-            return
-          }
           const result = await loadProfessionals()
           if (!result.success) throw new Error(`No se pudo cargar profesionales remotos: ${result.message}`)
           for (const row of result.professionals ?? []) {
@@ -4379,23 +4425,6 @@ function App() {
     }, 6500)
     return () => window.clearInterval(intervalId)
   }, [workspaceLayer])
-
-  function handleFlyerPointerDown(event: ReactPointerEvent<HTMLElement>): void {
-    flyerPointerStartRef.current = event.clientX
-  }
-
-  function handleFlyerPointerUp(event: ReactPointerEvent<HTMLElement>): void {
-    const start = flyerPointerStartRef.current
-    flyerPointerStartRef.current = null
-    if (start === null) return
-    const distance = event.clientX - start
-    if (Math.abs(distance) < 48) return
-    setFlyerSlideIndex((current) => (
-      distance < 0
-        ? (current + 1) % APP_FLYER_SLIDES.length
-        : (current - 1 + APP_FLYER_SLIDES.length) % APP_FLYER_SLIDES.length
-    ))
-  }
 
   useEffect(() => {
     if (!selectedMedicationId) {
@@ -4711,7 +4740,7 @@ function App() {
     const verifySubscriptionActivation = async (): Promise<void> => {
       const maxAttempts = 6
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const refreshedUser = await fetchRemoteProfessionalById()
+        const refreshedUser = await fetchRemoteProfessionalById(activeUserId)
         if (cancelled) {
           return
         }
@@ -4757,7 +4786,7 @@ function App() {
           throw new Error(`MercadoPago aprobó el pago, pero no se pudo activar la suscripción: ${activationError.message}`)
         }
 
-        const refreshedUser = await fetchRemoteProfessionalById()
+        const refreshedUser = await fetchRemoteProfessionalById(activeUserId)
         if (cancelled) {
           return
         }
@@ -5378,47 +5407,6 @@ function App() {
     persistPatientsBatch([nextPatient])
   }
 
-  function handleDeletePatient(): void {
-    if (!activeUserId || !selectedPatient) return
-    if (selectedPatient.ownerUserId !== activeUserId) {
-      setAppError('Solo puedes eliminar pacientes propios.')
-      return
-    }
-    const patientName = `${selectedPatient.apellido}, ${selectedPatient.nombre}`.trim()
-    if (!window.confirm(`Se eliminará la ficha de ${patientName || 'este paciente'}, sus turnos y su balance asociado. Esta acción no se puede deshacer. ¿Continuar?`)) {
-      return
-    }
-    const removal = removePatientFromWorkspace(
-      selectedPatient.id,
-      selectedPatient.dni,
-      patients,
-      appointments,
-      treatmentLedger,
-    )
-    const nextPatients = removal.patients
-    const nextAvailablePatients = availablePatients.filter((patient) => patient.id !== selectedPatient.id)
-    const nextAppointments = removal.appointments
-    const nextLedger = removal.ledger
-    const ownerIndex = readJsonStorage<string[]>(patientIndexStorageKey(activeUserId), [])
-    const registry = readJsonStorage<string[]>(PATIENT_REGISTRY_KEY, [])
-    localStorage.removeItem(patientGlobalStorageKey(selectedPatient.id))
-    localStorage.setItem(patientIndexStorageKey(activeUserId), JSON.stringify(ownerIndex.filter((id) => id !== selectedPatient.id)))
-    localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(registry.filter((id) => id !== selectedPatient.id)))
-    localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
-    localStorage.setItem(treatmentLedgerStorageKey(activeUserId), JSON.stringify(nextLedger))
-    setPatients(nextPatients)
-    setAvailablePatients(nextAvailablePatients)
-    setAppointments(nextAppointments)
-    setTreatmentLedger(nextLedger)
-    setSelectedPatientId(null)
-    setWorkspaceLayer('my-patients')
-    const workspaceProfile = profile ?? (activeUser ? profileFromSeed(activeUser) : null)
-    if (workspaceProfile) {
-      void persistWorkspaceRemote(activeUserId, workspaceProfile, nextPatients, nextAppointments, nextLedger)
-    }
-    setAppNotice('Paciente eliminado correctamente.')
-  }
-
   function persistPatientConsultation(patientId: string, entry: ConsultationEntry): void {
     const patient = patients.find((p) => p.id === patientId)
     if (!patient) {
@@ -5699,17 +5687,7 @@ function App() {
     }
 
     const email = googleUser.email.toLowerCase()
-    // Google es la identidad vigente: no debe quedar asociado a un token
-    // manual anterior que pudiera pertenecer a otra cuenta del navegador.
-    sessionStorage.removeItem('drhappy-professional-session')
-    const remoteSelf = await loadOwnProfessional()
-    if (!remoteSelf.success) {
-      setAuthError(`Google autenticó correctamente, pero no se pudo resolver tu cuenta profesional: ${remoteSelf.message || 'respuesta inválida del servidor.'}`)
-      return
-    }
-    const existing = remoteSelf.success && remoteSelf.professional
-      ? mapRemoteProfessional(remoteSelf.professional as RemoteProfessionalRow)
-      : null
+    const existing = seedUsers.find((entry) => entry.email.toLowerCase() === email)
 
     if (existing) {
       const metadata =
@@ -5818,9 +5796,9 @@ function App() {
       const user = mapAuthProfessionalPublic(result.professional)
       try {
         if (result.sessionToken) {
-          sessionStorage.setItem('drhappy-professional-session', result.sessionToken)
+          sessionStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
+          localStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
         }
-        setSeedUsers((current) => current.some((entry) => entry.id === user.id) ? current : [...current, user])
         localStorage.setItem(SESSION_USER_KEY, user.id)
         await loadWorkspaceForUser(user)
         setWorkspaceLayer('overview')
@@ -6040,6 +6018,7 @@ function App() {
     localStorage.removeItem(SESSION_USER_KEY)
     localStorage.removeItem(SESSION_USER_CACHE_KEY)
     sessionStorage.removeItem('drhappy-professional-session')
+    localStorage.removeItem(SESSION_TOKEN_KEY)
     setGoogleIdentity(null)
     setActiveUserId(null)
     setProfile(null)
@@ -6063,7 +6042,6 @@ function App() {
     setCommunityUnreadCount(0)
     setCommunityUnreadByMember({})
     setWorkspaceLayer('overview')
-    setAppError(null)
     setAppNotice(null)
   }
 
@@ -6462,34 +6440,13 @@ function App() {
     setAppError(null)
     try {
       const patientName = `${selectedPatient.apellido}, ${selectedPatient.nombre}`.trim()
-      const priorConsultations = selectedPatient.consultations.slice(-5).map((consultation) => ({
-        date: consultation.date,
-        reason: consultation.motivoConsulta,
-        diagnosis: consultation.diagnostico || '',
-        summary: consultation.detalleAtencion,
-        professionalThought: consultation.pensamientoMedico,
-      }))
-      const patientBackground = {
-        diagnosis: selectedPatient.diagnosticoPrincipal || '',
-        knownConditions: selectedPatient.patologiasConocidas,
-        chronicConditions: selectedPatient.patologiasCronicas,
-        lastHospitalization: selectedPatient.ultimaInternacion,
-        previousSurgeries: selectedPatient.cirugiasPrevias,
-        birthDate: selectedPatient.birthDate,
-        age: selectedPatient.edad || calculateAge(selectedPatient.birthDate),
-      }
-      const templateInstructions = clinicalSummaryTemplate === 'pediatria'
-        ? 'Usá enfoque pediátrico solo con datos presentes: edad, acompañante, desarrollo, alimentación, vacunas y signos de alarma.'
-        : clinicalSummaryTemplate === 'odontologia'
-          ? 'Usá enfoque odontológico solo con datos presentes: pieza o zona, dolor, evolución, hallazgos e higiene.'
-          : 'Usá enfoque clínico general y ordená los datos por problema.'
       const result = await askSofia({
         professionalName: profile?.fullName || activeUser?.fullName,
         messages: [{
           role: 'user',
-          content: `Convertí la entrevista en una evolución clínica revisable. No inventes datos, no diagnostiques ni indiques tratamientos. Devolvé exactamente: MOTIVO:, ENFERMEDAD ACTUAL:, EXAMEN FÍSICO:, IMPRESIÓN DIAGNÓSTICA:, PLAN DE MANEJO:, ANTECEDENTES RELEVANTES: y PENSAMIENTO:. MOTIVO debe ser una etiqueta breve de 1 a 4 palabras. ENFERMEDAD ACTUAL debe contener solo lo relatado hoy. En examen, impresión y plan indicá No consignado o A revisar si faltan datos. ${templateInstructions}\nPaciente: ${patientName}\nAntecedentes: ${JSON.stringify(patientBackground)}\nÚltimas evoluciones: ${JSON.stringify(priorConsultations)}\nTranscripción actual:\n${consultationDraft.detalleAtencion.trim()}`,
+          content: `Convertí la entrevista en una evolución clínica revisable. No inventes datos, no diagnostiques ni indiques tratamientos. Devolvé exactamente: MOTIVO:, ENFERMEDAD ACTUAL:, EXAMEN FÍSICO:, IMPRESIÓN DIAGNÓSTICA:, PLAN DE MANEJO:, ANTECEDENTES RELEVANTES: y PENSAMIENTO:. MOTIVO debe ser una etiqueta breve de 1 a 4 palabras. ENFERMEDAD ACTUAL debe contener solo lo relatado hoy. En examen, impresión y plan indicá No consignado o A revisar si faltan datos. ${patientName}. Transcripción:\n${consultationDraft.detalleAtencion.trim()}`,
         }],
-        context: `El profesional está completando una evolución clínica. El resultado es un borrador no guardado. No mezcles lo dicho hoy con antecedentes. Datos estructurados previos: ${JSON.stringify(patientBackground)}. Últimas evoluciones: ${JSON.stringify(priorConsultations)}. Plantilla: ${clinicalSummaryTemplate}. Debe ser revisado por el profesional antes de incorporarlo a la historia clínica.`,
+        context: 'El profesional está completando una evolución clínica. El resultado es un borrador no guardado y debe ser revisado por el profesional antes de incorporarlo a la historia clínica.',
       })
       if (!result.success || !result.reply) {
         setAppError(result.message || 'No se pudo preparar el resumen clínico.')
@@ -6504,7 +6461,6 @@ function App() {
       setConsultationDraft((current) => ({
         ...current,
         motivoConsulta: motivo || current.motivoConsulta,
-  diagnostico: current.diagnostico,
         detalleAtencion: enfermedadActual ? `${enfermedadActual}${antecedentes ? `\n\nAntecedentes relevantes:\n${antecedentes}` : ''}` : current.detalleAtencion,
         enfermedadActual: enfermedadActual || current.enfermedadActual,
         examenFisico: examenFisico || current.examenFisico,
@@ -6512,8 +6468,6 @@ function App() {
         planManejo: planManejo || current.planManejo,
         pensamientoMedico: pensamiento || current.pensamientoMedico,
       }))
-      const suggestionQuery = [motivo, enfermedadActual, impresionDiagnostica].filter(Boolean).join(' ')
-      setClinicalCieSuggestions(buildDiagnosisSuggestions(diagnosisCatalog, suggestionQuery, 5))
       setAppNotice('Sofía preparó un borrador. Revisalo antes de guardar la evolución.')
     } finally {
       setClinicalSummaryBusy(false)
@@ -7636,7 +7590,7 @@ function App() {
             void persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)
           }
         }
-        setAppNotice(`Confirmación de turno enviada con éxito a ${record.patientEmail} desde turnos@drhappy.com.ar.`)
+        setAppNotice(`Confirmación de turno enviada con éxito a ${record.patientEmail} desde soporte@drhappy.com.ar.`)
         showSavedFloatingNotice('Email de turno enviado')
       } else {
         setAppError(`No se pudo enviar el correo: ${res.message || 'Error SMTP'}`)
@@ -10869,12 +10823,7 @@ function App() {
             {(() => {
               const slide = APP_FLYER_SLIDES[flyerSlideIndex]
               return (
-                <article
-                  className={`flyer-slide flyer-slide-${slide.visual}`}
-                  onPointerDown={handleFlyerPointerDown}
-                  onPointerUp={handleFlyerPointerUp}
-                  onPointerCancel={() => { flyerPointerStartRef.current = null }}
-                >
+                <article className={`flyer-slide flyer-slide-${slide.visual}`}>
                   <div className="flyer-slide-copy">
                     <span className="section-kicker">{slide.eyebrow}</span>
                     <h2>{slide.icon} {slide.title}</h2>
@@ -10889,7 +10838,6 @@ function App() {
                     {slide.visual === 'tools' ? <><div className="flyer-mock-tools"><b>Herramientas clínicas</b><span>✦ Protocolos</span><span>▣ Vademécum</span><span>⌕ Patologías</span></div></> : null}
                     {slide.visual === 'patients' ? <><div className="flyer-mock-patient-list"><b>Mis pacientes <em>19</em></b><span>García, María</span><span>Rodríguez, Ana</span><span>Martínez, Carlos</span></div></> : null}
                     {slide.visual === 'ledger' ? <><div className="flyer-mock-ledger"><b>Balance de pagos</b><span>✓ Sin deuda&nbsp;&nbsp; 12</span><span>! Pendientes&nbsp;&nbsp; 3</span><strong>Total adeudado&nbsp; $ 125.000</strong></div></> : null}
-                    {slide.visual === 'sofia' ? <div className="flyer-sofia-visual"><div className="flyer-sofia-copy"><strong>Hola, soy Sofía</strong><span>Tu secretaria clínica para agenda, pacientes y borradores.</span><b>✦ Disponible para ayudarte</b></div><div className="flyer-sofia-image"><img src={sofiaReference} alt="Sofía, secretaria clínica de Dr Happy" /></div></div> : null}
                   </div>
                   <div className="flyer-slide-dots">{APP_FLYER_SLIDES.map((item, index) => <span key={item.key} className={index === flyerSlideIndex ? 'active' : ''} />)}</div>
                 </article>
@@ -10982,7 +10930,7 @@ function App() {
               <p className="flow-hint">
                 {turneraViewMode === 'ledger'
                   ? 'Registro exclusivo de cobros, saldos pendientes y deuda acumulada por paciente.'
-                  : 'Gestión de turnos clínicos, agenda diaria y recordatorios automáticos por email desde turnos@drhappy.com.ar.'}
+                  : 'Gestión de turnos clínicos, agenda diaria y recordatorios automáticos por email desde soporte@drhappy.com.ar.'}
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -11844,15 +11792,6 @@ function App() {
               >
                 + Evolucionar paciente
               </button>
-              <button
-                type="button"
-                className="ghost danger-action"
-                onClick={handleDeletePatient}
-                disabled={!selectedPatient || !canEditSelectedPatientRecord}
-                title="Eliminar la ficha propia, sus turnos y su balance"
-              >
-                Eliminar paciente
-              </button>
             </div>
           </section>
 
@@ -12253,15 +12192,6 @@ function App() {
                   ) : null}
                 </label>
                 <label>
-                  Diagnóstico / CIE-10 a revisar
-                  <input
-                    name="diagnostico"
-                    value={consultationDraft.diagnostico}
-                    onChange={handleConsultationDraftChange}
-                    placeholder="Elegí una sugerencia o escribí para revisar..."
-                  />
-                </label>
-                <label>
                   Enfermedad actual (EA)
                   <textarea name="enfermedadActual" value={consultationDraft.enfermedadActual} onChange={handleConsultationDraftChange} placeholder="Relato cronológico de la novedad de hoy..." />
                 </label>
@@ -12313,30 +12243,9 @@ function App() {
                   {!dictationAvailable ? (
                     <small>Tu navegador no soporta transcripción por voz nativa.</small>
                   ) : null}
-                  <label className="clinical-template-control">
-                    Plantilla de resumen
-                    <select value={clinicalSummaryTemplate} onChange={(event) => setClinicalSummaryTemplate(event.target.value as ClinicalSummaryTemplate)}>
-                      <option value="general">Consulta general</option>
-                      <option value="pediatria">Pediatría</option>
-                      <option value="odontologia">Odontología</option>
-                    </select>
-                  </label>
                   <button type="button" className="ghost clinical-ai-summary-button" onClick={() => { void summarizeClinicalInterview() }} disabled={clinicalSummaryBusy || !consultationDraft.detalleAtencion.trim()}>
                     {clinicalSummaryBusy ? 'Sofía está preparando el borrador...' : '✦ Resumir interrogatorio con Sofía'}
                   </button>
-                  {clinicalCieSuggestions.length > 0 ? (
-                    <div className="clinical-cie-suggestions">
-                      <strong>Sugerencias CIE-10 para revisar</strong>
-                      <div>
-                        {clinicalCieSuggestions.map((suggestion) => (
-                          <button key={suggestion} type="button" className="ghost" onClick={() => setConsultationDraft((current) => ({ ...current, diagnostico: suggestion }))}>
-                            {suggestion}
-                          </button>
-                        ))}
-                      </div>
-                      <small>No se guarda automáticamente ni reemplaza el criterio profesional.</small>
-                    </div>
-                  ) : null}
                   <small>El borrador no se guarda solo. Revisalo y corregilo antes de guardar la evolución.</small>
                 </label>
                 <label>
@@ -13948,7 +13857,7 @@ function App() {
                 />
                 <span className="toggle-switch" />
                 <span>
-                  Enviar confirmación automática por email (<strong>turnos@drhappy.com.ar</strong>)
+                  Enviar confirmación automática por email (<strong>soporte@drhappy.com.ar</strong>)
                 </span>
               </label>
 
