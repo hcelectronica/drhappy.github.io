@@ -9846,7 +9846,7 @@ function App() {
               ) : adminUserStats.length === 0 ? (
                 <p className="flow-hint">No hay métricas disponibles todavía.</p>
               ) : (
-                <div style={{ overflowX: 'auto' }}>
+                <div className="admin-table-scroll">
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                     <thead>
                       <tr style={{ textAlign: 'left', borderBottom: '2px solid #d8e2ee' }}>
@@ -9901,7 +9901,7 @@ function App() {
                 <article className="analytics-stat-card warn"><strong>USD {adminAITotal.costUsd.toFixed(4)}</strong><span>Costo estimado</span></article>
               </div>
               {adminAIUsageLoading ? <p className="flow-hint">Cargando consumo...</p> : adminAIUsage.length === 0 ? <p className="flow-hint">Todavía no hay consumo registrado.</p> : (
-                <div style={{ overflowX: 'auto' }}>
+                <div className="admin-table-scroll">
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                     <thead><tr style={{ textAlign: 'left', borderBottom: '2px solid #d8e2ee' }}><th style={{ padding: '8px 6px' }}>Profesional</th><th style={{ padding: '8px 6px' }}>Consultas</th><th style={{ padding: '8px 6px' }}>Tokens</th><th style={{ padding: '8px 6px' }}>Costo estimado</th><th style={{ padding: '8px 6px' }}>Último uso</th></tr></thead>
                     <tbody>{adminAIUsage.map((item) => <tr key={item.professionalId} style={{ borderBottom: '1px solid #eef2f7' }}><td style={{ padding: '8px 6px' }}><strong>{item.fullName}</strong><span style={{ display: 'block', fontSize: '.78rem', color: '#667' }}>@{item.username}</span></td><td style={{ padding: '8px 6px', textAlign: 'center' }}>{item.requests}</td><td style={{ padding: '8px 6px' }}>{item.totalTokens.toLocaleString('es-AR')}</td><td style={{ padding: '8px 6px' }}>USD {item.estimatedCostUsd.toFixed(4)}</td><td style={{ padding: '8px 6px' }}>{item.lastUsedAt ? formatDate(item.lastUsedAt) : 'Nunca'}</td></tr>)}</tbody>
@@ -9980,7 +9980,7 @@ function App() {
                     ) : null}
 
                     {!isAdminUser(user) ? (
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <div className="admin-subscription-actions">
                         <button
                           type="button"
                           className="ghost"

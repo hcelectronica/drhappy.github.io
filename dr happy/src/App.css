@@ -1800,9 +1800,32 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
   color: rgba(255, 255, 255, 0.88);
 }
 
+/* Sin min-width:0 los hijos de grilla se estiran con su contenido y desbordan la página. */
+.screen-stage > *,
+.workspace > *,
+.admin-users-panel > * {
+  min-width: 0;
+}
+
 .admin-users-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
+}
+
+.admin-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-table-scroll table { min-width: 560px; }
+.admin-table-scroll td { overflow-wrap: anywhere; }
+
+.admin-subscription-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .admin-user-list {
@@ -1814,6 +1837,7 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
 }
 
 .admin-user-list li {
+  min-width: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1822,6 +1846,23 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
   border: 1px solid rgba(186, 203, 229, 0.8);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.72);
+}
+
+.admin-user-list li strong,
+.admin-user-list li span {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .admin-users-panel .panel-header { flex-direction: column; align-items: stretch; gap: 8px; }
+  .admin-table-scroll { margin: 0 -4px; padding: 0 4px; }
+  .admin-table-scroll table { min-width: 520px; font-size: 0.78rem !important; }
+  .admin-subscription-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-subscription-actions button { width: 100%; min-height: 42px; padding: 8px 10px; font-size: 0.74rem; }
+  .admin-subscription-actions button:last-child { grid-column: 1 / -1; }
+  .admin-user-actions { width: 100%; justify-content: space-between; }
+  .admin-modules-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; }
+  .admin-module-option { white-space: normal; font-size: 0.78rem; }
 }
 
 .admin-user-list li > div:first-child {
