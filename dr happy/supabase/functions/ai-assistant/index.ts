@@ -369,7 +369,7 @@ async function recoverPersistedRescheduledAppointment(
   )) || null
 }
 
-async function runTool(name: string, input: Record<string, unknown>, admin: ReturnType<typeof createClient>, professionalId: string): Promise<unknown> {
+async function runTool(name: string, input: Record<string, unknown>, admin: ReturnType<typeof createClient>, professionalId: string, supabaseUrl: string, serviceRoleKey: string): Promise<unknown> {
   if (name === 'buscar_turnos') {
     const { data } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
@@ -1149,7 +1149,7 @@ Deno.serve(async (request) => {
 
   if (payload.confirmation?.action && payload.confirmation.input && typeof payload.confirmation.input === 'object') {
     try {
-      const confirmedData = await runTool(payload.confirmation.action, payload.confirmation.input, admin, professionalId)
+      const confirmedData = await runTool(payload.confirmation.action, payload.confirmation.input, admin, professionalId, supabaseUrl, serviceRoleKey)
       const confirmedRecord = confirmedData && typeof confirmedData === 'object' ? confirmedData as Record<string, unknown> : null
       if (confirmedRecord?.success === true && typeof confirmedRecord.message === 'string') {
         return jsonResponse(200, { success: true, reply: confirmedRecord.message })
@@ -1226,7 +1226,7 @@ Deno.serve(async (request) => {
         const latestUserMessage = messages[messages.length - 1]?.content.toLowerCase().trim() || ''
         const affirmative = /^(si|sí|ok|dale|mandalo|mandalo|envi[aá]lo|confirmo|confirmar|hacelo|hace(lo)?|mandaselo|mandáselo)([.! ]|$)/i.test(latestUserMessage)
         if ((toolUse.name === 'enviar_notificacion_paciente' || toolUse.name === 'enviar_recordatorios_balance' || toolUse.name === 'revisar_y_enviar_recordatorios_pagos') && affirmative) toolInput.confirmation = true
-        toolData = await runTool(toolUse.name, toolInput, admin, professionalId)
+        toolData = await runTool(toolUse.name, toolInput, admin, professionalId, supabaseUrl, serviceRoleKey)
       } catch (error) {
         console.error('[ai-assistant] tool failed', { tool: toolUse.name, message: error instanceof Error ? error.message : String(error) })
         const schedulingTool = toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno'
