@@ -136,6 +136,97 @@ body.theme-night .sidebar-nav button.active { background: linear-gradient(135deg
 body.theme-night .sidebar-nav button small { background: rgba(70, 100, 155, 0.6); color: #cfe0fb; }
 body.theme-night .sidebar-footer { border-top-color: rgba(96, 116, 152, 0.4); }
 body.theme-night .sidebar-handle { border-color: rgba(96, 116, 152, 0.55); background: linear-gradient(135deg, rgba(27, 41, 66, 0.97), rgba(20, 32, 54, 0.97)); color: #a9bedd; box-shadow: 6px 8px 20px rgba(3, 10, 22, 0.5); }
+/* ── Inicio en móvil: Sofía + botonera reemplazan a la barra lateral ──────── */
+.home-sofia,
+.home-botonera { display: none; }
+
+.home-sofia {
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 13px 15px;
+  border: 1px solid rgba(169, 190, 229, 0.65);
+  border-radius: 18px;
+  background: linear-gradient(135deg, #eef3ff 0%, #e6edfd 60%, #e9f3f1 100%);
+  color: #35507d;
+  text-align: left;
+  box-shadow: 0 8px 20px rgba(94, 122, 175, 0.16);
+}
+.home-sofia:hover { transform: none; filter: none; box-shadow: 0 10px 24px rgba(94, 122, 175, 0.22); }
+.home-sofia-orb {
+  flex: 0 0 40px; width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: radial-gradient(circle at 32% 30%, #ffffff, #cfe0ff 55%, #9fc0f5);
+  color: #2f57a8; font-size: 1.1rem;
+  box-shadow: 0 0 0 4px rgba(126, 163, 239, 0.18);
+}
+.home-sofia-copy { display: grid; gap: 1px; min-width: 0; }
+.home-sofia-copy strong { font-size: 0.92rem; font-weight: 700; }
+.home-sofia-copy small { overflow: hidden; color: #7d90b2; font-size: 0.7rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.home-sofia-go { margin-left: auto; color: #4d7ad4; font-size: 0.7rem; font-weight: 800; white-space: nowrap; }
+
+.home-botonera {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-bottom: 14px;
+}
+.smart-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 62px;
+  padding: 11px 12px;
+  border: 1px solid rgba(197, 209, 231, 0.8);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #2c3f5e;
+  font: inherit;
+  text-align: left;
+  box-shadow: 0 4px 12px rgba(88, 105, 140, 0.08);
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease, border-color 180ms ease;
+}
+.smart-btn:hover, .smart-btn:focus-visible {
+  transform: translateY(-2px);
+  filter: none;
+  border-color: color-mix(in srgb, var(--tone, #4d7ad4) 55%, rgba(197, 209, 231, 0.8));
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--tone, #4d7ad4) 20%, transparent);
+  outline: none;
+}
+.smart-btn:active { transform: translateY(0) scale(0.985); }
+.smart-btn.wide { grid-column: 1 / -1; }
+.smart-ico {
+  flex: 0 0 34px; width: 34px; height: 34px; border-radius: 11px;
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--tone, #4d7ad4) 14%, transparent);
+  color: var(--tone, #4d7ad4); font-size: 1.05rem;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.smart-btn:hover .smart-ico { transform: scale(1.1) rotate(-4deg); }
+.smart-txt { display: grid; gap: 1px; min-width: 0; }
+.smart-txt strong { overflow: hidden; font-size: 0.79rem; font-weight: 700; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; }
+.smart-txt small { overflow: hidden; color: #7d90b2; font-size: 0.65rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.smart-badge {
+  position: absolute; top: 7px; right: 8px;
+  min-width: 19px; padding: 1px 6px; border-radius: 999px;
+  background: var(--tone, #4d7ad4); color: #fff;
+  font-size: 0.62rem; font-weight: 800; text-align: center;
+}
+
+body.theme-night .home-sofia { border-color: rgba(96, 126, 182, 0.6); background: linear-gradient(135deg, rgba(40, 62, 103, 0.92), rgba(28, 45, 77, 0.92)); color: #dbe7fb; }
+body.theme-night .home-sofia-copy small { color: #9db2d6; }
+body.theme-night .smart-btn { border-color: rgba(96, 116, 152, 0.5); background: rgba(22, 34, 56, 0.94); color: #dbe7fb; box-shadow: 0 4px 12px rgba(3, 10, 22, 0.35); }
+body.theme-night .smart-txt small { color: #9db2d6; }
+
+/* Debajo de 900px la barra lateral deja paso a la botonera de Inicio. */
+@media (max-width: 899px) {
+  .home-sofia { display: flex; }
+  .home-botonera { display: grid; }
+  .sidebar-handle.on-home { display: none; }
+}
+
 .medical-news-strip { display: flex; align-items: center; gap: 12px; min-height: 34px; margin: -4px 0 16px; padding: 7px 12px; border: 1px solid rgba(130, 153, 186, 0.36); border-radius: 12px; background: rgba(245, 249, 255, 0.8); color: #4e6785; font-size: 0.73rem; overflow: hidden; }
 .medical-news-label { flex: 0 0 auto; color: #1d4ed8; font-weight: 800; }
 .medical-news-track { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

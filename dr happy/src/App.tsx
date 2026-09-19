@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChangeEvent,
+  CSSProperties,
   DragEvent as ReactDragEvent,
   FormEvent,
   PointerEvent as ReactPointerEvent,
@@ -9238,6 +9239,63 @@ function App() {
     )
   }
 
+  /* En móvil la navegación se resuelve con esta botonera de Inicio en lugar de la barra lateral. */
+  const homeQuickActions: Array<{
+    key: string
+    icon: string
+    label: string
+    hint: string
+    tone: string
+    wide?: boolean
+    badge?: number
+    onClick: () => void
+  }> = [
+    isModuleEnabled('ambulance') ? {
+      key: 'ambulance', icon: '🚑', label: 'Modo Ambulancia', hint: 'Traslados y guardia', tone: '#15945f', wide: true,
+      onClick: handleOpenAmbulance,
+    } : null,
+    isModuleEnabled('attention') ? {
+      key: 'attention', icon: '♙', label: 'Atención médica', hint: 'Buscar y atender', tone: '#2563eb',
+      onClick: handleStartAttentionFlow,
+    } : null,
+    isModuleEnabled('appointments') ? {
+      key: 'appointments', icon: '◷', label: 'Turnera', hint: 'Agenda y cupos', tone: '#d97706',
+      onClick: handleOpenAppointments,
+    } : null,
+    {
+      key: 'patients', icon: '👥', label: 'Mis pacientes', hint: `${patients.length} fichas`, tone: '#0891b2',
+      onClick: () => { stopDictation(); setCommunityOpen(false); setWorkspaceLayer('my-patients'); setAppError(null) },
+    },
+    isModuleEnabled('tools') ? {
+      key: 'tools', icon: '✦', label: 'Herramientas', hint: 'Protocolos y comunidad', tone: '#7c3aed', badge: communityUnreadCount,
+      onClick: handleOpenTools,
+    } : null,
+    canUseTreatmentLedger ? {
+      key: 'ledger', icon: '◈', label: 'Balance', hint: 'Deudas y cobros', tone: '#dc2626',
+      onClick: () => { handleOpenAppointments(); setTurneraViewMode('ledger') },
+    } : null,
+    {
+      key: 'news', icon: '◫', label: 'Noticias', hint: 'Actualidad clínica', tone: '#475569',
+      onClick: () => { setWorkspaceLayer('medical-news'); setCommunityOpen(false) },
+    },
+    {
+      key: 'profile', icon: '◉', label: 'Perfil', hint: 'Firma y ajustes', tone: '#4f46e5',
+      onClick: handleOpenProfile,
+    },
+    isAdminSession ? {
+      key: 'admin', icon: '⚙', label: 'Administrar', hint: 'Usuarios y planes', tone: '#64748b',
+      onClick: handleOpenUserAdmin,
+    } : null,
+    {
+      key: 'theme', icon: '◐', label: themeMode === 'night' ? 'Modo claro' : 'Modo nocturno', hint: 'Cambiar contraste', tone: '#0f766e',
+      onClick: handleToggleThemeMode,
+    },
+    {
+      key: 'logout', icon: '↪', label: 'Cerrar sesión', hint: 'Salir de la cuenta', tone: '#9f1239',
+      onClick: () => { void handleLogout() },
+    },
+  ].filter((action): action is NonNullable<typeof action> => action !== null)
+
   /* Encabezado compartido de Herramientas: lo reusa la pestaña Comunidad, que se
      renderiza antes en el árbol pero debe verse como una sección más de esa página. */
   const toolsPageHeader = (
@@ -9522,7 +9580,7 @@ function App() {
       {sidebarOpen ? <button type="button" className="sidebar-scrim" aria-label="Cerrar navegación" onClick={() => setSidebarOpen(false)} /> : null}
       <button
         type="button"
-        className={`sidebar-handle${sidebarOpen ? ' open' : ''}`}
+        className={`sidebar-handle${sidebarOpen ? ' open' : ''}${workspaceLayer === 'overview' ? ' on-home' : ''}`}
         aria-label={sidebarOpen ? 'Cerrar navegación' : 'Abrir navegación'}
         aria-expanded={sidebarOpen}
         onClick={() => setSidebarOpen((current) => !current)}
@@ -10907,6 +10965,34 @@ function App() {
 
       {workspaceLayer === 'overview' ? (
         <div className="screen-stage">
+          <button type="button" className="home-sofia" onClick={() => setSofiaOpen(true)}>
+            <span className="home-sofia-orb" aria-hidden="true">✦</span>
+            <span className="home-sofia-copy">
+              <strong>Sofía</strong>
+              <small>Tu secretaria clínica · agendá y cobrá por voz</small>
+            </span>
+            <span className="home-sofia-go" aria-hidden="true">Hablar →</span>
+          </button>
+
+          <nav className="home-botonera" aria-label="Accesos rápidos">
+            {homeQuickActions.map((action) => (
+              <button
+                key={action.key}
+                type="button"
+                className={`smart-btn${action.wide ? ' wide' : ''}`}
+                style={{ '--tone': action.tone } as CSSProperties}
+                onClick={action.onClick}
+              >
+                {action.badge && action.badge > 0 ? <span className="smart-badge">{action.badge}</span> : null}
+                <span className="smart-ico" aria-hidden="true">{action.icon}</span>
+                <span className="smart-txt">
+                  <strong>{action.label}</strong>
+                  <small>{action.hint}</small>
+                </span>
+              </button>
+            ))}
+          </nav>
+
           <section className="app-tools-flyer" aria-label="Herramientas de Dr Happy">
             {(() => {
               const slide = APP_FLYER_SLIDES[flyerSlideIndex]
