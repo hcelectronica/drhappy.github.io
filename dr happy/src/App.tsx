@@ -7488,6 +7488,13 @@ function App() {
       : current)
   }
 
+  /* El checklist de Inicio necesita saber si la turnera pública ya está publicada. */
+  useEffect(() => {
+    if (!activeUserId) return
+    void refreshPublicBookingSettings()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeUserId])
+
   function togglePublicBookingBlockDay(blockId: string, dayValue: number): void {
     setPublicBookingSettings((current) => current
       ? {
@@ -9243,6 +9250,39 @@ function App() {
       </main>
     )
   }
+
+  /* Primeros pasos: guía de activación que desaparece sola al completarse. */
+  const onboardingSteps = [
+    {
+      key: 'profile',
+      label: 'Completá tu perfil y firma digital',
+      hint: 'Tu firma aparece en recetas y certificados',
+      done: Boolean(profile?.signatureImage),
+      action: handleOpenProfile,
+    },
+    {
+      key: 'patient',
+      label: 'Cargá tu primer paciente',
+      hint: 'Empezá tu base clínica',
+      done: patients.length > 0,
+      action: handleStartAttentionFlow,
+    },
+    {
+      key: 'appointment',
+      label: 'Agendá tu primer turno',
+      hint: 'El paciente recibe la confirmación por email',
+      done: appointmentsMetrics.total > 0,
+      action: () => handleNewAppointmentModal(),
+    },
+    {
+      key: 'public-link',
+      label: 'Publicá tu link de turnos',
+      hint: 'Que tus pacientes reserven solos, sin llamarte',
+      done: Boolean(publicBookingSettings?.enabled),
+      action: handleOpenFreeSlotModal,
+    },
+  ]
+  const onboardingDone = onboardingSteps.filter((step) => step.done).length
 
   /* En móvil la navegación se resuelve con esta botonera de Inicio en lugar de la barra lateral. */
   const homeQuickActions: Array<{
@@ -11077,6 +11117,37 @@ function App() {
 
       {workspaceLayer === 'overview' ? (
         <div className="screen-stage">
+          {onboardingDone < onboardingSteps.length ? (
+            <section className="onboarding-card" aria-label="Primeros pasos">
+              <div className="onboarding-head">
+                <div>
+                  <span className="section-kicker">Primeros pasos</span>
+                  <strong>Dejá tu consultorio listo en 4 pasos</strong>
+                </div>
+                <span className="onboarding-count">{onboardingDone}/{onboardingSteps.length}</span>
+              </div>
+              <div className="onboarding-bar" aria-hidden="true">
+                <span style={{ width: `${(onboardingDone / onboardingSteps.length) * 100}%` }} />
+              </div>
+              <ul className="onboarding-list">
+                {onboardingSteps.map((step) => (
+                  <li key={step.key} className={step.done ? 'done' : ''}>
+                    <span className="onboarding-check" aria-hidden="true">{step.done ? '✓' : ''}</span>
+                    <span className="onboarding-copy">
+                      <strong>{step.label}</strong>
+                      <small>{step.hint}</small>
+                    </span>
+                    {step.done ? null : (
+                      <button type="button" className="screen-action" onClick={step.action}>
+                        Hacerlo
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
           <button type="button" className="home-sofia" onClick={() => setSofiaOpen(true)}>
             <span className="home-sofia-orb" aria-hidden="true">✨</span>
             <span className="home-sofia-copy">

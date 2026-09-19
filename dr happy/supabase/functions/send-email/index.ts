@@ -61,6 +61,10 @@ function getBaseTemplate(title: string, innerHtml: string): string {
     <div class="footer">
       <p style="margin: 0 0 6px;">Este es un mensaje institucional enviado desde <strong>soporte@drhappy.com.ar</strong></p>
       <p style="margin: 0 0 10px;">Sitio oficial: <a href="https://drhappy.com.ar/" target="_blank">drhappy.com.ar</a></p>
+      <p style="margin: 0 0 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+        ¿Sos profesional de la salud? Gestioná turnos, historias clínicas y cobros en un solo lugar.
+        <a href="https://drhappy.com.ar/?utm_source=email&utm_medium=turnos&utm_campaign=marca" target="_blank" style="font-weight: 700;">Probá Dr Happy gratis</a>
+      </p>
       <p style="margin: 0; font-size: 12px; color: #94a3b8;">© ${new Date().getFullYear()} DrHappy. Todos los derechos reservados.</p>
     </div>
   </div>
