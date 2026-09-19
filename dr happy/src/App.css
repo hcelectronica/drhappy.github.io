@@ -1833,6 +1833,12 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
 
 .admin-user-search input { width: 100%; }
 
+.admin-user-detail {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .admin-subscription-actions {
   display: flex;
   gap: 8px;

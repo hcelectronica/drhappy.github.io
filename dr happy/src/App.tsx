@@ -2594,6 +2594,7 @@ function App() {
   const [turneraCapacityOpen, setTurneraCapacityOpen] = useState(false)
   const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo'>('usuarios')
   const [adminUserQuery, setAdminUserQuery] = useState('')
+  const [adminExpandedUserId, setAdminExpandedUserId] = useState<string | null>(null)
   const [protocolSearchQuery, setProtocolSearchQuery] = useState('')
   const [protocolCategoryFilter, setProtocolCategoryFilter] = useState<string>('all')
   const [selectedProtocolId, setSelectedProtocolId] = useState<string | null>(null)
@@ -9313,38 +9314,38 @@ function App() {
         </button>
       </section>
 
-      <div className="protocol-tabs-nav" style={{ padding: '0 10px', marginTop: 12 }}>
+      <nav className="screen-action-bar" aria-label="Secciones de herramientas">
         <button
           type="button"
-          className={`protocol-tab-btn ${toolsActiveTab === 'protocols' ? 'active' : ''}`}
+          className={`screen-action${toolsActiveTab === 'protocols' ? ' active' : ''}`}
           onClick={() => handleSelectToolsTab('protocols')}
         >
-          📖 Guías y Protocolos de Emergencia
+          <span aria-hidden="true">📖</span> Guías y Protocolos
         </button>
         <button
           type="button"
-          className={`protocol-tab-btn ${toolsActiveTab === 'vademecum' ? 'active' : ''}`}
+          className={`screen-action${toolsActiveTab === 'vademecum' ? ' active' : ''}`}
           onClick={() => handleSelectToolsTab('vademecum')}
         >
-          💊 Vademécum farmacológico
+          <span aria-hidden="true">💊</span> Vademécum
         </button>
         <button
           type="button"
-          className={`protocol-tab-btn ${toolsActiveTab === 'consult' ? 'active' : ''}`}
+          className={`screen-action${toolsActiveTab === 'consult' ? ' active' : ''}`}
           onClick={() => handleSelectToolsTab('consult')}
         >
-          🩺 Patologías en consultorio
+          <span aria-hidden="true">🩺</span> Patologías en consultorio
         </button>
         {isModuleEnabled('community') ? (
           <button
             type="button"
-            className={`protocol-tab-btn ${toolsActiveTab === 'community' ? 'active' : ''}`}
+            className={`screen-action${toolsActiveTab === 'community' ? ' active' : ''}`}
             onClick={() => handleSelectToolsTab('community')}
           >
-            🤝 Comunidad{communityUnreadCount > 0 ? ` (${communityUnreadCount})` : ''}
+            <span aria-hidden="true">🤝</span> Comunidad{communityUnreadCount > 0 ? ` (${communityUnreadCount})` : ''}
           </button>
         ) : null}
-      </div>
+      </nav>
     </>
   )
 
@@ -9954,7 +9955,9 @@ function App() {
                     .some((field) => (field ?? '').toLowerCase().includes(query))
                 })
                 .sort((left, right) => left.fullName.localeCompare(right.fullName, 'es'))
-                .map((user) => (
+                .map((user) => {
+                  const expanded = adminExpandedUserId === user.id
+                  return (
                   <li key={user.id} style={{ alignItems: 'flex-start', flexDirection: 'column', gap: 10 }}>
                     <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                       <div>
@@ -9983,16 +9986,29 @@ function App() {
                         </span>
                         <button
                           type="button"
-                          className="ghost"
-                          onClick={() => void handleToggleUserActive(user.id)}
-                          disabled={isAdminUser(user) || adminBusyUserId === user.id}
+                          className={`screen-action${expanded ? ' active' : ''}`}
+                          aria-expanded={expanded}
+                          onClick={() => setAdminExpandedUserId(expanded ? null : user.id)}
                         >
-                          {user.active === false ? 'Activar' : 'Desactivar'}
+                          <span aria-hidden="true">{expanded ? '✕' : '⚙️'}</span> {expanded ? 'Cerrar' : 'Gestionar'}
                         </button>
                       </div>
                     </div>
 
-                    {!isAdminUser(user) ? (
+                    {expanded ? (
+                      <div className="admin-user-detail">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => void handleToggleUserActive(user.id)}
+                          disabled={isAdminUser(user) || adminBusyUserId === user.id}
+                        >
+                          {user.active === false ? 'Activar acceso' : 'Desactivar acceso'}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {expanded && !isAdminUser(user) ? (
                       <div className="admin-modules-box">
                         <strong className="admin-modules-title">Módulos habilitados</strong>
                         <div className="admin-modules-grid">
@@ -10020,7 +10036,7 @@ function App() {
                       </div>
                     ) : null}
 
-                    {!isAdminUser(user) ? (
+                    {expanded && !isAdminUser(user) ? (
                       <div className="admin-subscription-actions">
                         <button
                           type="button"
@@ -10066,7 +10082,8 @@ function App() {
                       </div>
                     ) : null}
                   </li>
-                ))}
+                  )
+                })}
             </ul>
             </>
             ) : null}
