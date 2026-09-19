@@ -914,7 +914,7 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const subject = String(input.subject || 'Recordatorio de saldo pendiente')
     const message = String(input.message || `Hola ${patientName},\n\nTe escribimos para informarte tu saldo pendiente:\n\n${fallbackMessage || 'No encontramos un saldo pendiente registrado.'}\n\nSaludos cordiales.`)
     const proposal = { patient: patientName, email: patient.email, subject, message }
-    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'enviar_notificacion_paciente', proposal, message: 'Pedí confirmación explícita antes de enviar.' }
+    if (input.confirmation !== true && String(input.confirmation || '').toLowerCase() !== 'true') return { requiresConfirmation: true, action: 'enviar_notificacion_paciente', proposal, message: 'Pedí confirmación explícita antes de enviar.' }
     const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: patient.email, subject, type: 'custom', text: message, templateData: { message } }) })
     const emailResult = await emailResponse.json().catch(() => null)
     if (!emailResponse.ok || !emailResult?.success) return { success: false, message: typeof emailResult?.message === 'string' ? emailResult.message : `No se pudo enviar el email (HTTP ${emailResponse.status}).` }
@@ -1145,7 +1145,11 @@ Deno.serve(async (request) => {
     for (const toolUse of toolUses) {
       let toolData: unknown
       try {
-        toolData = await runTool(toolUse.name, toolUse.input || {}, admin, professionalId)
+        const toolInput = { ...(toolUse.input || {}) } as Record<string, unknown>
+        const latestUserMessage = messages[messages.length - 1]?.content.toLowerCase().trim() || ''
+        const affirmative = /^(si|sí|ok|dale|mandalo|mandalo|envi[aá]lo|confirmo|confirmar|hacelo|hace(lo)?|mandaselo|mandáselo)([.! ]|$)/i.test(latestUserMessage)
+        if ((toolUse.name === 'enviar_notificacion_paciente' || toolUse.name === 'enviar_recordatorios_balance') && affirmative) toolInput.confirmation = true
+        toolData = await runTool(toolUse.name, toolInput, admin, professionalId)
       } catch (error) {
         console.error('[ai-assistant] tool failed', { tool: toolUse.name, message: error instanceof Error ? error.message : String(error) })
         const schedulingTool = toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno'
