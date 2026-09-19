@@ -38,30 +38,30 @@ async function invokeAdminAction(body: Record<string, unknown>): Promise<AdminAc
 }
 
 export function setProfessionalAdmin(
-  requesterId: string,
+  _requesterId: string,
   targetId: string,
   isAdmin: boolean,
 ): Promise<AdminActionResult> {
-  void requesterId
+  void _requesterId
   return invokeAdminAction({ action: 'set-admin', targetId, isAdmin })
 }
 
 export function setProfessionalActive(
-  requesterId: string,
+  _requesterId: string,
   targetId: string,
   active: boolean,
 ): Promise<AdminActionResult> {
-  void requesterId
+  void _requesterId
   return invokeAdminAction({ action: 'set-active', targetId, active })
 }
 
 export function setProfessionalSubscription(
-  requesterId: string,
+  _requesterId: string,
   targetId: string,
   subscriptionStatus: string,
   subscriptionExpiresAt: string | null,
 ): Promise<AdminActionResult> {
-  void requesterId
+  void _requesterId
   return invokeAdminAction({
     action: 'set-subscription',
     targetId,
@@ -71,19 +71,19 @@ export function setProfessionalSubscription(
 }
 
 export function setProfessionalModules(
-  requesterId: string,
+  _requesterId: string,
   targetId: string,
   enabledModules: string[] | null,
 ): Promise<AdminActionResult> {
-  void requesterId
+  void _requesterId
   return invokeAdminAction({ action: 'set-modules', targetId, enabledModules })
 }
 
 export function deleteProfessionalAsAdmin(
-  requesterId: string,
+  _requesterId: string,
   targetId: string,
 ): Promise<AdminActionResult> {
-  void requesterId
+  void _requesterId
   return invokeAdminAction({ action: 'delete-professional', targetId })
 }
 
