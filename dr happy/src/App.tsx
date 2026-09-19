@@ -115,11 +115,11 @@ const DEFAULT_APPOINTMENT_END_TIME = '19:00'
 
 const APP_FLYER_SLIDES = [
   { key: 'ambulance', eyebrow: 'Respuesta inmediata', title: 'Modo Ambulancia', description: 'Gestioná rápidamente traslados, guardias y atención prehospitalaria con protocolos listos para usar.', icon: '🚑', visual: 'ambulance' },
-  { key: 'attention', eyebrow: 'Historia clínica', title: 'Atención médica', description: 'Encontrá pacientes, registrá evoluciones y mantené toda la información clínica organizada.', icon: '♙', visual: 'patient' },
-  { key: 'appointments', eyebrow: 'Agenda inteligente', title: 'Turnera médica', description: 'Organizá tus días, definí cupos y ofrecé turnos libres con horarios segmentados.', icon: '◷', visual: 'calendar' },
-  { key: 'tools', eyebrow: 'Decisiones clínicas', title: 'Herramientas clínicas', description: 'Consultá protocolos, vademécum y patologías desde un mismo espacio profesional.', icon: '✦', visual: 'tools' },
-  { key: 'patients', eyebrow: 'Tu base clínica', title: 'Mis pacientes', description: 'Accedé rápidamente a tus pacientes, buscá por DNI y continuá una atención cuando quieras.', icon: '♧', visual: 'patients' },
-  { key: 'ledger', eyebrow: 'Control profesional', title: 'Balance de pagos', description: 'Registrá tratamientos, pagos y saldos pendientes para saber qué está cobrado y qué falta cobrar.', icon: '◈', visual: 'ledger' },
+  { key: 'attention', eyebrow: 'Historia clínica', title: 'Atención médica', description: 'Encontrá pacientes, registrá evoluciones y mantené toda la información clínica organizada.', icon: '🩺', visual: 'patient' },
+  { key: 'appointments', eyebrow: 'Agenda inteligente', title: 'Turnera médica', description: 'Organizá tus días, definí cupos y ofrecé turnos libres con horarios segmentados.', icon: '📅', visual: 'calendar' },
+  { key: 'tools', eyebrow: 'Decisiones clínicas', title: 'Herramientas clínicas', description: 'Consultá protocolos, vademécum y patologías desde un mismo espacio profesional.', icon: '🧰', visual: 'tools' },
+  { key: 'patients', eyebrow: 'Tu base clínica', title: 'Mis pacientes', description: 'Accedé rápidamente a tus pacientes, buscá por DNI y continuá una atención cuando quieras.', icon: '👥', visual: 'patients' },
+  { key: 'ledger', eyebrow: 'Control profesional', title: 'Balance de pagos', description: 'Registrá tratamientos, pagos y saldos pendientes para saber qué está cobrado y qué falta cobrar.', icon: '💰', visual: 'ledger' },
 ] as const
 
 /**
@@ -2595,6 +2595,7 @@ function App() {
   const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo'>('usuarios')
   const [adminUserQuery, setAdminUserQuery] = useState('')
   const [adminExpandedUserId, setAdminExpandedUserId] = useState<string | null>(null)
+  const [premiumPrompt, setPremiumPrompt] = useState<{ icon: string; title: string; pitch: string; bullets: string[] } | null>(null)
   const [protocolSearchQuery, setProtocolSearchQuery] = useState('')
   const [protocolCategoryFilter, setProtocolCategoryFilter] = useState<string>('all')
   const [selectedProtocolId, setSelectedProtocolId] = useState<string | null>(null)
@@ -9259,11 +9260,11 @@ function App() {
       onClick: handleOpenAmbulance,
     } : null,
     isModuleEnabled('attention') ? {
-      key: 'attention', icon: '♙', label: 'Atención médica', hint: 'Buscar y atender', tone: '#2563eb',
+      key: 'attention', icon: '🩺', label: 'Atención médica', hint: 'Buscar y atender', tone: '#2563eb',
       onClick: handleStartAttentionFlow,
     } : null,
     isModuleEnabled('appointments') ? {
-      key: 'appointments', icon: '◷', label: 'Turnera', hint: 'Agenda y cupos', tone: '#d97706',
+      key: 'appointments', icon: '📅', label: 'Turnera', hint: 'Agenda y cupos', tone: '#d97706',
       onClick: handleOpenAppointments,
     } : null,
     {
@@ -9271,31 +9272,31 @@ function App() {
       onClick: () => { stopDictation(); setCommunityOpen(false); setWorkspaceLayer('my-patients'); setAppError(null) },
     },
     isModuleEnabled('tools') ? {
-      key: 'tools', icon: '✦', label: 'Herramientas', hint: 'Protocolos y comunidad', tone: '#7c3aed', badge: communityUnreadCount,
+      key: 'tools', icon: '🧰', label: 'Herramientas', hint: 'Protocolos y comunidad', tone: '#7c3aed', badge: communityUnreadCount,
       onClick: handleOpenTools,
     } : null,
     canUseTreatmentLedger ? {
-      key: 'ledger', icon: '◈', label: 'Balance', hint: 'Deudas y cobros', tone: '#dc2626',
+      key: 'ledger', icon: '💰', label: 'Balance', hint: 'Deudas y cobros', tone: '#dc2626',
       onClick: () => { handleOpenAppointments(); setTurneraViewMode('ledger') },
     } : null,
     {
-      key: 'news', icon: '◫', label: 'Noticias', hint: 'Actualidad clínica', tone: '#475569',
+      key: 'news', icon: '📰', label: 'Noticias', hint: 'Actualidad clínica', tone: '#475569',
       onClick: () => { setWorkspaceLayer('medical-news'); setCommunityOpen(false) },
     },
     {
-      key: 'profile', icon: '◉', label: 'Perfil', hint: 'Firma y ajustes', tone: '#4f46e5',
+      key: 'profile', icon: '👤', label: 'Perfil', hint: 'Firma y ajustes', tone: '#4f46e5',
       onClick: handleOpenProfile,
     },
     isAdminSession ? {
-      key: 'admin', icon: '⚙', label: 'Administrar', hint: 'Usuarios y planes', tone: '#64748b',
+      key: 'admin', icon: '⚙️', label: 'Administrar', hint: 'Usuarios y planes', tone: '#64748b',
       onClick: handleOpenUserAdmin,
     } : null,
     {
-      key: 'theme', icon: '◐', label: themeMode === 'night' ? 'Modo claro' : 'Modo nocturno', hint: 'Cambiar contraste', tone: '#0f766e',
+      key: 'theme', icon: themeMode === 'night' ? '☀️' : '🌙', label: themeMode === 'night' ? 'Modo claro' : 'Modo nocturno', hint: 'Cambiar contraste', tone: '#0f766e',
       onClick: handleToggleThemeMode,
     },
     {
-      key: 'logout', icon: '↪', label: 'Cerrar sesión', hint: 'Salir de la cuenta', tone: '#9f1239',
+      key: 'logout', icon: '🚪', label: 'Cerrar sesión', hint: 'Salir de la cuenta', tone: '#9f1239',
       onClick: () => { void handleLogout() },
     },
   ].filter((action): action is NonNullable<typeof action> => action !== null)
@@ -9387,7 +9388,7 @@ function App() {
               )}
             </button>
           ) : null}
-          <span className="build-badge compact">Compilación {APP_BUILD_ID}</span>
+          {isAdminSession ? <span className="build-badge compact">Compilación {APP_BUILD_ID}</span> : null}
           {trialInfo?.status === 'active' && Number.isFinite(trialInfo.daysLeft) && (
             <span className="subscription-status" style={{
               display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
@@ -9530,7 +9531,7 @@ function App() {
           </button>
         </div>
         <button type="button" className="sidebar-sofia" onClick={() => { setSofiaOpen(true); setSidebarOpen(false) }}>
-          <span aria-hidden="true">✦</span>
+          <span aria-hidden="true">✨</span>
           <span className="sidebar-sofia-copy">
             <strong>Sofía</strong>
             <small>Tu secretaria clínica</small>
@@ -9545,40 +9546,40 @@ function App() {
             </label>
           ) : null}
           <button type="button" className={workspaceLayer === 'overview' ? 'active' : ''} onClick={() => { handleBackToOverview(); setSidebarOpen(false) }}>
-            <span>⌂</span> Inicio
+            <span>🏠</span> Inicio
           </button>
           <button type="button" className={workspaceLayer === 'my-patients' ? 'active' : ''} onClick={() => { setWorkspaceLayer('my-patients'); setSidebarOpen(false) }}>
-            <span>♙</span> Mis pacientes <small>{patients.length}</small>
+            <span>👥</span> Mis pacientes <small>{patients.length}</small>
           </button>
           {isModuleEnabled('appointments') ? (
             <button type="button" className={workspaceLayer === 'appointments' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setSidebarOpen(false) }}>
-              <span>◷</span> Turnera
+              <span>📅</span> Turnera
             </button>
           ) : null}
           {isModuleEnabled('tools') ? (
             <button type="button" className={workspaceLayer === 'tools' ? 'active' : ''} onClick={() => { handleOpenTools(); setSidebarOpen(false) }}>
-              <span>✦</span> Herramientas {communityUnreadCount > 0 ? <small>{communityUnreadCount}</small> : null}
+              <span>🧰</span> Herramientas {communityUnreadCount > 0 ? <small>{communityUnreadCount}</small> : null}
             </button>
           ) : null}
           {canUseTreatmentLedger ? (
             <button type="button" className={workspaceLayer === 'appointments' && turneraViewMode === 'ledger' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setTurneraViewMode('ledger'); setSidebarOpen(false) }}>
-              <span>◈</span> Balance de pagos
+              <span>💰</span> Balance de pagos
             </button>
           ) : null}
           {isAdminSession ? (
             <button type="button" className={workspaceLayer === 'user-admin' ? 'active' : ''} onClick={() => { handleOpenUserAdmin(); setSidebarOpen(false) }}>
-              <span>⚙</span> Administrar usuarios
+              <span>⚙️</span> Administrar usuarios
             </button>
           ) : null}
         </nav>
         <div className="sidebar-footer">
           <button type="button" onClick={() => { handleOpenProfile(); setSidebarOpen(false) }}>
-            <span>{googleIdentity ? '◉' : '⚙'}</span> {googleIdentity ? 'Perfil' : 'Perfil y ajustes'}
+            <span>👤</span> {googleIdentity ? 'Perfil' : 'Perfil y ajustes'}
           </button>
           <button type="button" onClick={() => { handleToggleThemeMode(); setSidebarOpen(false) }}>
-            <span>◐</span> {themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'}
+            <span>{themeMode === 'night' ? '☀️' : '🌙'}</span> {themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'}
           </button>
-          <button type="button" onClick={handleLogout}><span>↪</span> Cerrar sesión</button>
+          <button type="button" onClick={handleLogout}><span>🚪</span> Cerrar sesión</button>
         </div>
       </aside>
       {sidebarOpen ? <button type="button" className="sidebar-scrim" aria-label="Cerrar navegación" onClick={() => setSidebarOpen(false)} /> : null}
@@ -9600,17 +9601,17 @@ function App() {
           className={workspaceLayer === 'overview' ? 'active' : ''}
           onClick={handleBackToOverview}
         >
-          <span aria-hidden="true">⌂</span> Inicio
+          <span aria-hidden="true">🏠</span> Inicio
         </button>
         <button
           type="button"
           className={workspaceLayer === 'appointments' ? 'active' : ''}
           onClick={handleOpenAppointments}
         >
-          <span aria-hidden="true">◷</span> Turnos
+          <span aria-hidden="true">📅</span> Turnos
         </button>
         <button type="button" className="mobile-tab-sofia" onClick={() => setSofiaOpen(true)}>
-          <span aria-hidden="true">✦</span> Sofía
+          <span aria-hidden="true">✨</span> Sofía
         </button>
         <button
           type="button"
@@ -9624,7 +9625,7 @@ function App() {
           className={workspaceLayer === 'profile' ? 'active' : ''}
           onClick={handleOpenProfile}
         >
-          <span aria-hidden="true">◉</span> Perfil
+          <span aria-hidden="true">👤</span> Perfil
         </button>
       </nav>
 
@@ -9842,7 +9843,7 @@ function App() {
                 <span aria-hidden="true">📈</span> Actividad
               </button>
               <button type="button" className={`screen-action${adminSection === 'sofia' ? ' active' : ''}`} onClick={() => setAdminSection('sofia')}>
-                <span aria-hidden="true">✦</span> Consumo de Sofía
+                <span aria-hidden="true">✨</span> Consumo de Sofía
               </button>
               <button type="button" className={`screen-action${adminSection === 'comunicados' ? ' active' : ''}`} onClick={() => setAdminSection('comunicados')}>
                 <span aria-hidden="true">📢</span> Comunicados
@@ -9864,7 +9865,12 @@ function App() {
                 </div>
               </div>
               {adminUserStatsLoading ? (
-                <p>Cargando métricas...</p>
+                <div className="skeleton-block">
+                  <div className="skeleton-line wide" />
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line short" />
+                </div>
               ) : adminUserStats.length === 0 ? (
                 <p className="flow-hint">No hay métricas disponibles todavía.</p>
               ) : (
@@ -9924,7 +9930,13 @@ function App() {
                 <article className="analytics-stat-card"><strong>{adminAITotal.tokens.toLocaleString('es-AR')}</strong><span>Tokens usados</span></article>
                 <article className="analytics-stat-card warn"><strong>USD {adminAITotal.costUsd.toFixed(4)}</strong><span>Costo estimado</span></article>
               </div>
-              {adminAIUsageLoading ? <p className="flow-hint">Cargando consumo...</p> : adminAIUsage.length === 0 ? <p className="flow-hint">Todavía no hay consumo registrado.</p> : (
+              {adminAIUsageLoading ? (
+                <div className="skeleton-block">
+                  <div className="skeleton-line wide" />
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line short" />
+                </div>
+              ) : adminAIUsage.length === 0 ? <p className="flow-hint">Todavía no hay consumo registrado.</p> : (
                 <div className="admin-table-scroll">
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                     <thead><tr style={{ textAlign: 'left', borderBottom: '2px solid #d8e2ee' }}><th style={{ padding: '8px 6px' }}>Profesional</th><th style={{ padding: '8px 6px' }}>Consultas</th><th style={{ padding: '8px 6px' }}>Tokens</th><th style={{ padding: '8px 6px' }}>Costo estimado</th><th style={{ padding: '8px 6px' }}>Último uso</th></tr></thead>
@@ -11066,7 +11078,7 @@ function App() {
       {workspaceLayer === 'overview' ? (
         <div className="screen-stage">
           <button type="button" className="home-sofia" onClick={() => setSofiaOpen(true)}>
-            <span className="home-sofia-orb" aria-hidden="true">✦</span>
+            <span className="home-sofia-orb" aria-hidden="true">✨</span>
             <span className="home-sofia-copy">
               <strong>Sofía</strong>
               <small>Tu secretaria clínica · agendá y cobrá por voz</small>
@@ -11137,7 +11149,13 @@ function App() {
             <button type="button" className="ghost" onClick={handleBackToOverview}>Volver</button>
           </section>
           <section className="panel medical-news-page">
-            {medicalNewsLoading ? <p className="flow-hint">Cargando noticias...</p> : null}
+            {medicalNewsLoading ? (
+              <div className="skeleton-block">
+                <div className="skeleton-line wide" />
+                <div className="skeleton-line" />
+                <div className="skeleton-line short" />
+              </div>
+            ) : null}
             {medicalNews.length > 0 ? (
               <>
                 <div className="medical-news-source-tabs">
@@ -11238,7 +11256,16 @@ function App() {
               className={`screen-action${turneraViewMode === 'calendar' ? ' active' : ''}${!hasPremiumTurneraAccess ? ' locked' : ''}`}
               onClick={() => {
                 if (!hasPremiumTurneraAccess) {
-                  setAppError('El Calendario de ocupación es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
+                  setPremiumPrompt({
+                    icon: '🗓️',
+                    title: 'Calendario de ocupación',
+                    pitch: 'Veí de un vistazo qué días tenés llenos y cuáles te quedan libres, y acomodá tu agenda antes de que se te complique.',
+                    bullets: [
+                      'Mapa mensual con el nivel de ocupación de cada día',
+                      'Detectá huecos y llená tu agenda con turnos públicos',
+                      'Evitá sobreturnos viendo tu cupo real al instante',
+                    ],
+                  })
                   return
                 }
                 setTurneraViewMode('calendar')
@@ -11251,7 +11278,16 @@ function App() {
               className={`screen-action${turneraViewMode === 'stats' ? ' active' : ''}${!hasPremiumTurneraAccess ? ' locked' : ''}`}
               onClick={() => {
                 if (!hasPremiumTurneraAccess) {
-                  setAppError('Las Estadísticas son exclusivas para suscriptores con plan activo. Activá tu suscripción para desbloquearlas.')
+                  setPremiumPrompt({
+                    icon: '📊',
+                    title: 'Estadísticas de atención',
+                    pitch: 'Sabé cuánto estás creciendo: pacientes atendidos por semana y por mes, con la tendencia a la vista.',
+                    bullets: [
+                      'Pacientes atendidos por semana y por mes',
+                      'Tendencia de crecimiento de tu consultorio',
+                      'Detectá tus días y horarios más demandados',
+                    ],
+                  })
                   return
                 }
                 setTurneraViewMode('stats')
@@ -11265,7 +11301,16 @@ function App() {
                 className={`screen-action${turneraViewMode === 'ledger' ? ' active' : ''}${!canUseTreatmentLedger ? ' locked' : ''}`}
                 onClick={() => {
                   if (!canUseTreatmentLedger) {
-                    setAppError('El Balance de pagos es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
+                    setPremiumPrompt({
+                      icon: '💰',
+                      title: 'Balance de pagos',
+                      pitch: 'Dejá de anotar en papel quién te debe. Registrá cada tratamiento, lo cobrado y lo pendiente, y mandá recordatorios de pago.',
+                      bullets: [
+                        'Saldo pendiente por paciente, siempre actualizado',
+                        'Recordatorios de pago por email en un toque',
+                        'Total facturado y total adeudado del consultorio',
+                      ],
+                    })
                     return
                   }
                   setTurneraViewMode('ledger')
@@ -14701,6 +14746,45 @@ function App() {
               </div>
             </form>
             <small className="sofia-disclaimer">Revisá toda respuesta antes de incorporarla a una historia clínica.</small>
+          </div>
+        </div>
+      ) : null}
+      {premiumPrompt ? (
+        <div className="drhappy-modal-overlay" onClick={() => setPremiumPrompt(null)}>
+          <div
+            className="drhappy-modal-card premium-prompt-card"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="premium-prompt-title"
+          >
+            <span className="premium-prompt-badge">⭐ Incluido con tu suscripción activa</span>
+            <span className="premium-prompt-icon" aria-hidden="true">{premiumPrompt.icon}</span>
+            <h3 id="premium-prompt-title">{premiumPrompt.title}</h3>
+            <p className="premium-prompt-pitch">{premiumPrompt.pitch}</p>
+            <ul className="premium-prompt-list">
+              {premiumPrompt.bullets.map((bullet) => (
+                <li key={bullet}>{bullet}</li>
+              ))}
+            </ul>
+            <div className="premium-prompt-actions">
+              <button
+                type="button"
+                disabled={subscriptionCheckoutLoading !== null}
+                onClick={() => {
+                  setPremiumPrompt(null)
+                  void handleStartSubscriptionCheckout('monthly')
+                }}
+              >
+                {subscriptionCheckoutLoading === 'monthly' ? 'Abriendo pago...' : 'Activar ahora'}
+              </button>
+              <button type="button" className="ghost" onClick={() => { setPremiumPrompt(null); setPreviewTrialExpired(true) }}>
+                Ver planes y precios
+              </button>
+              <button type="button" className="text-button" onClick={() => setPremiumPrompt(null)}>
+                Ahora no
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
