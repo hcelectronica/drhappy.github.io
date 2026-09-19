@@ -275,7 +275,7 @@ serve(async (request) => {
   const smtpUser = Deno.env.get('SMTP_TURNOS_USER')?.trim() || Deno.env.get('SMTP_USER')?.trim() || 'turnos@drhappy.com.ar'
   const smtpPass = Deno.env.get('SMTP_TURNOS_PASSWORD')?.trim() || Deno.env.get('SMTP_PASSWORD')?.trim() || Deno.env.get('HOSTINGER_MAIL_PASSWORD')?.trim() || ''
   const fromName = Deno.env.get('SMTP_FROM_NAME')?.trim() || 'Dr Happy'
-  const fromEmail = Deno.env.get('SMTP_TURNOS_USER')?.trim() || Deno.env.get('SMTP_FROM_EMAIL')?.trim() || 'turnos@drhappy.com.ar'
+  const fromEmail = 'turnos@drhappy.com.ar'
 
   let payload: EmailPayload
   try {

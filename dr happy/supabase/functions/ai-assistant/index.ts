@@ -547,7 +547,6 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const duplicate = ledger.find((entry) => entry.patientId === patient.id && entry.date === date && normalizeSearch(entry.intervention) === normalizeSearch(intervention) && Number(entry.totalAmount) === totalAmount && Number(entry.paidAmount || 0) < totalAmount)
     const patientName = `${patient.apellido || ''}, ${patient.nombre || ''}`.trim()
     const proposal = { patient: patientName, patientId: patient.id, date, intervention, totalAmount, paidAmount: 0, pending: totalAmount }
-    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'registrar_balance_pendiente', proposal, message: `Voy a registrar ${intervention} para ${patientName} por $${totalAmount.toLocaleString('es-AR')} como pendiente.` }
     if (duplicate) return { success: true, idempotent: true, message: `Ese saldo ya estaba registrado para ${patientName}: ${intervention} por $${totalAmount.toLocaleString('es-AR')} pendiente.` }
     const now = new Date().toISOString()
     const entry = { id: crypto.randomUUID(), patientId: String(patient.id), patientName, date, intervention, totalAmount, paidAmount: 0, createdAt: now, updatedAt: now }
