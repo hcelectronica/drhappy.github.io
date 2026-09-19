@@ -2613,7 +2613,6 @@ function App() {
   const [communityOpen, setCommunityOpen] = useState(false)
   const [communityTargetId, setCommunityTargetId] = useState<string | null>(null)
   const [communitySearchQuery, setCommunitySearchQuery] = useState('')
-  const [communityNetworkFilters, setCommunityNetworkFilters] = useState<string[]>([])
   const [communityDraftText, setCommunityDraftText] = useState('')
   const [communityDraftFiles, setCommunityDraftFiles] = useState<StoredFile[]>([])
   const [communityDragActive, setCommunityDragActive] = useState(false)
@@ -4906,16 +4905,13 @@ function App() {
     [seedUsers, activeUserId],
   )
 
-  const communityHasActiveFilters = Boolean(
-    communitySearchQuery.trim() || communityNetworkFilters.length > 0,
-  )
+  const communityHasActiveFilters = Boolean(communitySearchQuery.trim())
 
   const filteredCommunityMembers = useMemo(() => {
     if (!communityHasActiveFilters) {
       return []
     }
 
-    const selectedNetworks = new Set(communityNetworkFilters)
     return communityMembers
       .map((member) => ({
         member,
@@ -4923,13 +4919,7 @@ function App() {
           ? scoreProfessionalSearch(member, communitySearchQuery)
           : 0,
       }))
-      .filter(({ member, score }) => {
-        const matchesSearch = !communitySearchQuery.trim() || Number.isFinite(score)
-        const matchesNetwork =
-          selectedNetworks.size === 0 ||
-          (member.networkMemberships ?? []).some((network) => selectedNetworks.has(network))
-        return matchesSearch && matchesNetwork
-      })
+      .filter(({ score }) => !communitySearchQuery.trim() || Number.isFinite(score))
       .sort((left, right) => {
         if (left.score !== right.score) {
           return left.score - right.score
@@ -4940,7 +4930,6 @@ function App() {
   }, [
     communityMembers,
     communityHasActiveFilters,
-    communityNetworkFilters,
     communitySearchQuery,
   ])
 
@@ -6052,7 +6041,6 @@ function App() {
     setCommunityOpen(false)
     setCommunityTargetId(null)
     setCommunitySearchQuery('')
-    setCommunityNetworkFilters([])
     setCommunityDraftText('')
     setCommunityDraftFiles([])
     setCommunityDragActive(false)
@@ -6770,14 +6758,6 @@ function App() {
     setCommunityOpen((current) => !current)
     setAppError(null)
     setAppNotice(null)
-  }
-
-  function handleToggleCommunityNetworkFilter(network: string): void {
-    setCommunityNetworkFilters((current) =>
-      current.includes(network)
-        ? current.filter((entry) => entry !== network)
-        : [...current, network],
-    )
   }
 
   function handleToggleThemeMode(): void {
@@ -7853,6 +7833,26 @@ function App() {
       body: pushBody,
       tag: `drhappy-chat-${activeUserId}`,
     })
+  }
+
+  /** Elimina un mensaje propio del chat de comunidad, por si se envió por error. */
+  async function handleDeleteCommunityMessage(messageId: string): Promise<void> {
+    if (!window.confirm('¿Eliminar este mensaje?')) {
+      return
+    }
+    if (isSupabaseConfigured && supabase) {
+      const result = await communityRequest({ action: 'delete', messageId })
+      if (!result.success) {
+        setAppError(`No se pudo eliminar el mensaje: ${result.message || 'error desconocido'}`)
+        return
+      }
+    } else if (activeUserId && communityTargetId) {
+      const key = communityThreadStorageKey(activeUserId, communityTargetId)
+      const currentThread = readJsonStorage<CommunityMessage[]>(key, [])
+      const nextThread = currentThread.filter((message) => message.id !== messageId)
+      localStorage.setItem(key, JSON.stringify(nextThread))
+    }
+    setCommunityMessages((current) => current.filter((message) => message.id !== messageId))
   }
 
   async function handleSaveProfile(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -9473,22 +9473,6 @@ function App() {
                     placeholder="Ej: cardiólogo, Pérez, traumatología"
                   />
                 </label>
-                <fieldset className="community-network-filters">
-                  <legend>Filtrar por red</legend>
-                  <div className="register-networks-grid">
-                    {PROFESSIONAL_NETWORK_OPTIONS.map((network) => (
-                      <label key={network} className="toggle-option">
-                        <input
-                          type="checkbox"
-                          checked={communityNetworkFilters.includes(network)}
-                          onChange={() => handleToggleCommunityNetworkFilter(network)}
-                        />
-                        <span className="toggle-switch" aria-hidden="true" />
-                        <span>{network}</span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
               </div>
               <div className="community-results">
                 <ul className="community-member-list">
@@ -9547,7 +9531,14 @@ function App() {
                           ))}
                         </ul>
                       ) : null}
-                      <small>{formatDate(message.sentAt)}</small>
+                      <div className="community-message-footer">
+                        <small>{formatDate(message.sentAt)}</small>
+                        {mine ? (
+                          <button type="button" className="ghost compact" onClick={() => void handleDeleteCommunityMessage(message.id)}>
+                            🗑️ Borrar
+                          </button>
+                        ) : null}
+                      </div>
                     </li>
                   )
                 })}
@@ -10863,7 +10854,7 @@ function App() {
         </div>
       ) : null}
 
-      {workspaceLayer === 'overview' ? (
+      {workspaceLayer === 'overview' && !communityOpen ? (
         <div className="screen-stage">
           <section className="app-tools-flyer" aria-label="Herramientas de Dr Happy">
             {(() => {

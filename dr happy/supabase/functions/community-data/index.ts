@@ -35,5 +35,12 @@ Deno.serve(async (request) => {
     const { error } = await admin.from('community_messages').insert({ sender_id: professionalId, recipient_id: recipientId, text, attachments_json: attachments, sent_at: new Date().toISOString() })
     return error ? jsonResponse(500, { success: false, message: error.message }) : jsonResponse(200, { success: true })
   }
+  if (action === 'delete') {
+    const messageId = typeof body.messageId === 'string' ? body.messageId.trim() : ''
+    if (!messageId) return jsonResponse(400, { success: false, message: 'Falta el mensaje a eliminar.' })
+    // Solo el remitente puede borrar su propio mensaje.
+    const { error } = await admin.from('community_messages').delete().eq('id', messageId).eq('sender_id', professionalId)
+    return error ? jsonResponse(500, { success: false, message: error.message }) : jsonResponse(200, { success: true })
+  }
   return jsonResponse(400, { success: false, message: 'Acción no soportada.' })
 })
