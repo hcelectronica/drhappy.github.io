@@ -133,6 +133,14 @@ function normalizeSearch(value: unknown): string {
   return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 }
 
+function matchesPatientQuery(patientName: unknown, patientDni: unknown, query: unknown): boolean {
+  const normalizedQuery = normalizeSearch(query).replace(/[.,]/g, ' ')
+  if (!normalizedQuery) return false
+  const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean)
+  const patientTokens = normalizeSearch(`${patientName || ''} ${patientDni || ''}`).replace(/[.,]/g, ' ').split(/\s+/).filter(Boolean)
+  return queryTokens.every((token) => patientTokens.includes(token))
+}
+
 function normalizeIdentity(value: unknown): string {
   return normalizeSearch(value).replace(/[^a-z0-9]/g, '')
 }
@@ -608,7 +616,7 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const query = normalizeSearch(input.patient)
     const { data } = await admin.from('user_workspaces').select('appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
-    const match = appointments.find((item) => item.status !== 'cancelled' && normalizeSearch(`${item.patientName || ''} ${item.patientDni || ''}`).includes(query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time))
+    const match = appointments.find((item) => item.status !== 'cancelled' && matchesPatientQuery(item.patientName, item.patientDni, query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time))
     if (!match) return { success: false, message: 'No encontré ese turno.' }
     const proposal = { patient: match.patientName, date: match.scheduledDate, time: match.scheduledTime, reason: match.reason }
     if (input.confirmation !== true) return { requiresConfirmation: true, action: 'cancelar_turno', proposal, message: 'Pedí confirmación explícita antes de cancelar.' }
@@ -633,7 +641,7 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return { success: false, message: 'La nueva fecha debe tener formato YYYY-MM-DD.' }
     const { data } = await admin.from('user_workspaces').select('appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
-    const match = appointments.find((item) => item.status !== 'cancelled' && normalizeSearch(`${item.patientName || ''} ${item.patientDni || ''}`).includes(query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time))
+    const match = appointments.find((item) => item.status !== 'cancelled' && matchesPatientQuery(item.patientName, item.patientDni, query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time))
     if (!match) return { success: false, message: 'No encontré ese turno.' }
     const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
     const dailyLimit = Number(profile.dailyPatientLimit) || 10
