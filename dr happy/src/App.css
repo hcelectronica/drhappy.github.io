@@ -22,57 +22,120 @@ body.theme-night {
   font-family: Manrope, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.sidebar-toggle {
-  display: inline-grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border: 1px solid rgba(69, 116, 191, 0.35);
-  border-radius: 12px;
-  background: #f4f8ff;
-  color: #1d4ed8;
-  font-size: 1.1rem;
+/* Lengüeta lateral: reemplaza al antiguo botón hamburguesa. Queda siempre
+   semivisible sobre el borde izquierdo y despliega la barra al tocarla. */
+.sidebar-handle {
+  position: fixed;
+  z-index: 60;
+  top: 50%;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 26px;
+  min-height: 96px;
+  padding: 12px 0;
+  border: 1px solid rgba(178, 196, 224, 0.75);
+  border-left: 0;
+  border-radius: 0 16px 16px 0;
+  background: linear-gradient(135deg, rgba(247, 249, 255, 0.97), rgba(232, 238, 252, 0.94));
+  color: #5a6c8c;
+  box-shadow:
+    6px 8px 20px rgba(76, 95, 130, 0.16),
+    1px 1px 0 rgba(255, 255, 255, 0.85) inset;
   cursor: pointer;
-  flex: 0 0 auto;
+  transform: translateY(-50%);
+  transition: background 200ms ease, box-shadow 200ms ease, color 200ms ease;
+}
+
+.sidebar-handle:hover,
+.sidebar-handle:focus-visible {
+  background: linear-gradient(135deg, #ffffff, #e9effb);
+  color: #33507d;
+  box-shadow: 8px 10px 26px rgba(76, 95, 130, 0.24);
+  outline: none;
+  transform: translateY(-50%);
+}
+
+.sidebar-handle-arrow {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sidebar-handle-label {
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
 }
 
 .app-sidebar {
   position: fixed;
   z-index: 50;
   inset: 20px auto 20px 20px;
-  width: 248px;
+  width: 262px;
   display: flex;
   flex-direction: column;
-  padding: 16px;
-  border: 1px solid rgba(126, 153, 191, 0.42);
-  border-radius: 22px;
-  background: rgba(249, 252, 255, 0.96);
-  box-shadow: 0 22px 60px rgba(26, 59, 104, 0.2);
-  backdrop-filter: blur(18px);
+  padding: 18px 16px;
+  border: 1px solid rgba(197, 209, 231, 0.7);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(243, 246, 253, 0.96) 55%, rgba(237, 241, 251, 0.96) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 10px 24px rgba(88, 105, 140, 0.1),
+    0 28px 60px rgba(70, 88, 125, 0.16);
+  backdrop-filter: blur(16px);
   overflow-y: auto;
-  transform: translateX(calc(-100% - 32px));
-  transition: transform 180ms ease;
+  transform: translateX(calc(-100% - 36px));
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .app-sidebar.open { transform: translateX(0); }
-.sidebar-scrim { position: fixed; z-index: 40; inset: 0; border: 0; background: rgba(12, 31, 58, 0.28); cursor: pointer; }
-.app-sidebar-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 4px 4px 16px; border-bottom: 1px solid #dbe5f2; }
-.app-sidebar-header strong { display: block; color: #102b4d; font-size: 0.9rem; line-height: 1.3; }
-.sidebar-eyebrow, .section-kicker { display: block; margin-bottom: 4px; color: #5f7b9f; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
-.sidebar-close { border: 0; background: transparent; color: #7890ad; font-size: 1.35rem; cursor: pointer; }
-.sidebar-nav { display: grid; gap: 6px; padding: 14px 0; }
-.sidebar-nav button, .sidebar-footer button, .sidebar-toggle-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 9px 10px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: #36516f; font: inherit; font-size: 0.78rem; font-weight: 700; text-align: left; cursor: pointer; }
-.sidebar-nav button span, .sidebar-footer button span { width: 20px; color: #1d4ed8; font-size: 1rem; text-align: center; }
-.sidebar-nav button small { margin-left: auto; padding: 2px 7px; border-radius: 999px; background: #e4edff; color: #1d4ed8; font-size: 0.68rem; }
-.sidebar-nav button:hover, .sidebar-nav button.active, .sidebar-footer button:hover { border-color: #adc5ea; background: #edf4ff; color: #123a68; }
+.sidebar-scrim { position: fixed; z-index: 40; inset: 0; border: 0; background: rgba(23, 38, 62, 0.22); cursor: pointer; }
+.app-sidebar-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 2px 4px 14px; border-bottom: 1px solid rgba(203, 214, 234, 0.8); }
+.app-sidebar-header strong { display: block; color: #2c3f5e; font-size: 0.92rem; font-weight: 700; line-height: 1.35; letter-spacing: -0.01em; }
+.sidebar-eyebrow, .section-kicker { display: block; margin-bottom: 4px; color: #8496b3; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
+.sidebar-close { border: 0; background: transparent; color: #9aa9c2; font-size: 1.35rem; box-shadow: none; cursor: pointer; }
+.sidebar-close:hover { color: #5c7092; transform: none; box-shadow: none; }
+.sidebar-sofia { display: flex; align-items: center; gap: 11px; width: 100%; margin: 14px 0 2px; padding: 12px 13px; border: 1px solid rgba(169, 190, 229, 0.7); border-radius: 15px; background: linear-gradient(135deg, #eef3ff 0%, #e5edfd 100%); color: #35507d; text-align: left; box-shadow: 0 6px 16px rgba(94, 122, 175, 0.14); transition: transform 160ms ease, box-shadow 160ms ease; }
+.sidebar-sofia:hover { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(94, 122, 175, 0.2); filter: none; }
+.sidebar-sofia > span:first-child { font-size: 1.2rem; color: #4d7ad4; }
+.sidebar-sofia-copy { display: grid; gap: 1px; }
+.sidebar-sofia-copy strong { font-size: 0.86rem; font-weight: 700; letter-spacing: -0.01em; }
+.sidebar-sofia-copy small { color: #7d90b2; font-size: 0.68rem; font-weight: 600; }
+.sidebar-nav { display: grid; gap: 4px; padding: 14px 0; }
+.sidebar-nav button, .sidebar-footer button, .sidebar-toggle-row { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid transparent; border-radius: 13px; background: transparent; color: #55668a; font: inherit; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.01em; text-align: left; box-shadow: none; cursor: pointer; transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease; }
+.sidebar-nav button:hover, .sidebar-footer button:hover, .sidebar-toggle-row:hover { transform: none; filter: none; }
+.sidebar-nav button span, .sidebar-footer button span { width: 21px; color: #7b96cc; font-size: 1rem; text-align: center; }
+.sidebar-nav button small { margin-left: auto; padding: 2px 8px; border-radius: 999px; background: #e8eefc; color: #5273bb; font-size: 0.66rem; font-weight: 700; }
+.sidebar-nav button:hover, .sidebar-footer button:hover { background: rgba(228, 236, 252, 0.72); color: #35507d; box-shadow: 0 2px 8px rgba(94, 122, 175, 0.1); }
+.sidebar-nav button.active { background: linear-gradient(135deg, #e7eefd, #dde7fb); color: #2f4c7d; box-shadow: 0 4px 12px rgba(94, 122, 175, 0.16), 0 0 0 1px rgba(169, 190, 229, 0.5) inset; }
+.sidebar-nav button.active span { color: #4d7ad4; }
 .sidebar-toggle-row { position: relative; justify-content: space-between; cursor: pointer; }
 .sidebar-toggle-row > span:first-child { display: flex; align-items: center; gap: 10px; }
 .sidebar-toggle-row input { position: absolute; opacity: 0; pointer-events: none; }
-.sidebar-switch { width: 30px; height: 17px; border-radius: 999px; background: #c7d3e2; position: relative; }
-.sidebar-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 11px; height: 11px; border-radius: 50%; background: #fff; transition: transform 160ms ease; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
-.sidebar-toggle-row input:checked + .sidebar-switch { background: #1d4ed8; }
-.sidebar-toggle-row input:checked + .sidebar-switch::after { transform: translateX(13px); }
-.sidebar-footer { display: grid; gap: 5px; margin-top: 0; padding: 12px 0 2px; border-top: 1px solid #dbe5f2; }
+.sidebar-switch { width: 32px; height: 18px; border-radius: 999px; background: #cfd9e9; position: relative; transition: background 160ms ease; }
+.sidebar-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform 160ms ease; box-shadow: 0 1px 3px rgba(60, 80, 115, .28); }
+.sidebar-toggle-row input:checked + .sidebar-switch { background: #6b93e4; }
+.sidebar-toggle-row input:checked + .sidebar-switch::after { transform: translateX(14px); }
+.sidebar-footer { display: grid; gap: 3px; margin-top: auto; padding: 12px 0 2px; border-top: 1px solid rgba(203, 214, 234, 0.8); }
+
+body.theme-night .app-sidebar { border-color: rgba(96, 116, 152, 0.5); background: linear-gradient(180deg, rgba(22, 34, 56, 0.97) 0%, rgba(17, 28, 47, 0.97) 100%); box-shadow: 0 28px 60px rgba(3, 10, 22, 0.6); }
+body.theme-night .app-sidebar-header { border-bottom-color: rgba(96, 116, 152, 0.4); }
+body.theme-night .app-sidebar-header strong { color: #dbe7fb; }
+body.theme-night .sidebar-sofia { border-color: rgba(96, 126, 182, 0.6); background: linear-gradient(135deg, rgba(37, 57, 94, 0.9), rgba(29, 46, 78, 0.9)); color: #dbe7fb; box-shadow: none; }
+body.theme-night .sidebar-sofia-copy small { color: #9db2d6; }
+body.theme-night .sidebar-nav button, body.theme-night .sidebar-footer button, body.theme-night .sidebar-toggle-row { color: #bdcde8; }
+body.theme-night .sidebar-nav button:hover, body.theme-night .sidebar-footer button:hover { background: rgba(48, 70, 110, 0.55); color: #eaf2ff; }
+body.theme-night .sidebar-nav button.active { background: linear-gradient(135deg, rgba(48, 74, 122, 0.85), rgba(38, 60, 101, 0.85)); color: #eaf2ff; }
+body.theme-night .sidebar-nav button small { background: rgba(70, 100, 155, 0.6); color: #cfe0fb; }
+body.theme-night .sidebar-footer { border-top-color: rgba(96, 116, 152, 0.4); }
+body.theme-night .sidebar-handle { border-color: rgba(96, 116, 152, 0.55); background: linear-gradient(135deg, rgba(27, 41, 66, 0.97), rgba(20, 32, 54, 0.97)); color: #a9bedd; box-shadow: 6px 8px 20px rgba(3, 10, 22, 0.5); }
 .medical-news-strip { display: flex; align-items: center; gap: 12px; min-height: 34px; margin: -4px 0 16px; padding: 7px 12px; border: 1px solid rgba(130, 153, 186, 0.36); border-radius: 12px; background: rgba(245, 249, 255, 0.8); color: #4e6785; font-size: 0.73rem; overflow: hidden; }
 .medical-news-label { flex: 0 0 auto; color: #1d4ed8; font-weight: 800; }
 .medical-news-track { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -113,14 +176,14 @@ body.theme-night {
 .flyer-tool strong { font-size: .88rem; }
 .flyer-tool small { color: #68809d; font-size: .72rem; line-height: 1.4; }
 .flyer-tool-ambulance { border-color: #8bb8a4; background: linear-gradient(145deg, #f3fff8, #e6f7ed); }
-.flyer-slide { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .9fr); gap: 28px; align-items: center; min-height: 370px; animation: flyer-slide-in 420ms ease both; cursor: grab; touch-action: pan-y; user-select: none; }
-.flyer-slide:active { cursor: grabbing; }
+.flyer-slide { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .9fr); gap: 28px; align-items: center; width: 100%; min-height: 370px; padding: 0; border: 0; border-radius: 18px; background: transparent; box-shadow: none; color: inherit; font: inherit; text-align: left; cursor: pointer; animation: flyer-slide-in 420ms ease both; transition: transform 200ms ease; }
+.flyer-slide:hover, .flyer-slide:focus-visible { transform: translateY(-2px); box-shadow: none; filter: none; outline: none; }
+.flyer-slide:focus-visible .flyer-slide-visual { box-shadow: 0 0 0 3px color-mix(in srgb, var(--flyer-accent, #1d4ed8) 35%, transparent); }
 .flyer-slide::before { content: ''; position: absolute; top: -48px; left: -48px; width: 110px; height: 7px; border-radius: 0 8px 8px 0; background: var(--flyer-accent, #1d4ed8); box-shadow: 0 0 0 10px color-mix(in srgb, var(--flyer-accent, #1d4ed8) 12%, transparent); }
 .flyer-slide-ambulance { --flyer-accent: #15945f; }
 .flyer-slide-patient { --flyer-accent: #2563eb; }
 .flyer-slide-calendar { --flyer-accent: #d97706; }
 .flyer-slide-tools { --flyer-accent: #7c3aed; }
-.flyer-slide-sofia { --flyer-accent: #0f766e; }
 .flyer-slide-patients { --flyer-accent: #0891b2; }
 .flyer-slide-ledger { --flyer-accent: #dc2626; }
 .flyer-slide-copy { display: grid; gap: 12px; max-width: 520px; }
@@ -138,10 +201,6 @@ body.theme-night {
 .flyer-mock-calendar b, .flyer-mock-tools b, .flyer-mock-patient-list b, .flyer-mock-ledger b { color: var(--flyer-accent, #1d4ed8); }
 .flyer-mock-patient-list em { margin-left: 5px; padding: 2px 6px; border-radius: 99px; background: #e7efff; color: #1d4ed8; font-style: normal; }
 .flyer-mock-ledger strong { color: #c2410c; font-size: .75rem; }
-.flyer-sofia-visual { position: relative; min-height: 218px; overflow: hidden; border-radius: 13px; background: #e6faf7; }
-.flyer-sofia-copy { display: none; }
-.flyer-sofia-image { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
-.flyer-sofia-image img { display: block; width: 100%; height: 100%; max-width: none; object-fit: contain; object-position: center; }
 .flyer-slide-dots { position: absolute; bottom: -4px; left: 50%; display: flex; gap: 6px; transform: translateX(-50%); }
 .flyer-slide-dots span { width: 7px; height: 7px; border-radius: 50%; background: #b9cde7; }
 .flyer-slide-dots span.active { width: 20px; border-radius: 5px; background: var(--flyer-accent, #1d4ed8); }
@@ -3014,7 +3073,7 @@ body.theme-night .appt-patient-search > label {
 .sofia-state-label { display: block; margin-top: 2px; color: #64748b; font-size: .72rem; font-weight: 700; }
 .sofia-avatar { position: relative; width: 56px; height: 56px; flex: 0 0 56px; border-radius: 50%; background: linear-gradient(145deg, #e4f7ff, #c7e6f6); overflow: visible; isolation: isolate; }
 .sofia-avatar-image-wrap { position: absolute; inset: 0; overflow: hidden; border-radius: 50%; background: #d9f1fb; }
-.sofia-avatar-image { position: absolute; inset: 0; width: 100%; max-width: none; height: 100%; object-fit: cover; object-position: center 46%; transform-origin: center; }
+.sofia-avatar-image { position: absolute; left: 0; top: -13px; width: 170px; max-width: none; height: auto; transform-origin: 28px 42px; }
 .sofia-avatar-fallback { display: none; width: 100%; height: 100%; overflow: visible; transform-origin: 50% 85%; }
 .sofia-avatar-image-wrap::after { content: ''; position: absolute; inset: 0; border: 1px solid rgba(255, 255, 255, .72); border-radius: 50%; pointer-events: none; }
 .sofia-avatar-shadow { fill: rgba(30, 64, 175, .16); }
@@ -4066,13 +4125,11 @@ body.theme-night .turnera-card-actions {
 
 @media (min-width: 900px) {
   .app-sidebar { inset: 88px auto 20px 20px; }
-  .sidebar-toggle { margin-left: 2px; }
 }
 
 @media (max-width: 720px) {
   .app { padding: 10px; }
   .topbar { position: relative; display: grid; grid-template-columns: 1fr; justify-items: center; gap: 7px; min-height: 228px; padding: 16px 28px 15px; border-radius: 18px; }
-  .sidebar-toggle { position: absolute; top: 14px; left: 14px; }
   .brand-block.compact { min-width: 0; width: 100%; justify-content: center; text-align: center; flex-direction: column; gap: 6px; }
   .brand-mark { width: 72px; height: 72px; border-radius: 21px; box-shadow: 0 10px 22px rgba(17, 45, 78, .28), 0 0 0 7px rgba(147,197,253,.18); }
   .brand-mark svg { width: 61px; height: 61px; }
@@ -4088,7 +4145,7 @@ body.theme-night .turnera-card-actions {
   .medical-news-strip { gap: 7px; margin-bottom: 10px; padding: 6px 8px; font-size: 0.66rem; }
   .medical-news-label { max-width: 78px; line-height: 1.1; }
   .medical-news-strip button { font-size: 0.65rem; }
-  .app-sidebar { inset: 10px auto 10px 10px; width: min(280px, calc(100vw - 20px)); }
+  .app-sidebar { inset: 10px auto 10px 10px; width: min(284px, calc(100vw - 20px)); }
   .layer-header { align-items: flex-start; flex-direction: column; }
   .layer-header > * { width: 100%; }
   .patient-directory-grid { grid-template-columns: 1fr; }

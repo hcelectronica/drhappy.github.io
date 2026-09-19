@@ -2589,7 +2589,7 @@ function App() {
   const [vademecumSearchQuery, setVademecumSearchQuery] = useState('')
   const [selectedMedicationId, setSelectedMedicationId] = useState<string | null>(null)
 
-  const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult'>('protocols')
+  const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult' | 'community'>('protocols')
   const [protocolSearchQuery, setProtocolSearchQuery] = useState('')
   const [protocolCategoryFilter, setProtocolCategoryFilter] = useState<string>('all')
   const [selectedProtocolId, setSelectedProtocolId] = useState<string | null>(null)
@@ -6755,9 +6755,50 @@ function App() {
       setAppError('El módulo Comunidad no está habilitado para tu cuenta.')
       return
     }
-    setCommunityOpen((current) => !current)
+    stopDictation()
+    setWorkspaceLayer('tools')
+    setToolsActiveTab('community')
+    setCommunityOpen(true)
     setAppError(null)
     setAppNotice(null)
+  }
+
+  /** Las pestañas de Herramientas ahora incluyen Comunidad: al salir se corta el polling. */
+  function handleSelectToolsTab(tab: 'protocols' | 'vademecum' | 'consult' | 'community'): void {
+    setToolsActiveTab(tab)
+    setCommunityOpen(tab === 'community')
+  }
+
+  function handleOpenFlyerSlide(slideKey: (typeof APP_FLYER_SLIDES)[number]['key']): void {
+    if (slideKey === 'ambulance') {
+      handleOpenAmbulance()
+      return
+    }
+    if (slideKey === 'attention') {
+      handleStartAttentionFlow()
+      return
+    }
+    if (slideKey === 'appointments') {
+      handleOpenAppointments()
+      return
+    }
+    if (slideKey === 'tools') {
+      handleOpenTools()
+      return
+    }
+    if (slideKey === 'patients') {
+      stopDictation()
+      setCommunityOpen(false)
+      setWorkspaceLayer('my-patients')
+      setAppError(null)
+      return
+    }
+    if (!canUseTreatmentLedger) {
+      setAppError('El balance de pagos no está habilitado para tu cuenta.')
+      return
+    }
+    handleOpenAppointments()
+    setTurneraViewMode('ledger')
   }
 
   function handleToggleThemeMode(): void {
@@ -6822,7 +6863,7 @@ function App() {
       return
     }
     stopDictation()
-    setCommunityOpen(false)
+    setCommunityOpen(toolsActiveTab === 'community')
     setWorkspaceLayer('tools')
     setAppError(null)
   }
@@ -9197,18 +9238,58 @@ function App() {
     )
   }
 
+  /* Encabezado compartido de Herramientas: lo reusa la pestaña Comunidad, que se
+     renderiza antes en el árbol pero debe verse como una sección más de esa página. */
+  const toolsPageHeader = (
+    <>
+      <section className="panel layer-header">
+        <div>
+          <h2>Herramientas clínicas y protocolos</h2>
+          <p className="flow-hint">Guías de emergencia, conducta terapéutica, vademécum y comunidad profesional.</p>
+        </div>
+        <button type="button" className="ghost" onClick={handleBackToOverview}>
+          Volver
+        </button>
+      </section>
+
+      <div className="protocol-tabs-nav" style={{ padding: '0 10px', marginTop: 12 }}>
+        <button
+          type="button"
+          className={`protocol-tab-btn ${toolsActiveTab === 'protocols' ? 'active' : ''}`}
+          onClick={() => handleSelectToolsTab('protocols')}
+        >
+          📖 Guías y Protocolos de Emergencia
+        </button>
+        <button
+          type="button"
+          className={`protocol-tab-btn ${toolsActiveTab === 'vademecum' ? 'active' : ''}`}
+          onClick={() => handleSelectToolsTab('vademecum')}
+        >
+          💊 Vademécum farmacológico
+        </button>
+        <button
+          type="button"
+          className={`protocol-tab-btn ${toolsActiveTab === 'consult' ? 'active' : ''}`}
+          onClick={() => handleSelectToolsTab('consult')}
+        >
+          🩺 Patologías en consultorio
+        </button>
+        {isModuleEnabled('community') ? (
+          <button
+            type="button"
+            className={`protocol-tab-btn ${toolsActiveTab === 'community' ? 'active' : ''}`}
+            onClick={() => handleSelectToolsTab('community')}
+          >
+            🤝 Comunidad{communityUnreadCount > 0 ? ` (${communityUnreadCount})` : ''}
+          </button>
+        ) : null}
+      </div>
+    </>
+  )
+
   return (
     <main className="app">
       <header className="topbar">
-        <button
-          type="button"
-          className="sidebar-toggle"
-          aria-label="Abrir navegación"
-          aria-expanded={sidebarOpen}
-          onClick={() => setSidebarOpen((current) => !current)}
-        >
-          ☰
-        </button>
         <div className="brand-block compact">
           <span className="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 64 64" role="presentation">
@@ -9362,14 +9443,6 @@ function App() {
           <button
             type="button"
             className="ghost"
-            onClick={() => void handleShareApp()}
-            title="Compartir DrHappy con un colega"
-          >
-            📲 Compartir
-          </button>
-          <button
-            type="button"
-            className="ghost"
             onClick={() => setContactModalOpen(true)}
             title="Contactar al equipo de soporte y desarrolladores"
           >
@@ -9394,6 +9467,13 @@ function App() {
             ×
           </button>
         </div>
+        <button type="button" className="sidebar-sofia" onClick={() => { setSofiaOpen(true); setSidebarOpen(false) }}>
+          <span aria-hidden="true">✦</span>
+          <span className="sidebar-sofia-copy">
+            <strong>Sofía</strong>
+            <small>Tu secretaria clínica</small>
+          </span>
+        </button>
         <nav className="sidebar-nav">
           {isModuleEnabled('ambulance') ? (
             <label className="sidebar-toggle-row ambulance-sidebar-item">
@@ -9415,12 +9495,7 @@ function App() {
           ) : null}
           {isModuleEnabled('tools') ? (
             <button type="button" className={workspaceLayer === 'tools' ? 'active' : ''} onClick={() => { handleOpenTools(); setSidebarOpen(false) }}>
-              <span>✦</span> Herramientas
-            </button>
-          ) : null}
-          {isModuleEnabled('community') ? (
-            <button type="button" onClick={() => { handleToggleCommunity(); setSidebarOpen(false) }}>
-              <span>◌</span> Comunidad {communityUnreadCount > 0 ? <small>{communityUnreadCount}</small> : null}
+              <span>✦</span> Herramientas {communityUnreadCount > 0 ? <small>{communityUnreadCount}</small> : null}
             </button>
           ) : null}
           {canUseTreatmentLedger ? (
@@ -9435,15 +9510,6 @@ function App() {
           ) : null}
         </nav>
         <div className="sidebar-footer">
-          <button type="button" onClick={() => { void handleShareApp(); setSidebarOpen(false) }}>
-            <span>↗</span> Compartir esta app
-          </button>
-          <button type="button" onClick={() => { setContactModalOpen(true); setSidebarOpen(false) }}>
-            <span>✉</span> Contactar desarrolladores
-          </button>
-          <button type="button" onClick={() => { setSofiaOpen(true); setSidebarOpen(false) }}>
-            <span>✦</span> Sofía, secretaria clínica
-          </button>
           <button type="button" onClick={() => { handleOpenProfile(); setSidebarOpen(false) }}>
             <span>{googleIdentity ? '◉' : '⚙'}</span> {googleIdentity ? 'Perfil' : 'Perfil y ajustes'}
           </button>
@@ -9454,12 +9520,24 @@ function App() {
         </div>
       </aside>
       {sidebarOpen ? <button type="button" className="sidebar-scrim" aria-label="Cerrar navegación" onClick={() => setSidebarOpen(false)} /> : null}
+      <button
+        type="button"
+        className={`sidebar-handle${sidebarOpen ? ' open' : ''}`}
+        aria-label={sidebarOpen ? 'Cerrar navegación' : 'Abrir navegación'}
+        aria-expanded={sidebarOpen}
+        onClick={() => setSidebarOpen((current) => !current)}
+      >
+        <span className="sidebar-handle-arrow" aria-hidden="true">{sidebarOpen ? '‹' : '›'}</span>
+        <span className="sidebar-handle-label" aria-hidden="true">Menú</span>
+      </button>
 
       {appError ? <p className="error">{appError}</p> : null}
       {appNotice ? <p className="notice">{appNotice}</p> : null}
 
-      {communityOpen ? (
-        <section className="panel community-panel">
+      {workspaceLayer === 'tools' && toolsActiveTab === 'community' ? (
+        <div className="screen-stage">
+          {toolsPageHeader}
+          <section className="panel community-panel">
           <h2>Comunidad médica</h2>
           <div className="community-grid">
             <aside>
@@ -9609,7 +9687,8 @@ function App() {
               </form>
             </section>
           </div>
-        </section>
+          </section>
+        </div>
       ) : null}
 
       {workspaceLayer === 'user-admin' ? (
@@ -9978,42 +10057,12 @@ function App() {
 
       {workspaceLayer === 'tools' ? (
         <div className="screen-stage">
-          <section className="panel layer-header">
-            <div>
-              <h2>Herramientas clínicas y protocolos</h2>
-              <p className="flow-hint">Guías de emergencia, conducta terapéutica y vademécum de apoyo médico.</p>
-            </div>
-            <button type="button" className="ghost" onClick={handleBackToOverview}>
-              Volver
-            </button>
-          </section>
+          {toolsActiveTab === 'community' ? null : (
+            <>
+              {toolsPageHeader}
 
-          <div className="protocol-tabs-nav" style={{ padding: '0 10px', marginTop: 12 }}>
-            <button
-              type="button"
-              className={`protocol-tab-btn ${toolsActiveTab === 'protocols' ? 'active' : ''}`}
-              onClick={() => setToolsActiveTab('protocols')}
-            >
-              📖 Guías y Protocolos de Emergencia
-            </button>
-            <button
-              type="button"
-              className={`protocol-tab-btn ${toolsActiveTab === 'vademecum' ? 'active' : ''}`}
-              onClick={() => setToolsActiveTab('vademecum')}
-            >
-              💊 Vademécum farmacológico
-            </button>
-            <button
-              type="button"
-              className={`protocol-tab-btn ${toolsActiveTab === 'consult' ? 'active' : ''}`}
-              onClick={() => setToolsActiveTab('consult')}
-            >
-              🩺 Patologías en consultorio
-            </button>
-          </div>
-
-          <section className="workspace single-column">
-            {toolsActiveTab === 'protocols' ? (
+              <section className="workspace single-column">
+                {toolsActiveTab === 'protocols' ? (
               <section className="panel">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 16 }}>
                   <div>
@@ -10238,7 +10287,9 @@ function App() {
                 </ul>
               </section>
             )}
-          </section>
+              </section>
+            </>
+          )}
         </div>
       ) : null}
 
@@ -10854,18 +10905,23 @@ function App() {
         </div>
       ) : null}
 
-      {workspaceLayer === 'overview' && !communityOpen ? (
+      {workspaceLayer === 'overview' ? (
         <div className="screen-stage">
           <section className="app-tools-flyer" aria-label="Herramientas de Dr Happy">
             {(() => {
               const slide = APP_FLYER_SLIDES[flyerSlideIndex]
               return (
-                <article className={`flyer-slide flyer-slide-${slide.visual}`}>
+                <button
+                  type="button"
+                  className={`flyer-slide flyer-slide-${slide.visual}`}
+                  onClick={() => handleOpenFlyerSlide(slide.key)}
+                  title={`Ir a ${slide.title}`}
+                >
                   <div className="flyer-slide-copy">
                     <span className="section-kicker">{slide.eyebrow}</span>
                     <h2>{slide.icon} {slide.title}</h2>
                     <p>{slide.description}</p>
-                    <span className="flyer-slide-caption">Dr Happy · herramientas para tu práctica profesional</span>
+                    <span className="flyer-slide-caption">Tocá para abrir {slide.title}</span>
                   </div>
                   <div className="flyer-slide-visual" aria-hidden="true">
                     <div className="flyer-window-bar"><i /><i /><i /></div>
@@ -10877,7 +10933,7 @@ function App() {
                     {slide.visual === 'ledger' ? <><div className="flyer-mock-ledger"><b>Balance de pagos</b><span>✓ Sin deuda&nbsp;&nbsp; 12</span><span>! Pendientes&nbsp;&nbsp; 3</span><strong>Total adeudado&nbsp; $ 125.000</strong></div></> : null}
                   </div>
                   <div className="flyer-slide-dots">{APP_FLYER_SLIDES.map((item, index) => <span key={item.key} className={index === flyerSlideIndex ? 'active' : ''} />)}</div>
-                </article>
+                </button>
               )
             })()}
           </section>
