@@ -2591,6 +2591,7 @@ function App() {
   const [selectedMedicationId, setSelectedMedicationId] = useState<string | null>(null)
 
   const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult' | 'community'>('protocols')
+  const [turneraCapacityOpen, setTurneraCapacityOpen] = useState(false)
   const [protocolSearchQuery, setProtocolSearchQuery] = useState('')
   const [protocolCategoryFilter, setProtocolCategoryFilter] = useState<string>('all')
   const [selectedProtocolId, setSelectedProtocolId] = useState<string | null>(null)
@@ -11113,19 +11114,70 @@ function App() {
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {turneraViewMode !== 'ledger' ? <button type="button" onClick={() => handleNewAppointmentModal()}>
-                ➕ Nuevo turno
-              </button> : null}
-              {turneraViewMode !== 'ledger' ? <button type="button" className="ghost" onClick={handleOpenFreeSlotModal}>
-                📅 Administrar turnera pública
-              </button> : null}
               <button type="button" className="ghost" onClick={handleBackToOverview}>
                 Volver
               </button>
             </div>
           </section>
 
-          {turneraViewMode !== 'ledger' ? <section className="panel appointment-capacity-panel">
+          {/* Todos los accesos de la Turnera juntos y arriba, sin scroll previo. */}
+          <nav className="screen-action-bar" aria-label="Acciones de la turnera">
+            <button type="button" className="screen-action primary" onClick={() => handleNewAppointmentModal()}>
+              <span aria-hidden="true">➕</span> Nuevo turno
+            </button>
+            <button type="button" className={`screen-action${turneraViewMode === 'list' ? ' active' : ''}`} onClick={() => setTurneraViewMode('list')}>
+              <span aria-hidden="true">📋</span> Lista de turnos
+            </button>
+            <button type="button" className="screen-action" onClick={handleOpenFreeSlotModal}>
+              <span aria-hidden="true">🔗</span> Turnera pública
+            </button>
+            <button type="button" className={`screen-action${turneraCapacityOpen ? ' active' : ''}`} onClick={() => setTurneraCapacityOpen((current) => !current)}>
+              <span aria-hidden="true">⚙️</span> Cupos de atención
+            </button>
+            <button
+              type="button"
+              className={`screen-action${turneraViewMode === 'calendar' ? ' active' : ''}${!hasPremiumTurneraAccess ? ' locked' : ''}`}
+              onClick={() => {
+                if (!hasPremiumTurneraAccess) {
+                  setAppError('El Calendario de ocupación es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
+                  return
+                }
+                setTurneraViewMode('calendar')
+              }}
+            >
+              <span aria-hidden="true">🗓️</span> Calendario de ocupación{!hasPremiumTurneraAccess ? ' 🔒' : ''}
+            </button>
+            <button
+              type="button"
+              className={`screen-action${turneraViewMode === 'stats' ? ' active' : ''}${!hasPremiumTurneraAccess ? ' locked' : ''}`}
+              onClick={() => {
+                if (!hasPremiumTurneraAccess) {
+                  setAppError('Las Estadísticas son exclusivas para suscriptores con plan activo. Activá tu suscripción para desbloquearlas.')
+                  return
+                }
+                setTurneraViewMode('stats')
+              }}
+            >
+              <span aria-hidden="true">📊</span> Estadísticas{!hasPremiumTurneraAccess ? ' 🔒' : ''}
+            </button>
+            {isDentist || isModuleEnabled('ledger') ? (
+              <button
+                type="button"
+                className={`screen-action${turneraViewMode === 'ledger' ? ' active' : ''}${!canUseTreatmentLedger ? ' locked' : ''}`}
+                onClick={() => {
+                  if (!canUseTreatmentLedger) {
+                    setAppError('El Balance de pagos es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
+                    return
+                  }
+                  setTurneraViewMode('ledger')
+                }}
+              >
+                <span aria-hidden="true">💰</span> Balance de pagos{!canUseTreatmentLedger ? ' 🔒' : ''}
+              </button>
+            ) : null}
+          </nav>
+
+          {turneraViewMode !== 'ledger' && turneraCapacityOpen ? <section className="panel appointment-capacity-panel">
             <div>
               <span className="section-kicker">Control de agenda</span>
               <h3 style={{ margin: 0 }}>Cupos de atención</h3>
@@ -11183,61 +11235,6 @@ function App() {
               {appointmentDaysLabel || 'Elegí al menos un día'} · {appointmentCapacityByDate.get(todayLocalISO()) ?? 0}/{dailyPatientLimit} usados hoy
             </div>
           </section> : null}
-
-          {/* Prueba piloto: selector de vista Lista / Calendario de ocupación / Estadísticas */}
-          {turneraViewMode !== 'ledger' ? <div className="turnera-view-switch">
-            <button
-              type="button"
-              className={`ghost ${turneraViewMode === 'list' ? 'active' : ''}`}
-              onClick={() => setTurneraViewMode('list')}
-            >
-              📋 Lista de turnos
-            </button>
-            <button
-              type="button"
-              className={`ghost ${turneraViewMode === 'calendar' ? 'active' : ''} ${!hasPremiumTurneraAccess ? 'locked' : ''}`}
-              onClick={() => {
-                if (!hasPremiumTurneraAccess) {
-                  setAppError('El Calendario de ocupación es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
-                  return
-                }
-                setTurneraViewMode('calendar')
-              }}
-            >
-              🗓️ Calendario de ocupación{!hasPremiumTurneraAccess ? ' 🔒' : ''}
-            </button>
-            <button
-              type="button"
-              className={`ghost ${turneraViewMode === 'stats' ? 'active' : ''} ${!hasPremiumTurneraAccess ? 'locked' : ''}`}
-              onClick={() => {
-                if (!hasPremiumTurneraAccess) {
-                  setAppError('Las Estadísticas son exclusivas para suscriptores con plan activo. Activá tu suscripción para desbloquearlas.')
-                  return
-                }
-                setTurneraViewMode('stats')
-              }}
-            >
-              📊 Estadísticas{!hasPremiumTurneraAccess ? ' 🔒' : ''}
-            </button>
-            {isDentist || isModuleEnabled('ledger') ? (
-              <button
-                type="button"
-                className={`ghost ${!canUseTreatmentLedger ? 'locked' : ''}`}
-                onClick={() => {
-                  if (!canUseTreatmentLedger) {
-                    setAppError('El Balance de pagos es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
-                    return
-                  }
-                  setTurneraViewMode('ledger')
-                }}
-              >
-                💰 Balance de pagos{!canUseTreatmentLedger ? ' 🔒' : ''}
-              </button>
-            ) : null}
-            <span className="turnera-view-switch-badge" title="Función premium — incluida en planes con suscripción activa">
-              ⭐ Premium
-            </span>
-          </div> : null}
 
           {turneraViewMode === 'ledger' && canUseTreatmentLedger ? (
             <section className="panel turnera-ledger-panel">
@@ -11806,9 +11803,6 @@ function App() {
             ) : (
               <div className="turnera-empty-state">
                 <p>No hay turnos agendados con los filtros seleccionados.</p>
-                <button type="button" onClick={() => handleNewAppointmentModal()}>
-                  ➕ Agendar un turno nuevo
-                </button>
               </div>
             )}
           </section>
