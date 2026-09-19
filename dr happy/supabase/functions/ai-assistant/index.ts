@@ -91,7 +91,7 @@ const tools = [
   {
     name: 'agendar_turno',
     description: 'Agenda directamente un turno solicitado por el profesional. Convertí hoy/mañana a una fecha YYYY-MM-DD usando la fecha actual del sistema. La hora es opcional: si no se indica, elegí el primer bloque libre de la jornada. No pidas confirmación adicional. Solo detente si el día no atiende, no hay cupo o el horario se superpone con otro turno.',
-    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD, nunca texto relativo.' }, time: { type: 'string', description: 'Hora HH:MM opcional; si falta se asigna el primer bloque libre.' }, reason: { type: 'string' }, durationMinutes: { type: 'number' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'date', 'confirmation'] },
+    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD opcional; si falta se busca el primer día habilitado con cupo.' }, time: { type: 'string', description: 'Hora HH:MM opcional; si falta se asigna el primer bloque libre.' }, reason: { type: 'string' }, durationMinutes: { type: 'number' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'confirmation'] },
   },
   {
     name: 'crear_paciente_y_agendar_turno',
@@ -516,29 +516,45 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(patient.email || '').trim()) ? 'email válido' : '',
     ].filter(Boolean)
     if (missingPatientData.length > 0) return { success: false, message: `Antes de agendar necesito completar: ${missingPatientData.join(', ')}.` }
-    const proposal = { patient: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), patientId: patient.id, date: input.date, time: input.time, reason: input.reason || 'Consulta médica', durationMinutes: Number(input.durationMinutes) || 30, location: input.location || 'Consultorio médico' }
+    let date = String(input.date || '').trim()
+    const durationMinutes = Number(input.durationMinutes) || 30
+    const proposal = { patient: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), patientId: patient.id, date, time: input.time, reason: input.reason || 'Consulta médica', durationMinutes, location: input.location || 'Consultorio médico' }
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
     const profileData = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
     const dailyLimit = Number(profileData.dailyPatientLimit) || 10
     const appointmentDays = Array.isArray(profileData.appointmentDays) ? profileData.appointmentDays : [1, 2, 4]
     const openingTime = typeof profileData.appointmentStartTime === 'string' ? profileData.appointmentStartTime : '09:00'
     const closingTime = typeof profileData.appointmentEndTime === 'string' ? profileData.appointmentEndTime : '19:00'
-    if (!appointmentDays.includes(dateWeekday(String(input.date)))) return { success: false, message: 'Ese día no está habilitado en la agenda profesional.' }
-    const activeOnDate = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === input.date)
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { success: false, message: 'La fecha debe tener formato YYYY-MM-DD.' }
+    if (!date) {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+      for (let offset = 0; offset < 60 && !date; offset += 1) {
+        const candidate = new Date(`${today}T12:00:00`)
+        candidate.setDate(candidate.getDate() + offset)
+        const candidateDate = candidate.toISOString().slice(0, 10)
+        if (!appointmentDays.includes(dateWeekday(candidateDate))) continue
+        const candidateAppointments = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === candidateDate)
+        if (candidateAppointments.length < dailyLimit && findFirstAvailableTime(candidateAppointments, durationMinutes, openingTime, closingTime)) date = candidateDate
+      }
+    }
+    if (!date) return { success: false, message: 'No encontré disponibilidad en los próximos 60 días.' }
+    proposal.date = date
+    if (!appointmentDays.includes(dateWeekday(date))) return { success: false, message: 'Ese día no está habilitado en la agenda profesional.' }
+    const activeOnDate = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === date)
     if (activeOnDate.length >= dailyLimit) return { success: false, message: `El cupo diario está completo (${dailyLimit} turnos).` }
-    const selectedTime = typeof input.time === 'string' && /^\d{2}:\d{2}$/.test(input.time) ? input.time : findFirstAvailableTime(activeOnDate, proposal.durationMinutes, openingTime, closingTime)
+    const selectedTime = typeof input.time === 'string' && /^\d{2}:\d{2}$/.test(input.time) ? input.time : findFirstAvailableTime(activeOnDate, durationMinutes, openingTime, closingTime)
     if (!selectedTime) return { success: false, message: 'No encontré un bloque libre en la jornada para ese día.' }
-    if (timeToMinutes(selectedTime) < timeToMinutes(openingTime) || timeToMinutes(selectedTime) + proposal.durationMinutes > timeToMinutes(closingTime)) return { success: false, message: `El horario debe estar dentro de tu agenda: ${openingTime} a ${closingTime}.` }
+    if (timeToMinutes(selectedTime) < timeToMinutes(openingTime) || timeToMinutes(selectedTime) + durationMinutes > timeToMinutes(closingTime)) return { success: false, message: `El horario debe estar dentro de tu agenda: ${openingTime} a ${closingTime}.` }
     proposal.time = selectedTime
     const requestedStart = timeToMinutes(selectedTime)
-    const requestedEnd = requestedStart + proposal.durationMinutes
+    const requestedEnd = requestedStart + durationMinutes
     const conflict = activeOnDate.some((item) => { const start = timeToMinutes(item.scheduledTime); const end = start + (Number(item.durationMinutes) || 30); return requestedStart < end && requestedEnd > start })
     if (conflict) return { success: false, message: 'Ese horario ya está ocupado.' }
-    const appointment = { id: crypto.randomUUID(), patientId: patient.id, patientName: proposal.patient, patientEmail: patient.email || '', patientDni: patient.dni || '', scheduledDate: input.date, scheduledTime: selectedTime, scheduledAt: `${input.date}T${selectedTime}:00`, durationMinutes: proposal.durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
+    const appointment = { id: crypto.randomUUID(), patientId: patient.id, patientName: proposal.patient, patientEmail: patient.email || '', patientDni: patient.dni || '', scheduledDate: date, scheduledTime: selectedTime, scheduledAt: `${date}T${selectedTime}:00`, durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
     const saved = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: [...appointments, appointment] }, String(appointment.id))
     if (!saved.success) return saved
-    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(patient.email || ''), patientName: proposal.patient, professionalName: String(profileData.fullName || 'Dr Happy'), date: String(input.date), time: selectedTime, location: proposal.location, reason: proposal.reason, paymentLink: typeof profileData.paymentLink === 'string' ? profileData.paymentLink : undefined })
-    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno confirmado para ${proposal.patient} el ${input.date} a las ${selectedTime}.${emailResult.sent ? ' Confirmación enviada por email.' : ' El turno quedó guardado, pero no se envió email porque el paciente no tiene una dirección válida cargada.'}` }
+    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(patient.email || ''), patientName: proposal.patient, professionalName: String(profileData.fullName || 'Dr Happy'), date, time: selectedTime, location: proposal.location, reason: proposal.reason, paymentLink: typeof profileData.paymentLink === 'string' ? profileData.paymentLink : undefined })
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno confirmado para ${proposal.patient} el ${date} a las ${selectedTime}.${emailResult.sent ? ' Confirmación enviada por email.' : ' El turno quedó guardado, pero no se envió email porque el paciente no tiene una dirección válida cargada.'}` }
   }
 
   if (name === 'crear_paciente_y_agendar_turno') {
@@ -661,11 +677,15 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const proposal = { patient: match.patientName, fromDate: match.scheduledDate, fromTime: match.scheduledTime, toDate: newDate, toTime: selectedTime }
     if (input.confirmation !== true) return { requiresConfirmation: true, action: 'reprogramar_turno', proposal, message: 'Pedí confirmación antes de cambiar el turno.' }
     const rescheduledAt = new Date().toISOString()
-    const cancelledAppointment = { ...match, status: 'cancelled', cancellationReason: 'Reprogramado por el profesional', cancelledAt: rescheduledAt, updatedAt: rescheduledAt }
     const newAppointment = { ...match, id: crypto.randomUUID(), scheduledDate: newDate, scheduledTime: selectedTime, scheduledAt: `${newDate}T${selectedTime}:00`, status: 'confirmed', previousAppointmentId: match.id, rescheduledAt, updatedAt: rescheduledAt }
-    const nextAppointments = appointments.flatMap((item) => item.id === match.id ? [cancelledAppointment, newAppointment] : [item])
-    const saved = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: nextAppointments }, String(newAppointment.id))
-    if (!saved.success) return saved
+    const createdFirst = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: [...appointments, newAppointment] }, String(newAppointment.id))
+    if (!createdFirst.success) return { success: false, message: `No se pudo crear el nuevo turno; el turno original se conserva. ${createdFirst.message || ''}`.trim() }
+    const withoutOriginal = appointments.filter((item) => item.id !== match.id)
+    const removedOriginal = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: [...withoutOriginal, newAppointment] }, String(newAppointment.id))
+    if (!removedOriginal.success) {
+      await admin.from('user_workspaces').upsert({ user_id: professionalId, appointments_json: appointments }, { onConflict: 'user_id' })
+      return { success: false, message: `Se creó el nuevo turno, pero no se pudo retirar el anterior. Se restauró la agenda original para evitar duplicados. ${removedOriginal.message || ''}`.trim() }
+    }
     const emailResult = await sendAppointmentNotice({
       supabaseUrl,
       serviceRoleKey,
@@ -828,7 +848,7 @@ Deno.serve(async (request) => {
     'No diagnostiques ni indiques tratamientos autónomamente. Separá hechos, sugerencias y datos faltantes.',
     'Cuando el profesional pida una acción que todavía no está conectada, explicá que se incorporará como herramienta en la próxima etapa.',
     'Para agendar un turno solicitado directamente por el profesional, ejecutá la acción sin pedir confirmación adicional. Solo informá y detenete si no hay cupo, el día no está habilitado o existe una superposición. Cancelaciones, notificaciones y memorias sí requieren confirmación.',
-    'Si el profesional pide cambiar, mover o pasar un turno a otra fecha, usá reprogramar_turno. No lo canceles ni crees otro turno separado: la herramienta cancela el registro anterior, crea un único turno nuevo y avisa al paciente.',
+    'FLUJO OBLIGATORIO DE TURNERA: primero consultá la agenda/calendario cuando necesites disponibilidad. Para un paciente nuevo, buscá sus datos; si no existe o no lo encontrás, usá crear_paciente_y_agendar_turno. Para un paciente existente, usá agendar_turno con la fecha y hora indicadas o sin fecha/hora para elegir el primer turno disponible. Todo turno confirmado debe enviar email al paciente. Para reprogramar, usá reprogramar_turno: primero crea y verifica el nuevo turno, después elimina el turno anterior del mismo paciente y finalmente envía el email informando la reprogramación. Si falla la creación del nuevo turno, no borres el anterior. Nunca dejes dos turnos activos del mismo paciente por una reprogramación.',
     'No digas que una acción ocurrió si la herramienta no devolvió success=true. Si una operación falla o requiere confirmación, informalo claramente y no lo presentes como realizado.',
     `Fecha y hora actual de Argentina: ${currentDate} ${currentTime}. Si el profesional dice hoy, mañana o pasado mañana, convertílo a YYYY-MM-DD sin preguntarle qué fecha es.`,
     'Si preguntan por turnos o agenda, consultá buscar_turnos cuando necesites informar datos. Si piden agendar, usá directamente la herramienta de agendamiento; no hagas una consulta previa ni pidas confirmación adicional.',
