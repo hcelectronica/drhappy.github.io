@@ -109,6 +109,11 @@ const tools = [
     input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string' }, time: { type: 'string' }, newDate: { type: 'string' }, newTime: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'newDate', 'confirmation'] },
   },
   {
+    name: 'reprogramar_turnos_de_fecha',
+    description: 'Reprograma todos los turnos activos de una fecha al próximo día habilitado donde entren todos, conserva los datos de cada paciente, elimina los turnos anteriores y envía un email individual. Siempre requiere confirmation=true; si es false, solo prepara una propuesta.',
+    input_schema: { type: 'object', properties: { date: { type: 'string', description: 'Fecha origen YYYY-MM-DD.' }, newDate: { type: 'string', description: 'Fecha destino opcional; si falta se busca el próximo día con capacidad para todos.' }, confirmation: { type: 'boolean' } }, required: ['date', 'confirmation'] },
+  },
+  {
     name: 'enviar_notificacion_paciente',
     description: 'Envía un email a un paciente. Siempre requiere confirmation=true; si es false, solo prepara una propuesta y no envía nada.',
     input_schema: { type: 'object', properties: { patient: { type: 'string' }, subject: { type: 'string' }, message: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'subject', 'message', 'confirmation'] },
@@ -696,6 +701,75 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno reprogramado para ${match.patientName}: ${newDate} a las ${selectedTime}.${emailResult.sent ? ' Aviso enviado por email.' : ` No se pudo enviar el aviso: ${emailResult.message}`}` }
   }
 
+  if (name === 'reprogramar_turnos_de_fecha') {
+    const sourceDate = String(input.date || '').trim()
+    let destinationDate = String(input.newDate || '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(sourceDate)) return { success: false, message: 'La fecha origen debe tener formato YYYY-MM-DD.' }
+    if (destinationDate && !/^\d{4}-\d{2}-\d{2}$/.test(destinationDate)) return { success: false, message: 'La fecha destino debe tener formato YYYY-MM-DD.' }
+    const { data } = await admin.from('user_workspaces').select('appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const sourceAppointments = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === sourceDate)
+    if (!sourceAppointments.length) return { success: false, message: `No encontré turnos activos para el ${sourceDate}.` }
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const dailyLimit = Number(profile.dailyPatientLimit) || 10
+    const appointmentDays = Array.isArray(profile.appointmentDays) ? profile.appointmentDays : [1, 2, 4]
+    const openingTime = typeof profile.appointmentStartTime === 'string' ? profile.appointmentStartTime : '09:00'
+    const closingTime = typeof profile.appointmentEndTime === 'string' ? profile.appointmentEndTime : '19:00'
+    const tryDate = (candidateDate: string): Array<{ appointment: Record<string, unknown>; time: string }> | null => {
+      if (!appointmentDays.includes(dateWeekday(candidateDate))) return null
+      const candidateAppointments = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === candidateDate)
+      if (candidateAppointments.length + sourceAppointments.length > dailyLimit) return null
+      const simulated = [...candidateAppointments]
+      const assignments: Array<{ appointment: Record<string, unknown>; time: string }> = []
+      for (const appointment of sourceAppointments) {
+        const duration = Number(appointment.durationMinutes) || 30
+        const time = findFirstAvailableTime(simulated, duration, openingTime, closingTime)
+        if (!time) return null
+        assignments.push({ appointment, time })
+        simulated.push({ scheduledTime: time, durationMinutes: duration })
+      }
+      return assignments
+    }
+    let assignments: Array<{ appointment: Record<string, unknown>; time: string }> | null = null
+    if (destinationDate) {
+      assignments = tryDate(destinationDate)
+    } else {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+      for (let offset = 1; offset <= 60 && !assignments; offset += 1) {
+        const candidate = new Date(`${sourceDate || today}T12:00:00`)
+        candidate.setDate(candidate.getDate() + offset)
+        const candidateDate = candidate.toISOString().slice(0, 10)
+        const candidateAssignments = tryDate(candidateDate)
+        if (candidateAssignments) {
+          destinationDate = candidateDate
+          assignments = candidateAssignments
+        }
+      }
+    }
+    if (!assignments || !destinationDate) return { success: false, message: `No encontré un día habilitado con capacidad para los ${sourceAppointments.length} turnos en los próximos 60 días.` }
+    const proposal = { sourceDate, destinationDate, count: sourceAppointments.length, patients: assignments.map(({ appointment, time }) => ({ patient: appointment.patientName, from: appointment.scheduledTime, to: time })) }
+    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'reprogramar_turnos_de_fecha', proposal, message: `Encontré lugar para reprogramar ${sourceAppointments.length} turnos al ${destinationDate}. Pedí confirmación antes de aplicar el cambio.` }
+    const rescheduledAt = new Date().toISOString()
+    const newAppointments = assignments.map(({ appointment, time }) => ({ ...appointment, id: crypto.randomUUID(), scheduledDate: destinationDate, scheduledTime: time, scheduledAt: `${destinationDate}T${time}:00`, status: 'confirmed', previousAppointmentId: appointment.id, rescheduledAt, updatedAt: rescheduledAt }))
+    const created = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: [...appointments, ...newAppointments] }, String(newAppointments[0].id))
+    if (!created.success) return { success: false, message: `No se pudieron crear los nuevos turnos; los originales se conservan. ${created.message || ''}`.trim() }
+    const originalIds = new Set(sourceAppointments.map((appointment) => appointment.id))
+    const removed = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: [...appointments.filter((appointment) => !originalIds.has(appointment.id)), ...newAppointments] }, String(newAppointments[0].id))
+    if (!removed.success) {
+      await admin.from('user_workspaces').upsert({ user_id: professionalId, appointments_json: appointments }, { onConflict: 'user_id' })
+      return { success: false, message: 'Se crearon los nuevos turnos, pero no se pudieron retirar los originales. Se restauró la agenda para evitar duplicados.' }
+    }
+    const emailResults = await Promise.all(newAppointments.map((appointment) => sendAppointmentNotice({
+      supabaseUrl,
+      serviceRoleKey,
+      email: String(appointment.patientEmail || ''),
+      subject: `Turno reprogramado con ${String(profile.fullName || 'Dr Happy')}`,
+      message: `Hola ${String(appointment.patientName || 'Paciente')},\n\nTu turno del ${String(sourceDate)} fue reprogramado para el ${destinationDate} a las ${String(appointment.scheduledTime)} hs.\n\nSi necesitás modificarlo nuevamente, comunicate con el profesional.`,
+    })))
+    const sent = emailResults.filter((result) => result.sent).length
+    return { success: true, emailSent: sent === newAppointments.length, emailsSent: sent, total: newAppointments.length, message: `Se reprogramaron ${newAppointments.length} turnos del ${sourceDate} al ${destinationDate}. Se enviaron ${sent} de ${newAppointments.length} avisos por email.` }
+  }
+
   if (name === 'enviar_notificacion_paciente') {
     const query = normalizeSearch(input.patient)
     const { data } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
@@ -848,7 +922,7 @@ Deno.serve(async (request) => {
     'No diagnostiques ni indiques tratamientos autónomamente. Separá hechos, sugerencias y datos faltantes.',
     'Cuando el profesional pida una acción que todavía no está conectada, explicá que se incorporará como herramienta en la próxima etapa.',
     'Para agendar un turno solicitado directamente por el profesional, ejecutá la acción sin pedir confirmación adicional. Solo informá y detenete si no hay cupo, el día no está habilitado o existe una superposición. Cancelaciones, notificaciones y memorias sí requieren confirmación.',
-    'FLUJO OBLIGATORIO DE TURNERA: primero consultá la agenda/calendario cuando necesites disponibilidad. Para un paciente nuevo, buscá sus datos; si no existe o no lo encontrás, usá crear_paciente_y_agendar_turno. Para un paciente existente, usá agendar_turno con la fecha y hora indicadas o sin fecha/hora para elegir el primer turno disponible. Todo turno confirmado debe enviar email al paciente. Para reprogramar, usá reprogramar_turno: primero crea y verifica el nuevo turno, después elimina el turno anterior del mismo paciente y finalmente envía el email informando la reprogramación. Si falla la creación del nuevo turno, no borres el anterior. Nunca dejes dos turnos activos del mismo paciente por una reprogramación.',
+    'FLUJO OBLIGATORIO DE TURNERA: primero consultá la agenda/calendario cuando necesites disponibilidad. Para un paciente nuevo, buscá sus datos; si no existe o no lo encontrás, usá crear_paciente_y_agendar_turno. Para un paciente existente, usá agendar_turno con la fecha y hora indicadas o sin fecha/hora para elegir el primer turno disponible. Todo turno confirmado debe enviar email al paciente. Para reprogramar un turno individual, usá reprogramar_turno. Si el profesional pide reprogramar todos los turnos de una fecha, usá reprogramar_turnos_de_fecha: busca el próximo día habilitado con capacidad para todos, primero crea y verifica los nuevos turnos, después elimina los anteriores y finalmente envía un email individual a cada paciente. Si falla la creación de cualquier nuevo turno, no borres los anteriores. Nunca dejes dos turnos activos por una reprogramación.',
     'No digas que una acción ocurrió si la herramienta no devolvió success=true. Si una operación falla o requiere confirmación, informalo claramente y no lo presentes como realizado.',
     `Fecha y hora actual de Argentina: ${currentDate} ${currentTime}. Si el profesional dice hoy, mañana o pasado mañana, convertílo a YYYY-MM-DD sin preguntarle qué fecha es.`,
     'Si preguntan por turnos o agenda, consultá buscar_turnos cuando necesites informar datos. Si piden agendar, usá directamente la herramienta de agendamiento; no hagas una consulta previa ni pidas confirmación adicional.',
