@@ -42,7 +42,7 @@ export function setProfessionalAdmin(
   targetId: string,
   isAdmin: boolean,
 ): Promise<AdminActionResult> {
-  void requesterId
+  void _requesterId
   return invokeAdminAction({ action: 'set-admin', targetId, isAdmin })
 }
 
@@ -51,7 +51,7 @@ export function setProfessionalActive(
   targetId: string,
   active: boolean,
 ): Promise<AdminActionResult> {
-  void requesterId
+  void _requesterId
   return invokeAdminAction({ action: 'set-active', targetId, active })
 }
 
@@ -61,7 +61,7 @@ export function setProfessionalSubscription(
   subscriptionStatus: string,
   subscriptionExpiresAt: string | null,
 ): Promise<AdminActionResult> {
-  void requesterId
+  void _requesterId
   return invokeAdminAction({
     action: 'set-subscription',
     targetId,
@@ -75,7 +75,7 @@ export function setProfessionalModules(
   targetId: string,
   enabledModules: string[] | null,
 ): Promise<AdminActionResult> {
-  void requesterId
+  void _requesterId
   return invokeAdminAction({ action: 'set-modules', targetId, enabledModules })
 }
 
@@ -83,7 +83,7 @@ export function deleteProfessionalAsAdmin(
   _requesterId: string,
   targetId: string,
 ): Promise<AdminActionResult> {
-  void requesterId
+  void _requesterId
   return invokeAdminAction({ action: 'delete-professional', targetId })
 }
 
