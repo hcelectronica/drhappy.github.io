@@ -886,12 +886,14 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const query = normalizeSearch(input.patient)
     const { data } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
-    const patient = patients.find((item) => normalizeSearch(`${item.nombre || ''} ${item.apellido || ''} ${item.dni || ''}`).includes(query))
+    const patient = patients.find((item) => matchesPatientQuery(`${item.nombre || ''} ${item.apellido || ''}`, item.dni, query))
     if (!patient || typeof patient.email !== 'string' || !patient.email.trim()) return { success: false, message: 'No encontré un paciente con email cargado.' }
     const proposal = { patient: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), email: patient.email, subject: input.subject, message: input.message }
     if (input.confirmation !== true) return { requiresConfirmation: true, action: 'enviar_notificacion_paciente', proposal, message: 'Pedí confirmación explícita antes de enviar.' }
-    const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: patient.email, subject: input.subject, type: 'custom', text: input.message }) })
-    return emailResponse.ok ? { success: true, message: `Email enviado a ${proposal.patient}.` } : { success: false, message: 'No se pudo enviar el email.' }
+    const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: patient.email, subject: input.subject, type: 'custom', text: input.message, templateData: { message: input.message } }) })
+    const emailResult = await emailResponse.json().catch(() => null)
+    if (!emailResponse.ok || !emailResult?.success) return { success: false, message: typeof emailResult?.message === 'string' ? emailResult.message : `No se pudo enviar el email (HTTP ${emailResponse.status}).` }
+    return { success: true, message: `Email enviado a ${proposal.patient}.` }
   }
 
   if (name === 'completar_email_y_enviar_confirmacion') {
