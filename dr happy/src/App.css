@@ -1822,6 +1822,17 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
 .admin-table-scroll table { min-width: 560px; }
 .admin-table-scroll td { overflow-wrap: anywhere; }
 
+.admin-user-search {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 4px;
+  color: #55668a;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.admin-user-search input { width: 100%; }
+
 .admin-subscription-actions {
   display: flex;
   gap: 8px;

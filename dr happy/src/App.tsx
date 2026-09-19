@@ -2592,6 +2592,8 @@ function App() {
 
   const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult' | 'community'>('protocols')
   const [turneraCapacityOpen, setTurneraCapacityOpen] = useState(false)
+  const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo'>('usuarios')
+  const [adminUserQuery, setAdminUserQuery] = useState('')
   const [protocolSearchQuery, setProtocolSearchQuery] = useState('')
   const [protocolCategoryFilter, setProtocolCategoryFilter] = useState<string>('all')
   const [selectedProtocolId, setSelectedProtocolId] = useState<string | null>(null)
@@ -9831,7 +9833,26 @@ function App() {
               </div>
             </div>
 
+            <nav className="screen-action-bar" aria-label="Secciones de administración">
+              <button type="button" className={`screen-action${adminSection === 'usuarios' ? ' active' : ''}`} onClick={() => setAdminSection('usuarios')}>
+                <span aria-hidden="true">👥</span> Usuarios y planes
+              </button>
+              <button type="button" className={`screen-action${adminSection === 'actividad' ? ' active' : ''}`} onClick={() => setAdminSection('actividad')}>
+                <span aria-hidden="true">📈</span> Actividad
+              </button>
+              <button type="button" className={`screen-action${adminSection === 'sofia' ? ' active' : ''}`} onClick={() => setAdminSection('sofia')}>
+                <span aria-hidden="true">✦</span> Consumo de Sofía
+              </button>
+              <button type="button" className={`screen-action${adminSection === 'comunicados' ? ' active' : ''}`} onClick={() => setAdminSection('comunicados')}>
+                <span aria-hidden="true">📢</span> Comunicados
+              </button>
+              <button type="button" className={`screen-action${adminSection === 'correo' ? ' active' : ''}`} onClick={() => setAdminSection('correo')}>
+                <span aria-hidden="true">📧</span> Correo
+              </button>
+            </nav>
+
             {/* Métricas de uso por usuario — solo conteos y fechas, sin datos clínicos */}
+            {adminSection === 'actividad' ? (
             <section style={{ marginBottom: 24 }}>
               <div className="panel-header" style={{ marginBottom: 12 }}>
                 <div>
@@ -9887,7 +9908,9 @@ function App() {
                 </div>
               )}
             </section>
+            ) : null}
 
+            {adminSection === 'sofia' ? (
             <section style={{ marginBottom: 24 }}>
               <div className="panel-header" style={{ marginBottom: 12 }}>
                 <div>
@@ -9909,9 +9932,27 @@ function App() {
                 </div>
               )}
             </section>
+            ) : null}
 
+            {adminSection === 'usuarios' ? (
+            <>
+            <label className="admin-user-search">
+              Buscar profesional
+              <input
+                type="search"
+                value={adminUserQuery}
+                onChange={(event) => setAdminUserQuery(event.target.value)}
+                placeholder="Nombre, usuario, especialidad o email"
+              />
+            </label>
             <ul className="admin-user-list">
               {[...seedUsers]
+                .filter((user) => {
+                  const query = adminUserQuery.trim().toLowerCase()
+                  if (!query) return true
+                  return [user.fullName, user.username, user.specialty, user.email]
+                    .some((field) => (field ?? '').toLowerCase().includes(query))
+                })
                 .sort((left, right) => left.fullName.localeCompare(right.fullName, 'es'))
                 .map((user) => (
                   <li key={user.id} style={{ alignItems: 'flex-start', flexDirection: 'column', gap: 10 }}>
@@ -10027,7 +10068,10 @@ function App() {
                   </li>
                 ))}
             </ul>
+            </>
+            ) : null}
 
+            {adminSection === 'comunicados' ? (
             <section className="panel" style={{ marginTop: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                 <h3 style={{ margin: 0 }}>📢 Centro de Notificaciones Push y Comunicados</h3>
@@ -10117,7 +10161,9 @@ function App() {
                 </div>
               </div>
             </section>
+            ) : null}
 
+            {adminSection === 'correo' ? (
             <section className="panel" style={{ marginTop: 20 }}>
               <h3>📧 Servidor de Correo Institucional (soporte@drhappy.com.ar)</h3>
               <p className="flow-hint">
@@ -10145,6 +10191,7 @@ function App() {
                 </div>
               </div>
             </section>
+            ) : null}
           </section>
         </div>
       ) : null}
