@@ -2518,6 +2518,7 @@ function App() {
   const [ledgerSuggestionsOpen, setLedgerSuggestionsOpen] = useState(false)
   const [ledgerFilter, setLedgerFilter] = useState<'all' | 'debt' | 'settled'>('all')
   const [paymentTarget, setPaymentTarget] = useState<{ entryId: string; amount: string } | null>(null)
+  const [ledgerReminderSendingId, setLedgerReminderSendingId] = useState<string | null>(null)
   const [ledgerSearch, setLedgerSearch] = useState('')
   const [calendarMonthCursor, setCalendarMonthCursor] = useState(() => {
     const now = new Date()
@@ -7113,6 +7114,39 @@ function App() {
     setAppNotice('Registro eliminado del balance.')
   }
 
+  /** Envía por email el mismo recordatorio de saldo pendiente que puede generar Sofía. */
+  async function handleSendLedgerPaymentReminder(entryId: string): Promise<void> {
+    const entry = treatmentLedger.find((e) => e.id === entryId)
+    if (!entry) return
+    const pending = entry.totalAmount - entry.paidAmount
+    if (pending <= 0) {
+      setAppNotice(`El tratamiento de ${entry.patientName} ya está saldado.`)
+      return
+    }
+    const patient = patients.find((p) => p.id === entry.patientId)
+    const email = patient?.email?.trim()
+    if (!email) {
+      setAppError(`${entry.patientName} no tiene un email cargado para enviarle el recordatorio.`)
+      return
+    }
+    setLedgerReminderSendingId(entryId)
+    const message = `Hola ${patient?.nombre || entry.patientName},\n\nTe informamos el saldo pendiente registrado:\n\nTratamiento: ${entry.intervention}\nTotal: ${formatMoney(entry.totalAmount)}\nPagado: ${formatMoney(entry.paidAmount)}\nPendiente: ${formatMoney(pending)}\n\nSaludos cordiales.`
+    const result = await sendEmail({
+      to: email,
+      subject: 'Recordatorio de saldo pendiente',
+      type: 'custom',
+      text: message,
+      templateData: { message },
+    })
+    setLedgerReminderSendingId(null)
+    if (result.success) {
+      setAppNotice(`Recordatorio de pago enviado a ${entry.patientName}.`)
+      showSavedFloatingNotice()
+    } else {
+      setAppError(`No se pudo enviar el recordatorio: ${result.message || 'error de envío'}.`)
+    }
+  }
+
   async function handleSaveAppointment(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!activeUserId) return
@@ -11191,6 +11225,11 @@ function App() {
                           {pending > 0 ? (
                             <button type="button" onClick={() => handleRegisterLedgerPayment(entry.id)}>
                               💵 Registrar pago
+                            </button>
+                          ) : null}
+                          {pending > 0 ? (
+                            <button type="button" className="ghost" disabled={ledgerReminderSendingId === entry.id} onClick={() => void handleSendLedgerPaymentReminder(entry.id)}>
+                              {ledgerReminderSendingId === entry.id ? 'Enviando...' : '📧 Enviar recordatorio de pago'}
                             </button>
                           ) : null}
                           <button type="button" className="ghost" onClick={() => handleOpenLedgerModal(entry)}>
