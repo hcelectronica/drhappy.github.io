@@ -2735,7 +2735,6 @@ function App() {
     setSofiaBusy(true)
     const result = await askSofia({
       messages: nextMessages,
-      professionalId: activeUserId || undefined,
       professionalName: profile?.fullName || activeUser?.fullName,
       context: 'El profesional está dentro de Dr Happy. Sofía puede consultar agenda y pacientes, preparar borradores y ejecutar agendamientos directamente. Si el profesional pide un turno, no pidas confirmación ni campos opcionales: usa nombre, apellido y fecha, asigna la primera hora libre si no la indica y detente solo por cupo, día no habilitado o superposición.',
     })
@@ -6435,7 +6434,6 @@ function App() {
     try {
       const patientName = `${selectedPatient.apellido}, ${selectedPatient.nombre}`.trim()
       const result = await askSofia({
-        professionalId: activeUserId || undefined,
         professionalName: profile?.fullName || activeUser?.fullName,
         messages: [{
           role: 'user',

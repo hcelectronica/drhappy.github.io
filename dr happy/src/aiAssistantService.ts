@@ -19,7 +19,6 @@ interface AssistantResult {
 
 export async function askSofia(params: {
   messages: AssistantMessage[]
-  professionalId?: string
   professionalName?: string
   context?: string
 }): Promise<AssistantResult> {
@@ -28,11 +27,14 @@ export async function askSofia(params: {
   }
 
   const sessionToken = sessionStorage.getItem('drhappy-professional-session') || ''
+  const { data: authData } = await supabase.auth.getSession()
+  const headers: Record<string, string> = {}
+  if (sessionToken) headers['x-drhappy-session'] = sessionToken
+  if (authData.session?.access_token) headers.Authorization = `Bearer ${authData.session.access_token}`
   const { data, error } = await supabase.functions.invoke('ai-assistant', {
-    headers: sessionToken ? { 'x-drhappy-session': sessionToken } : undefined,
+    headers: Object.keys(headers).length ? headers : undefined,
     body: {
       action: 'chat',
-      professionalId: params.professionalId,
       messages: params.messages,
       professionalName: params.professionalName,
       context: params.context,
