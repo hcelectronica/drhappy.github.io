@@ -552,7 +552,7 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     if (query.length < 2) return { success: false, message: 'Necesito el nombre, apellido o DNI del paciente.' }
     if (!intervention) return { success: false, message: 'Necesito indicar el tratamiento o concepto.' }
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) return { success: false, message: 'El monto debe ser mayor que cero.' }
-    const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
+    const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json, profile_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
     const patient = patients.find((item) => matchesPatientQuery(`${item.nombre || ''} ${item.apellido || ''}`, item.dni, query))
     if (!patient) return { success: false, message: 'No encontré ese paciente en la base de datos.' }
@@ -598,7 +598,17 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const nextLedger = ledger.map((item) => item.id === entry.id ? { ...item, paidAmount: nextPaid, updatedAt: new Date().toISOString() } : item)
     const saved = await admin.from('user_workspaces').upsert({ user_id: professionalId, treatment_ledger_json: nextLedger }, { onConflict: 'user_id' })
     if (saved.error) return { success: false, message: saved.error.message }
-    return { success: true, message: `Registré un pago de $${amount.toLocaleString('es-AR')} para ${entry.patientName}, correspondiente a ${entry.intervention}. Saldo pendiente: $${(total - nextPaid).toLocaleString('es-AR')}.` }
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const patientEmail = patients.find((item) => item.id === entry.patientId)?.email
+    const pendingAfterPayment = total - nextPaid
+    const emailResult = await sendAppointmentNotice({
+      supabaseUrl,
+      serviceRoleKey,
+      email: typeof patientEmail === 'string' ? patientEmail : undefined,
+      subject: `Pago registrado - saldo pendiente con ${String(profile.fullName || 'Dr Happy')}`,
+      message: `Hola ${entry.patientName},\n\nRegistramos un pago de $${amount.toLocaleString('es-AR')} correspondiente a ${entry.intervention}.\n\nMonto total: $${total.toLocaleString('es-AR')}\nPagos acumulados: $${nextPaid.toLocaleString('es-AR')}\nSaldo pendiente: $${pendingAfterPayment.toLocaleString('es-AR')}\n\nSaludos cordiales.`,
+    })
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Registré un pago de $${amount.toLocaleString('es-AR')} para ${entry.patientName}, correspondiente a ${entry.intervention}. Saldo pendiente: $${pendingAfterPayment.toLocaleString('es-AR')}.${emailResult.sent ? ' Aviso enviado por email.' : ` No se pudo enviar el aviso: ${emailResult.message}`}` }
   }
 
   if (name === 'preparar_borrador_evolucion') {
@@ -1126,7 +1136,7 @@ Deno.serve(async (request) => {
       if (toolRecord?.requiresConfirmation === true && typeof toolRecord.action === 'string' && toolRecord.proposal && typeof toolRecord.proposal === 'object') {
         pendingConfirmation = { action: toolRecord.action, proposal: toolRecord.proposal as Record<string, unknown> }
       }
-      if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno' || toolUse.name === 'reprogramar_turno' || toolUse.name === 'reprogramar_turnos_de_fecha') && toolRecord && typeof toolRecord.message === 'string') {
+      if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno' || toolUse.name === 'reprogramar_turno' || toolUse.name === 'reprogramar_turnos_de_fecha' || toolUse.name === 'registrar_pago_balance') && toolRecord && typeof toolRecord.message === 'string') {
         directSchedulingReply = toolRecord.message
         if (toolRecord.success === true) break
       }
