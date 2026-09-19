@@ -30,8 +30,9 @@ Deno.serve(async (request) => {
   if (action === 'send') {
     const recipientId = typeof body.recipientId === 'string' ? body.recipientId.trim() : ''
     const text = typeof body.text === 'string' ? body.text.trim().slice(0, 10000) : ''
-    if (!recipientId || !text) return jsonResponse(400, { success: false, message: 'Faltan destinatario o mensaje.' })
-    const { error } = await admin.from('community_messages').insert({ sender_id: professionalId, recipient_id: recipientId, text, attachments_json: [], sent_at: new Date().toISOString() })
+    const attachments = Array.isArray(body.attachments) ? body.attachments : []
+    if (!recipientId || (!text && attachments.length === 0)) return jsonResponse(400, { success: false, message: 'Faltan destinatario o mensaje.' })
+    const { error } = await admin.from('community_messages').insert({ sender_id: professionalId, recipient_id: recipientId, text, attachments_json: attachments, sent_at: new Date().toISOString() })
     return error ? jsonResponse(500, { success: false, message: error.message }) : jsonResponse(200, { success: true })
   }
   return jsonResponse(400, { success: false, message: 'Acción no soportada.' })

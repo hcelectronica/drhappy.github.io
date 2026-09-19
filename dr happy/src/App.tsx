@@ -7808,24 +7808,18 @@ function App() {
       sentAt: new Date().toISOString(),
     }
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase
-        .from('community_messages')
-        .insert({
-          sender_id: nextMessage.senderId,
-          recipient_id: nextMessage.recipientId,
-          text: nextMessage.text,
-          attachments_json: nextMessage.attachments,
-          sent_at: nextMessage.sentAt,
-        })
-        .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
-        .single()
-      if (error) {
-        setAppError(`No se pudo enviar el mensaje al servidor: ${error.message}`)
+      const result = await communityRequest({
+        action: 'send',
+        recipientId: nextMessage.recipientId,
+        text: nextMessage.text,
+        attachments: nextMessage.attachments,
+      })
+      if (!result.success) {
+        setAppError(`No se pudo enviar el mensaje al servidor: ${result.message || 'error desconocido'}`)
         return
       }
-      const persisted = mapRemoteCommunityMessage(data as RemoteCommunityMessageRow)
       setCommunityMessages((current) =>
-        [...current, persisted].sort((a, b) => a.sentAt.localeCompare(b.sentAt)),
+        [...current, nextMessage].sort((a, b) => a.sentAt.localeCompare(b.sentAt)),
       )
     } else {
       const key = communityThreadStorageKey(activeUserId, communityTargetId)
