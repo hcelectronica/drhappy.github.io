@@ -9,7 +9,6 @@ import { BrowserPDF417Reader, BrowserQRCodeReader } from '@zxing/browser'
 import * as ExcelJS from 'exceljs'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
-import type { RealtimeChannel } from '@supabase/supabase-js'
 import {
   getNotificationPermission,
   getPushSubscriptionsCount,
@@ -476,9 +475,6 @@ interface RemoteProfessionalRow {
   subscription_status?: string | null
   subscription_expires_at?: string | null
 }
-
-const PROFESSIONAL_SELECT_COLUMNS =
-  'id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, enabled_modules_json, trial_started_at, subscription_status, subscription_expires_at'
 
 interface RemoteWorkspaceRow {
   user_id: string
@@ -3565,6 +3561,7 @@ function App() {
   }
 
   async function fetchRemoteProfessionalById(userId: string): Promise<SeedUser | null> {
+    void userId
     if (!isSupabaseConfigured || !supabase) {
       return null
     }
