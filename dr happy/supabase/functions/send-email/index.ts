@@ -26,7 +26,7 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
   })
 }
 
-function getBaseTemplate(title: string, innerHtml: string, senderEmail = 'soporte@drhappy.com.ar'): string {
+function getBaseTemplate(title: string, innerHtml: string): string {
   return `
 <!DOCTYPE html>
 <html lang="es">
@@ -59,7 +59,7 @@ function getBaseTemplate(title: string, innerHtml: string, senderEmail = 'soport
       ${innerHtml}
     </div>
     <div class="footer">
-      <p style="margin: 0 0 6px;">Este es un mensaje institucional enviado desde <strong>${senderEmail}</strong></p>
+      <p style="margin: 0 0 6px;">Este es un mensaje institucional enviado desde <strong>soporte@drhappy.com.ar</strong></p>
       <p style="margin: 0 0 10px;">Sitio oficial: <a href="https://drhappy.com.ar/" target="_blank">drhappy.com.ar</a></p>
       <p style="margin: 0; font-size: 12px; color: #94a3b8;">© ${new Date().getFullYear()} DrHappy. Todos los derechos reservados.</p>
     </div>
@@ -246,7 +246,7 @@ function buildHtmlForType(type: string | undefined, subject: string, templateDat
           <a href="https://drhappy.com.ar/" class="btn" target="_blank">Ver en DrHappy</a>
         </div>
       `
-      return getBaseTemplate('Confirmación de Turno - Dr Happy', inner, 'turnos@drhappy.com.ar')
+      return getBaseTemplate('Confirmación de Turno - Dr Happy', inner)
     }
 
     default: {
@@ -270,6 +270,13 @@ serve(async (request) => {
     return jsonResponse(405, { message: 'Método no permitido.' })
   }
 
+  const smtpHost = Deno.env.get('SMTP_HOST')?.trim() || 'smtp.hostinger.com'
+  const smtpPort = Number(Deno.env.get('SMTP_PORT')?.trim() || '465')
+  const smtpUser = Deno.env.get('SMTP_USER')?.trim() || 'turnos@drhappy.com.ar'
+  const smtpPass = Deno.env.get('SMTP_PASSWORD')?.trim() || Deno.env.get('HOSTINGER_MAIL_PASSWORD')?.trim() || ''
+  const fromName = Deno.env.get('SMTP_FROM_NAME')?.trim() || 'Dr Happy'
+  const fromEmail = Deno.env.get('SMTP_FROM_EMAIL')?.trim() || 'turnos@drhappy.com.ar'
+
   let payload: EmailPayload
   try {
     payload = await request.json()
@@ -278,17 +285,6 @@ serve(async (request) => {
   }
 
   const { to, subject, text, html, type, templateData, attachments } = payload
-  const isAppointment = type === 'appointment'
-  const smtpHost = Deno.env.get('SMTP_HOST')?.trim() || 'smtp.hostinger.com'
-  const smtpPort = Number(Deno.env.get('SMTP_PORT')?.trim() || '465')
-  const smtpUser = isAppointment
-    ? Deno.env.get('SMTP_TURNOS_USER')?.trim() || 'turnos@drhappy.com.ar'
-    : Deno.env.get('SMTP_USER')?.trim() || 'soporte@drhappy.com.ar'
-  const smtpPass = isAppointment
-    ? Deno.env.get('SMTP_TURNOS_PASSWORD')?.trim() || ''
-    : Deno.env.get('SMTP_PASSWORD')?.trim() || Deno.env.get('HOSTINGER_MAIL_PASSWORD')?.trim() || ''
-  const fromName = Deno.env.get('SMTP_FROM_NAME')?.trim() || 'Dr Happy'
-  const fromEmail = isAppointment ? 'turnos@drhappy.com.ar' : Deno.env.get('SMTP_FROM_EMAIL')?.trim() || 'soporte@drhappy.com.ar'
 
   if (!to || (!Array.isArray(to) && !String(to).trim()) || !subject) {
     return jsonResponse(400, { message: 'Campos "to" y "subject" son requeridos.' })
@@ -297,12 +293,8 @@ serve(async (request) => {
   if (!smtpPass) {
     return jsonResponse(500, {
       success: false,
-      message: isAppointment
-        ? 'Falta configurar la credencial SMTP de turnos@drhappy.com.ar.'
-        : 'Falta configurar la contraseña SMTP de soporte@drhappy.com.ar.',
-      hint: isAppointment
-        ? 'Configurá el secret SMTP_TURNOS_PASSWORD en Supabase.'
-        : 'Configurá el secret SMTP_PASSWORD en Supabase.',
+      message: 'Falta configurar la contraseña SMTP (secret SMTP_PASSWORD) en Supabase para turnos@drhappy.com.ar.',
+      hint: 'Por favor asigna la contraseña de la casilla de correo en Hostinger a SMTP_PASSWORD.',
       configuredUser: smtpUser,
       configuredHost: smtpHost,
     })
