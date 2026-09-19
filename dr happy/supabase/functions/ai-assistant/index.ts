@@ -147,6 +147,11 @@ const tools = [
     input_schema: { type: 'object', properties: { patient: { type: 'string' }, subject: { type: 'string' }, message: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'subject', 'message', 'confirmation'] },
   },
   {
+    name: 'enviar_recordatorio_turno',
+    description: 'Envía un recordatorio del próximo turno activo de un paciente usando el mismo flujo de email de turnos. Requiere confirmation=true; si es false, prepara la propuesta.',
+    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string', description: 'Fecha del turno opcional.' }, time: { type: 'string', description: 'Hora del turno opcional.' }, confirmation: { type: 'boolean' } }, required: ['patient', 'confirmation'] },
+  },
+  {
     name: 'enviar_recordatorios_balance',
     description: 'Envía recordatorios de saldo pendiente a varios pacientes. Usala cuando el profesional pida enviar el recordatorio a dos o más pacientes. Genera un email individual por paciente y requiere confirmation=true.',
     input_schema: { type: 'object', properties: { patients: { type: 'array', items: { type: 'string' }, description: 'Nombres, apellidos o DNI de los pacientes.' }, confirmation: { type: 'boolean' } }, required: ['patients', 'confirmation'] },
@@ -473,8 +478,10 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
   if (name === 'buscar_pacientes') {
     const query = normalizeSearch(input.query)
     if (query.length < 2) return { count: 0, patients: [], message: 'La búsqueda necesita al menos 2 caracteres.' }
-    const { data } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
+    const { data } = await admin.from('user_workspaces').select('patients_json, appointments_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
     const matches = patients.filter((patient) => normalizeSearch(`${patient.nombre || ''} ${patient.apellido || ''} ${patient.dni || ''}`).includes(query)).slice(0, 20).map((patient) => ({ id: patient.id, name: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), dni: patient.dni, email: patient.email, obraSocial: patient.obraSocial }))
     return { count: matches.length, patients: matches }
   }
@@ -493,8 +500,10 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
   if (name === 'consultar_historia_paciente') {
     const query = normalizeSearch(input.query)
     if (query.length < 2) return { matches: [], message: 'La búsqueda necesita al menos 2 caracteres.' }
-    const { data } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
+    const { data } = await admin.from('user_workspaces').select('patients_json, appointments_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
     const topic = normalizeSearch(input.topic)
     const dateFrom = typeof input.dateFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.dateFrom) ? input.dateFrom : ''
     const dateTo = typeof input.dateTo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.dateTo) ? input.dateTo : ''
@@ -515,6 +524,20 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
         diagnosticoPrincipal: patient.diagnosticoPrincipal,
         patologiasConocidas: patient.patologiasConocidas,
         patologiasCronicas: patient.patologiasCronicas,
+        appointments: appointments.filter((appointment) => appointment.patientId === patient.id && appointment.status !== 'cancelled').map((appointment) => ({
+          date: appointment.scheduledDate,
+          time: appointment.scheduledTime,
+          reason: appointment.reason,
+          location: appointment.location,
+          status: appointment.status,
+        })),
+        paymentBalance: ledger.filter((entry) => entry.patientId === patient.id).map((entry) => ({
+          date: entry.date,
+          intervention: entry.intervention,
+          total: entry.totalAmount,
+          paid: entry.paidAmount,
+          pending: Number(entry.totalAmount || 0) - Number(entry.paidAmount || 0),
+        })),
         consultations: Array.isArray(patient.consultations)
           ? patient.consultations
             .filter((consultation: Record<string, unknown>) => {
@@ -921,6 +944,29 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     return { success: true, message: `Email enviado a ${proposal.patient}.` }
   }
 
+  if (name === 'enviar_recordatorio_turno') {
+    const query = normalizeSearch(input.patient)
+    const { data } = await admin.from('user_workspaces').select('appointments_json, patients_json, profile_json').eq('user_id', professionalId).maybeSingle()
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const matches = appointments.filter((item) => item.status !== 'cancelled' && matchesPatientQuery(item.patientName, item.patientDni, query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time)).sort((left, right) => `${left.scheduledDate}T${left.scheduledTime}`.localeCompare(`${right.scheduledDate}T${right.scheduledTime}`))
+    const appointment = matches[0]
+    if (!appointment) return { success: false, message: 'No encontré un turno activo para ese paciente.' }
+    const patient = patients.find((item) => item.id === appointment.patientId)
+    const email = String(appointment.patientEmail || patient?.email || '').trim()
+    if (!email) return { success: false, message: 'El paciente no tiene un email válido cargado.' }
+    const patientName = String(appointment.patientName || `${patient?.apellido || ''}, ${patient?.nombre || ''}`).trim()
+    const subject = `Recordatorio de turno - ${String(profile.fullName || 'Dr Happy')}`
+    const message = `Hola ${patientName},\n\nTe recordamos tu turno con ${String(profile.fullName || 'Dr Happy')}.\n\nFecha: ${String(appointment.scheduledDate)}\nHora: ${String(appointment.scheduledTime)} hs\nMotivo: ${String(appointment.reason || 'Consulta médica')}\nLugar: ${String(appointment.location || 'Consultorio médico')}\n\nSi necesitás modificarlo, comunicate con el profesional.`
+    const proposal = { patient: patientName, email, date: appointment.scheduledDate, time: appointment.scheduledTime, subject, message }
+    if (input.confirmation !== true && String(input.confirmation || '').toLowerCase() !== 'true') return { requiresConfirmation: true, action: 'enviar_recordatorio_turno', proposal, message: `Preparé el recordatorio del turno del ${appointment.scheduledDate} a las ${appointment.scheduledTime}. Pedí confirmación para enviarlo.` }
+    const emailResult = await sendAppointmentNotice({ supabaseUrl, serviceRoleKey, email, subject, message })
+    return emailResult.sent
+      ? { success: true, message: `Recordatorio de turno enviado a ${patientName} (${email}).` }
+      : { success: false, message: `No se pudo enviar el recordatorio del turno: ${emailResult.message || 'error de envío'}.` }
+  }
+
   if (name === 'enviar_recordatorios_balance') {
     const queries = Array.isArray(input.patients) ? input.patients.map((value) => normalizeSearch(value)).filter(Boolean) : []
     if (!queries.length) return { success: false, message: 'Necesito al menos un paciente.' }
@@ -1110,7 +1156,7 @@ Deno.serve(async (request) => {
     'Para una pregunta histórica específica sobre un paciente, usá consultar_historia_paciente con topic o dateFrom/dateTo. Por defecto usa las últimas evoluciones; si piden algo antiguo, buscá explícitamente en todo el historial permitido y aclarà qué encontraste.',
     'Si preguntan por los turnos liberados al público, la turnera pública o qué horarios puede elegir un paciente, usá consultar_turnera_publica. Es una herramienta de solo lectura: nunca intentes modificarla ni reservar desde Sofía.',
     'Si preguntan por ocupación, cupos o disponibilidad diaria, usá consultar_calendario_ocupacion. Si piden un link de pago, usá obtener_link_pago_profesional.',
-    'Cuando el profesional pida enviar recordatorios a dos o más pacientes, usá enviar_recordatorios_balance. Al aprobar la propuesta, llamá esa herramienta con confirmation=true y la lista original de pacientes; no envíes solo uno ni respondas solo con una propuesta. Para un paciente individual usá enviar_notificacion_paciente.',
+    'Cuando el profesional pida recordar un turno, usá enviar_recordatorio_turno, que consulta la agenda real y usa el flujo de email de turnos. Cuando pida enviar recordatorios de saldo a dos o más pacientes, usá enviar_recordatorios_balance. Al aprobar cualquier propuesta, llamá la herramienta correspondiente con confirmation=true y no respondas solo con una propuesta.',
     'PROTOCOLO OBLIGATORIO DE TURNOS: antes de crear un paciente o asignar cualquier turno debés tener nombre, apellido, DNI y email válido. Si falta cualquiera, pedí todos los datos faltantes juntos y no llames a ninguna herramienta de agendamiento. Recién cuando estén los cuatro datos, usá crear_paciente_y_agendar_turno. Para pacientes existentes, agendar_turno verificará que su ficha tenga esos cuatro datos; si falta alguno, pedí completarlo antes de reintentar. Fecha y hora pueden omitirse para elegir el primer turno disponible.',
     'Si el profesional dice que recuerdes una preferencia o tema de trabajo, proponé guardar_memoria_sofia y pedí confirmación. Nunca guardes datos clínicos de pacientes en esa memoria. Si pregunta por algo que podría haber recordado, usá buscar_memorias_sofia.',
     context ? `Contexto disponible de la sesión:\n${context}` : '',
@@ -1198,7 +1244,7 @@ Deno.serve(async (request) => {
       if (toolRecord?.requiresConfirmation === true && typeof toolRecord.action === 'string' && toolRecord.proposal && typeof toolRecord.proposal === 'object') {
         pendingConfirmation = { action: toolRecord.action, proposal: toolRecord.proposal as Record<string, unknown> }
       }
-      if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno' || toolUse.name === 'reprogramar_turno' || toolUse.name === 'reprogramar_turnos_de_fecha' || toolUse.name === 'registrar_pago_balance' || toolUse.name === 'enviar_recordatorios_balance') && toolRecord && typeof toolRecord.message === 'string') {
+      if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno' || toolUse.name === 'reprogramar_turno' || toolUse.name === 'reprogramar_turnos_de_fecha' || toolUse.name === 'registrar_pago_balance' || toolUse.name === 'enviar_recordatorios_balance' || toolUse.name === 'enviar_recordatorio_turno') && toolRecord && typeof toolRecord.message === 'string') {
         directSchedulingReply = toolRecord.message
         if (toolRecord.success === true) break
       }
