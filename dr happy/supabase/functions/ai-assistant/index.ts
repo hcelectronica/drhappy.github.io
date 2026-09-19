@@ -309,6 +309,23 @@ async function recoverPersistedAppointment(
     .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')))[0] || null
 }
 
+async function recoverPersistedRescheduledAppointment(
+  admin: ReturnType<typeof createClient>,
+  professionalId: string,
+  input: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  const { data } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
+  const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+  const query = input.patient
+  const newDate = String(input.newDate || '').trim()
+  return appointments.find((appointment) => (
+    appointment.status !== 'cancelled' &&
+    appointment.scheduledDate === newDate &&
+    Boolean(appointment.previousAppointmentId) &&
+    matchesPatientQuery(appointment.patientName, appointment.patientDni, query)
+  )) || null
+}
+
 async function runTool(name: string, input: Record<string, unknown>, admin: ReturnType<typeof createClient>, professionalId: string): Promise<unknown> {
   if (name === 'buscar_turnos') {
     const { data } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
@@ -667,7 +684,11 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const { data } = await admin.from('user_workspaces').select('appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
     const match = appointments.find((item) => item.status !== 'cancelled' && matchesPatientQuery(item.patientName, item.patientDni, query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time))
-    if (!match) return { success: false, message: 'No encontré ese turno.' }
+    if (!match) {
+      const alreadyRescheduled = appointments.find((item) => item.status !== 'cancelled' && item.scheduledDate === newDate && item.previousAppointmentId && matchesPatientQuery(item.patientName, item.patientDni, query))
+      if (alreadyRescheduled) return { success: true, idempotent: true, message: `El turno de ${alreadyRescheduled.patientName} ya estaba reprogramado para el ${alreadyRescheduled.scheduledDate} a las ${alreadyRescheduled.scheduledTime}. No hice cambios adicionales.` }
+      return { success: false, message: 'No encontré ese turno.' }
+    }
     const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
     const dailyLimit = Number(profile.dailyPatientLimit) || 10
     const appointmentDays = Array.isArray(profile.appointmentDays) ? profile.appointmentDays : [1, 2, 4]
@@ -971,26 +992,43 @@ Deno.serve(async (request) => {
       } catch (error) {
         console.error('[ai-assistant] tool failed', { tool: toolUse.name, message: error instanceof Error ? error.message : String(error) })
         const schedulingTool = toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno'
-        const recovered = schedulingTool ? await recoverPersistedAppointment(admin, professionalId, toolUse.input || {}) : null
+        const reschedulingTool = toolUse.name === 'reprogramar_turno'
+        const recovered = schedulingTool
+          ? await recoverPersistedAppointment(admin, professionalId, toolUse.input || {})
+          : reschedulingTool
+            ? await recoverPersistedRescheduledAppointment(admin, professionalId, toolUse.input || {})
+            : null
         if (recovered) {
           const recoveredEmail = String(recovered.patientEmail || toolUse.input?.email || '').trim()
           const emailResult = recoveredEmail
-            ? await sendAppointmentConfirmation({
-              supabaseUrl,
-              serviceRoleKey,
-              email: recoveredEmail,
-              patientName: String(recovered.patientName || 'Paciente'),
-              professionalName: 'Dr Happy',
-              date: String(recovered.scheduledDate || ''),
-              time: String(recovered.scheduledTime || ''),
-              location: String(recovered.location || 'Consultorio médico'),
-              reason: String(recovered.reason || 'Consulta médica'),
-            })
+            ? reschedulingTool
+              ? await sendAppointmentNotice({
+                supabaseUrl,
+                serviceRoleKey,
+                email: recoveredEmail,
+                subject: 'Turno reprogramado con Dr Happy',
+                message: `Hola ${String(recovered.patientName || 'Paciente')},\n\nTu turno fue reprogramado para el ${String(recovered.scheduledDate || '')} a las ${String(recovered.scheduledTime || '')} hs.`,
+              })
+              : await sendAppointmentConfirmation({
+                supabaseUrl,
+                serviceRoleKey,
+                email: recoveredEmail,
+                patientName: String(recovered.patientName || 'Paciente'),
+                professionalName: 'Dr Happy',
+                date: String(recovered.scheduledDate || ''),
+                time: String(recovered.scheduledTime || ''),
+                location: String(recovered.location || 'Consultorio médico'),
+                reason: String(recovered.reason || 'Consulta médica'),
+              })
             : { sent: false, message: 'No hay email válido cargado.' }
           toolData = {
             success: true,
-            message: `Turno confirmado para ${recovered.patientName} el ${recovered.scheduledDate} a las ${recovered.scheduledTime}.${emailResult.sent ? ` Confirmación enviada a ${recoveredEmail}.` : ` El turno quedó guardado, pero no se pudo enviar el email: ${emailResult.message || 'error de envío'}.`}`,
+            message: reschedulingTool
+              ? `Turno reprogramado para ${recovered.patientName} el ${recovered.scheduledDate} a las ${recovered.scheduledTime}.${emailResult.sent ? ` Aviso enviado a ${recoveredEmail}.` : ` El turno quedó reprogramado, pero no se pudo enviar el aviso: ${emailResult.message || 'error de envío'}.`}`
+              : `Turno confirmado para ${recovered.patientName} el ${recovered.scheduledDate} a las ${recovered.scheduledTime}.${emailResult.sent ? ` Confirmación enviada a ${recoveredEmail}.` : ` El turno quedó guardado, pero no se pudo enviar el email: ${emailResult.message || 'error de envío'}.`}`,
           }
+        } else if (reschedulingTool) {
+          toolData = { success: false, message: 'No pude completar la reprogramación. El turno original no fue modificado.' }
         } else {
           toolData = { success: false, message: schedulingTool ? 'No pude confirmar el turno. No se encontró una reserva nueva en la agenda.' : 'No pude completar esa acción por un error interno.' }
         }
