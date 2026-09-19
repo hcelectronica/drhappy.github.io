@@ -224,7 +224,6 @@ body.theme-night .smart-txt small { color: #9db2d6; }
 @media (max-width: 899px) {
   .home-sofia { display: flex; }
   .home-botonera { display: grid; }
-  .sidebar-handle.on-home { display: none; }
 }
 
 /* Botonera de acciones al tope de una pantalla: todo a la vista, sin scroll previo. */
@@ -264,7 +263,68 @@ body.theme-night .screen-action.active { background: linear-gradient(135deg, rgb
   .screen-action-bar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .screen-action { justify-content: flex-start; min-height: 46px; padding: 9px 11px; font-size: 0.75rem; }
   .screen-action.primary { grid-column: 1 / -1; justify-content: center; }
+  .turnera-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .turnera-metric-card { padding: 11px 12px; gap: 9px; }
+  .turnera-metric-icon { font-size: 1.3rem; }
+  .turnera-metric-info strong { font-size: 1.15rem; }
+  .turnera-metric-info span { font-size: 0.68rem; }
 }
+
+/* Barra inferior fija: navegación principal en móvil (en PC manda la barra lateral). */
+.mobile-tabbar { display: none; }
+
+@media (max-width: 899px) {
+  .mobile-tabbar {
+    position: fixed;
+    z-index: 65;
+    inset: auto 0 0 0;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: center;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(197, 209, 231, 0.9);
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 -6px 20px rgba(76, 95, 130, 0.12);
+    backdrop-filter: blur(14px);
+  }
+  .mobile-tabbar button {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    min-height: 0;
+    padding: 5px 2px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: #8496b3;
+    font: inherit;
+    font-size: 0.58rem;
+    font-weight: 700;
+    box-shadow: none;
+  }
+  .mobile-tabbar button:hover { transform: none; filter: none; box-shadow: none; }
+  .mobile-tabbar button span { font-size: 1.15rem; line-height: 1.1; }
+  .mobile-tabbar button.active { color: #4d7ad4; }
+  .mobile-tabbar .mobile-tab-sofia { color: #35507d; }
+  .mobile-tabbar .mobile-tab-sofia span {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    margin-top: -18px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #4d7ad4, #3860b8);
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(61, 95, 169, 0.42);
+  }
+  /* La barra inferior sustituye a la lengüeta en móvil. */
+  .sidebar-handle { display: none; }
+  .app { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
+}
+
+body.theme-night .mobile-tabbar { border-top-color: rgba(96, 116, 152, 0.5); background: rgba(17, 28, 47, 0.97); box-shadow: 0 -6px 20px rgba(3, 10, 22, 0.5); }
+body.theme-night .mobile-tabbar button { color: #9db2d6; }
+body.theme-night .mobile-tabbar button.active { color: #8fb4f5; }
 
 .medical-news-strip { display: flex; align-items: center; gap: 12px; min-height: 34px; margin: -4px 0 16px; padding: 7px 12px; border: 1px solid rgba(130, 153, 186, 0.36); border-radius: 12px; background: rgba(245, 249, 255, 0.8); color: #4e6785; font-size: 0.73rem; overflow: hidden; }
 .medical-news-label { flex: 0 0 auto; color: #1d4ed8; font-weight: 800; }

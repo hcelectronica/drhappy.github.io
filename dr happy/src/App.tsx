@@ -9581,7 +9581,7 @@ function App() {
       {sidebarOpen ? <button type="button" className="sidebar-scrim" aria-label="Cerrar navegación" onClick={() => setSidebarOpen(false)} /> : null}
       <button
         type="button"
-        className={`sidebar-handle${sidebarOpen ? ' open' : ''}${workspaceLayer === 'overview' ? ' on-home' : ''}`}
+        className={`sidebar-handle${sidebarOpen ? ' open' : ''}`}
         aria-label={sidebarOpen ? 'Cerrar navegación' : 'Abrir navegación'}
         aria-expanded={sidebarOpen}
         onClick={() => setSidebarOpen((current) => !current)}
@@ -9589,6 +9589,41 @@ function App() {
         <span className="sidebar-handle-arrow" aria-hidden="true">{sidebarOpen ? '‹' : '›'}</span>
         <span className="sidebar-handle-label" aria-hidden="true">Menú</span>
       </button>
+
+      {/* Solo visible en móvil: reemplaza a la barra lateral como navegación principal. */}
+      <nav className="mobile-tabbar" aria-label="Navegación rápida">
+        <button
+          type="button"
+          className={workspaceLayer === 'overview' ? 'active' : ''}
+          onClick={handleBackToOverview}
+        >
+          <span aria-hidden="true">⌂</span> Inicio
+        </button>
+        <button
+          type="button"
+          className={workspaceLayer === 'appointments' ? 'active' : ''}
+          onClick={handleOpenAppointments}
+        >
+          <span aria-hidden="true">◷</span> Turnos
+        </button>
+        <button type="button" className="mobile-tab-sofia" onClick={() => setSofiaOpen(true)}>
+          <span aria-hidden="true">✦</span> Sofía
+        </button>
+        <button
+          type="button"
+          className={workspaceLayer === 'my-patients' || workspaceLayer === 'patient-search' || workspaceLayer === 'patient-record' ? 'active' : ''}
+          onClick={() => { stopDictation(); setCommunityOpen(false); setWorkspaceLayer('my-patients'); setAppError(null) }}
+        >
+          <span aria-hidden="true">👥</span> Pacientes
+        </button>
+        <button
+          type="button"
+          className={workspaceLayer === 'profile' ? 'active' : ''}
+          onClick={handleOpenProfile}
+        >
+          <span aria-hidden="true">◉</span> Perfil
+        </button>
+      </nav>
 
       {appError ? <p className="error">{appError}</p> : null}
       {appNotice ? <p className="notice">{appNotice}</p> : null}
