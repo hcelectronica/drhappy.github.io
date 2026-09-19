@@ -976,19 +976,19 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const queries = Array.isArray(input.patients) ? input.patients.map((value) => normalizeSearch(value)).filter(Boolean) : []
     if (!queries.length) return { success: false, message: 'Necesito al menos un paciente.' }
     const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
-    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
-    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
-    const targets = queries.map((query) => patients.find((item) => matchesPatientQuery(`${item.nombre || ''} ${item.apellido || ''}`, item.dni, query))).filter((patient): patient is Record<string, unknown> => Boolean(patient))
+    const patients = (Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []).filter(Boolean)
+    const ledger = (Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []).filter(Boolean)
+    const targets = queries.map((query) => patients.find((item) => matchesPatientQuery(`${item?.nombre || ''} ${item?.apellido || ''}`, item?.dni, query))).filter((patient): patient is Record<string, unknown> => Boolean(patient))
     if (targets.length !== queries.length) return { success: false, message: 'No encontré a todos los pacientes indicados en la base de datos.' }
     const proposals = targets.map((patient) => {
-      const patientName = `${patient.apellido || ''}, ${patient.nombre || ''}`.trim()
-      const debts = ledger.filter((entry) => entry.patientId === patient.id && Number(entry.totalAmount || 0) > Number(entry.paidAmount || 0))
+      const patientName = `${patient?.apellido || ''}, ${patient?.nombre || ''}`.trim()
+      const debts = ledger.filter((entry) => entry?.patientId === patient?.id && Number(entry?.totalAmount || 0) > Number(entry?.paidAmount || 0))
       const details = debts.map((entry) => {
-        const total = Number(entry.totalAmount || 0)
-        const paid = Number(entry.paidAmount || 0)
-        return `Tratamiento: ${String(entry.intervention || 'Tratamiento')}\nMonto total: $${total.toLocaleString('es-AR')}\nPagado: $${paid.toLocaleString('es-AR')}\nSaldo pendiente: $${(total - paid).toLocaleString('es-AR')}`
+        const total = Number(entry?.totalAmount || 0)
+        const paid = Number(entry?.paidAmount || 0)
+        return `Tratamiento: ${String(entry?.intervention || 'Tratamiento')}\nMonto total: $${total.toLocaleString('es-AR')}\nPagado: $${paid.toLocaleString('es-AR')}\nSaldo pendiente: $${(total - paid).toLocaleString('es-AR')}`
       }).join('\n\n')
-      return { patientName, email: patient.email, subject: 'Recordatorio de saldo pendiente', message: `Hola ${patient.nombre || patientName},\n\nTe escribimos para informarte tu saldo pendiente:\n\n${details || 'No encontramos un saldo pendiente registrado.'}\n\nSaludos cordiales.` }
+      return { patientName, email: patient?.email, subject: 'Recordatorio de saldo pendiente', message: `Hola ${patient?.nombre || patientName},\n\nTe escribimos para informarte tu saldo pendiente:\n\n${details || 'No encontramos un saldo pendiente registrado.'}\n\nSaludos cordiales.` }
     })
     if (input.confirmation !== true) return { requiresConfirmation: true, action: 'enviar_recordatorios_balance', proposal: { patients: proposals }, message: `Preparé ${proposals.length} recordatorios de saldo. Pedí confirmación para enviarlos.` }
     const results = await Promise.all(proposals.map((proposal) => sendAppointmentNotice({ supabaseUrl, serviceRoleKey, email: String(proposal.email || ''), subject: proposal.subject, message: proposal.message })))
@@ -999,22 +999,22 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
   if (name === 'revisar_y_enviar_recordatorios_pagos') {
     const requestedPatients = Array.isArray(input.patients) ? input.patients.map((value) => normalizeSearch(value)).filter(Boolean) : []
     const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
-    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
-    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
+    const patients = (Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []).filter(Boolean)
+    const ledger = (Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []).filter(Boolean)
     const debtors = patients.filter((patient) => {
-      const selected = requestedPatients.length === 0 || requestedPatients.some((query) => matchesPatientQuery(`${patient.nombre || ''} ${patient.apellido || ''}`, patient.dni, query))
-      return selected && ledger.some((entry) => entry.patientId === patient.id && Number(entry.totalAmount || 0) > Number(entry.paidAmount || 0))
+      const selected = requestedPatients.length === 0 || requestedPatients.some((query) => matchesPatientQuery(`${patient?.nombre || ''} ${patient?.apellido || ''}`, patient?.dni, query))
+      return selected && ledger.some((entry) => entry?.patientId === patient?.id && Number(entry?.totalAmount || 0) > Number(entry?.paidAmount || 0))
     })
     if (!debtors.length) return { success: false, message: requestedPatients.length ? 'Ninguno de los pacientes indicados tiene saldo pendiente.' : 'No encontré pacientes con saldo pendiente.' }
     const proposals = debtors.map((patient) => {
-      const patientName = `${patient.apellido || ''}, ${patient.nombre || ''}`.trim()
-      const debts = ledger.filter((entry) => entry.patientId === patient.id && Number(entry.totalAmount || 0) > Number(entry.paidAmount || 0))
+      const patientName = `${patient?.apellido || ''}, ${patient?.nombre || ''}`.trim()
+      const debts = ledger.filter((entry) => entry?.patientId === patient?.id && Number(entry?.totalAmount || 0) > Number(entry?.paidAmount || 0))
       const details = debts.map((entry) => {
-        const total = Number(entry.totalAmount || 0)
-        const paid = Number(entry.paidAmount || 0)
-        return `Tratamiento: ${String(entry.intervention || 'Tratamiento')}\nTotal: $${total.toLocaleString('es-AR')}\nPagado: $${paid.toLocaleString('es-AR')}\nPendiente: $${(total - paid).toLocaleString('es-AR')}`
+        const total = Number(entry?.totalAmount || 0)
+        const paid = Number(entry?.paidAmount || 0)
+        return `Tratamiento: ${String(entry?.intervention || 'Tratamiento')}\nTotal: $${total.toLocaleString('es-AR')}\nPagado: $${paid.toLocaleString('es-AR')}\nPendiente: $${(total - paid).toLocaleString('es-AR')}`
       }).join('\n\n')
-      return { patientName, email: patient.email, subject: 'Recordatorio de saldo pendiente', message: `Hola ${patient.nombre || patientName},\n\nTe informamos el saldo pendiente registrado:\n\n${details}\n\nSaludos cordiales.` }
+      return { patientName, email: patient?.email, subject: 'Recordatorio de saldo pendiente', message: `Hola ${patient?.nombre || patientName},\n\nTe informamos el saldo pendiente registrado:\n\n${details}\n\nSaludos cordiales.` }
     })
     if (input.confirmation !== true && String(input.confirmation || '').toLowerCase() !== 'true') return { requiresConfirmation: true, action: 'revisar_y_enviar_recordatorios_pagos', proposal: { patients: proposals }, message: `Revisé el balance y encontré ${proposals.length} pacientes con deuda. Pedí confirmación para enviar los recordatorios.` }
     const results = await Promise.all(proposals.map((proposal) => sendAppointmentNotice({ supabaseUrl, serviceRoleKey, email: String(proposal.email || ''), subject: proposal.subject, message: proposal.message })))
@@ -1268,7 +1268,9 @@ Deno.serve(async (request) => {
         } else if (reschedulingTool) {
           toolData = { success: false, message: 'No pude completar la reprogramación. El turno original no fue modificado.' }
         } else {
-          toolData = { success: false, message: schedulingTool ? 'No pude confirmar el turno. No se encontró una reserva nueva en la agenda.' : 'No pude completar esa acción por un error interno.' }
+          const rawMessage = error instanceof Error ? error.message : String(error)
+          const reminderTool = toolUse.name === 'enviar_recordatorios_balance' || toolUse.name === 'revisar_y_enviar_recordatorios_pagos' || toolUse.name === 'enviar_recordatorio_turno' || toolUse.name === 'enviar_notificacion_paciente'
+          toolData = { success: false, message: schedulingTool ? 'No pude confirmar el turno. No se encontró una reserva nueva en la agenda.' : reminderTool ? `No pude completar el envío: ${rawMessage}` : 'No pude completar esa acción por un error interno.' }
         }
       }
       const toolRecord = toolData && typeof toolData === 'object' ? toolData as Record<string, unknown> : null
