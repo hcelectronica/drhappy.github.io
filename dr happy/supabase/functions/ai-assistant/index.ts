@@ -894,13 +894,23 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
 
   if (name === 'enviar_notificacion_paciente') {
     const query = normalizeSearch(input.patient)
-    const { data } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
+    const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
     const patient = patients.find((item) => matchesPatientQuery(`${item.nombre || ''} ${item.apellido || ''}`, item.dni, query))
     if (!patient || typeof patient.email !== 'string' || !patient.email.trim()) return { success: false, message: 'No encontré un paciente con email cargado.' }
-    const proposal = { patient: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), email: patient.email, subject: input.subject, message: input.message }
+    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
+    const debts = ledger.filter((entry) => entry.patientId === patient.id && Number(entry.totalAmount || 0) > Number(entry.paidAmount || 0))
+    const fallbackMessage = debts.map((entry) => {
+      const total = Number(entry.totalAmount || 0)
+      const paid = Number(entry.paidAmount || 0)
+      return `Tratamiento: ${String(entry.intervention || 'Tratamiento')}\nMonto total: $${total.toLocaleString('es-AR')}\nPagado: $${paid.toLocaleString('es-AR')}\nSaldo pendiente: $${(total - paid).toLocaleString('es-AR')}`
+    }).join('\n\n')
+    const patientName = `${patient.apellido || ''}, ${patient.nombre || ''}`.trim()
+    const subject = String(input.subject || 'Recordatorio de saldo pendiente')
+    const message = String(input.message || `Hola ${patientName},\n\nTe escribimos para informarte tu saldo pendiente:\n\n${fallbackMessage || 'No encontramos un saldo pendiente registrado.'}\n\nSaludos cordiales.`)
+    const proposal = { patient: patientName, email: patient.email, subject, message }
     if (input.confirmation !== true) return { requiresConfirmation: true, action: 'enviar_notificacion_paciente', proposal, message: 'Pedí confirmación explícita antes de enviar.' }
-    const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: patient.email, subject: input.subject, type: 'custom', text: input.message, templateData: { message: input.message } }) })
+    const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: patient.email, subject, type: 'custom', text: message, templateData: { message } }) })
     const emailResult = await emailResponse.json().catch(() => null)
     if (!emailResponse.ok || !emailResult?.success) return { success: false, message: typeof emailResult?.message === 'string' ? emailResult.message : `No se pudo enviar el email (HTTP ${emailResponse.status}).` }
     return { success: true, message: `Email enviado a ${proposal.patient}.` }
@@ -1071,6 +1081,7 @@ Deno.serve(async (request) => {
     'Para una pregunta histórica específica sobre un paciente, usá consultar_historia_paciente con topic o dateFrom/dateTo. Por defecto usa las últimas evoluciones; si piden algo antiguo, buscá explícitamente en todo el historial permitido y aclarà qué encontraste.',
     'Si preguntan por los turnos liberados al público, la turnera pública o qué horarios puede elegir un paciente, usá consultar_turnera_publica. Es una herramienta de solo lectura: nunca intentes modificarla ni reservar desde Sofía.',
     'Si preguntan por ocupación, cupos o disponibilidad diaria, usá consultar_calendario_ocupacion. Si piden un link de pago, usá obtener_link_pago_profesional.',
+    'Cuando el profesional apruebe un recordatorio de email ya propuesto, llamá enviar_notificacion_paciente con confirmation=true, el paciente y el texto original o reconstruido desde el balance. No vuelvas a pedir confirmación ni respondas solo con una propuesta.',
     'PROTOCOLO OBLIGATORIO DE TURNOS: antes de crear un paciente o asignar cualquier turno debés tener nombre, apellido, DNI y email válido. Si falta cualquiera, pedí todos los datos faltantes juntos y no llames a ninguna herramienta de agendamiento. Recién cuando estén los cuatro datos, usá crear_paciente_y_agendar_turno. Para pacientes existentes, agendar_turno verificará que su ficha tenga esos cuatro datos; si falta alguno, pedí completarlo antes de reintentar. Fecha y hora pueden omitirse para elegir el primer turno disponible.',
     'Si el profesional dice que recuerdes una preferencia o tema de trabajo, proponé guardar_memoria_sofia y pedí confirmación. Nunca guardes datos clínicos de pacientes en esa memoria. Si pregunta por algo que podría haber recordado, usá buscar_memorias_sofia.',
     context ? `Contexto disponible de la sesión:\n${context}` : '',
