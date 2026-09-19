@@ -157,6 +157,11 @@ const tools = [
     input_schema: { type: 'object', properties: { patients: { type: 'array', items: { type: 'string' }, description: 'Nombres, apellidos o DNI de los pacientes.' }, confirmation: { type: 'boolean' } }, required: ['patients', 'confirmation'] },
   },
   {
+    name: 'revisar_y_enviar_recordatorios_pagos',
+    description: 'Revisa todo el balance de pagos, identifica pacientes con deuda pendiente y prepara o envía recordatorios individuales. Si patients está vacío incluye todos los deudores. Requiere confirmation=true para enviar.',
+    input_schema: { type: 'object', properties: { patients: { type: 'array', items: { type: 'string' }, description: 'Pacientes opcionales; vacío significa todos los que deben dinero.' }, confirmation: { type: 'boolean' } }, required: ['confirmation'] },
+  },
+  {
     name: 'completar_email_y_enviar_confirmacion',
     description: 'Guarda el email real de un paciente recién agendado y envía la confirmación de su próximo turno ya existente. No crea otro turno.',
     input_schema: { type: 'object', properties: { patient: { type: 'string' }, email: { type: 'string' } }, required: ['patient', 'email'] },
@@ -991,6 +996,32 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     return { success: true, emailsSent: sent, total: results.length, message: `Se enviaron ${sent} de ${results.length} recordatorios de saldo.` }
   }
 
+  if (name === 'revisar_y_enviar_recordatorios_pagos') {
+    const requestedPatients = Array.isArray(input.patients) ? input.patients.map((value) => normalizeSearch(value)).filter(Boolean) : []
+    const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
+    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
+    const debtors = patients.filter((patient) => {
+      const selected = requestedPatients.length === 0 || requestedPatients.some((query) => matchesPatientQuery(`${patient.nombre || ''} ${patient.apellido || ''}`, patient.dni, query))
+      return selected && ledger.some((entry) => entry.patientId === patient.id && Number(entry.totalAmount || 0) > Number(entry.paidAmount || 0))
+    })
+    if (!debtors.length) return { success: false, message: requestedPatients.length ? 'Ninguno de los pacientes indicados tiene saldo pendiente.' : 'No encontré pacientes con saldo pendiente.' }
+    const proposals = debtors.map((patient) => {
+      const patientName = `${patient.apellido || ''}, ${patient.nombre || ''}`.trim()
+      const debts = ledger.filter((entry) => entry.patientId === patient.id && Number(entry.totalAmount || 0) > Number(entry.paidAmount || 0))
+      const details = debts.map((entry) => {
+        const total = Number(entry.totalAmount || 0)
+        const paid = Number(entry.paidAmount || 0)
+        return `Tratamiento: ${String(entry.intervention || 'Tratamiento')}\nTotal: $${total.toLocaleString('es-AR')}\nPagado: $${paid.toLocaleString('es-AR')}\nPendiente: $${(total - paid).toLocaleString('es-AR')}`
+      }).join('\n\n')
+      return { patientName, email: patient.email, subject: 'Recordatorio de saldo pendiente', message: `Hola ${patient.nombre || patientName},\n\nTe informamos el saldo pendiente registrado:\n\n${details}\n\nSaludos cordiales.` }
+    })
+    if (input.confirmation !== true && String(input.confirmation || '').toLowerCase() !== 'true') return { requiresConfirmation: true, action: 'revisar_y_enviar_recordatorios_pagos', proposal: { patients: proposals }, message: `Revisé el balance y encontré ${proposals.length} pacientes con deuda. Pedí confirmación para enviar los recordatorios.` }
+    const results = await Promise.all(proposals.map((proposal) => sendAppointmentNotice({ supabaseUrl, serviceRoleKey, email: String(proposal.email || ''), subject: proposal.subject, message: proposal.message })))
+    const sent = results.filter((result) => result.sent).length
+    return { success: true, emailsSent: sent, total: results.length, message: `Se enviaron ${sent} de ${results.length} recordatorios a pacientes con saldo pendiente.` }
+  }
+
   if (name === 'completar_email_y_enviar_confirmacion') {
     const query = normalizeSearch(input.patient)
     const email = String(input.email || '').trim().toLowerCase()
@@ -1156,7 +1187,7 @@ Deno.serve(async (request) => {
     'Para una pregunta histórica específica sobre un paciente, usá consultar_historia_paciente con topic o dateFrom/dateTo. Por defecto usa las últimas evoluciones; si piden algo antiguo, buscá explícitamente en todo el historial permitido y aclarà qué encontraste.',
     'Si preguntan por los turnos liberados al público, la turnera pública o qué horarios puede elegir un paciente, usá consultar_turnera_publica. Es una herramienta de solo lectura: nunca intentes modificarla ni reservar desde Sofía.',
     'Si preguntan por ocupación, cupos o disponibilidad diaria, usá consultar_calendario_ocupacion. Si piden un link de pago, usá obtener_link_pago_profesional.',
-    'Cuando el profesional pida recordar un turno, usá enviar_recordatorio_turno, que consulta la agenda real y usa el flujo de email de turnos. Cuando pida enviar recordatorios de saldo a dos o más pacientes, usá enviar_recordatorios_balance. Al aprobar cualquier propuesta, llamá la herramienta correspondiente con confirmation=true y no respondas solo con una propuesta.',
+    'Cuando el profesional pida recordar un turno, usá enviar_recordatorio_turno, que consulta la agenda real y usa el flujo de email de turnos. Cuando pida revisar quién debe dinero o enviar recordatorios de pago, usá revisar_y_enviar_recordatorios_pagos: consulta todo el balance, incluye solo deudores y pide una confirmación antes del envío. Al aprobar cualquier propuesta, llamá la herramienta correspondiente con confirmation=true y no respondas solo con una propuesta.',
     'PROTOCOLO OBLIGATORIO DE TURNOS: antes de crear un paciente o asignar cualquier turno debés tener nombre, apellido, DNI y email válido. Si falta cualquiera, pedí todos los datos faltantes juntos y no llames a ninguna herramienta de agendamiento. Recién cuando estén los cuatro datos, usá crear_paciente_y_agendar_turno. Para pacientes existentes, agendar_turno verificará que su ficha tenga esos cuatro datos; si falta alguno, pedí completarlo antes de reintentar. Fecha y hora pueden omitirse para elegir el primer turno disponible.',
     'Si el profesional dice que recuerdes una preferencia o tema de trabajo, proponé guardar_memoria_sofia y pedí confirmación. Nunca guardes datos clínicos de pacientes en esa memoria. Si pregunta por algo que podría haber recordado, usá buscar_memorias_sofia.',
     context ? `Contexto disponible de la sesión:\n${context}` : '',
@@ -1194,7 +1225,7 @@ Deno.serve(async (request) => {
         const toolInput = { ...(toolUse.input || {}) } as Record<string, unknown>
         const latestUserMessage = messages[messages.length - 1]?.content.toLowerCase().trim() || ''
         const affirmative = /^(si|sí|ok|dale|mandalo|mandalo|envi[aá]lo|confirmo|confirmar|hacelo|hace(lo)?|mandaselo|mandáselo)([.! ]|$)/i.test(latestUserMessage)
-        if ((toolUse.name === 'enviar_notificacion_paciente' || toolUse.name === 'enviar_recordatorios_balance') && affirmative) toolInput.confirmation = true
+        if ((toolUse.name === 'enviar_notificacion_paciente' || toolUse.name === 'enviar_recordatorios_balance' || toolUse.name === 'revisar_y_enviar_recordatorios_pagos') && affirmative) toolInput.confirmation = true
         toolData = await runTool(toolUse.name, toolInput, admin, professionalId)
       } catch (error) {
         console.error('[ai-assistant] tool failed', { tool: toolUse.name, message: error instanceof Error ? error.message : String(error) })
@@ -1244,7 +1275,7 @@ Deno.serve(async (request) => {
       if (toolRecord?.requiresConfirmation === true && typeof toolRecord.action === 'string' && toolRecord.proposal && typeof toolRecord.proposal === 'object') {
         pendingConfirmation = { action: toolRecord.action, proposal: toolRecord.proposal as Record<string, unknown> }
       }
-      if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno' || toolUse.name === 'reprogramar_turno' || toolUse.name === 'reprogramar_turnos_de_fecha' || toolUse.name === 'registrar_pago_balance' || toolUse.name === 'enviar_recordatorios_balance' || toolUse.name === 'enviar_recordatorio_turno') && toolRecord && typeof toolRecord.message === 'string') {
+      if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno' || toolUse.name === 'reprogramar_turno' || toolUse.name === 'reprogramar_turnos_de_fecha' || toolUse.name === 'registrar_pago_balance' || toolUse.name === 'enviar_recordatorios_balance' || toolUse.name === 'enviar_recordatorio_turno' || toolUse.name === 'revisar_y_enviar_recordatorios_pagos') && toolRecord && typeof toolRecord.message === 'string') {
         directSchedulingReply = toolRecord.message
         if (toolRecord.success === true) break
       }
