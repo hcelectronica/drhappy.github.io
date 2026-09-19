@@ -77,6 +77,21 @@ const tools = [
     },
   },
   {
+    name: 'registrar_balance_pendiente',
+    description: 'Registra en el balance de pagos un tratamiento o cobro pendiente de un paciente. Requiere confirmation=true; si es false, solo prepara una propuesta.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        patient: { type: 'string', description: 'Nombre, apellido o DNI del paciente.' },
+        intervention: { type: 'string', description: 'Tratamiento o concepto a cobrar.' },
+        totalAmount: { type: 'number', description: 'Monto total pendiente en pesos.' },
+        date: { type: 'string', description: 'Fecha YYYY-MM-DD opcional.' },
+        confirmation: { type: 'boolean' },
+      },
+      required: ['patient', 'intervention', 'totalAmount', 'confirmation'],
+    },
+  },
+  {
     name: 'preparar_borrador_evolucion',
     description: 'Prepara un borrador de evolución clínica a partir de información que el profesional proporciona. Nunca lo guarda automáticamente.',
     input_schema: {
@@ -514,6 +529,33 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     return { count: matches.length, entries: matches }
   }
 
+  if (name === 'registrar_balance_pendiente') {
+    const query = normalizeSearch(input.patient)
+    const intervention = String(input.intervention || '').trim()
+    const totalAmount = Number(input.totalAmount)
+    const date = typeof input.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.date)
+      ? input.date
+      : new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+    if (query.length < 2) return { success: false, message: 'Necesito el nombre, apellido o DNI del paciente.' }
+    if (!intervention) return { success: false, message: 'Necesito indicar el tratamiento o concepto.' }
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) return { success: false, message: 'El monto debe ser mayor que cero.' }
+    const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
+    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const patient = patients.find((item) => matchesPatientQuery(`${item.nombre || ''} ${item.apellido || ''}`, item.dni, query))
+    if (!patient) return { success: false, message: 'No encontré ese paciente en la base de datos.' }
+    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
+    const duplicate = ledger.find((entry) => entry.patientId === patient.id && entry.date === date && normalizeSearch(entry.intervention) === normalizeSearch(intervention) && Number(entry.totalAmount) === totalAmount && Number(entry.paidAmount || 0) < totalAmount)
+    const patientName = `${patient.apellido || ''}, ${patient.nombre || ''}`.trim()
+    const proposal = { patient: patientName, patientId: patient.id, date, intervention, totalAmount, paidAmount: 0, pending: totalAmount }
+    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'registrar_balance_pendiente', proposal, message: `Voy a registrar ${intervention} para ${patientName} por $${totalAmount.toLocaleString('es-AR')} como pendiente.` }
+    if (duplicate) return { success: true, idempotent: true, message: `Ese saldo ya estaba registrado para ${patientName}: ${intervention} por $${totalAmount.toLocaleString('es-AR')} pendiente.` }
+    const now = new Date().toISOString()
+    const entry = { id: crypto.randomUUID(), patientId: String(patient.id), patientName, date, intervention, totalAmount, paidAmount: 0, createdAt: now, updatedAt: now }
+    const saved = await admin.from('user_workspaces').upsert({ user_id: professionalId, treatment_ledger_json: [entry, ...ledger] }, { onConflict: 'user_id' })
+    if (saved.error) return { success: false, message: saved.error.message }
+    return { success: true, message: `Registré en el balance de pagos a ${patientName}: ${intervention} por $${totalAmount.toLocaleString('es-AR')} pendiente.` }
+  }
+
   if (name === 'preparar_borrador_evolucion') {
     return {
       draft: {
@@ -947,7 +989,7 @@ Deno.serve(async (request) => {
     'No diagnostiques ni indiques tratamientos autónomamente. Separá hechos, sugerencias y datos faltantes.',
     'Cuando el profesional pida una acción que todavía no está conectada, explicá que se incorporará como herramienta en la próxima etapa.',
     'Para agendar un turno solicitado directamente por el profesional, ejecutá la acción sin pedir confirmación adicional. Solo informá y detenete si no hay cupo, el día no está habilitado o existe una superposición. Cancelaciones, notificaciones y memorias sí requieren confirmación.',
-    'FLUJO OBLIGATORIO DE TURNERA: primero consultá la agenda/calendario cuando necesites disponibilidad. Para un paciente nuevo, buscá sus datos; si no existe o no lo encontrás, usá crear_paciente_y_agendar_turno. Para un paciente existente, usá agendar_turno con la fecha y hora indicadas o sin fecha/hora para elegir el primer turno disponible. Todo turno confirmado debe enviar email al paciente. Para reprogramar un turno individual, usá reprogramar_turno. Si el profesional pide reprogramar todos los turnos de una fecha, usá reprogramar_turnos_de_fecha: busca el próximo día habilitado con capacidad para todos, primero crea y verifica los nuevos turnos, después elimina los anteriores y finalmente envía un email individual a cada paciente. Si falla la creación de cualquier nuevo turno, no borres los anteriores. Nunca dejes dos turnos activos por una reprogramación.',
+    'FLUJO OBLIGATORIO DE TURNERA: primero consultá la agenda/calendario cuando necesites disponibilidad. Para un paciente nuevo, buscá sus datos; si no existe o no lo encontrás, usá crear_paciente_y_agendar_turno. Para un paciente existente, usá agendar_turno con la fecha y hora indicadas o sin fecha/hora para elegir el primer turno disponible. Todo turno confirmado debe enviar email al paciente. Para reprogramar un turno individual, usá reprogramar_turno. Si el profesional pide reprogramar todos los turnos de una fecha, usá reprogramar_turnos_de_fecha: busca el próximo día habilitado con capacidad para todos, primero crea y verifica los nuevos turnos, después elimina los anteriores y finalmente envía un email individual a cada paciente. Si falla la creación de cualquier nuevo turno, no borres los anteriores. Nunca dejes dos turnos activos por una reprogramación. Para registrar un tratamiento pendiente en el balance, usá registrar_balance_pendiente y pedí confirmación antes de guardar; para consultar saldos, usá consultar_balance_pagos.',
     'No digas que una acción ocurrió si la herramienta no devolvió success=true. Si una operación falla o requiere confirmación, informalo claramente y no lo presentes como realizado.',
     `Fecha y hora actual de Argentina: ${currentDate} ${currentTime}. Si el profesional dice hoy, mañana o pasado mañana, convertílo a YYYY-MM-DD sin preguntarle qué fecha es.`,
     'Si preguntan por turnos o agenda, consultá buscar_turnos cuando necesites informar datos. Si piden agendar, usá directamente la herramienta de agendamiento; no hagas una consulta previa ni pidas confirmación adicional.',
