@@ -4606,3 +4606,74 @@ body.theme-night .turnera-card-actions {
 @media (max-width: 420px) {
   .flyer-grid { grid-template-columns: 1fr; }
 }
+
+/* Debe ir al final: las media queries anteriores resetean el padding de .app
+   con la forma corta y dejarían el contenido debajo de la barra inferior fija. */
+@media (max-width: 899px) {
+  .app {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+
+  .notification-corner-toast {
+    bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+
+  .floating-toast {
+    top: auto;
+    bottom: calc(96px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+  }
+
+  /* El desenfoque se recalcula en cada cuadro del scroll y traba el móvil:
+     se reemplaza por fondos sólidos y sombras más livianas. */
+  .topbar,
+  .panel,
+  .app-sidebar,
+  .mobile-tabbar,
+  .community-messages,
+  .auth-card,
+  .appointments-panel.compact,
+  .notification-corner-toast,
+  .floating-toast {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .topbar {
+    background: #f7faff;
+    box-shadow: 0 6px 16px rgba(32, 74, 130, 0.1);
+  }
+
+  .panel {
+    background: #fbfdff;
+    box-shadow: 0 6px 16px rgba(33, 74, 130, 0.09);
+  }
+
+  .mobile-tabbar {
+    background: #ffffff;
+    transform: translateZ(0);
+  }
+
+  .app-sidebar {
+    background: #f8fafe;
+  }
+
+  body.theme-night .topbar,
+  body.theme-night .panel,
+  body.theme-night .auth-card {
+    background: #0d1727;
+  }
+
+  body.theme-night .mobile-tabbar { background: #111c2f; }
+  body.theme-night .app-sidebar { background: #162238; }
+
+  /* Evita recalcular el layout de listas largas fuera de pantalla al scrollear. */
+  .turnera-cards-grid > *,
+  .ledger-grid > *,
+  .protocol-cards-grid > *,
+  .admin-user-list > li,
+  .patient-directory-grid > * {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 180px;
+  }
+}
