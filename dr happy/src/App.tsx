@@ -2775,8 +2775,7 @@ function App() {
 
   // --- Trial / Suscripción ---
   const trialInfo = useMemo(() => {
-    const TRIAL_DAYS = 14
-    const TRIAL_PATIENTS = 15
+    const TRIAL_DAYS = 7
     const user = seedUsers.find((u) => u.id === activeUserId)
     if (!user) return null
     if (user.isAdmin) {
@@ -2840,22 +2839,18 @@ function App() {
 
     const daysPassed = Math.floor((Date.now() - new Date(user.trialStartedAt).getTime()) / DAY_IN_MS)
     const daysLeft = Math.max(0, TRIAL_DAYS - daysPassed)
-
-    // Contar solo los pacientes propios del usuario
     const ownPatientCount = patients.filter((p) => p.ownerUserId === activeUserId).length
-    const patientsLeft = Math.max(0, TRIAL_PATIENTS - ownPatientCount)
 
     const expiredByTime = daysPassed >= TRIAL_DAYS
-    const expiredByPatients = ownPatientCount >= TRIAL_PATIENTS
-    const expired = expiredByTime || expiredByPatients
+    const expired = expiredByTime
 
     return {
       status: expired ? ('expired' as const) : ('trial' as const),
       daysLeft,
-      patientsLeft,
+      patientsLeft: Infinity,
       ownPatientCount,
       expiredByTime,
-      expiredByPatients,
+      expiredByPatients: false,
       expiredBySubscription: false,
       expired,
     }
@@ -9143,11 +9138,7 @@ function App() {
               ? <>Elegí entre <strong>30 días</strong>, <strong>6 meses</strong> o <strong>1 año</strong> de acceso completo.</>
               : expiredBySubscription
               ? <>Ya pasaron los <strong>30 días</strong> de tu suscripción actual.</>
-              : expiredByPatients && !expiredByTime
-              ? <>Alcanzaste el límite de <strong>15 pacientes</strong> del período de prueba gratuita.</>
-              : expiredByTime && !expiredByPatients
-              ? <>Los <strong>14 días</strong> de acceso gratuito a <strong>Dr Happy 😊</strong> terminaron.</>
-              : <>Alcanzaste el límite del período de prueba gratuita (<strong>14 días</strong> y <strong>15 pacientes</strong>).</>
+              : <>Los <strong>7 días</strong> de prueba gratuita de <strong>Dr Happy 😊</strong> terminaron. Tus datos siguen guardados.</>
             }
           </p>
           <p style={{ color: '#555', marginBottom: 24, lineHeight: 1.6 }}>
@@ -9429,68 +9420,34 @@ function App() {
           ) : null}
           {isAdminSession ? <span className="build-badge compact">Compilación {APP_BUILD_ID}</span> : null}
           {trialInfo?.status === 'active' && Number.isFinite(trialInfo.daysLeft) && (
-            <span className="subscription-status" style={{
-              display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
-              background: trialInfo.daysLeft <= 7 ? '#1d4ed8' : '#1f7a3d',
-              color: '#fff', fontSize: '0.75rem', fontWeight: 600,
-              padding: '4px 10px', borderRadius: 20,
-            }}>
-              <span>
-                {trialInfo.daysLeft <= 0
-                  ? 'Suscripción vencida'
-                  : `Suscripción activa — ${trialInfo.daysLeft} día${trialInfo.daysLeft === 1 ? '' : 's'} restante${trialInfo.daysLeft === 1 ? '' : 's'}`}
+            <span className={`subscription-status plan-chip${trialInfo.daysLeft <= 7 ? ' warn' : ' ok'}`}>
+              <span className="plan-chip-copy">
+                <strong>{trialInfo.daysLeft <= 0 ? 'Suscripción vencida' : 'Suscripción activa'}</strong>
+                <small>
+                  {trialInfo.daysLeft <= 0
+                    ? 'Renovala para seguir usando la app'
+                    : `Quedan ${trialInfo.daysLeft} día${trialInfo.daysLeft === 1 ? '' : 's'}`}
+                </small>
               </span>
               {trialInfo.daysLeft <= 7 && (
-                <>
-                  <button
-                    type="button"
-                    style={{ background: '#fff', color: '#1d4ed8', border: 'none', borderRadius: 12, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    disabled={subscriptionCheckoutLoading !== null}
-                    onClick={() => {
-                      void handleStartSubscriptionCheckout('monthly')
-                    }}
-                  >
-                    {subscriptionCheckoutLoading === 'monthly' ? 'Abriendo pago...' : 'Renovar ahora'}
-                  </button>
-                  <button
-                    type="button"
-                    style={{ background: '#dbeafe', color: '#1d4ed8', border: 'none', borderRadius: 12, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    onClick={() => setPreviewTrialExpired(true)}
-                  >
-                    Mejorar plan
-                  </button>
-                </>
+                <button type="button" className="plan-chip-cta" onClick={() => setPreviewTrialExpired(true)}>
+                  Renovar
+                </button>
               )}
             </span>
           )}
           {trialInfo?.status === 'trial' && (
-            <span className="subscription-status" style={{
-              display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
-              background: (trialInfo.daysLeft <= 3 || trialInfo.patientsLeft <= 3) ? '#c0392b' : trialInfo.daysLeft <= 7 || trialInfo.patientsLeft <= 7 ? '#e67e22' : '#555',
-              color: '#fff', fontSize: '0.75rem', fontWeight: 600,
-              padding: '4px 10px', borderRadius: 20,
-            }}>
-              <span>
-                ⏳ Trial — {trialInfo.daysLeft === 0 ? 'último día' : `${trialInfo.daysLeft} día${trialInfo.daysLeft === 1 ? '' : 's'}`}
-                {' · '}
-                {trialInfo.patientsLeft === 0 ? 'sin pacientes restantes' : `${trialInfo.patientsLeft} paciente${trialInfo.patientsLeft === 1 ? '' : 's'} restante${trialInfo.patientsLeft === 1 ? '' : 's'}`}
+            <span className={`subscription-status plan-chip${trialInfo.daysLeft <= 2 ? ' danger' : ' warn'}`}>
+              <span className="plan-chip-copy">
+                <strong>Prueba gratis</strong>
+                <small>
+                  {trialInfo.daysLeft === 0
+                    ? 'Último día'
+                    : `${trialInfo.daysLeft} de 7 días restantes`}
+                </small>
               </span>
-              <button
-                type="button"
-                style={{ background: '#fff', color: '#c0392b', border: 'none', borderRadius: 12, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                disabled={subscriptionCheckoutLoading !== null}
-                onClick={() => {
-                  void handleStartSubscriptionCheckout('monthly')
-                }}
-              >
-                {subscriptionCheckoutLoading === 'monthly' ? 'Abriendo pago...' : 'Suscribirme'}
-              </button>
-              <button
-                type="button"
-                style={{ background: '#fdecea', color: '#c0392b', border: 'none', borderRadius: 12, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                onClick={() => setPreviewTrialExpired(true)}
-              >
-                Ver planes
+              <button type="button" className="plan-chip-cta" onClick={() => setPreviewTrialExpired(true)}>
+                Suscribir
               </button>
             </span>
           )}

@@ -516,6 +516,57 @@ body.theme-night .onboarding-copy small { color: #9db2d6; }
   .onboarding-list .screen-action { width: 100%; margin-left: 33px; justify-content: center; }
 }
 
+/* Estado del plan: tarjeta compacta con jerarquía propia, sin texto superpuesto. */
+.plan-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid rgba(197, 209, 231, 0.9);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(88, 105, 140, 0.1);
+  white-space: nowrap;
+}
+
+.plan-chip-copy { display: grid; gap: 1px; line-height: 1.2; }
+.plan-chip-copy strong { font-size: 0.74rem; font-weight: 800; letter-spacing: -0.01em; }
+.plan-chip-copy small { font-size: 0.66rem; font-weight: 600; color: #7d90b2; }
+
+.plan-chip-cta {
+  min-height: 30px;
+  padding: 5px 13px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.plan-chip-cta:hover { transform: none; filter: brightness(1.06); box-shadow: none; }
+
+.plan-chip.ok { border-color: #bbf7d0; background: #f0fdf4; }
+.plan-chip.ok .plan-chip-copy strong { color: #15803d; }
+.plan-chip.ok .plan-chip-cta { background: #16a34a; color: #fff; }
+
+.plan-chip.warn { border-color: #fcd34d; background: #fffbeb; }
+.plan-chip.warn .plan-chip-copy strong { color: #b45309; }
+.plan-chip.warn .plan-chip-cta { background: #d97706; color: #fff; }
+
+.plan-chip.danger { border-color: #fca5a5; background: #fef2f2; }
+.plan-chip.danger .plan-chip-copy strong { color: #b91c1c; }
+.plan-chip.danger .plan-chip-cta { background: #dc2626; color: #fff; }
+
+body.theme-night .plan-chip { border-color: rgba(96, 116, 152, 0.5); background: rgba(22, 34, 56, 0.94); box-shadow: none; }
+body.theme-night .plan-chip-copy small { color: #9db2d6; }
+body.theme-night .plan-chip.ok { background: rgba(20, 50, 31, 0.8); border-color: rgba(34, 197, 94, 0.5); }
+body.theme-night .plan-chip.ok .plan-chip-copy strong { color: #86efac; }
+body.theme-night .plan-chip.warn { background: rgba(58, 44, 18, 0.8); border-color: rgba(245, 158, 11, 0.5); }
+body.theme-night .plan-chip.warn .plan-chip-copy strong { color: #fcd34d; }
+body.theme-night .plan-chip.danger { background: rgba(80, 25, 25, 0.8); border-color: rgba(220, 38, 38, 0.5); }
+body.theme-night .plan-chip.danger .plan-chip-copy strong { color: #fca5a5; }
+
 .medical-news-strip { display: flex; align-items: center; gap: 12px; min-height: 34px; margin: -4px 0 16px; padding: 7px 12px; border: 1px solid rgba(130, 153, 186, 0.36); border-radius: 12px; background: rgba(245, 249, 255, 0.8); color: #4e6785; font-size: 0.73rem; overflow: hidden; }
 .medical-news-label { flex: 0 0 auto; color: #1d4ed8; font-weight: 800; }
 .medical-news-track { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -4598,7 +4649,10 @@ body.theme-night .turnera-card-actions {
   .brand-copy h1 { font-size: 0.98rem; }
   .topbar-actions { position: static; width: auto; display: flex; justify-items: end; gap: 8px; }
   .topbar-actions > span { display: none !important; }
-  .topbar-actions > span.subscription-status { display: flex !important; max-width: 40vw; justify-content: center; font-size: 0.62rem !important; text-align: center; }
+  .topbar-actions > span.subscription-status { display: inline-flex !important; max-width: none; padding: 5px 7px 5px 10px; font-size: 0.68rem !important; text-align: left; }
+  .plan-chip-copy strong { font-size: 0.7rem; }
+  .plan-chip-copy small { font-size: 0.62rem; }
+  .plan-chip-cta { min-height: 28px; padding: 4px 11px; font-size: 0.68rem; }
   .topbar-actions > button.google-session-chip { flex: 0 0 40px; width: 40px; min-width: 40px; height: 40px; padding: 0; border-radius: 50%; box-sizing: border-box; box-shadow: 0 0 0 4px rgba(147,197,253,.26), 0 6px 14px rgba(32,74,130,.2); }
   .topbar-actions > button.google-session-chip img { width: 32px; height: 32px; max-width: 32px; max-height: 32px; }
   .medical-news-strip { gap: 7px; margin-bottom: 10px; padding: 6px 8px; font-size: 0.66rem; }
