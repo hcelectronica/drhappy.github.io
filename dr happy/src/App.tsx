@@ -9118,8 +9118,6 @@ function App() {
 
   // ── Pantalla de acceso vencido ────────────────────────────────────────────
   if (trialInfo?.expired || previewTrialExpired) {
-    const expiredByPatients = trialInfo?.expiredByPatients ?? false
-    const expiredByTime = trialInfo?.expiredByTime ?? true
     const expiredBySubscription = trialInfo?.expiredBySubscription ?? false
     const isPlanPreview = previewTrialExpired && !trialInfo?.expired
     return (
