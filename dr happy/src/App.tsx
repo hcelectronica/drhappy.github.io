@@ -2510,7 +2510,7 @@ function App() {
   const [appointmentEndTime, setAppointmentEndTime] = useState(DEFAULT_APPOINTMENT_END_TIME)
   // Prueba piloto: vista alternativa de la Turnera con calendario mensual de ocupación
   // y estadísticas de pacientes atendidos por semana/mes (candidata a feature premium anual).
-  const [turneraViewMode, setTurneraViewMode] = useState<'list' | 'calendar' | 'stats' | 'ledger'>('list')
+  const [turneraViewMode, setTurneraViewMode] = useState<'list' | 'calendar' | 'stats' | 'ledger' | 'capacity'>('list')
   // Balance de pagos (odontología): tratamientos realizados, cobrado y saldo pendiente.
   const [treatmentLedger, setTreatmentLedger] = useState<TreatmentLedgerEntry[]>([])
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
@@ -2591,7 +2591,6 @@ function App() {
   const [selectedMedicationId, setSelectedMedicationId] = useState<string | null>(null)
 
   const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult' | 'community'>('protocols')
-  const [turneraCapacityOpen, setTurneraCapacityOpen] = useState(false)
   const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo'>('usuarios')
   const [adminUserQuery, setAdminUserQuery] = useState('')
   const [adminExpandedUserId, setAdminExpandedUserId] = useState<string | null>(null)
@@ -9651,7 +9650,7 @@ function App() {
           <span aria-hidden="true">📅</span> Turnos
         </button>
         <button type="button" className="mobile-tab-sofia" onClick={() => setSofiaOpen(true)}>
-          <span aria-hidden="true">✨</span> Sofía
+          <span className="sofia-face" aria-hidden="true" /> Sofía IA
         </button>
         <button
           type="button"
@@ -11148,15 +11147,6 @@ function App() {
             </section>
           ) : null}
 
-          <button type="button" className="home-sofia" onClick={() => setSofiaOpen(true)}>
-            <span className="home-sofia-orb" aria-hidden="true">✨</span>
-            <span className="home-sofia-copy">
-              <strong>Sofía</strong>
-              <small>Tu secretaria clínica · agendá y cobrá por voz</small>
-            </span>
-            <span className="home-sofia-go" aria-hidden="true">Hablar →</span>
-          </button>
-
           <nav className="home-botonera" aria-label="Accesos rápidos">
             {homeQuickActions.map((action) => (
               <button
@@ -11319,7 +11309,7 @@ function App() {
             <button type="button" className="screen-action" onClick={handleOpenFreeSlotModal}>
               <span aria-hidden="true">🔗</span> Turnera pública
             </button>
-            <button type="button" className={`screen-action${turneraCapacityOpen ? ' active' : ''}`} onClick={() => setTurneraCapacityOpen((current) => !current)}>
+            <button type="button" className={`screen-action${turneraViewMode === 'capacity' ? ' active' : ''}`} onClick={() => setTurneraViewMode('capacity')}>
               <span aria-hidden="true">⚙️</span> Cupos de atención
             </button>
             <button
@@ -11392,7 +11382,7 @@ function App() {
             ) : null}
           </nav>
 
-          {turneraViewMode !== 'ledger' && turneraCapacityOpen ? <section className="panel appointment-capacity-panel">
+          {turneraViewMode === 'capacity' ? <section className="panel appointment-capacity-panel">
             <div>
               <span className="section-kicker">Control de agenda</span>
               <h3 style={{ margin: 0 }}>Cupos de atención</h3>
