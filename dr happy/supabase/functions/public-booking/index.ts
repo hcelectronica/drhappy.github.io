@@ -103,6 +103,21 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
   })
 }
 
+function decodeBase64(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (value.length % 4)) % 4)
+  return Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0))
+}
+
+async function decryptPaymentToken(value: string): Promise<string> {
+  const keyValue = Deno.env.get('MP_TOKEN_ENCRYPTION_KEY')?.trim()
+  if (!keyValue) throw new Error('Falta MP_TOKEN_ENCRYPTION_KEY.')
+  const [ivPart, dataPart] = value.split('.')
+  if (!ivPart || !dataPart) throw new Error('Token Mercado Pago inválido.')
+  const key = await crypto.subtle.importKey('raw', decodeBase64(keyValue), 'AES-GCM', false, ['decrypt'])
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decodeBase64(ivPart) }, key, decodeBase64(dataPart))
+  return new TextDecoder().decode(decrypted)
+}
+
 function generateToken(): string {
   const bytes = new Uint8Array(16)
   crypto.getRandomValues(bytes)
@@ -435,9 +450,6 @@ serve(async (request) => {
         }
         const professionalId = await resolveProfessionalId(request, admin)
         if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
-        const { data: professional } = await admin.from('professionals').select('full_name').eq('id', professionalId).maybeSingle()
-        if (!professional) return jsonResponse(404, { success: false, message: 'No se encontró el profesional.' })
-        settings.professionalName = String(professional.full_name || settings.professionalName).trim()
         settings.professionalId = professionalId
 
         const { data: saved, error } = await admin
@@ -487,8 +499,6 @@ serve(async (request) => {
         if (!settings || !settings.enabled) {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
-        const { data: professional } = await admin.from('professionals').select('full_name, active').eq('id', settings.professional_id).maybeSingle()
-        if (!professional || professional.active === false) return jsonResponse(404, { success: false, message: 'El profesional de esta turnera ya no está disponible.' })
 
         const blocks = Array.from(new Map(
           (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
@@ -559,7 +569,7 @@ serve(async (request) => {
           success: true,
           profile: {
             slug: settings.slug,
-            professionalName: professional.full_name || settings.professional_name,
+            professionalName: settings.professional_name,
             location: settings.location,
             reason: settings.reason,
             horizonDays,
@@ -594,8 +604,6 @@ serve(async (request) => {
         if (!settings || !settings.enabled) {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
-        const { data: professional } = await admin.from('professionals').select('full_name, active').eq('id', settings.professional_id).maybeSingle()
-        if (!professional || professional.active === false) return jsonResponse(404, { success: false, message: 'El profesional de esta turnera ya no está disponible.' })
         if (slotDate < todayISO() || slotDate > addDays(todayISO(), 59)) {
           return jsonResponse(409, { success: false, message: 'La fecha elegida está fuera del rango habilitado.' })
         }
@@ -646,6 +654,40 @@ serve(async (request) => {
         })
         if (reservationError) {
           return jsonResponse(409, { success: false, message: 'Ese horario ya fue reservado. Elegí otro disponible.' })
+        }
+
+        let paymentPreferenceId: string | null = null
+        let paymentInitPoint: string | null = null
+        if (amount && block.modality === 'private') {
+          const { data: paymentAccount } = await admin
+            .from('professional_payment_accounts')
+            .select('access_token_encrypted, status')
+            .eq('professional_id', settings.professional_id)
+            .eq('provider', 'mercadopago')
+            .maybeSingle()
+          if (paymentAccount?.status === 'connected') {
+            try {
+              const accessToken = await decryptPaymentToken(paymentAccount.access_token_encrypted)
+              const preferenceResponse = await fetch('https://api.mercadopago.com/checkout/preferences', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  items: [{ id: appointmentId, title: block.reason || settings.reason || 'Consulta médica', quantity: 1, currency_id: 'ARS', unit_price: amount }],
+                  payer: patientEmail ? { email: patientEmail, name: patientName } : { name: patientName },
+                  external_reference: appointmentId,
+                  notification_url: `${supabaseUrl}/functions/v1/mercadopago-patient-webhook`,
+                }),
+              })
+              const preference = await preferenceResponse.json().catch(() => null)
+              if (preferenceResponse.ok && preference?.id && preference?.init_point) {
+                paymentPreferenceId = String(preference.id)
+                paymentInitPoint = String(preference.init_point)
+                await admin.from('public_booking_reservations').update({ payment_preference_id: paymentPreferenceId, payment_init_point: paymentInitPoint, payment_status: 'pending' }).eq('appointment_id', appointmentId)
+              }
+            } catch (paymentError) {
+              console.error('[public-booking] No se pudo crear checkout del profesional:', paymentError)
+            }
+          }
         }
 
         const newAppointment = {
@@ -713,6 +755,8 @@ serve(async (request) => {
 
         return jsonResponse(200, {
           success: true,
+          paymentUrl: paymentInitPoint,
+          paymentPreferenceId,
           appointment: {
             date: slotDate,
             time: slotTime,
