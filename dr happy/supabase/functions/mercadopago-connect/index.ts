@@ -57,7 +57,11 @@ Deno.serve(async (request) => {
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
   const url = new URL(request.url)
-  const action = url.searchParams.get('action') || (request.method === 'GET' ? 'authorize' : '')
+  let body: Record<string, unknown> = {}
+  if (request.method === 'POST') {
+    try { body = await request.json() } catch { return jsonResponse(400, { success: false, message: 'Cuerpo JSON inválido.' }) }
+  }
+  const action = url.searchParams.get('action') || (typeof body.action === 'string' ? body.action : '') || (request.method === 'GET' ? 'authorize' : '')
 
   if (action === 'callback') {
     const code = url.searchParams.get('code')?.trim()
