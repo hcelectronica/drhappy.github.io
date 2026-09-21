@@ -113,15 +113,6 @@ const DEFAULT_DAILY_PATIENT_LIMIT = 10
 const DEFAULT_APPOINTMENT_START_TIME = '09:00'
 const DEFAULT_APPOINTMENT_END_TIME = '19:00'
 
-const APP_FLYER_SLIDES = [
-  { key: 'ambulance', eyebrow: 'Respuesta inmediata', title: 'Modo Ambulancia', description: 'Gestioná rápidamente traslados, guardias y atención prehospitalaria con protocolos listos para usar.', icon: '🚑', visual: 'ambulance' },
-  { key: 'attention', eyebrow: 'Historia clínica', title: 'Atención médica', description: 'Encontrá pacientes, registrá evoluciones y mantené toda la información clínica organizada.', icon: '🩺', visual: 'patient' },
-  { key: 'appointments', eyebrow: 'Agenda inteligente', title: 'Turnera médica', description: 'Organizá tus días, definí cupos y ofrecé turnos libres con horarios segmentados.', icon: '📅', visual: 'calendar' },
-  { key: 'tools', eyebrow: 'Decisiones clínicas', title: 'Herramientas clínicas', description: 'Consultá protocolos, vademécum y patologías desde un mismo espacio profesional.', icon: '🧰', visual: 'tools' },
-  { key: 'patients', eyebrow: 'Tu base clínica', title: 'Mis pacientes', description: 'Accedé rápidamente a tus pacientes, buscá por DNI y continuá una atención cuando quieras.', icon: '👥', visual: 'patients' },
-  { key: 'ledger', eyebrow: 'Control profesional', title: 'Balance de pagos', description: 'Registrá tratamientos, pagos y saldos pendientes para saber qué está cobrado y qué falta cobrar.', icon: '💰', visual: 'ledger' },
-] as const
-
 /**
  * Módulos que no se habilitan por defecto: requieren activación explícita del
  * admin (o, en el caso del balance, una especialidad odontológica).
@@ -2609,7 +2600,6 @@ function App() {
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
   const [myPatientsQuery, setMyPatientsQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [flyerSlideIndex, setFlyerSlideIndex] = useState(0)
   const [diagnosisCatalog, setDiagnosisCatalog] = useState<string[]>([])
   const [specialtyCatalog, setSpecialtyCatalog] = useState<string[]>([])
   const [medicationCatalog, setMedicationCatalog] = useState<MedicationEntry[]>([])
@@ -4481,14 +4471,6 @@ function App() {
       window.clearInterval(intervalId)
     }
   }, [medicalNews])
-
-  useEffect(() => {
-    if (workspaceLayer !== 'overview') return
-    const intervalId = window.setInterval(() => {
-      setFlyerSlideIndex((current) => (current + 1) % APP_FLYER_SLIDES.length)
-    }, 6500)
-    return () => window.clearInterval(intervalId)
-  }, [workspaceLayer])
 
   useEffect(() => {
     if (!selectedMedicationId) {
@@ -6806,38 +6788,6 @@ function App() {
   function handleSelectToolsTab(tab: 'protocols' | 'vademecum' | 'consult' | 'community'): void {
     setToolsActiveTab(tab)
     setCommunityOpen(tab === 'community')
-  }
-
-  function handleOpenFlyerSlide(slideKey: (typeof APP_FLYER_SLIDES)[number]['key']): void {
-    if (slideKey === 'ambulance') {
-      handleOpenAmbulance()
-      return
-    }
-    if (slideKey === 'attention') {
-      handleStartAttentionFlow()
-      return
-    }
-    if (slideKey === 'appointments') {
-      handleOpenAppointments()
-      return
-    }
-    if (slideKey === 'tools') {
-      handleOpenTools()
-      return
-    }
-    if (slideKey === 'patients') {
-      stopDictation()
-      setCommunityOpen(false)
-      setWorkspaceLayer('my-patients')
-      setAppError(null)
-      return
-    }
-    if (!canUseTreatmentLedger) {
-      setAppError('El balance de pagos no está habilitado para tu cuenta.')
-      return
-    }
-    handleOpenAppointments()
-    setTurneraViewMode('ledger')
   }
 
   function handleToggleThemeMode(): void {
