@@ -118,11 +118,6 @@
           <strong id="rangeLabel"></strong>
           <button type="button" class="ghost" id="nextBtn">Más fechas</button>
         </div>
-        <div class="filters">
-          <button type="button" class="chip active" data-filter="all">Todos</button>
-          <button type="button" class="chip" data-filter="coverage">Obra social / sin pago</button>
-          <button type="button" class="chip" data-filter="private">Particular / con pago</button>
-        </div>
       </div>
 
       <div class="layout">
@@ -156,7 +151,7 @@
     var FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/public-booking';
     var params = new URLSearchParams(window.location.search);
     var slug = params.get('p') || (window.location.hash || '').replace(/^#\/?/, '') || '';
-    var fixedModality = params.get('m') === 'private' || params.get('m') === 'coverage' ? params.get('m') : null;
+    var fixedModality = null;
     var cursor = todayISO().slice(0, 7) + '-01';
     var filter = fixedModality || 'all';
     var agenda = null;
