@@ -24,7 +24,7 @@ Deno.serve(async (request) => {
     return error ? jsonResponse(500, { success: false, message: error.message }) : jsonResponse(200, { success: true, messages: data || [] })
   }
   if (action === 'unread') {
-    const { data, error } = await admin.from('community_messages').select('id, sender_id, recipient_id, text, attachments_json, sent_at').eq('recipient_id', professionalId).order('sent_at', { ascending: true })
+    const { data, error } = await admin.from('community_messages').select('id, sender_id, recipient_id, text, sent_at').eq('recipient_id', professionalId).order('sent_at', { ascending: true })
     return error ? jsonResponse(500, { success: false, message: error.message }) : jsonResponse(200, { success: true, messages: data || [] })
   }
   if (action === 'send') {

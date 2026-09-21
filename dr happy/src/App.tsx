@@ -5047,7 +5047,7 @@ function App() {
   }, [communityOpen, communityTargetId, communityDisplayedMembers, activeUserId])
 
   useEffect(() => {
-    if (!activeUserId || !communityTargetId) {
+    if (!communityOpen || !activeUserId || !communityTargetId) {
       setCommunityMessages([])
       return
     }
@@ -5090,7 +5090,7 @@ function App() {
     void readThread()
     const intervalId = window.setInterval(() => {
       void readThread()
-    }, 2000)
+    }, 10000)
 
     const handleVisibilityOrOnline = () => {
       if (!document.hidden && navigator.onLine) {
@@ -5105,7 +5105,7 @@ function App() {
       document.removeEventListener('visibilitychange', handleVisibilityOrOnline)
       window.removeEventListener('online', handleVisibilityOrOnline)
     }
-  }, [activeUserId, communityTargetId])
+  }, [communityOpen, activeUserId, communityTargetId])
 
   useEffect(() => {
     if (!communityOpen || !activeUserId || !communityTargetId) {
@@ -5122,6 +5122,9 @@ function App() {
     }
 
     const scanUnread = async () => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        return
+      }
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         return
       }
@@ -5223,7 +5226,7 @@ function App() {
     void scanUnread()
     const intervalId = window.setInterval(() => {
       void scanUnread()
-    }, 2500)
+    }, 30000)
 
     const handleVisibilityOrOnline = () => {
       if (navigator.onLine) {
