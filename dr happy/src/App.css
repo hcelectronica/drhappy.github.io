@@ -2074,6 +2074,33 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
 
 .admin-user-search input { width: 100%; }
 
+.mercadopago-connect-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px;
+  border: 1px solid #b7d8c9;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #f0fdf7, #e9f8f1);
+}
+
+.mercadopago-connect-copy { min-width: 0; }
+.mercadopago-connect-copy h3 { margin: 0 0 3px; color: #176b4b; font-size: 0.98rem; }
+.mercadopago-connect-copy p { margin: 0 0 5px; color: #496b5c; font-size: 0.78rem; line-height: 1.45; }
+.mercadopago-connected-status { color: #15803d; font-size: 0.75rem; font-weight: 800; }
+.mercadopago-connect-button { background: #00a650; border-color: #008f45; white-space: nowrap; }
+.mercadopago-connect-button:hover { background: #008f45; }
+
+body.theme-night .mercadopago-connect-card { border-color: rgba(74, 170, 119, 0.55); background: rgba(20, 65, 45, 0.55); }
+body.theme-night .mercadopago-connect-copy h3 { color: #86efac; }
+body.theme-night .mercadopago-connect-copy p { color: #b8d8c4; }
+
+@media (max-width: 720px) {
+  .mercadopago-connect-card { align-items: stretch; flex-direction: column; }
+  .mercadopago-connect-card button { width: 100%; }
+}
+
 .admin-user-detail {
   display: flex;
   gap: 8px;

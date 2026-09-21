@@ -42,6 +42,7 @@ import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
 import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
+import { disconnectMercadoPago, getMercadoPagoConnectionStatus, startMercadoPagoConnection } from './mercadoPagoConnectService'
 import { communityRequest } from './communityService'
 import { parseClinicalSummary } from './clinicalSummaryParser'
 import { loadProfessionals, loadOwnProfessional, updateOwnProfessionalProfile } from './professionalsService'
@@ -2558,6 +2559,9 @@ function App() {
   const [publicBookingSaving, setPublicBookingSaving] = useState(false)
   const [publicBookingError, setPublicBookingError] = useState<string | null>(null)
   const [publicBookingNotice, setPublicBookingNotice] = useState<string | null>(null)
+  const [mercadoPagoConnected, setMercadoPagoConnected] = useState(false)
+  const [mercadoPagoAccountEmail, setMercadoPagoAccountEmail] = useState<string | null>(null)
+  const [mercadoPagoConnectionBusy, setMercadoPagoConnectionBusy] = useState(false)
 
   useEffect(() => {
     if (!freeSlotModalOpen) {
@@ -2569,6 +2573,27 @@ function App() {
       document.body.style.overflow = previousOverflow
     }
   }, [freeSlotModalOpen])
+
+  useEffect(() => {
+    if (!activeUserId) return
+    void getMercadoPagoConnectionStatus().then((result) => {
+      setMercadoPagoConnected(Boolean(result.success && result.connected))
+      setMercadoPagoAccountEmail(result.account?.public_email ?? null)
+    })
+  }, [activeUserId])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const connectionState = params.get('mp_connection')
+    if (!connectionState) return
+    if (connectionState === 'connected') {
+      setAppNotice('Cuenta de Mercado Pago conectada correctamente.')
+      setMercadoPagoConnected(true)
+    } else if (connectionState === 'error') {
+      setAppError(params.get('message') || 'No se pudo conectar Mercado Pago.')
+    }
+    window.history.replaceState({}, document.title, window.location.pathname)
+  }, [])
   // Métricas de uso por usuario (solo conteos y fechas, sin datos clínicos).
   const [adminUserStats, setAdminUserStats] = useState<AdminUserStats[]>([])
   const [adminUserStatsLoading, setAdminUserStatsLoading] = useState(false)
@@ -7394,6 +7419,38 @@ function App() {
     setFreeSlotModalOpen(true)
     void refreshFreeSlotLinks()
     void refreshPublicBookingSettings()
+  }
+
+  async function handleConnectMercadoPago(): Promise<void> {
+    setMercadoPagoConnectionBusy(true)
+    setAppError(null)
+    try {
+      const result = await startMercadoPagoConnection()
+      if (!result.success || !result.authorizationUrl) {
+        setAppError(result.message || 'No se pudo iniciar la conexión con Mercado Pago.')
+        return
+      }
+      window.location.assign(result.authorizationUrl)
+    } finally {
+      setMercadoPagoConnectionBusy(false)
+    }
+  }
+
+  async function handleDisconnectMercadoPago(): Promise<void> {
+    if (!window.confirm('¿Desconectar tu cuenta de Mercado Pago? Los cobros futuros dejarán de usarla.')) return
+    setMercadoPagoConnectionBusy(true)
+    try {
+      const result = await disconnectMercadoPago()
+      if (!result.success) {
+        setAppError(result.message || 'No se pudo desconectar Mercado Pago.')
+        return
+      }
+      setMercadoPagoConnected(false)
+      setMercadoPagoAccountEmail(null)
+      setAppNotice('Cuenta de Mercado Pago desconectada.')
+    } finally {
+      setMercadoPagoConnectionBusy(false)
+    }
   }
 
   async function refreshFreeSlotLinks(): Promise<void> {
@@ -12745,6 +12802,31 @@ function App() {
                     onChange={handleProfileFieldChange}
                   />
                 </label>
+                <section className="mercadopago-connect-card" aria-labelledby="mercadopago-connect-title">
+                  <div className="mercadopago-connect-copy">
+                    <span className="section-kicker">Cobros para tu consultorio</span>
+                    <h3 id="mercadopago-connect-title">Mercado Pago</h3>
+                    <p>
+                      Conectá tu propia cuenta para que los pacientes puedan pagarte a vos. Dr Happy no recibe ni administra ese dinero.
+                    </p>
+                    {mercadoPagoConnected ? (
+                      <small className="mercadopago-connected-status">
+                        ✓ Cuenta conectada{mercadoPagoAccountEmail ? ` · ${mercadoPagoAccountEmail}` : ''}
+                      </small>
+                    ) : (
+                      <small className="field-hint">Todavía no conectaste una cuenta.</small>
+                    )}
+                  </div>
+                  {mercadoPagoConnected ? (
+                    <button type="button" className="ghost" disabled={mercadoPagoConnectionBusy} onClick={() => void handleDisconnectMercadoPago()}>
+                      Desconectar
+                    </button>
+                  ) : (
+                    <button type="button" className="mercadopago-connect-button" disabled={mercadoPagoConnectionBusy} onClick={() => void handleConnectMercadoPago()}>
+                      {mercadoPagoConnectionBusy ? 'Conectando...' : 'Conectar Mercado Pago'}
+                    </button>
+                  )}
+                </section>
                 <label>
                   Link de cobro (Mercado Pago, alias o CBU)
                   <input
