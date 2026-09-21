@@ -2868,6 +2868,9 @@ function App() {
   // un usuario sin configuración (undefined) también, para no romper cuentas previas.
   const isModuleEnabled = useCallback(
     (moduleId: AppModuleId): boolean => {
+      if (moduleId === 'community') {
+        return false
+      }
       if (isAdminSession) {
         return true
       }
@@ -9310,7 +9313,7 @@ function App() {
       onClick: () => { stopDictation(); setCommunityOpen(false); setWorkspaceLayer('my-patients'); setAppError(null) },
     },
     isModuleEnabled('tools') ? {
-      key: 'tools', icon: '🧰', label: 'Herramientas', hint: 'Protocolos y comunidad', tone: '#7c3aed', badge: communityUnreadCount,
+      key: 'tools', icon: '🧰', label: 'Herramientas', hint: 'Protocolos y vademécum', tone: '#7c3aed',
       onClick: handleOpenTools,
     } : null,
     canUseTreatmentLedger ? {
@@ -9346,7 +9349,7 @@ function App() {
       <section className="panel layer-header">
         <div>
           <h2>Herramientas clínicas y protocolos</h2>
-          <p className="flow-hint">Guías de emergencia, conducta terapéutica, vademécum y comunidad profesional.</p>
+          <p className="flow-hint">Guías de emergencia, conducta terapéutica y vademécum profesional.</p>
         </div>
         <button type="button" className="ghost" onClick={handleBackToOverview}>
           Volver
@@ -9375,15 +9378,6 @@ function App() {
         >
           <span aria-hidden="true">🩺</span> Patologías en consultorio
         </button>
-        {isModuleEnabled('community') ? (
-          <button
-            type="button"
-            className={`screen-action${toolsActiveTab === 'community' ? ' active' : ''}`}
-            onClick={() => handleSelectToolsTab('community')}
-          >
-            <span aria-hidden="true">🤝</span> Comunidad{communityUnreadCount > 0 ? ` (${communityUnreadCount})` : ''}
-          </button>
-        ) : null}
       </nav>
     </>
   )
@@ -9500,11 +9494,6 @@ function App() {
               title="Ver cómo se ve la pantalla de suscripción cuando el trial vence"
             >
               👁 Ver pantalla de trial
-            </button>
-          ) : null}
-          {isModuleEnabled('community') ? (
-            <button type="button" className="ghost" onClick={handleToggleCommunity}>
-              Comunidad {communityUnreadCount > 0 ? `(${communityUnreadCount})` : ''}
             </button>
           ) : null}
           <button

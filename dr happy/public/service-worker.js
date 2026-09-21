@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-const CACHE_NAME = 'drhappy-shell-v3'
-=======
-const CACHE_NAME = 'drhappy-shell-v4'
->>>>>>> desarrollo
+const CACHE_NAME = 'drhappy-shell-v5'
 
 self.addEventListener('install', (event) => {
   self.skipWaiting()
