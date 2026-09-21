@@ -37,3 +37,7 @@ export function startMercadoPagoConnection(): Promise<ConnectResponse> {
 export function disconnectMercadoPago(): Promise<ConnectResponse> {
   return request('disconnect')
 }
+
+export function verifyMercadoPagoConnection(): Promise<ConnectResponse> {
+  return request('verify')
+}

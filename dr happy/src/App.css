@@ -2089,6 +2089,8 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
 .mercadopago-connect-copy h3 { margin: 0 0 3px; color: #176b4b; font-size: 0.98rem; }
 .mercadopago-connect-copy p { margin: 0 0 5px; color: #496b5c; font-size: 0.78rem; line-height: 1.45; }
 .mercadopago-connected-status { color: #15803d; font-size: 0.75rem; font-weight: 800; }
+.mercadopago-connect-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.mercadopago-verification-message { display: block; margin-top: 6px; color: #15803d; font-size: 0.73rem; font-weight: 700; }
 .mercadopago-connect-button { background: #00a650; border-color: #008f45; white-space: nowrap; }
 .mercadopago-connect-button:hover { background: #008f45; }
 
@@ -2099,6 +2101,7 @@ body.theme-night .mercadopago-connect-copy p { color: #b8d8c4; }
 @media (max-width: 720px) {
   .mercadopago-connect-card { align-items: stretch; flex-direction: column; }
   .mercadopago-connect-card button { width: 100%; }
+  .mercadopago-connect-actions { display: grid; grid-template-columns: 1fr 1fr; }
 }
 
 .admin-user-detail {

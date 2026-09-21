@@ -42,7 +42,7 @@ import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
 import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
-import { disconnectMercadoPago, getMercadoPagoConnectionStatus, startMercadoPagoConnection } from './mercadoPagoConnectService'
+import { disconnectMercadoPago, getMercadoPagoConnectionStatus, startMercadoPagoConnection, verifyMercadoPagoConnection } from './mercadoPagoConnectService'
 import { communityRequest } from './communityService'
 import { parseClinicalSummary } from './clinicalSummaryParser'
 import { loadProfessionals, loadOwnProfessional, updateOwnProfessionalProfile } from './professionalsService'
@@ -2562,6 +2562,7 @@ function App() {
   const [mercadoPagoConnected, setMercadoPagoConnected] = useState(false)
   const [mercadoPagoAccountEmail, setMercadoPagoAccountEmail] = useState<string | null>(null)
   const [mercadoPagoConnectionBusy, setMercadoPagoConnectionBusy] = useState(false)
+  const [mercadoPagoVerificationMessage, setMercadoPagoVerificationMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!freeSlotModalOpen) {
@@ -2588,7 +2589,11 @@ function App() {
     if (!connectionState) return
     if (connectionState === 'connected') {
       setAppNotice('Cuenta de Mercado Pago conectada correctamente.')
-      setMercadoPagoConnected(true)
+      void verifyMercadoPagoConnection().then((result) => {
+        setMercadoPagoConnected(Boolean(result.success && result.connected))
+        setMercadoPagoAccountEmail(result.account?.public_email ?? null)
+        setMercadoPagoVerificationMessage(result.connected ? 'Conexión verificada con Mercado Pago.' : result.message || 'La conexión necesita revisión.')
+      })
     } else if (connectionState === 'error') {
       setAppError(params.get('message') || 'No se pudo conectar Mercado Pago.')
     }
@@ -7448,6 +7453,19 @@ function App() {
       setMercadoPagoConnected(false)
       setMercadoPagoAccountEmail(null)
       setAppNotice('Cuenta de Mercado Pago desconectada.')
+    } finally {
+      setMercadoPagoConnectionBusy(false)
+    }
+  }
+
+  async function handleVerifyMercadoPago(): Promise<void> {
+    setMercadoPagoConnectionBusy(true)
+    setMercadoPagoVerificationMessage(null)
+    try {
+      const result = await verifyMercadoPagoConnection()
+      setMercadoPagoConnected(Boolean(result.success && result.connected))
+      setMercadoPagoAccountEmail(result.account?.public_email ?? null)
+      setMercadoPagoVerificationMessage(result.connected ? 'Conexión verificada con Mercado Pago.' : result.message || 'La conexión necesita revisión.')
     } finally {
       setMercadoPagoConnectionBusy(false)
     }
@@ -12818,14 +12836,20 @@ function App() {
                     )}
                   </div>
                   {mercadoPagoConnected ? (
-                    <button type="button" className="ghost" disabled={mercadoPagoConnectionBusy} onClick={() => void handleDisconnectMercadoPago()}>
-                      Desconectar
-                    </button>
+                    <div className="mercadopago-connect-actions">
+                      <button type="button" className="ghost" disabled={mercadoPagoConnectionBusy} onClick={() => void handleVerifyMercadoPago()}>
+                        {mercadoPagoConnectionBusy ? 'Verificando...' : 'Verificar conexión'}
+                      </button>
+                      <button type="button" className="ghost" disabled={mercadoPagoConnectionBusy} onClick={() => void handleDisconnectMercadoPago()}>
+                        Desconectar
+                      </button>
+                    </div>
                   ) : (
                     <button type="button" className="mercadopago-connect-button" disabled={mercadoPagoConnectionBusy} onClick={() => void handleConnectMercadoPago()}>
                       {mercadoPagoConnectionBusy ? 'Conectando...' : 'Conectar Mercado Pago'}
                     </button>
                   )}
+                  {mercadoPagoVerificationMessage ? <small className="mercadopago-verification-message">{mercadoPagoVerificationMessage}</small> : null}
                 </section>
                 <label>
                   Link de cobro (Mercado Pago, alias o CBU)
