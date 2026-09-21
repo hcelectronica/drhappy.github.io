@@ -12749,6 +12749,8 @@ function App() {
                   )}
                   {mercadoPagoVerificationMessage ? <small className="mercadopago-verification-message">{mercadoPagoVerificationMessage}</small> : null}
                 </section>
+                <details className="profile-advanced-settings">
+                  <summary>Ajustes avanzados</summary>
                 <label>
                   Link de cobro (Mercado Pago, alias o CBU)
                   <input
@@ -12831,10 +12833,12 @@ function App() {
                     className="signature-preview"
                   />
                 ) : null}
+                </details>
                 <button type="submit">Guardar perfil</button>
               </form>
             </section>
-            <section className="panel">
+            <details className="panel profile-password-settings">
+              <summary>⚙️ Seguridad y contraseña</summary>
               <h3>Cambiar contraseña</h3>
               <form className="grid" onSubmit={handleSaveOwnPassword}>
                 <label>
@@ -12871,7 +12875,7 @@ function App() {
                 </label>
                 <button type="submit">Actualizar contraseña</button>
               </form>
-            </section>
+            </details>
             <section className="panel">
               <h3>🔔 Notificaciones en tu dispositivo</h3>
               <p className="flow-hint">

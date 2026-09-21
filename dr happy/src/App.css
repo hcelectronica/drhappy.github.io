@@ -2093,6 +2093,18 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
 .mercadopago-verification-message { display: block; margin-top: 6px; color: #15803d; font-size: 0.73rem; font-weight: 700; }
 .mercadopago-connect-button { background: #00a650; border-color: #008f45; white-space: nowrap; }
 .mercadopago-connect-button:hover { background: #008f45; }
+.profile-advanced-settings,
+.profile-password-settings { margin-top: 4px; border: 1px solid #d7e3f1; border-radius: 13px; background: #f8fbff; }
+.profile-advanced-settings summary,
+.profile-password-settings summary { padding: 11px 13px; color: #536b87; font-size: 0.78rem; font-weight: 800; cursor: pointer; }
+.profile-advanced-settings > *:not(summary),
+.profile-password-settings > *:not(summary) { margin-left: 13px; margin-right: 13px; }
+.profile-advanced-settings > label:first-of-type { margin-top: 12px; }
+.profile-advanced-settings > button:last-child { margin-bottom: 13px; }
+body.theme-night .profile-advanced-settings,
+body.theme-night .profile-password-settings { border-color: rgba(96, 116, 152, 0.5); background: rgba(22, 34, 56, 0.7); }
+body.theme-night .profile-advanced-settings summary,
+body.theme-night .profile-password-settings summary { color: #cfdcf3; }
 
 body.theme-night .mercadopago-connect-card { border-color: rgba(74, 170, 119, 0.55); background: rgba(20, 65, 45, 0.55); }
 body.theme-night .mercadopago-connect-copy h3 { color: #86efac; }
