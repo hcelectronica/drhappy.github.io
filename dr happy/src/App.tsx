@@ -6763,19 +6763,6 @@ function App() {
     showSavedFloatingNotice()
   }
 
-  function handleToggleCommunity(): void {
-    if (!isModuleEnabled('community')) {
-      setAppError('El módulo Comunidad no está habilitado para tu cuenta.')
-      return
-    }
-    stopDictation()
-    setWorkspaceLayer('tools')
-    setToolsActiveTab('community')
-    setCommunityOpen(true)
-    setAppError(null)
-    setAppNotice(null)
-  }
-
   /** Las pestañas de Herramientas ahora incluyen Comunidad: al salir se corta el polling. */
   function handleSelectToolsTab(tab: 'protocols' | 'vademecum' | 'consult' | 'community'): void {
     setToolsActiveTab(tab)
