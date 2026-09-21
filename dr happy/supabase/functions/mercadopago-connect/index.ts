@@ -81,12 +81,13 @@ Deno.serve(async (request) => {
     })
     const token = await tokenResponse.json().catch(() => null)
     if (!tokenResponse.ok || !token?.access_token || !token?.refresh_token || !token?.user_id) {
-      return Response.redirect(`${appBaseUrl}/?mp_connection=error&message=Mercado Pago no pudo autorizar la cuenta`, 302)
+      const detail = typeof token?.message === 'string' ? token.message : typeof token?.error_description === 'string' ? token.error_description : 'Mercado Pago no pudo autorizar la cuenta.'
+      return Response.redirect(`${appBaseUrl}/?mp_connection=error&message=${encodeURIComponent(detail)}`, 302)
     }
     const expiresIn = Number(token.expires_in)
     const tokenExpiresAt = new Date(Date.now() + (Number.isFinite(expiresIn) ? expiresIn : 15552000) * 1000).toISOString()
     const publicEmail = typeof token.email === 'string' ? token.email : null
-    await admin.from('professional_payment_accounts').upsert({
+    const { error: accountError } = await admin.from('professional_payment_accounts').upsert({
       professional_id: oauthState.professional_id,
       provider: 'mercadopago',
       provider_user_id: String(token.user_id),
@@ -97,6 +98,9 @@ Deno.serve(async (request) => {
       status: 'connected',
       updated_at: new Date().toISOString(),
     }, { onConflict: 'professional_id,provider' })
+    if (accountError) {
+      return Response.redirect(`${appBaseUrl}/?mp_connection=error&message=${encodeURIComponent(`No se pudo guardar la cuenta: ${accountError.message}`)}`, 302)
+    }
     return Response.redirect(`${appBaseUrl}/?mp_connection=connected`, 302)
   }
 
@@ -105,8 +109,9 @@ Deno.serve(async (request) => {
 
   if (action === 'authorize') {
     const state = `${crypto.randomUUID()}-${crypto.randomUUID()}`
-    await admin.from('professional_payment_oauth_states').insert({ state_hash: await sha256(state), professional_id: professionalId, expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() })
-    const authorizationUrl = new URL('https://auth.mercadopago.com/authorization')
+    const { error: stateError } = await admin.from('professional_payment_oauth_states').insert({ state_hash: await sha256(state), professional_id: professionalId, expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() })
+    if (stateError) return jsonResponse(500, { success: false, message: `No se pudo iniciar la conexión: ${stateError.message}` })
+    const authorizationUrl = new URL('https://auth.mercadolibre.com.ar/authorization')
     authorizationUrl.searchParams.set('client_id', clientId)
     authorizationUrl.searchParams.set('response_type', 'code')
     authorizationUrl.searchParams.set('platform_id', 'mp')
