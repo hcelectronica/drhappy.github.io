@@ -2091,8 +2091,9 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
 .mercadopago-connected-status { color: #15803d; font-size: 0.75rem; font-weight: 800; }
 .mercadopago-connect-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .mercadopago-verification-message { display: block; margin-top: 6px; color: #15803d; font-size: 0.73rem; font-weight: 700; }
-.mercadopago-connect-button { background: #00a650; border-color: #008f45; white-space: nowrap; }
-.mercadopago-connect-button:hover { background: #008f45; }
+.mercadopago-connect-button { display: inline-flex; align-items: center; gap: 8px; background: #009ee3; border-color: #008bd0; white-space: nowrap; }
+.mercadopago-connect-button:hover { background: #008bd0; }
+.mercadopago-logo { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #fff; color: #009ee3; font-size: 0.62rem; font-weight: 900; letter-spacing: -0.06em; }
 .capacity-calculated { display: grid; gap: 2px; min-width: 150px; padding: 10px 12px; border: 1px solid #b7d8c9; border-radius: 12px; background: #f0fdf7; color: #176b4b; }
 .capacity-calculated strong { font-size: 1.35rem; }
 .capacity-calculated span { font-size: 0.72rem; font-weight: 700; }
@@ -2107,6 +2108,9 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
 .profile-password-settings > *:not(summary) { margin-left: 13px; margin-right: 13px; }
 .profile-advanced-settings > label:first-of-type { margin-top: 12px; }
 .profile-advanced-settings > button:last-child { margin-bottom: 13px; }
+.profile-delete-settings { margin-top: 4px; padding: 10px 13px; }
+.profile-delete-settings summary { color: #991b1b; font-size: 0.76rem; font-weight: 800; cursor: pointer; }
+.profile-delete-settings > *:not(summary) { margin-left: 0; margin-right: 0; }
 body.theme-night .profile-advanced-settings,
 body.theme-night .profile-password-settings { border-color: rgba(96, 116, 152, 0.5); background: rgba(22, 34, 56, 0.7); }
 body.theme-night .profile-advanced-settings summary,

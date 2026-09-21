@@ -12732,18 +12732,6 @@ function App() {
                   Email
                   <input name="email" value={profile.email} onChange={handleProfileFieldChange} />
                 </label>
-                <label>
-                  Teléfono
-                  <input name="phone" value={profile.phone} onChange={handleProfileFieldChange} />
-                </label>
-                <label>
-                  Texto de firma digital
-                  <input
-                    name="signatureText"
-                    value={profile.signatureText}
-                    onChange={handleProfileFieldChange}
-                  />
-                </label>
                 <section className="mercadopago-connect-card" aria-labelledby="mercadopago-connect-title">
                   <div className="mercadopago-connect-copy">
                     <span className="section-kicker">Cobros para tu consultorio</span>
@@ -12770,6 +12758,7 @@ function App() {
                     </div>
                   ) : (
                     <button type="button" className="mercadopago-connect-button" disabled={mercadoPagoConnectionBusy} onClick={() => void handleConnectMercadoPago()}>
+                      <span className="mercadopago-logo" aria-hidden="true">MP</span>
                       {mercadoPagoConnectionBusy ? 'Conectando...' : 'Conectar Mercado Pago'}
                     </button>
                   )}
@@ -12790,75 +12779,6 @@ function App() {
                     directo a vos: Dr Happy no participa de la transacción.
                   </span>
                 </label>
-                <label>
-                  Foto de matrícula
-                  <div className="file-picker">
-                    <label htmlFor="profile-matricula-photo" className="file-picker-button">
-                      Seleccionar imagen
-                    </label>
-                    <input
-                      id="profile-matricula-photo"
-                      className="file-input-hidden"
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => {
-                        void handleSingleUpload(event, 'matriculaPhoto')
-                      }}
-                    />
-                  </div>
-                </label>
-                <label>
-                  Imagen de firma digital
-                  <div className="file-picker">
-                    <label htmlFor="profile-signature-image" className="file-picker-button">
-                      Seleccionar imagen
-                    </label>
-                    <input
-                      id="profile-signature-image"
-                      className="file-input-hidden"
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => {
-                        void handleSingleUpload(event, 'signatureImage')
-                      }}
-                    />
-                  </div>
-                </label>
-                <div className="signature-pad-group">
-                  <p>Firma a mano alzada (mouse, touch o lápiz)</p>
-                  <canvas
-                    ref={signatureCanvasRef}
-                    width={640}
-                    height={220}
-                    className="signature-pad"
-                    onPointerDown={handleSignaturePointerDown}
-                    onPointerMove={handleSignaturePointerMove}
-                    onPointerUp={handleSignaturePointerUp}
-                    onPointerLeave={handleSignaturePointerUp}
-                  />
-                  <div className="dictation-actions">
-                    <button type="button" className="ghost" onClick={handleClearSignaturePad}>
-                      Limpiar firma
-                    </button>
-                    <button type="button" onClick={handleSaveHandwrittenSignature}>
-                      Guardar firma manual
-                    </button>
-                  </div>
-                </div>
-                {profile.matriculaPhoto ? (
-                  <img
-                    src={profile.matriculaPhoto.dataUrl}
-                    alt="Foto matrícula"
-                    className="signature-preview"
-                  />
-                ) : null}
-                {profile.signatureImage ? (
-                  <img
-                    src={profile.signatureImage.dataUrl}
-                    alt="Firma digital"
-                    className="signature-preview"
-                  />
-                ) : null}
                 </details>
                 <button type="submit">Guardar perfil</button>
               </form>
@@ -12989,11 +12909,12 @@ function App() {
             {/* Zona de auto-eliminación de cuenta (requisito de Google Play).
                 Dispara el flujo completo: archivo legal + emails + baja. */}
             {!isAdminSession ? (
-              <section
-                className="panel"
+              <details
+                className="panel profile-delete-settings"
                 style={{ border: '1px solid #fca5a5', background: 'var(--surface-elevated, #fff5f5)' }}
               >
-                <h3 style={{ color: '#b91c1c' }}>🗑️ Eliminar mi cuenta</h3>
+                <summary>🗑️ Eliminar mi cuenta</summary>
+                <h3 style={{ color: '#b91c1c' }}>Eliminar mi cuenta</h3>
                 <p className="flow-hint">
                   Podés eliminar tu cuenta de forma permanente desde acá. Antes de borrarla, el sistema genera
                   automáticamente tu <strong>archivo legal</strong> (respaldo de tu información registrada) y lo envía
@@ -13043,7 +12964,7 @@ function App() {
                     {selfDeleteBusy ? 'Procesando baja y archivo legal...' : 'Eliminar mi cuenta definitivamente'}
                   </button>
                 </div>
-              </section>
+              </details>
             ) : null}
           </section>
         </div>
