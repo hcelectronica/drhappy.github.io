@@ -2093,6 +2093,12 @@ body.theme-night .center-modal-actions button.secondary-btn:hover {
 .mercadopago-verification-message { display: block; margin-top: 6px; color: #15803d; font-size: 0.73rem; font-weight: 700; }
 .mercadopago-connect-button { background: #00a650; border-color: #008f45; white-space: nowrap; }
 .mercadopago-connect-button:hover { background: #008f45; }
+.capacity-calculated { display: grid; gap: 2px; min-width: 150px; padding: 10px 12px; border: 1px solid #b7d8c9; border-radius: 12px; background: #f0fdf7; color: #176b4b; }
+.capacity-calculated strong { font-size: 1.35rem; }
+.capacity-calculated span { font-size: 0.72rem; font-weight: 700; }
+.capacity-generated-link { display: grid; gap: 6px; padding: 12px; border: 1px solid #b7d8c9; border-radius: 12px; background: #f0fdf7; color: #176b4b; }
+.capacity-generated-link span { overflow-wrap: anywhere; font-size: 0.75rem; }
+.capacity-generated-link button { justify-self: start; }
 .profile-advanced-settings,
 .profile-password-settings { margin-top: 4px; border: 1px solid #d7e3f1; border-radius: 13px; background: #f8fbff; }
 .profile-advanced-settings summary,

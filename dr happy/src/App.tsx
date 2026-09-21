@@ -113,6 +113,13 @@ const DEFAULT_DAILY_PATIENT_LIMIT = 10
 const DEFAULT_APPOINTMENT_START_TIME = '09:00'
 const DEFAULT_APPOINTMENT_END_TIME = '19:00'
 
+function calculateDailyCapacity(startTime: string, endTime: string, durationMinutes: number): number {
+  const [startHour, startMinute] = startTime.split(':').map(Number)
+  const [endHour, endMinute] = endTime.split(':').map(Number)
+  const availableMinutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute)
+  return availableMinutes > 0 && durationMinutes > 0 ? Math.floor(availableMinutes / durationMinutes) : 0
+}
+
 /**
  * Módulos que no se habilitan por defecto: requieren activación explícita del
  * admin (o, en el caso del balance, una especialidad odontológica).
@@ -245,6 +252,7 @@ interface ProfessionalProfile {
   paymentLink?: string
   appointmentDays?: number[]
   dailyPatientLimit?: number
+  appointmentDurationMinutes?: number
   appointmentStartTime?: string
   appointmentEndTime?: string
 }
@@ -1210,6 +1218,10 @@ function normalizeRemoteProfile(raw: unknown, fallback: ProfessionalProfile): Pr
       typeof candidate.dailyPatientLimit === 'number' && candidate.dailyPatientLimit > 0
         ? candidate.dailyPatientLimit
         : DEFAULT_DAILY_PATIENT_LIMIT,
+    appointmentDurationMinutes:
+      typeof candidate.appointmentDurationMinutes === 'number' && candidate.appointmentDurationMinutes > 0
+        ? candidate.appointmentDurationMinutes
+        : 30,
     appointmentStartTime: typeof candidate.appointmentStartTime === 'string' && /^\d{2}:\d{2}$/.test(candidate.appointmentStartTime)
       ? candidate.appointmentStartTime
       : DEFAULT_APPOINTMENT_START_TIME,
@@ -1483,6 +1495,7 @@ function profileFromSeed(user: SeedUser): ProfessionalProfile {
     communitySeenMessageIds: [],
     appointmentDays: DEFAULT_APPOINTMENT_DAYS,
     dailyPatientLimit: DEFAULT_DAILY_PATIENT_LIMIT,
+    appointmentDurationMinutes: 30,
     appointmentStartTime: DEFAULT_APPOINTMENT_START_TIME,
     appointmentEndTime: DEFAULT_APPOINTMENT_END_TIME,
   }
@@ -2497,6 +2510,7 @@ function App() {
   const [appointmentDateFilter, setAppointmentDateFilter] = useState('')
   const [appointmentDays, setAppointmentDays] = useState<number[]>(DEFAULT_APPOINTMENT_DAYS)
   const [dailyPatientLimit, setDailyPatientLimit] = useState(DEFAULT_DAILY_PATIENT_LIMIT)
+  const [appointmentDurationMinutes, setAppointmentDurationMinutes] = useState(30)
   const [appointmentStartTime, setAppointmentStartTime] = useState(DEFAULT_APPOINTMENT_START_TIME)
   const [appointmentEndTime, setAppointmentEndTime] = useState(DEFAULT_APPOINTMENT_END_TIME)
   // Prueba piloto: vista alternativa de la Turnera con calendario mensual de ocupación
@@ -5042,6 +5056,7 @@ function App() {
     if (!profile) return
     setAppointmentDays(profile.appointmentDays?.length ? profile.appointmentDays : DEFAULT_APPOINTMENT_DAYS)
     setDailyPatientLimit(profile.dailyPatientLimit || DEFAULT_DAILY_PATIENT_LIMIT)
+    setAppointmentDurationMinutes(profile.appointmentDurationMinutes || 30)
     setAppointmentStartTime(profile.appointmentStartTime || DEFAULT_APPOINTMENT_START_TIME)
     setAppointmentEndTime(profile.appointmentEndTime || DEFAULT_APPOINTMENT_END_TIME)
   }, [profile])
@@ -6869,11 +6884,12 @@ function App() {
     setAppError(null)
   }
 
-  function saveAppointmentCapacity(nextDays: number[], nextLimit: number, nextStartTime = appointmentStartTime, nextEndTime = appointmentEndTime): void {
+  function saveAppointmentCapacity(nextDays: number[], nextLimit: number, nextStartTime = appointmentStartTime, nextEndTime = appointmentEndTime, nextDuration = appointmentDurationMinutes): void {
     const normalizedDays = Array.from(new Set(nextDays)).filter((day) => day >= 0 && day <= 6)
-    const normalizedLimit = Math.max(1, Math.min(100, Math.round(nextLimit)))
+    const normalizedLimit = Math.max(1, Math.min(100, calculateDailyCapacity(nextStartTime, nextEndTime, nextDuration)))
     const normalizedStartTime = /^\d{2}:\d{2}$/.test(nextStartTime) ? nextStartTime : DEFAULT_APPOINTMENT_START_TIME
     const normalizedEndTime = /^\d{2}:\d{2}$/.test(nextEndTime) ? nextEndTime : DEFAULT_APPOINTMENT_END_TIME
+    const normalizedDuration = Math.max(5, Math.min(240, Math.round(nextDuration)))
     if (normalizedStartTime >= normalizedEndTime) {
       setAppError('El horario Desde debe ser anterior al horario Hasta.')
       return
@@ -6882,18 +6898,20 @@ function App() {
     setDailyPatientLimit(normalizedLimit)
     setAppointmentStartTime(normalizedStartTime)
     setAppointmentEndTime(normalizedEndTime)
+    setAppointmentDurationMinutes(normalizedDuration)
     if (!activeUserId || !profile) return
     const nextProfile = {
       ...profile,
       appointmentDays: normalizedDays,
       dailyPatientLimit: normalizedLimit,
+      appointmentDurationMinutes: normalizedDuration,
       appointmentStartTime: normalizedStartTime,
       appointmentEndTime: normalizedEndTime,
     }
     setProfile(nextProfile)
     localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
     void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments, treatmentLedger)
-    setAppNotice(`Cupo actualizado: ${normalizedLimit} pacientes por día · ${WEEK_DAYS.filter((day) => normalizedDays.includes(day.value)).map((day) => day.label).join(', ')}.`)
+    setAppNotice(`Configuración guardada: ${normalizedLimit} turnos posibles por día.`)
   }
 
   function handleNewAppointmentModal(prefillPatient?: PatientRecord | null, prefillDate?: string): void {
@@ -7367,6 +7385,36 @@ function App() {
     void refreshPublicBookingSettings()
   }
 
+  async function handleGenerateFixedBookingLink(): Promise<void> {
+    if (!activeUserId) return
+    const current = publicBookingSettings || buildDefaultPublicBookingSettings()
+    if (!current) return
+    const block = {
+      ...(current.blocks[0] || {}),
+      id: current.blocks[0]?.id || crypto.randomUUID(),
+      label: 'Turno disponible',
+      modality: 'private' as const,
+      days: appointmentDays,
+      startTime: appointmentStartTime,
+      endTime: appointmentEndTime,
+      durationMinutes: appointmentDurationMinutes,
+      slotCount: calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes),
+      reason: current.blocks[0]?.reason || 'Consulta médica',
+    }
+    const settings = { ...current, enabled: true, blocks: [block] }
+    setPublicBookingSaving(true)
+    const result = await savePublicBookingSettings(settings)
+    setPublicBookingSaving(false)
+    if (!result.success || !result.settings) {
+      setAppError(result.message || 'No se pudo generar el link fijo.')
+      return
+    }
+    setPublicBookingSettings(result.settings)
+    const url = buildFixedPublicBookingUrl(result.settings.slug)
+    setFreeSlotGeneratedUrl(url)
+    setAppNotice('Turnera pública publicada. Link fijo generado.')
+  }
+
   async function handleConnectMercadoPago(): Promise<void> {
     setMercadoPagoConnectionBusy(true)
     setAppError(null)
@@ -7429,7 +7477,6 @@ function App() {
     if (!activeUserId) return null
     const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
     const professionalName = currentProf?.fullName || activeUser?.fullName || 'Profesional Dr Happy'
-    const paymentLink = currentProf?.paymentLink?.trim() || ''
     return {
       professionalId: activeUserId,
       slug: buildDefaultPublicBookingSlug(professionalName, activeUserId),
@@ -7441,30 +7488,15 @@ function App() {
       blocks: [
         {
           id: crypto.randomUUID(),
-          label: 'Paciente con obra social',
-          modality: 'coverage',
-          days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
-          startTime: '09:00',
-          endTime: '12:00',
-          durationMinutes: 30,
-          slotCount: 5,
-          location: '',
-          reason: 'Consulta médica',
-        },
-        {
-          id: crypto.randomUUID(),
-          label: 'Paciente particular',
+          label: 'Turno disponible',
           modality: 'private',
           days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
-          startTime: '16:00',
-          endTime: '18:30',
-          durationMinutes: 30,
-          slotCount: 5,
+          startTime: appointmentStartTime,
+          endTime: appointmentEndTime,
+          durationMinutes: appointmentDurationMinutes,
+          slotCount: calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes),
           location: '',
-          reason: 'Consulta particular',
-          amountToCharge: 25000,
-          amountConcept: 'consulta',
-          paymentLink,
+          reason: 'Consulta médica',
         },
       ],
     }
@@ -7476,13 +7508,19 @@ function App() {
     try {
       const result = await getPublicBookingSettings(activeUserId)
       if (result.success && result.settings) {
-        const blocksByModality = new Map(result.settings.blocks.map((block) => [block.modality, block]))
+        const existingBlock = result.settings.blocks[0]
         setPublicBookingSettings({
           ...result.settings,
-          blocks: Array.from(blocksByModality.values()).map((block) => ({
-            ...block,
-            label: block.modality === 'private' ? 'Paciente particular' : 'Paciente con obra social',
-          })),
+          blocks: [{
+            ...(existingBlock || buildDefaultPublicBookingSettings()!.blocks[0]),
+            label: 'Turno disponible',
+            modality: 'private',
+            days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
+            startTime: appointmentStartTime,
+            endTime: appointmentEndTime,
+            durationMinutes: appointmentDurationMinutes,
+            slotCount: calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes),
+          }],
         })
       } else {
         setPublicBookingSettings(buildDefaultPublicBookingSettings())
@@ -11296,25 +11334,15 @@ function App() {
             <div>
               <span className="section-kicker">Control de agenda</span>
               <h3 style={{ margin: 0 }}>Cupos de atención</h3>
-              <p className="flow-hint">Elegí qué días atendés y cuántos pacientes aceptás como máximo por día.</p>
+              <p className="flow-hint">Definí tu horario y la duración de cada turno. Dr Happy calcula automáticamente cuántos entran.</p>
             </div>
             <div className="capacity-controls">
-              <label>
-                Máximo diario
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={dailyPatientLimit}
-                  onChange={(event) => saveAppointmentCapacity(appointmentDays, Number(event.target.value))}
-                />
-              </label>
               <label>
                 Desde
                 <input
                   type="time"
                   value={appointmentStartTime}
-                  onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, event.target.value, appointmentEndTime)}
+                  onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, event.target.value, appointmentEndTime, appointmentDurationMinutes)}
                 />
               </label>
               <label>
@@ -11322,9 +11350,19 @@ function App() {
                 <input
                   type="time"
                   value={appointmentEndTime}
-                  onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, appointmentStartTime, event.target.value)}
+                  onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, appointmentStartTime, event.target.value, appointmentDurationMinutes)}
                 />
               </label>
+              <label>
+                Duración del turno
+                <select value={appointmentDurationMinutes} onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, appointmentStartTime, appointmentEndTime, Number(event.target.value))}>
+                  {[15, 20, 30, 45, 60, 90].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutos</option>)}
+                </select>
+              </label>
+              <div className="capacity-calculated">
+                <strong>{calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)}</strong>
+                <span>turnos posibles por día</span>
+              </div>
               <div className="capacity-days">
                 <span>Días de atención</span>
                 <div>
@@ -11337,7 +11375,7 @@ function App() {
                           const nextDays = appointmentDays.includes(day.value)
                             ? appointmentDays.filter((value) => value !== day.value)
                             : [...appointmentDays, day.value]
-                          saveAppointmentCapacity(nextDays, dailyPatientLimit)
+                          saveAppointmentCapacity(nextDays, dailyPatientLimit, appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)
                         }}
                       />
                       <span>{day.label.slice(0, 3)}</span>
@@ -11346,12 +11384,18 @@ function App() {
                 </div>
               </div>
             </div>
-            <div className="capacity-status">
-              {appointmentDaysLabel || 'Elegí al menos un día'} · {appointmentCapacityByDate.get(todayLocalISO()) ?? 0}/{dailyPatientLimit} usados hoy
-            </div>
-            <button type="button" className="screen-action primary" onClick={handleOpenFreeSlotModal}>
-              <span aria-hidden="true">🔗</span> Generar link fijo para compartir
+            <div className="capacity-status">{appointmentDaysLabel || 'Elegí al menos un día'} · Configuración guardada automáticamente al cambiar los campos.</div>
+            <button type="button" className="screen-action" onClick={() => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)}>
+              <span aria-hidden="true">💾</span> Guardar configuración
             </button>
+            <button type="button" className="screen-action primary" disabled={publicBookingSaving} onClick={() => void handleGenerateFixedBookingLink()}><span aria-hidden="true">🔗</span> {publicBookingSaving ? 'Generando...' : 'Generar link fijo para compartir'}</button>
+            {freeSlotGeneratedUrl ? (
+              <div className="capacity-generated-link">
+                <strong>Tu link fijo</strong>
+                <span>{freeSlotGeneratedUrl}</span>
+                <button type="button" className="ghost compact" onClick={() => void navigator.clipboard.writeText(freeSlotGeneratedUrl!)}>Copiar link</button>
+              </div>
+            ) : null}
           </section> : null}
 
           {turneraViewMode === 'ledger' && canUseTreatmentLedger ? (
