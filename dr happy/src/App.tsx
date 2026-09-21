@@ -11237,11 +11237,8 @@ function App() {
             <button type="button" className={`screen-action${turneraViewMode === 'list' ? ' active' : ''}`} onClick={() => setTurneraViewMode('list')}>
               <span aria-hidden="true">📋</span> Lista de turnos
             </button>
-            <button type="button" className="screen-action" onClick={handleOpenFreeSlotModal}>
-              <span aria-hidden="true">🔗</span> Turnera pública
-            </button>
             <button type="button" className={`screen-action${turneraViewMode === 'capacity' ? ' active' : ''}`} onClick={() => setTurneraViewMode('capacity')}>
-              <span aria-hidden="true">⚙️</span> Cupos de atención
+              <span aria-hidden="true">⚙️</span> Cupos y link público
             </button>
             <button
               type="button"
@@ -11370,6 +11367,9 @@ function App() {
             <div className="capacity-status">
               {appointmentDaysLabel || 'Elegí al menos un día'} · {appointmentCapacityByDate.get(todayLocalISO()) ?? 0}/{dailyPatientLimit} usados hoy
             </div>
+            <button type="button" className="screen-action primary" onClick={handleOpenFreeSlotModal}>
+              <span aria-hidden="true">🔗</span> Generar link fijo para compartir
+            </button>
           </section> : null}
 
           {turneraViewMode === 'ledger' && canUseTreatmentLedger ? (
@@ -12682,34 +12682,17 @@ function App() {
                   />
                 </label>
                 <label>
-                  Especialidad
-                  <input
+                  Profesión
+                  <select
                     name="specialty"
                     value={profile.specialty}
                     onChange={handleProfileFieldChange}
-                    autoComplete="off"
-                  />
-                  {profile.specialty.trim() && profileSpecialtySuggestions.length > 0 ? (
-                    <ul className="specialty-suggestions">
-                      {profileSpecialtySuggestions.map((specialty) => (
-                        <li key={specialty}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setProfile((current) =>
-                                current ? { ...current, specialty } : current,
-                              )
-                            }
-                          >
-                            {specialty}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  <small>
-                    La búsqueda ignora tildes y mayúsculas. Las especialidades nuevas quedan disponibles para todos.
-                  </small>
+                  >
+                    <option value="">Seleccioná tu profesión</option>
+                    <option value="Médico">Médico</option>
+                    <option value="Odontólogo">Odontólogo</option>
+                    <option value="Psicólogo">Psicólogo</option>
+                  </select>
                 </label>
                 <label>
                   Matrícula
