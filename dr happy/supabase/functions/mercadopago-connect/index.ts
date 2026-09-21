@@ -87,6 +87,12 @@ Deno.serve(async (request) => {
     const expiresIn = Number(token.expires_in)
     const tokenExpiresAt = new Date(Date.now() + (Number.isFinite(expiresIn) ? expiresIn : 15552000) * 1000).toISOString()
     const publicEmail = typeof token.email === 'string' ? token.email : null
+    const profileResponse = await fetch('https://api.mercadopago.com/users/me', { headers: { Authorization: `Bearer ${token.access_token}` } })
+    const providerProfile = await profileResponse.json().catch(() => null)
+    if (!profileResponse.ok || !providerProfile?.id) {
+      const detail = typeof providerProfile?.message === 'string' ? providerProfile.message : 'Mercado Pago no validó el token recibido.'
+      return Response.redirect(`${appBaseUrl}/?mp_connection=error&message=${encodeURIComponent(detail)}`, 302)
+    }
     const { error: accountError } = await admin.from('professional_payment_accounts').upsert({
       professional_id: oauthState.professional_id,
       provider: 'mercadopago',
@@ -121,8 +127,21 @@ Deno.serve(async (request) => {
   }
 
   if (action === 'status') {
-    const { data } = await admin.from('professional_payment_accounts').select('provider_user_id, public_email, token_expires_at, status, connected_at, updated_at').eq('professional_id', professionalId).eq('provider', 'mercadopago').maybeSingle()
-    return jsonResponse(200, { success: true, connected: Boolean(data && data.status === 'connected'), account: data || null })
+    const { data } = await admin.from('professional_payment_accounts').select('access_token_encrypted, provider_user_id, public_email, token_expires_at, status, connected_at, updated_at').eq('professional_id', professionalId).eq('provider', 'mercadopago').maybeSingle()
+    if (!data || data.status !== 'connected') return jsonResponse(200, { success: true, connected: false, account: data || null })
+    try {
+      const accessToken = await decrypt(data.access_token_encrypted)
+      const response = await fetch('https://api.mercadopago.com/users/me', { headers: { Authorization: `Bearer ${accessToken}` } })
+      const profile = await response.json().catch(() => null)
+      if (!response.ok || !profile?.id) {
+        await admin.from('professional_payment_accounts').update({ status: 'error', updated_at: new Date().toISOString() }).eq('professional_id', professionalId).eq('provider', 'mercadopago')
+        return jsonResponse(200, { success: true, connected: false, account: { ...data, status: 'error' }, message: typeof profile?.message === 'string' ? profile.message : 'Mercado Pago rechazó el token.' })
+      }
+      return jsonResponse(200, { success: true, connected: true, account: { ...data, provider_user_id: String(profile.id), public_email: profile.email || data.public_email || null } })
+    } catch (error) {
+      await admin.from('professional_payment_accounts').update({ status: 'error', updated_at: new Date().toISOString() }).eq('professional_id', professionalId).eq('provider', 'mercadopago')
+      return jsonResponse(200, { success: true, connected: false, account: { ...data, status: 'error' }, message: error instanceof Error ? error.message : 'No se pudo verificar la conexión.' })
+    }
   }
 
   if (action === 'verify') {
@@ -137,8 +156,8 @@ Deno.serve(async (request) => {
         return jsonResponse(200, { success: true, connected: false, message: 'Mercado Pago rechazó el token de conexión.' })
       }
       return jsonResponse(200, { success: true, connected: true, account: { provider_user_id: String(profile.id), public_email: profile.email || data.public_email || null, token_expires_at: data.token_expires_at, status: 'connected' } })
-    } catch {
-      return jsonResponse(500, { success: false, message: 'No se pudo verificar la conexión con Mercado Pago.' })
+    } catch (error) {
+      return jsonResponse(200, { success: true, connected: false, message: error instanceof Error ? error.message : 'No se pudo verificar la conexión con Mercado Pago.' })
     }
   }
 
