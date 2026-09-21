@@ -61,7 +61,7 @@ Deno.serve(async (request) => {
   if (request.method === 'POST') {
     try { body = await request.json() } catch { return jsonResponse(400, { success: false, message: 'Cuerpo JSON inválido.' }) }
   }
-  const action = url.searchParams.get('action') || (typeof body.action === 'string' ? body.action : '') || (request.method === 'GET' ? 'authorize' : '')
+  const action = url.searchParams.get('action') || (typeof body.action === 'string' ? body.action : '') || (url.searchParams.has('code') && url.searchParams.has('state') ? 'callback' : request.method === 'GET' ? 'authorize' : '')
 
   if (action === 'callback') {
     const code = url.searchParams.get('code')?.trim()
