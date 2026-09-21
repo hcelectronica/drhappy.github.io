@@ -11,6 +11,7 @@ Deno.serve(async (request) => {
   if (request.method !== 'POST') return jsonResponse(405, { success: false, message: 'Método no permitido.' })
   const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key) return jsonResponse(500, { success: false, message: 'Falta configuración del servidor.' })
+  return jsonResponse(410, { success: false, message: 'La Comunidad fue retirada temporalmente.' })
   const admin = createClient(url, key, { auth: { persistSession: false } })
   const professionalId = await resolveProfessionalId(request, admin)
   if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })

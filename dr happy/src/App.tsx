@@ -95,7 +95,6 @@ const APP_MODULES: Array<{ id: AppModuleId; label: string; description: string }
   { id: 'appointments', label: 'Turnera', description: 'Agenda de turnos y turnera libre' },
   { id: 'tools', label: 'Herramientas', description: 'Protocolos, vademécum y patologías' },
   { id: 'ambulance', label: 'Modo Ambulancia', description: 'Atención prehospitalaria y traslados' },
-  { id: 'community', label: 'Comunidad', description: 'Mensajería entre profesionales' },
   { id: 'ledger', label: 'Balance de pagos', description: 'Planilla de cobros y saldos (odontología). Automático para odontólogos.' },
 ]
 
@@ -3486,7 +3485,12 @@ function App() {
     let loadedLedger = readJsonStorage<unknown[]>(treatmentLedgerStorageKey(user.id), [])
       .map(normalizeTreatmentLedgerEntry)
       .filter((entry): entry is TreatmentLedgerEntry => Boolean(entry))
-    const localSeenIds = readJsonStorage<string[]>(communitySeenStorageKey(user.id), [])
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('drhappy-community-thread-') || key.startsWith('drhappy-community-seen-')) {
+        localStorage.removeItem(key)
+      }
+    }
+    const localSeenIds: string[] = []
 
     localStorage.setItem(SESSION_USER_KEY, user.id)
     localStorage.setItem(SESSION_USER_CACHE_KEY, JSON.stringify(user))
@@ -5115,6 +5119,9 @@ function App() {
   }, [communityOpen, activeUserId, communityTargetId])
 
   useEffect(() => {
+    if (!isModuleEnabled('community')) {
+      return
+    }
     if (!activeUserId) {
       setCommunityUnreadCount(0)
       setCommunityUnreadByMember({})
