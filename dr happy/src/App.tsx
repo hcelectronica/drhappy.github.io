@@ -4,7 +4,6 @@ import type {
   CSSProperties,
   DragEvent as ReactDragEvent,
   FormEvent,
-  PointerEvent as ReactPointerEvent,
 } from 'react'
 import { BrowserPDF417Reader, BrowserQRCodeReader } from '@zxing/browser'
 import * as ExcelJS from 'exceljs'
@@ -1789,37 +1788,6 @@ function mapDictationError(errorCode?: string): string {
   }
 }
 
-function setupSignatureCanvas(
-  canvas: HTMLCanvasElement,
-  signatureImageDataUrl?: string,
-): Promise<boolean> {
-  const context = canvas.getContext('2d')
-  if (!context) {
-    return Promise.resolve(false)
-  }
-
-  context.fillStyle = '#ffffff'
-  context.fillRect(0, 0, canvas.width, canvas.height)
-  context.lineWidth = 2.2
-  context.lineCap = 'round'
-  context.lineJoin = 'round'
-  context.strokeStyle = '#0f172a'
-
-  if (!signatureImageDataUrl) {
-    return Promise.resolve(false)
-  }
-
-  return new Promise((resolve) => {
-    const image = new Image()
-    image.onload = () => {
-      context.drawImage(image, 0, 0, canvas.width, canvas.height)
-      resolve(true)
-    }
-    image.onerror = () => resolve(false)
-    image.src = signatureImageDataUrl
-  })
-}
-
 function normalizeBirthDate(value: string): string {
   const text = value.trim()
   if (!text) {
@@ -2668,9 +2636,6 @@ function App() {
   const dictationBaseTextRef = useRef('')
   const dictationCommittedTextRef = useRef('')
   const dictationHadErrorRef = useRef(false)
-  const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const signatureDrawingRef = useRef(false)
-  const signatureHasStrokeRef = useRef(false)
   const floatingTimerRef = useRef<number | null>(null)
   const lastCommunityNotifiedAtRef = useRef<string>('')
   const [liveScanTarget, setLiveScanTarget] = useState<LiveScanTarget | null>(null)
@@ -5270,20 +5235,6 @@ function App() {
       window.removeEventListener('online', handleVisibilityOrOnline)
     }
   }, [activeUserId, communitySeenIds, seedUsers])
-
-  useEffect(() => {
-    if (workspaceLayer !== 'profile') {
-      return
-    }
-    const canvas = signatureCanvasRef.current
-    if (!canvas || !profile) {
-      return
-    }
-
-    void setupSignatureCanvas(canvas, profile.signatureImage?.dataUrl).then((hasExisting) => {
-      signatureHasStrokeRef.current = hasExisting
-    })
-  }, [workspaceLayer, profile?.signatureImage?.dataUrl])
 
   function showSavedFloatingNotice(message = 'Datos guardados'): void {
     setFloatingNotice(message)
