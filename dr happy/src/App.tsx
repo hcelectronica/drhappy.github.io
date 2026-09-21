@@ -3540,10 +3540,19 @@ function App() {
       // Desde el cliente solo se refrescan los campos del propio perfil: id y username
       // no son actualizables, y los privilegiados los maneja admin-professionals.
       const professionalUpdate = await updateOwnProfessionalProfile({ fullName: user.fullName, specialty: user.specialty, licenseNumber: user.licenseNumber, dni: user.dni ?? null, email: user.email, networkMemberships: user.networkMemberships ?? [] })
-      if (!professionalUpdate.success) throw new Error(`No se pudo sincronizar el profesional: ${professionalUpdate.message}`)
+      if (!professionalUpdate.success) {
+        console.warn('No se pudo sincronizar el perfil remoto al iniciar:', professionalUpdate.message)
+      }
 
-      const workspaceResult = await loadWorkspaceData()
-      if (!workspaceResult.success) throw new Error(`No se pudo cargar la base personal del profesional: ${workspaceResult.message}`)
+      let workspaceResult = await loadWorkspaceData()
+      for (let attempt = 1; !workspaceResult.success && attempt < 3; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, attempt * 350))
+        workspaceResult = await loadWorkspaceData()
+      }
+      if (!workspaceResult.success) {
+        setAppNotice('Sesión iniciada. No se pudo sincronizar la nube ahora; tus datos locales siguen disponibles.')
+        return
+      }
       const data = workspaceResult.workspace as RemoteWorkspaceRow | null
 
       if (data) {
@@ -9318,9 +9327,16 @@ function App() {
   const onboardingSteps = [
     {
       key: 'profile',
-      label: 'Completá tu perfil y firma digital',
-      hint: 'Tu firma aparece en recetas y certificados',
-      done: Boolean(profile?.signatureImage),
+      label: 'Completá tus datos profesionales',
+      hint: 'Nombre, matrícula y datos de contacto',
+      done: Boolean(profile?.fullName && profile?.email && profile?.licenseNumber),
+      action: handleOpenProfile,
+    },
+    {
+      key: 'mercado-pago',
+      label: 'Vinculá tu cuenta con Mercado Pago para cobrar',
+      hint: 'Los pacientes pagan directamente en tu cuenta',
+      done: mercadoPagoConnected,
       action: handleOpenProfile,
     },
     {
@@ -9329,20 +9345,6 @@ function App() {
       hint: 'Empezá tu base clínica',
       done: patients.length > 0,
       action: handleStartAttentionFlow,
-    },
-    {
-      key: 'appointment',
-      label: 'Agendá tu primer turno',
-      hint: 'El paciente recibe la confirmación por email',
-      done: appointmentsMetrics.total > 0,
-      action: () => handleNewAppointmentModal(),
-    },
-    {
-      key: 'public-link',
-      label: 'Publicá tu link de turnos',
-      hint: 'Que tus pacientes reserven solos, sin llamarte',
-      done: Boolean(publicBookingSettings?.enabled),
-      action: handleOpenFreeSlotModal,
     },
   ]
   const onboardingDone = onboardingSteps.filter((step) => step.done).length
@@ -9382,10 +9384,6 @@ function App() {
       key: 'ledger', icon: '💰', label: 'Balance', hint: 'Deudas y cobros', tone: '#dc2626',
       onClick: () => { handleOpenAppointments(); setTurneraViewMode('ledger') },
     } : null,
-    {
-      key: 'news', icon: '📰', label: 'Noticias', hint: 'Actualidad clínica', tone: '#475569',
-      onClick: () => { setWorkspaceLayer('medical-news'); setCommunityOpen(false) },
-    },
     {
       key: 'profile', icon: '👤', label: 'Perfil', hint: 'Firma y ajustes', tone: '#4f46e5',
       onClick: handleOpenProfile,
@@ -9539,9 +9537,6 @@ function App() {
               Herramientas
             </button>
           ) : null}
-          <button type="button" className={workspaceLayer === 'medical-news' ? 'active' : ''} onClick={() => { setWorkspaceLayer('medical-news'); setSidebarOpen(false) }}>
-            <span>◫</span> Noticias médicas
-          </button>
           {isAdminSession ? (
             <button type="button" className="ghost" onClick={handleOpenUserAdmin}>
               Editar usuarios
@@ -11182,36 +11177,6 @@ function App() {
             ))}
           </nav>
 
-          <section className="app-tools-flyer" aria-label="Herramientas de Dr Happy">
-            {(() => {
-              const slide = APP_FLYER_SLIDES[flyerSlideIndex]
-              return (
-                <button
-                  type="button"
-                  className={`flyer-slide flyer-slide-${slide.visual}`}
-                  onClick={() => handleOpenFlyerSlide(slide.key)}
-                  title={`Ir a ${slide.title}`}
-                >
-                  <div className="flyer-slide-copy">
-                    <span className="section-kicker">{slide.eyebrow}</span>
-                    <h2>{slide.icon} {slide.title}</h2>
-                    <p>{slide.description}</p>
-                    <span className="flyer-slide-caption">Tocá para abrir {slide.title}</span>
-                  </div>
-                  <div className="flyer-slide-visual" aria-hidden="true">
-                    <div className="flyer-window-bar"><i /><i /><i /></div>
-                    {slide.visual === 'ambulance' ? <><div className="flyer-mock-alert">🚑 Atención prioritaria</div><div className="flyer-mock-lines"><b>Paciente en traslado</b><span>Protocolo · Ubicación · Destino</span><span>✓ Registro guardado</span></div></> : null}
-                    {slide.visual === 'patient' ? <><div className="flyer-mock-search">⌕ Buscar paciente...</div><div className="flyer-mock-profile"><b>García, María</b><span>DNI 28.456.789</span><small>Última evolución · Hoy</small></div></> : null}
-                    {slide.visual === 'calendar' ? <><div className="flyer-mock-calendar"><b>Agenda semanal</b><span>09:00&nbsp;&nbsp; García, María</span><span>10:30&nbsp;&nbsp; López, Juan</span><span>12:00&nbsp;&nbsp; Turno libre</span></div></> : null}
-                    {slide.visual === 'tools' ? <><div className="flyer-mock-tools"><b>Herramientas clínicas</b><span>✦ Protocolos</span><span>▣ Vademécum</span><span>⌕ Patologías</span></div></> : null}
-                    {slide.visual === 'patients' ? <><div className="flyer-mock-patient-list"><b>Mis pacientes <em>19</em></b><span>García, María</span><span>Rodríguez, Ana</span><span>Martínez, Carlos</span></div></> : null}
-                    {slide.visual === 'ledger' ? <><div className="flyer-mock-ledger"><b>Balance de pagos</b><span>✓ Sin deuda&nbsp;&nbsp; 12</span><span>! Pendientes&nbsp;&nbsp; 3</span><strong>Total adeudado&nbsp; $ 125.000</strong></div></> : null}
-                  </div>
-                  <div className="flyer-slide-dots">{APP_FLYER_SLIDES.map((item, index) => <span key={item.key} className={index === flyerSlideIndex ? 'active' : ''} />)}</div>
-                </button>
-              )
-            })()}
-          </section>
         </div>
       ) : null}
 
