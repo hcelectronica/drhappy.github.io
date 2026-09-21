@@ -6667,120 +6667,6 @@ function App() {
     setPasswordChangeDraft((current) => ({ ...current, [name]: value }))
   }
 
-  function getCanvasPoint(
-    canvas: HTMLCanvasElement,
-    event: ReactPointerEvent<HTMLCanvasElement>,
-  ): { x: number; y: number } {
-    const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
-    return {
-      x: (event.clientX - rect.left) * scaleX,
-      y: (event.clientY - rect.top) * scaleY,
-    }
-  }
-
-  function handleSignaturePointerDown(event: ReactPointerEvent<HTMLCanvasElement>): void {
-    const canvas = signatureCanvasRef.current
-    if (!canvas) {
-      return
-    }
-    const context = canvas.getContext('2d')
-    if (!context) {
-      setAppError('No se pudo inicializar el pad de firma.')
-      return
-    }
-
-    const point = getCanvasPoint(canvas, event)
-    signatureDrawingRef.current = true
-    signatureHasStrokeRef.current = true
-    context.beginPath()
-    context.moveTo(point.x, point.y)
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  function handleSignaturePointerMove(event: ReactPointerEvent<HTMLCanvasElement>): void {
-    if (!signatureDrawingRef.current) {
-      return
-    }
-    const canvas = signatureCanvasRef.current
-    if (!canvas) {
-      return
-    }
-    const context = canvas.getContext('2d')
-    if (!context) {
-      return
-    }
-
-    const point = getCanvasPoint(canvas, event)
-    context.lineTo(point.x, point.y)
-    context.stroke()
-  }
-
-  function handleSignaturePointerUp(event: ReactPointerEvent<HTMLCanvasElement>): void {
-    if (!signatureDrawingRef.current) {
-      return
-    }
-    signatureDrawingRef.current = false
-    event.currentTarget.releasePointerCapture(event.pointerId)
-  }
-
-  function handleClearSignaturePad(): void {
-    const canvas = signatureCanvasRef.current
-    if (!canvas) {
-      return
-    }
-    const context = canvas.getContext('2d')
-    if (!context) {
-      setAppError('No se pudo limpiar el pad de firma.')
-      return
-    }
-
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, canvas.width, canvas.height)
-    context.lineWidth = 2.2
-    context.lineCap = 'round'
-    context.lineJoin = 'round'
-    context.strokeStyle = '#0f172a'
-    signatureHasStrokeRef.current = false
-    setAppNotice('Pad de firma limpio.')
-  }
-
-  function handleSaveHandwrittenSignature(): void {
-    if (!profile) {
-      return
-    }
-    const canvas = signatureCanvasRef.current
-    if (!canvas) {
-      setAppError('No se encontró el pad de firma.')
-      return
-    }
-    if (!signatureHasStrokeRef.current) {
-      setAppError('Primero dibuja la firma en el pad.')
-      return
-    }
-
-    const dataUrl = canvas.toDataURL('image/png')
-    const storedFile: StoredFile = {
-      id: crypto.randomUUID(),
-      name: 'firma-manual.png',
-      type: 'image/png',
-      size: Math.round((dataUrl.length * 3) / 4),
-      dataUrl,
-      uploadedAt: new Date().toISOString(),
-    }
-
-    const nextProfile = {
-      ...profile,
-      signatureImage: storedFile,
-    }
-    setProfile(nextProfile)
-    persistProfile(nextProfile)
-    setAppError(null)
-    setAppNotice('Firma manual guardada correctamente.')
-    showSavedFloatingNotice()
-  }
-
   /** Las pestañas de Herramientas ahora incluyen Comunidad: al salir se corta el polling. */
   function handleSelectToolsTab(tab: 'protocols' | 'vademecum' | 'consult' | 'community'): void {
     setToolsActiveTab(tab)
@@ -6884,7 +6770,7 @@ function App() {
     setAppError(null)
   }
 
-  function saveAppointmentCapacity(nextDays: number[], nextLimit: number, nextStartTime = appointmentStartTime, nextEndTime = appointmentEndTime, nextDuration = appointmentDurationMinutes): void {
+  function saveAppointmentCapacity(nextDays: number[], nextStartTime = appointmentStartTime, nextEndTime = appointmentEndTime, nextDuration = appointmentDurationMinutes): void {
     const normalizedDays = Array.from(new Set(nextDays)).filter((day) => day >= 0 && day <= 6)
     const normalizedLimit = Math.max(1, Math.min(100, calculateDailyCapacity(nextStartTime, nextEndTime, nextDuration)))
     const normalizedStartTime = /^\d{2}:\d{2}$/.test(nextStartTime) ? nextStartTime : DEFAULT_APPOINTMENT_START_TIME
@@ -7361,28 +7247,6 @@ function App() {
       void persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)
     }
     showSavedFloatingNotice('Turno cancelado')
-  }
-
-  // --- NUEVA función "Turnos libres" (independiente de la Turnera) ---
-  function handleOpenFreeSlotModal(): void {
-    setFreeSlotError(null)
-    setFreeSlotGeneratedUrl(null)
-    setPublicBookingError(null)
-    setPublicBookingNotice(null)
-    setFreeSlotDraft({
-      slotDate: todayLocalISO(),
-      startTime: '09:00',
-      endTime: '17:00',
-      slotCount: 5,
-      durationMinutes: 30,
-      location: '',
-      reason: '',
-      amountToCharge: '',
-      amountConcept: 'consulta' as 'sena' | 'consulta',
-    })
-    setFreeSlotModalOpen(true)
-    void refreshFreeSlotLinks()
-    void refreshPublicBookingSettings()
   }
 
   async function handleGenerateFixedBookingLink(): Promise<void> {
@@ -11342,7 +11206,7 @@ function App() {
                 <input
                   type="time"
                   value={appointmentStartTime}
-                  onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, event.target.value, appointmentEndTime, appointmentDurationMinutes)}
+                  onChange={(event) => saveAppointmentCapacity(appointmentDays, event.target.value, appointmentEndTime, appointmentDurationMinutes)}
                 />
               </label>
               <label>
@@ -11350,12 +11214,12 @@ function App() {
                 <input
                   type="time"
                   value={appointmentEndTime}
-                  onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, appointmentStartTime, event.target.value, appointmentDurationMinutes)}
+                  onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, event.target.value, appointmentDurationMinutes)}
                 />
               </label>
               <label>
                 Duración del turno
-                <select value={appointmentDurationMinutes} onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, appointmentStartTime, appointmentEndTime, Number(event.target.value))}>
+                <select value={appointmentDurationMinutes} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, appointmentEndTime, Number(event.target.value))}>
                   {[15, 20, 30, 45, 60, 90].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutos</option>)}
                 </select>
               </label>
@@ -11375,7 +11239,7 @@ function App() {
                           const nextDays = appointmentDays.includes(day.value)
                             ? appointmentDays.filter((value) => value !== day.value)
                             : [...appointmentDays, day.value]
-                          saveAppointmentCapacity(nextDays, dailyPatientLimit, appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)
+                          saveAppointmentCapacity(nextDays, appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)
                         }}
                       />
                       <span>{day.label.slice(0, 3)}</span>
@@ -11385,7 +11249,7 @@ function App() {
               </div>
             </div>
             <div className="capacity-status">{appointmentDaysLabel || 'Elegí al menos un día'} · Configuración guardada automáticamente al cambiar los campos.</div>
-            <button type="button" className="screen-action" onClick={() => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)}>
+            <button type="button" className="screen-action" onClick={() => saveAppointmentCapacity(appointmentDays, appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)}>
               <span aria-hidden="true">💾</span> Guardar configuración
             </button>
             <button type="button" className="screen-action primary" disabled={publicBookingSaving} onClick={() => void handleGenerateFixedBookingLink()}><span aria-hidden="true">🔗</span> {publicBookingSaving ? 'Generando...' : 'Generar link fijo para compartir'}</button>
