@@ -3097,24 +3097,6 @@ function App() {
       seedUsers.some((user) => user.email.trim().toLowerCase() === normalizedEmail)
     )
   }, [registerDraft.email, seedUsers])
-  const profileSpecialtySuggestions = useMemo(
-    () => {
-      const catalogByNormalizedName = new Map<string, string>()
-      for (const specialty of [...specialtyCatalog, ...seedUsers.map((user) => user.specialty)]) {
-        const trimmedSpecialty = specialty.trim()
-        const normalizedSpecialty = normalizeSearchText(trimmedSpecialty)
-        if (normalizedSpecialty && !catalogByNormalizedName.has(normalizedSpecialty)) {
-          catalogByNormalizedName.set(normalizedSpecialty, trimmedSpecialty)
-        }
-      }
-      return buildStringSuggestions(
-        Array.from(catalogByNormalizedName.values()),
-        profile?.specialty ?? '',
-        8,
-      )
-    },
-    [specialtyCatalog, seedUsers, profile?.specialty],
-  )
   const filteredMedicationCatalog = useMemo(() => {
     const normalizedQuery = normalizeSearchText(vademecumSearchQuery)
     if (normalizedQuery.length < VADEMECUM_MIN_QUERY_LENGTH) {
@@ -6657,7 +6639,7 @@ function App() {
     }
   }
 
-  function handleProfileFieldChange(event: ChangeEvent<HTMLInputElement>): void {
+  function handleProfileFieldChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>): void {
     const { name, value } = event.target
     if (!profile || !name) {
       return
