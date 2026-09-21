@@ -94,7 +94,11 @@ Deno.serve(async (request) => {
       const detail = typeof providerProfile?.message === 'string' ? providerProfile.message : 'Mercado Pago no validó el token recibido.'
       return Response.redirect(`${appBaseUrl}/?mp_connection=error&message=${encodeURIComponent(detail)}`, 302)
     }
-    const { error: accountError } = await admin.from('professional_payment_accounts').upsert({
+    const { data: existingAccount } = await admin.from('professional_payment_accounts').select('id, professional_id').eq('provider', 'mercadopago').eq('provider_user_id', String(token.user_id)).maybeSingle()
+    if (existingAccount && existingAccount.professional_id !== oauthState.professional_id) {
+      return Response.redirect(`${appBaseUrl}/?mp_connection=error&message=${encodeURIComponent('Esta cuenta de Mercado Pago ya está vinculada a otro profesional de Dr Happy.')}`, 302)
+    }
+    const accountPayload = {
       professional_id: oauthState.professional_id,
       provider: 'mercadopago',
       provider_user_id: String(token.user_id),
@@ -104,7 +108,11 @@ Deno.serve(async (request) => {
       public_email: publicEmail,
       status: 'connected',
       updated_at: new Date().toISOString(),
-    }, { onConflict: 'professional_id,provider' })
+    }
+    const accountResult = existingAccount
+      ? await admin.from('professional_payment_accounts').update(accountPayload).eq('id', existingAccount.id)
+      : await admin.from('professional_payment_accounts').upsert(accountPayload, { onConflict: 'professional_id,provider' })
+    const accountError = accountResult.error
     if (accountError) {
       return Response.redirect(`${appBaseUrl}/?mp_connection=error&message=${encodeURIComponent(`No se pudo guardar la cuenta: ${accountError.message}`)}`, 302)
     }
