@@ -18,7 +18,8 @@ function base64Url(bytes: Uint8Array): string {
 }
 
 function decodeBase64(value: string): Uint8Array {
-  const binary = atob(value)
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (value.length % 4)) % 4)
+  const binary = atob(normalized)
   return Uint8Array.from(binary, (char) => char.charCodeAt(0))
 }
 
