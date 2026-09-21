@@ -746,7 +746,7 @@ serve(async (request) => {
                 notes: newAppointment.notes,
                 amountToCharge: amount,
                 amountConcept: amount ? block.amountConcept || 'consulta' : undefined,
-                paymentLink: amount ? block.paymentLink || undefined : undefined,
+                paymentLink: amount ? paymentInitPoint || block.paymentLink || undefined : undefined,
               },
             }),
           })
