@@ -2886,13 +2886,25 @@ function App() {
       if (isAdminSession) {
         return true
       }
+      const profession = normalizeSearchText(activeUser?.specialty || profile?.specialty || '')
+      const isTrial = trialInfo?.status === 'trial'
+      if (isTrial) return true
+      if (profession.includes('odont')) {
+        return ['attention', 'appointments', 'ledger'].includes(moduleId)
+      }
+      if (profession.includes('psic')) {
+        return ['attention', 'appointments', 'tools'].includes(moduleId)
+      }
+      if (profession.includes('medic')) {
+        return moduleId !== 'community'
+      }
       const configured = activeUser?.enabledModules
       if (!configured) {
         return !OPT_IN_APP_MODULE_IDS.includes(moduleId)
       }
       return configured.includes(moduleId)
     },
-    [isAdminSession, activeUser],
+    [isAdminSession, activeUser, profile, trialInfo],
   )
 
   const freeSlotCapacity = useMemo(() => {
@@ -5422,6 +5434,30 @@ function App() {
 
   function persistPatient(nextPatient: PatientRecord): void {
     persistPatientsBatch([nextPatient])
+  }
+
+  async function handleDeletePatient(patientId: string): Promise<void> {
+    if (!activeUserId) return
+    const target = patients.find((patient) => patient.id === patientId)
+    if (!target || target.ownerUserId !== activeUserId) {
+      setAppError('Solo podés eliminar pacientes creados por tu cuenta.')
+      return
+    }
+    if (!window.confirm(`¿Eliminar definitivamente la ficha de ${target.nombre} ${target.apellido}?`)) return
+    const nextPatients = patients.filter((patient) => patient.id !== patientId)
+    const ownerIndex = readJsonStorage<string[]>(patientIndexStorageKey(activeUserId), []).filter((id) => id !== patientId)
+    const registry = readJsonStorage<string[]>(PATIENT_REGISTRY_KEY, []).filter((id) => id !== patientId)
+    localStorage.setItem(patientIndexStorageKey(activeUserId), JSON.stringify(ownerIndex))
+    localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(registry))
+    localStorage.removeItem(patientGlobalStorageKey(patientId))
+    setPatients(nextPatients)
+    setAvailablePatients((current) => current.filter((patient) => patient.id !== patientId))
+    if (selectedPatientId === patientId) {
+      setSelectedPatientId(null)
+      setWorkspaceLayer('my-patients')
+    }
+    if (profile) await persistWorkspaceRemote(activeUserId, profile, nextPatients, appointments, treatmentLedger)
+    setAppNotice('Paciente eliminado correctamente.')
   }
 
   function persistPatientConsultation(patientId: string, entry: ConsultationEntry): void {
@@ -11885,6 +11921,9 @@ function App() {
                       </div>
                       <div className="patient-directory-actions">
                         <button type="button" onClick={() => handleSelectPatient(patient.id)}>Abrir ficha</button>
+                        {patient.ownerUserId === activeUserId ? (
+                          <button type="button" className="ghost danger" onClick={() => void handleDeletePatient(patient.id)}>Eliminar</button>
+                        ) : null}
                         <button type="button" className="ghost" onClick={() => handleNewAppointmentModal(patient)}>Agendar</button>
                       </div>
                     </article>
@@ -11988,62 +12027,6 @@ function App() {
                 ) : null}
                 {!selectedPatient || canEditSelectedPatientRecord ? (
                   <div className="record-mode-actions">
-                    <div className="record-scan-actions">
-                      <button
-                        type="button"
-                        className="file-picker-button compact"
-                        onClick={() => {
-                          openFileDialog('patient-photo-carnet-upload')
-                        }}
-                      >
-                        SUBIR FOTO CREDENCIAL
-                      </button>
-                      <button
-                        type="button"
-                        className="file-picker-button compact"
-                        onClick={() => {
-                          void startLiveScanner('credential')
-                        }}
-                      >
-                        SCANEAR CREDENCIAL
-                      </button>
-                      <button
-                        type="button"
-                        className="file-picker-button compact"
-                        onClick={() => {
-                          openFileDialog('patient-photo-dni-upload')
-                        }}
-                      >
-                        SUBIR FOTO DNI
-                      </button>
-                      <button
-                        type="button"
-                        className="file-picker-button compact"
-                        onClick={() => {
-                          void startLiveScanner('dni')
-                        }}
-                      >
-                        SCANEAR DNI
-                      </button>
-                      <input
-                        id="patient-photo-carnet-upload"
-                        className="file-input-hidden"
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) => {
-                          void handleSingleUpload(event, 'photoCarnet')
-                        }}
-                      />
-                      <input
-                        id="patient-photo-dni-upload"
-                        className="file-input-hidden"
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) => {
-                          void handleSingleUpload(event, 'dniPhoto')
-                        }}
-                      />
-                    </div>
                     {selectedPatient ? (
                       !patientFormUnlocked ? (
                         <button
@@ -12504,11 +12487,16 @@ function App() {
                   />
                 </label>
                 <label>
+                  Usuario
+                  <input value={activeUser?.username ?? ''} readOnly />
+                </label>
+                <label>
                   Profesión
                   <select
                     name="specialty"
                     value={profile.specialty}
                     onChange={handleProfileFieldChange}
+                    disabled={Boolean(profile.specialty.trim())}
                   >
                     <option value="">Seleccioná tu profesión</option>
                     <option value="Médico">Médico</option>
