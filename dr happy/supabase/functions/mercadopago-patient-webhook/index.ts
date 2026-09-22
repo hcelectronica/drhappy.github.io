@@ -39,7 +39,7 @@ Deno.serve(async (request) => {
   const payment = await paymentResponse.json().catch(() => null)
   if (!paymentResponse.ok || !payment) return jsonResponse(502, { success: false, message: 'No se pudo validar el pago.' })
   const externalReference = String(payment.external_reference || '').trim()
-  const { data: reservation } = await admin.from('public_booking_reservations').select('id, appointment_id, professional_id, patient_name, patient_email, patient_phone, slot_date, slot_time, amount_to_charge, amount_concept, payment_status').eq('professional_id', account.professional_id).eq('appointment_id', externalReference).maybeSingle()
+  const { data: reservation } = await admin.from('public_booking_reservations').select('id, appointment_id, professional_id, patient_name, patient_dni, patient_email, patient_phone, slot_date, slot_time, amount_to_charge, amount_concept, modality, payment_status').eq('professional_id', account.professional_id).eq('appointment_id', externalReference).maybeSingle()
   if (!reservation) return jsonResponse(200, { success: true, ignored: true })
 
   const paymentStatus = String(payment.status || 'pending')
@@ -48,8 +48,31 @@ Deno.serve(async (request) => {
   if (approved && reservation.appointment_id) {
     const { data: workspace } = await admin.from('user_workspaces').select('appointments_json, treatment_ledger_json').eq('user_id', reservation.professional_id).maybeSingle()
     const appointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json : []
-    const updated = appointments.map((appointment: Record<string, unknown>) => appointment.id === reservation.appointment_id ? { ...appointment, status: 'confirmed', paymentStatus: 'approved', paymentId } : appointment)
-    const targetAppointment = updated.find((item: Record<string, unknown>) => item.id === reservation.appointment_id) as Record<string, unknown> | undefined
+    const existingAppointment = appointments.find((item: Record<string, unknown>) => item.id === reservation.appointment_id) as Record<string, unknown> | undefined
+    const confirmedAppointment = existingAppointment ?? {
+      id: reservation.appointment_id,
+      patientId: crypto.randomUUID(),
+      patientName: reservation.patient_name,
+      patientDni: reservation.patient_dni,
+      patientEmail: reservation.patient_email || '',
+      patientPhone: reservation.patient_phone || '',
+      scheduledDate: reservation.slot_date,
+      scheduledTime: reservation.slot_time,
+      scheduledAt: `${reservation.slot_date}T${reservation.slot_time}:00`,
+      durationMinutes: 30,
+      reason: 'Turno reservado por turnera pública',
+      notes: 'Pago aprobado por Mercado Pago.',
+      location: 'Consultorio médico',
+      createdAt: new Date().toISOString(),
+      createdByUserId: reservation.professional_id,
+      publicBookingModality: reservation.modality,
+      amountToCharge: Number(reservation.amount_to_charge || payment.transaction_amount || 0),
+      amountConcept: reservation.amount_concept || 'consulta',
+    }
+    const updated = existingAppointment
+      ? appointments.map((appointment: Record<string, unknown>) => appointment.id === reservation.appointment_id ? { ...appointment, status: 'confirmed', paymentStatus: 'approved', paymentId } : appointment)
+      : [...appointments, { ...confirmedAppointment, status: 'confirmed', paymentStatus: 'approved', paymentId }]
+    const targetAppointment = confirmedAppointment
     const ledger = Array.isArray(workspace?.treatment_ledger_json) ? workspace.treatment_ledger_json : []
     const ledgerId = `mercadopago-${paymentId}`
     const nextLedger = ledger.some((entry: Record<string, unknown>) => entry.id === ledgerId)

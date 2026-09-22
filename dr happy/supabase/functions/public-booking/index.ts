@@ -139,6 +139,10 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+function pendingReservationCutoff(): string {
+  return new Date(Date.now() - 15 * 60 * 1000).toISOString()
+}
+
 function addDays(dateStr: string, days: number): string {
   const [year, month, day] = dateStr.split('-').map(Number)
   const date = new Date(Date.UTC(year, month - 1, day + days, 12, 0, 0))
@@ -510,6 +514,12 @@ serve(async (request) => {
           .select('appointments_json')
           .eq('user_id', settings.professional_id)
           .maybeSingle()
+        await admin
+          .from('public_booking_reservations')
+          .update({ status: 'cancelled', payment_status: 'expired' })
+          .eq('professional_id', settings.professional_id)
+          .eq('status', 'pending_payment')
+          .lt('created_at', pendingReservationCutoff())
         const currentAppointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json as AppointmentLike[] : []
         const bookedAppointments = new Set(
           currentAppointments
@@ -596,6 +606,12 @@ serve(async (request) => {
         if (!settings || !settings.enabled) {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
+        await admin
+          .from('public_booking_reservations')
+          .update({ status: 'cancelled', payment_status: 'expired' })
+          .eq('professional_id', settings.professional_id)
+          .eq('status', 'pending_payment')
+          .lt('created_at', pendingReservationCutoff())
         if (slotDate < todayISO() || slotDate > addDays(todayISO(), 59)) {
           return jsonResponse(409, { success: false, message: 'La fecha elegida está fuera del rango habilitado.' })
         }
@@ -706,13 +722,15 @@ serve(async (request) => {
           ...(amount ? { amountToCharge: amount, amountConcept: block.amountConcept || 'consulta' } : {}),
         }
 
-        const { error: upsertError } = await admin.from('user_workspaces').upsert(
-          { user_id: settings.professional_id, appointments_json: [...currentAppointments, newAppointment] },
-          { onConflict: 'user_id' },
-        )
-        if (upsertError) {
-          await admin.from('public_booking_reservations').update({ status: 'cancelled' }).eq('appointment_id', appointmentId)
-          return jsonResponse(500, { success: false, message: `No se pudo agendar el turno: ${upsertError.message}` })
+        if (!amount) {
+          const { error: upsertError } = await admin.from('user_workspaces').upsert(
+            { user_id: settings.professional_id, appointments_json: [...currentAppointments, newAppointment] },
+            { onConflict: 'user_id' },
+          )
+          if (upsertError) {
+            await admin.from('public_booking_reservations').update({ status: 'cancelled' }).eq('appointment_id', appointmentId)
+            return jsonResponse(500, { success: false, message: `No se pudo agendar el turno: ${upsertError.message}` })
+          }
         }
 
         let emailSent = false
