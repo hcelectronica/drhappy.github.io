@@ -1231,6 +1231,11 @@ function normalizeRemoteProfile(raw: unknown, fallback: ProfessionalProfile): Pr
     appointmentEndTime: typeof candidate.appointmentEndTime === 'string' && /^\d{2}:\d{2}$/.test(candidate.appointmentEndTime)
       ? candidate.appointmentEndTime
       : DEFAULT_APPOINTMENT_END_TIME,
+    appointmentAmountToCharge:
+      typeof candidate.appointmentAmountToCharge === 'number' && candidate.appointmentAmountToCharge > 0
+        ? candidate.appointmentAmountToCharge
+        : undefined,
+    appointmentAmountConcept: candidate.appointmentAmountConcept === 'consulta' ? 'consulta' : 'sena',
     matriculaPhoto: normalizeStoredFile(candidate.matriculaPhoto) ?? undefined,
     signatureImage: normalizeStoredFile(candidate.signatureImage) ?? undefined,
     communitySeenMessageIds: normalizeStringList(candidate.communitySeenMessageIds),
@@ -4144,7 +4149,7 @@ function App() {
         )
         let merged: SeedUser[] = []
 
-        if (isSupabaseConfigured && supabase) {
+        if (isSupabaseConfigured && supabase && persistedSessionToken) {
           const result = await loadProfessionals()
           if (!result.success) throw new Error(`No se pudo cargar profesionales remotos: ${result.message}`)
           for (const row of result.professionals ?? []) {
@@ -4158,7 +4163,7 @@ function App() {
               merged.push(remoteUser)
             }
           }
-        } else {
+        } else if (!isSupabaseConfigured) {
           merged = []
           for (const localUser of localUsers) {
             const normalizedLocalUser: SeedUser = {
@@ -4173,6 +4178,8 @@ function App() {
           setAppNotice(
             'Modo local activo: los nuevos profesionales y chats solo se comparten en este navegador.',
           )
+        } else {
+          merged = []
         }
         const normalizedUsers = merged.map((user) => ({
           ...user,
@@ -4258,7 +4265,18 @@ function App() {
           await loadWorkspaceForUser(sessionUser)
         }
       } catch (error) {
-        setAppError(error instanceof Error ? error.message : 'Error cargando usuarios.')
+        const errorMessage = error instanceof Error ? error.message : 'Error cargando usuarios.'
+        const invalidSession = /sesión profesional requerida|unauthorized|401/i.test(errorMessage)
+        if (invalidSession) {
+          localStorage.removeItem(SESSION_USER_KEY)
+          localStorage.removeItem(SESSION_USER_CACHE_KEY)
+          localStorage.removeItem(SESSION_TOKEN_KEY)
+          sessionStorage.removeItem(SESSION_TOKEN_KEY)
+          setSeedUsers([])
+          setAppError(null)
+          return
+        }
+        setAppError(errorMessage)
         if (cachedSessionUser?.id === storedUserId) {
           setSeedUsers([cachedSessionUser])
           await loadWorkspaceForUser(cachedSessionUser).catch((workspaceError: unknown) => {
@@ -6757,6 +6775,18 @@ function App() {
     setAppNotice(`Configuración guardada: ${normalizedLimit} turnos posibles por día.`)
   }
 
+  function saveAppointmentAmount(): void {
+    if (!activeUserId || !profile) return
+    const nextProfile = {
+      ...profile,
+      appointmentAmountToCharge: Number(appointmentAmountToCharge) > 0 ? Number(appointmentAmountToCharge) : undefined,
+      appointmentAmountConcept,
+    }
+    setProfile(nextProfile)
+    localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
+    void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments, treatmentLedger)
+  }
+
   function handleNewAppointmentModal(prefillPatient?: PatientRecord | null, prefillDate?: string): void {
     if (prefillPatient) {
       setAppointmentDraft({
@@ -7234,8 +7264,7 @@ function App() {
     }
     const professionalName = profile?.fullName || activeUser?.fullName || current.professionalName || 'profesional'
     const baseSlug = buildDefaultPublicBookingSlug(professionalName, activeUserId)
-    const uniqueSlug = `${baseSlug}-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}`
-    const settings = { ...current, professionalId: activeUserId, professionalName, slug: uniqueSlug, enabled: true, blocks: [block] }
+    const settings = { ...current, professionalId: activeUserId, professionalName, slug: current.slug || baseSlug, enabled: true, blocks: [block] }
     setPublicBookingSaving(true)
     const result = await savePublicBookingSettings(settings)
     setPublicBookingSaving(false)
@@ -7363,6 +7392,8 @@ function App() {
             slotCount: calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes),
           }],
         })
+        setAppointmentAmountToCharge(existingBlock?.amountToCharge ? String(existingBlock.amountToCharge) : '')
+        setAppointmentAmountConcept(existingBlock?.amountConcept === 'consulta' ? 'consulta' : 'sena')
       } else {
         setPublicBookingSettings(buildDefaultPublicBookingSettings())
       }
@@ -11212,7 +11243,7 @@ function App() {
               </div>
               <label>
                 Monto a cobrar
-                <input type="number" min="0" step="1" value={appointmentAmountToCharge} onChange={(event) => setAppointmentAmountToCharge(event.target.value)} placeholder="0 = sin seña" />
+                <input type="number" min="0" step="1" value={appointmentAmountToCharge} onChange={(event) => setAppointmentAmountToCharge(event.target.value)} onBlur={saveAppointmentAmount} placeholder="0 = sin seña" />
               </label>
               <label>
                 Concepto
@@ -11602,34 +11633,34 @@ function App() {
           <>
           {/* Metrics bar */}
           <div className="turnera-metrics-grid">
-            <div className="turnera-metric-card">
+            <button type="button" className={`turnera-metric-card ${appointmentFilterTab === 'today' ? 'active' : ''}`} onClick={() => setAppointmentFilterTab('today')}>
               <span className="turnera-metric-icon">📅</span>
               <div className="turnera-metric-info">
                 <strong>{appointmentsMetrics.todayCount}</strong>
                 <span>Turnos para hoy</span>
               </div>
-            </div>
-            <div className="turnera-metric-card">
+            </button>
+            <button type="button" className={`turnera-metric-card ${appointmentFilterTab === 'upcoming' ? 'active' : ''}`} onClick={() => setAppointmentFilterTab('upcoming')}>
               <span className="turnera-metric-icon">⏳</span>
               <div className="turnera-metric-info">
                 <strong>{appointmentsMetrics.upcomingCount}</strong>
                 <span>Próximos turnos</span>
               </div>
-            </div>
-            <div className="turnera-metric-card">
+            </button>
+            <button type="button" className="turnera-metric-card" onClick={() => setAppointmentFilterTab('all')}>
               <span className="turnera-metric-icon">✉️</span>
               <div className="turnera-metric-info">
                 <strong>{appointmentsMetrics.emailSentCount}</strong>
                 <span>Confirmados por email</span>
               </div>
-            </div>
-            <div className="turnera-metric-card">
+            </button>
+            <button type="button" className={`turnera-metric-card ${appointmentFilterTab === 'all' ? 'active' : ''}`} onClick={() => setAppointmentFilterTab('all')}>
               <span className="turnera-metric-icon">📋</span>
               <div className="turnera-metric-info">
                 <strong>{appointmentsMetrics.total}</strong>
                 <span>Total agendados</span>
               </div>
-            </div>
+            </button>
           </div>
 
           {/* Toolbar & Filters */}
@@ -11642,36 +11673,6 @@ function App() {
                   value={appointmentSearchQuery}
                   onChange={(e) => setAppointmentSearchQuery(e.target.value)}
                 />
-              </div>
-              <div className="turnera-tab-buttons">
-                <button
-                  type="button"
-                  className={`ghost ${appointmentFilterTab === 'today' ? 'active' : ''}`}
-                  onClick={() => setAppointmentFilterTab('today')}
-                >
-                  Hoy ({appointmentsMetrics.todayCount})
-                </button>
-                <button
-                  type="button"
-                  className={`ghost ${appointmentFilterTab === 'upcoming' ? 'active' : ''}`}
-                  onClick={() => setAppointmentFilterTab('upcoming')}
-                >
-                  Próximos ({appointmentsMetrics.upcomingCount})
-                </button>
-                <button
-                  type="button"
-                  className={`ghost ${appointmentFilterTab === 'all' ? 'active' : ''}`}
-                  onClick={() => setAppointmentFilterTab('all')}
-                >
-                  Todos ({appointmentsMetrics.total})
-                </button>
-                <button
-                  type="button"
-                  className={`ghost ${appointmentFilterTab === 'past' ? 'active' : ''}`}
-                  onClick={() => setAppointmentFilterTab('past')}
-                >
-                  Historial ({appointmentsMetrics.pastCount})
-                </button>
               </div>
               <div className="turnera-date-filter">
                 <input
