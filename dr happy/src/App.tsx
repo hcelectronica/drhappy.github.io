@@ -1993,27 +1993,6 @@ async function fileToImageElement(file: File): Promise<HTMLImageElement> {
   }
 }
 
-async function detectBarcodesFromImage(
-  file: File,
-  formats: BarcodeFormat[],
-): Promise<DetectedBarcode[]> {
-  const detectorCtor = window.BarcodeDetector
-  if (!detectorCtor) {
-    throw new Error('Tu navegador no soporta escaneo automático de códigos (BarcodeDetector).')
-  }
-  const image = await fileToImageElement(file)
-  const canvas = document.createElement('canvas')
-  canvas.width = image.naturalWidth
-  canvas.height = image.naturalHeight
-  const context = canvas.getContext('2d')
-  if (!context) {
-    throw new Error('No se pudo preparar la imagen para escanear códigos.')
-  }
-  context.drawImage(image, 0, 0)
-  const detector = new detectorCtor({ formats })
-  return detector.detect(canvas)
-}
-
 function buildRotatedImageDataUrls(image: HTMLImageElement): string[] {
   const dataUrls: string[] = []
   const rotations = [0, 90, 180, 270]
@@ -2066,18 +2045,6 @@ async function parseDniFromImageUrlWithZxing(source: string): Promise<Partial<Pa
   }
 }
 
-async function parseDniFromFileWithZxing(file: File): Promise<Partial<PatientDraft> | null> {
-  const image = await fileToImageElement(file)
-  const candidates = buildRotatedImageDataUrls(image)
-  for (const candidate of candidates) {
-    const parsed = await parseDniFromImageUrlWithZxing(candidate)
-    if (parsed) {
-      return parsed
-    }
-  }
-  return null
-}
-
 async function parseQrFromImageUrlWithZxing(source: string): Promise<Partial<PatientDraft> | null> {
   const reader = new BrowserQRCodeReader()
   try {
@@ -2092,18 +2059,6 @@ async function parseQrFromImageUrlWithZxing(source: string): Promise<Partial<Pat
   } catch {
     return null
   }
-}
-
-async function parseInsuranceFromFileWithZxing(file: File): Promise<Partial<PatientDraft> | null> {
-  const image = await fileToImageElement(file)
-  const candidates = buildRotatedImageDataUrls(image)
-  for (const candidate of candidates) {
-    const parsed = await parseQrFromImageUrlWithZxing(candidate)
-    if (parsed) {
-      return parsed
-    }
-  }
-  return null
 }
 
 function parseDniFromBarcode(rawValue: string): Partial<PatientDraft> {
@@ -6046,22 +6001,6 @@ function App() {
     lastLiveDetectedAtRef.current = 0
     setLiveScanTarget(null)
     setLiveScanStatus('')
-  }
-
-  async function waitForLiveScanVideo(sessionId: number): Promise<HTMLVideoElement> {
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      if (sessionId !== liveScanSessionRef.current) {
-        throw new Error('El escaneo fue cancelado.')
-      }
-      const video = liveScanVideoRef.current
-      if (video) {
-        return video
-      }
-      await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, 50)
-      })
-    }
-    throw new Error('No se pudo preparar la vista previa de cámara para escanear.')
   }
 
   function applyPatientAutofill(
