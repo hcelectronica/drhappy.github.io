@@ -2982,24 +2982,6 @@ function App() {
           left.patient.apellido.localeCompare(right.patient.apellido, 'es'),
       )
   }, [patients, profile?.fullName, profile?.licenseNumber])
-  const registerSpecialtySuggestions = useMemo(
-    () => {
-      const catalogByNormalizedName = new Map<string, string>()
-      for (const specialty of [...specialtyCatalog, ...seedUsers.map((user) => user.specialty)]) {
-        const trimmedSpecialty = specialty.trim()
-        const normalizedSpecialty = normalizeSearchText(trimmedSpecialty)
-        if (normalizedSpecialty && !catalogByNormalizedName.has(normalizedSpecialty)) {
-          catalogByNormalizedName.set(normalizedSpecialty, trimmedSpecialty)
-        }
-      }
-      return buildStringSuggestions(
-        Array.from(catalogByNormalizedName.values()),
-        registerDraft.specialty,
-        8,
-      )
-    },
-    [specialtyCatalog, seedUsers, registerDraft.specialty],
-  )
   const registerUsernameExists = useMemo(() => {
     const normalizedUsername = registerDraft.username.trim().toLowerCase()
     return (
@@ -5759,18 +5741,6 @@ function App() {
     })
   }
 
-  function handleRegisterNetworkToggle(network: string): void {
-    setRegisterDraft((current) => {
-      const isSelected = current.networkMemberships.includes(network)
-      return {
-        ...current,
-        networkMemberships: isSelected
-          ? current.networkMemberships.filter((entry) => entry !== network)
-          : [...current.networkMemberships, network],
-      }
-    })
-  }
-
   async function handleCreateUser(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     setAuthError(null)
@@ -8520,8 +8490,19 @@ function App() {
             </section>
           )}
           {registerOpen ? (
-            <form className="grid register-form" onSubmit={handleCreateUser}>
-              <h2>Nuevo profesional</h2>
+            <div className="drhappy-modal-overlay" onClick={() => setRegisterOpen(false)}>
+              <div
+                className="drhappy-modal-card register-modal-card"
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="register-modal-title"
+              >
+                <div className="drhappy-modal-header">
+                  <h2 id="register-modal-title">Nuevo profesional</h2>
+                  <button type="button" className="ghost compact" onClick={() => setRegisterOpen(false)} aria-label="Cerrar registro">×</button>
+                </div>
+                <form className="grid register-form" onSubmit={handleCreateUser}>
               <label>
                 Nombre
                 <input
@@ -8552,33 +8533,18 @@ function App() {
                 />
               </label>
               <label>
-                Especialidad (ej: Traumatología, Hematología)
-                <input
+                Profesión
+                <select
                   name="specialty"
                   value={registerDraft.specialty}
                   onChange={handleRegisterFieldChange}
-                  autoComplete="off"
                   required
-                />
-                {registerDraft.specialty.trim() && registerSpecialtySuggestions.length > 0 ? (
-                  <ul className="specialty-suggestions">
-                    {registerSpecialtySuggestions.map((specialty) => (
-                      <li key={specialty}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setRegisterDraft((current) => ({ ...current, specialty }))
-                          }
-                        >
-                          {specialty}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                <small>
-                  Podés elegir una sugerencia o escribir una especialidad nueva para incorporarla al catálogo.
-                </small>
+                >
+                  <option value="">Seleccioná tu profesión</option>
+                  <option value="Médico">Médico</option>
+                  <option value="Odontólogo">Odontólogo</option>
+                  <option value="Psicólogo">Psicólogo</option>
+                </select>
               </label>
               <label>
                 Matrícula
@@ -8659,24 +8625,10 @@ function App() {
                 </div>
                 <small>Mínimo 6 caracteres.</small>
               </label>
-              <fieldset className="register-networks-fieldset">
-                <legend>Redes en las que trabaja</legend>
-                <div className="register-networks-grid">
-                  {PROFESSIONAL_NETWORK_OPTIONS.map((network) => (
-                    <label key={network} className="toggle-option">
-                      <input
-                        type="checkbox"
-                        checked={registerDraft.networkMemberships.includes(network)}
-                        onChange={() => handleRegisterNetworkToggle(network)}
-                      />
-                      <span className="toggle-switch" aria-hidden="true" />
-                      <span>{network}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-              <button type="submit">Guardar usuario</button>
-            </form>
+                  <button type="submit">Guardar usuario</button>
+                </form>
+              </div>
+            </div>
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
