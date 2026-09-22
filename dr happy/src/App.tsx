@@ -1978,44 +1978,6 @@ function extractLikelyDniFromRaw(rawValue: string): string {
   return best.slice(0, 9)
 }
 
-async function fileToImageElement(file: File): Promise<HTMLImageElement> {
-  const objectUrl = URL.createObjectURL(file)
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const candidate = new Image()
-      candidate.onload = () => resolve(candidate)
-      candidate.onerror = () => reject(new Error(`No se pudo cargar la imagen: ${file.name}`))
-      candidate.src = objectUrl
-    })
-    return image
-  } finally {
-    URL.revokeObjectURL(objectUrl)
-  }
-}
-
-function buildRotatedImageDataUrls(image: HTMLImageElement): string[] {
-  const dataUrls: string[] = []
-  const rotations = [0, 90, 180, 270]
-  for (const degrees of rotations) {
-    const radians = (degrees * Math.PI) / 180
-    const swapSides = degrees === 90 || degrees === 270
-    const width = swapSides ? image.naturalHeight : image.naturalWidth
-    const height = swapSides ? image.naturalWidth : image.naturalHeight
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('2d')
-    if (!context) {
-      continue
-    }
-    context.translate(width / 2, height / 2)
-    context.rotate(radians)
-    context.drawImage(image, -image.naturalWidth / 2, -image.naturalHeight / 2)
-    dataUrls.push(canvas.toDataURL('image/jpeg', 0.94))
-  }
-  return dataUrls
-}
-
 function hasParsedDniData(parsed: Partial<PatientDraft>): boolean {
   return Boolean(parsed.nombre || parsed.apellido || parsed.dni || parsed.birthDate)
 }
