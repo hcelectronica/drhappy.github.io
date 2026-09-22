@@ -256,8 +256,13 @@
           msg.className = 'msg err'; msg.textContent = result.data.message || 'No pudimos reservar el turno.'; el('confirmBtn').disabled = false; el('confirmBtn').textContent = 'Confirmar turno'; loadAgenda(); return;
         }
         if (result.data.paymentUrl) {
-          msg.className = 'msg ok'; msg.textContent = 'Redirigiendo a Mercado Pago para confirmar tu reserva...';
-          window.location.assign(result.data.paymentUrl);
+          var paymentUrl = String(result.data.paymentUrl).trim();
+          if (!/^https:\/\//i.test(paymentUrl)) {
+            msg.className = 'msg err'; msg.textContent = 'Mercado Pago devolvió un enlace inválido. Revisá tu email para continuar el pago.'; el('confirmBtn').disabled = false; el('confirmBtn').textContent = 'Confirmar turno'; return;
+          }
+          msg.className = 'msg ok';
+          msg.innerHTML = 'Redirigiendo a Mercado Pago para confirmar tu reserva... <a href="' + paymentUrl.replace(/"/g, '&quot;') + '" target="_self" rel="noopener">Abrir Mercado Pago</a>';
+          window.location.replace(paymentUrl);
           return;
         }
         msg.className = 'msg ok';
