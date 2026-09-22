@@ -6276,8 +6276,11 @@ function App() {
 
   /** Las pestañas de Herramientas ahora incluyen Comunidad: al salir se corta el polling. */
   function handleSelectToolsTab(tab: 'protocols' | 'vademecum' | 'consult' | 'community'): void {
-    setToolsActiveTab(tab)
-    setCommunityOpen(tab === 'community')
+    const profession = normalizeSearchText(activeUser?.specialty || profile?.specialty || '')
+    const restrictedProfession = profession.includes('psic') || profession.includes('odont')
+    const safeTab = restrictedProfession && (tab === 'protocols' || tab === 'consult') ? 'vademecum' : tab
+    setToolsActiveTab(safeTab)
+    setCommunityOpen(safeTab === 'community')
   }
 
   function handleToggleThemeMode(): void {
@@ -6341,8 +6344,12 @@ function App() {
       setAppError('El módulo Herramientas no está habilitado para tu cuenta.')
       return
     }
+    const profession = normalizeSearchText(activeUser?.specialty || profile?.specialty || '')
+    if (profession.includes('psic') || profession.includes('odont')) {
+      setToolsActiveTab('vademecum')
+    }
     stopDictation()
-    setCommunityOpen(toolsActiveTab === 'community')
+    setCommunityOpen(false)
     setWorkspaceLayer('tools')
     setAppError(null)
   }
@@ -8846,7 +8853,7 @@ function App() {
       onClick: () => { stopDictation(); setCommunityOpen(false); setWorkspaceLayer('my-patients'); setAppError(null) },
     },
     isModuleEnabled('tools') ? {
-      key: 'tools', icon: '🧰', label: 'Herramientas', hint: 'Protocolos y vademécum', tone: '#7c3aed',
+      key: 'tools', icon: '💊', label: normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') ? 'Vademécum' : 'Herramientas', hint: normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') ? 'Consulta farmacológica' : 'Protocolos y vademécum', tone: '#7c3aed',
       onClick: handleOpenTools,
     } : null,
     canUseTreatmentLedger ? {
@@ -8886,13 +8893,15 @@ function App() {
       </section>
 
       <nav className="screen-action-bar" aria-label="Secciones de herramientas">
-        <button
-          type="button"
-          className={`screen-action${toolsActiveTab === 'protocols' ? ' active' : ''}`}
-          onClick={() => handleSelectToolsTab('protocols')}
-        >
-          <span aria-hidden="true">📖</span> Guías y Protocolos
-        </button>
+        {!(normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') || normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('odont')) ? (
+          <button
+            type="button"
+            className={`screen-action${toolsActiveTab === 'protocols' ? ' active' : ''}`}
+            onClick={() => handleSelectToolsTab('protocols')}
+          >
+            <span aria-hidden="true">📖</span> Guías y Protocolos
+          </button>
+        ) : null}
         <button
           type="button"
           className={`screen-action${toolsActiveTab === 'vademecum' ? ' active' : ''}`}
@@ -8900,13 +8909,15 @@ function App() {
         >
           <span aria-hidden="true">💊</span> Vademécum
         </button>
-        <button
-          type="button"
-          className={`screen-action${toolsActiveTab === 'consult' ? ' active' : ''}`}
-          onClick={() => handleSelectToolsTab('consult')}
-        >
-          <span aria-hidden="true">🩺</span> Patologías en consultorio
-        </button>
+        {!(normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') || normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('odont')) ? (
+          <button
+            type="button"
+            className={`screen-action${toolsActiveTab === 'consult' ? ' active' : ''}`}
+            onClick={() => handleSelectToolsTab('consult')}
+          >
+            <span aria-hidden="true">🩺</span> Patologías en consultorio
+          </button>
+        ) : null}
       </nav>
     </>
   )
