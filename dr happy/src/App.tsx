@@ -7231,7 +7231,7 @@ function App() {
       slotCount: calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes),
       reason: current.blocks[0]?.reason || 'Consulta médica',
     }
-    const settings = { ...current, enabled: true, blocks: [block] }
+    const settings = { ...current, professionalId: activeUserId, professionalName: profile?.fullName || activeUser?.fullName || current.professionalName, slug: current.slug || buildDefaultPublicBookingSlug(profile?.fullName || activeUser?.fullName || 'profesional', activeUserId), enabled: true, blocks: [block] }
     setPublicBookingSaving(true)
     const result = await savePublicBookingSettings(settings)
     setPublicBookingSaving(false)

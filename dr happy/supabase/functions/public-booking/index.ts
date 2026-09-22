@@ -495,7 +495,10 @@ serve(async (request) => {
         const normalizedBlock = (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
           .map(normalizeBlock)
           .find((block): block is PublicBookingBlock => Boolean(block))
-        const blocks = normalizedBlock ? [{ ...normalizedBlock, label: 'Turno disponible', modality: 'private' as const }] : []
+        if (!normalizedBlock) {
+          return jsonResponse(404, { success: false, message: 'El profesional todavía no configuró sus cupos de atención.' })
+        }
+        const blocks = [{ ...normalizedBlock, label: 'Turno disponible', modality: 'private' as const }]
         const horizonDays = 60
         const startDate = body.startDate && body.startDate >= todayISO() ? body.startDate : todayISO()
         const requestedDays = Math.max(1, Math.min(35, Number(body.days) || 21))
@@ -573,7 +576,6 @@ serve(async (request) => {
         const slotDate = body.slotDate?.trim() ?? ''
         const slotTime = body.slotTime?.trim() ?? ''
         const blockId = body.blockId?.trim() ?? ''
-        const requestedModality = body.modality === 'private' || body.modality === 'coverage' ? body.modality : null
         const patientName = body.patientName?.trim() ?? ''
         const patientDni = body.patientDni?.trim() ?? ''
         const patientEmail = body.patientEmail?.trim() ?? ''
@@ -598,14 +600,10 @@ serve(async (request) => {
           return jsonResponse(409, { success: false, message: 'La fecha elegida está fuera del rango habilitado.' })
         }
 
-        const blocks = Array.from(new Map(
-          (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
-            .map(normalizeBlock)
-            .filter((block): block is PublicBookingBlock => Boolean(block))
-            .map((block) => [block.modality, block] as const),
-        ).values())
-        const block = blocks.find((entry) => entry.id === blockId)
-        if (!block || (requestedModality && block.modality !== requestedModality) || !block.days.includes(dateDay(slotDate)) || !buildBlockSlotTimes(block).includes(slotTime)) {
+        const block = (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
+          .map(normalizeBlock)
+          .find((entry): entry is PublicBookingBlock => Boolean(entry))
+        if (!block || !block.days.includes(dateDay(slotDate)) || !buildBlockSlotTimes(block).includes(slotTime)) {
           return jsonResponse(409, { success: false, message: 'Ese horario ya no está habilitado.' })
         }
 
