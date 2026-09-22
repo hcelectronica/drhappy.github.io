@@ -677,6 +677,10 @@ serve(async (request) => {
             }
           }
         }
+        if (amount && !paymentInitPoint) {
+          await admin.from('public_booking_reservations').update({ status: 'cancelled', payment_status: 'error' }).eq('appointment_id', appointmentId)
+          return jsonResponse(503, { success: false, message: 'No se pudo preparar el pago Mercado Pago. El turno no quedó reservado; intentá nuevamente.' })
+        }
 
         const newAppointment = {
           id: appointmentId,

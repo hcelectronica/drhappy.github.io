@@ -267,6 +267,8 @@ interface ProfessionalProfile {
   appointmentDays?: number[]
   dailyPatientLimit?: number
   appointmentDurationMinutes?: number
+  appointmentAmountToCharge?: number
+  appointmentAmountConcept?: 'sena' | 'consulta'
   appointmentStartTime?: string
   appointmentEndTime?: string
 }
@@ -2494,6 +2496,8 @@ function App() {
   const [appointmentDays, setAppointmentDays] = useState<number[]>(DEFAULT_APPOINTMENT_DAYS)
   const [dailyPatientLimit, setDailyPatientLimit] = useState(DEFAULT_DAILY_PATIENT_LIMIT)
   const [appointmentDurationMinutes, setAppointmentDurationMinutes] = useState(30)
+  const [appointmentAmountToCharge, setAppointmentAmountToCharge] = useState('')
+  const [appointmentAmountConcept, setAppointmentAmountConcept] = useState<'sena' | 'consulta'>('sena')
   const [appointmentStartTime, setAppointmentStartTime] = useState(DEFAULT_APPOINTMENT_START_TIME)
   const [appointmentEndTime, setAppointmentEndTime] = useState(DEFAULT_APPOINTMENT_END_TIME)
   // Prueba piloto: vista alternativa de la Turnera con calendario mensual de ocupación
@@ -5037,6 +5041,8 @@ function App() {
     setAppointmentDays(profile.appointmentDays?.length ? profile.appointmentDays : DEFAULT_APPOINTMENT_DAYS)
     setDailyPatientLimit(profile.dailyPatientLimit || DEFAULT_DAILY_PATIENT_LIMIT)
     setAppointmentDurationMinutes(profile.appointmentDurationMinutes || 30)
+    setAppointmentAmountToCharge(typeof profile.appointmentAmountToCharge === 'number' ? String(profile.appointmentAmountToCharge) : '')
+    setAppointmentAmountConcept(profile.appointmentAmountConcept === 'consulta' ? 'consulta' : 'sena')
     setAppointmentStartTime(profile.appointmentStartTime || DEFAULT_APPOINTMENT_START_TIME)
     setAppointmentEndTime(profile.appointmentEndTime || DEFAULT_APPOINTMENT_END_TIME)
   }, [profile])
@@ -6757,6 +6763,8 @@ function App() {
       appointmentDays: normalizedDays,
       dailyPatientLimit: normalizedLimit,
       appointmentDurationMinutes: normalizedDuration,
+      appointmentAmountToCharge: Number(appointmentAmountToCharge) > 0 ? Number(appointmentAmountToCharge) : undefined,
+      appointmentAmountConcept,
       appointmentStartTime: normalizedStartTime,
       appointmentEndTime: normalizedEndTime,
     }
@@ -7230,6 +7238,8 @@ function App() {
       durationMinutes: appointmentDurationMinutes,
       slotCount: calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes),
       reason: current.blocks[0]?.reason || 'Consulta médica',
+      amountToCharge: Number(appointmentAmountToCharge) > 0 ? Number(appointmentAmountToCharge) : undefined,
+      amountConcept: appointmentAmountConcept,
     }
     const professionalName = profile?.fullName || activeUser?.fullName || current.professionalName || 'profesional'
     const baseSlug = buildDefaultPublicBookingSlug(professionalName, activeUserId)
@@ -11209,6 +11219,17 @@ function App() {
                 <strong>{calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)}</strong>
                 <span>turnos posibles por día</span>
               </div>
+              <label>
+                Monto a cobrar
+                <input type="number" min="0" step="1" value={appointmentAmountToCharge} onChange={(event) => setAppointmentAmountToCharge(event.target.value)} placeholder="0 = sin seña" />
+              </label>
+              <label>
+                Concepto
+                <select value={appointmentAmountConcept} onChange={(event) => setAppointmentAmountConcept(event.target.value as 'sena' | 'consulta')}>
+                  <option value="sena">Reserva / seña</option>
+                  <option value="consulta">Turno completo</option>
+                </select>
+              </label>
               <div className="capacity-days">
                 <span>Días de atención</span>
                 <div>
