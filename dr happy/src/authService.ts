@@ -90,6 +90,19 @@ export async function loginProfessional(params: {
   })
 }
 
+export async function loginWithGoogle(params: {
+  accessToken: string
+  email: string
+  fullName?: string
+}): Promise<AuthActionResult> {
+  return invokeAuthProfessional({
+    action: 'google-login',
+    accessToken: params.accessToken,
+    email: params.email,
+    fullName: params.fullName,
+  })
+}
+
 /**
  * Cambia la contraseña de un profesional autenticado, validando la
  * contraseña actual antes de aplicar el nuevo hash.

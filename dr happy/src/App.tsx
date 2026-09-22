@@ -59,6 +59,7 @@ import { buildSignatureSeal } from './signatureSeal'
 import {
   registerProfessional,
   loginProfessional,
+  loginWithGoogle,
   changeProfessionalPassword,
   setProfessionalPassword,
 } from './authService'
@@ -2473,6 +2474,7 @@ function App() {
   const [recoveryPassword, setRecoveryPassword] = useState('')
   const [recoveryDemoCode, setRecoveryDemoCode] = useState<string | null>(null)
   const [activeUserId, setActiveUserId] = useState<string | null>(null)
+  const sessionGenerationRef = useRef(0)
   const [googleIdentity, setGoogleIdentity] = useState<{
     email: string
     avatarUrl?: string
@@ -3462,6 +3464,7 @@ function App() {
   }
 
   async function loadWorkspaceForUser(user: SeedUser): Promise<void> {
+    const sessionGeneration = sessionGenerationRef.current
     const localProfile = readJsonStorage<ProfessionalProfile>(profileStorageKey(user.id), profileFromSeed(user))
     const localLoaded = loadAccessiblePatientsForUser(user.id)
     const localAppointments = readJsonStorage<AppointmentRecord[]>(appointmentsStorageKey(user.id), [])
@@ -3511,6 +3514,7 @@ function App() {
         setAppNotice('Sesión iniciada. No se pudo sincronizar la nube ahora; tus datos locales siguen disponibles.')
         return
       }
+      if (sessionGeneration !== sessionGenerationRef.current) return
       const data = workspaceResult.workspace as RemoteWorkspaceRow | null
 
       if (data) {
@@ -3563,6 +3567,7 @@ function App() {
     }
 
     localStorage.setItem(profileStorageKey(user.id), JSON.stringify(loadedProfile))
+    if (sessionGeneration !== sessionGenerationRef.current) return
     loadedAppointments = linkAppointmentsToPatients(loadedAppointments, patientsList)
     localStorage.setItem(appointmentsStorageKey(user.id), JSON.stringify(loadedAppointments))
     localStorage.setItem(
@@ -5689,6 +5694,7 @@ function App() {
   }
 
   async function resolveGoogleSession(): Promise<void> {
+    const sessionGeneration = sessionGenerationRef.current
     if (!isSupabaseConfigured || !supabase) {
       return
     }
@@ -5699,99 +5705,25 @@ function App() {
     }
 
     const email = googleUser.email.toLowerCase()
-    const existing = seedUsers.find((entry) => entry.email.toLowerCase() === email)
-
-    if (existing) {
-      const metadata =
-        googleUser.user_metadata && typeof googleUser.user_metadata === 'object'
-          ? (googleUser.user_metadata as Record<string, unknown>)
-          : null
-      const avatarUrl =
-        typeof metadata?.avatar_url === 'string'
-          ? metadata.avatar_url
-          : typeof metadata?.picture === 'string'
-            ? metadata.picture
-            : undefined
-      setGoogleIdentity({
-        email: googleUser.email,
-        avatarUrl,
-        fullName: typeof metadata?.full_name === 'string' ? metadata.full_name : undefined,
-      })
-      localStorage.setItem(SESSION_USER_KEY, existing.id)
-      await loadWorkspaceForUser(existing)
-      setWorkspaceLayer('overview')
-      setSelectedPatientId(null)
+    const fullName = (googleUser.user_metadata?.full_name as string | undefined) ?? email.split('@')[0]
+    const result = await loginWithGoogle({ accessToken: data.session?.access_token || '', email, fullName })
+    if (sessionGeneration !== sessionGenerationRef.current) return
+    if (!result.success || !result.professional) {
+      setAuthError(result.message || 'No se pudo iniciar sesión con Google.')
       return
     }
-
-    // Usuario nuevo vía Google: crear profesional con datos básicos de Google.
-    const fullName = (googleUser.user_metadata?.full_name as string | undefined) ?? email.split('@')[0]
-    const generatedUsername = email.split('@')[0]
-    const draft = {
-      username: generatedUsername,
-      password: crypto.randomUUID(),
-      fullName,
-      specialty: '',
-      licenseNumber: '',
-      email: googleUser.email,
-      networkMemberships: [] as string[],
+    const nextUser = mapAuthProfessionalPublic(result.professional)
+    if (result.sessionToken) {
+      sessionStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
+      localStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
     }
-
-    let nextUser: SeedUser
-    const trialStartedAt = new Date().toISOString()
-    if (isSupabaseConfigured) {
-      const result = await registerProfessional({
-        username: draft.username,
-        password: draft.password,
-        fullName: draft.fullName,
-        specialty: draft.specialty,
-        licenseNumber: draft.licenseNumber,
-        email: draft.email,
-        networkMemberships: draft.networkMemberships,
-      })
-      if (!result.success || !result.professional) {
-        setAuthError(result.message || 'No se pudo crear el usuario con Google.')
-        return
-      }
-      nextUser = mapAuthProfessionalPublic(result.professional)
-      await persistWorkspaceRemote(nextUser.id, profileFromSeed(nextUser), [], [])
-    } else {
-      nextUser = {
-        id: crypto.randomUUID(),
-        ...draft,
-        isAdmin: false,
-        active: true,
-        trialStartedAt,
-        subscriptionStatus: 'trial',
-      }
-      const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
-      localStorage.setItem(CREATED_USERS_KEY, JSON.stringify([...localUsers, nextUser]))
-    }
-
-    setSeedUsers((current) => [...current, nextUser])
-    {
-      const metadata =
-        googleUser.user_metadata && typeof googleUser.user_metadata === 'object'
-          ? (googleUser.user_metadata as Record<string, unknown>)
-          : null
-      const avatarUrl =
-        typeof metadata?.avatar_url === 'string'
-          ? metadata.avatar_url
-          : typeof metadata?.picture === 'string'
-            ? metadata.picture
-            : undefined
-      setGoogleIdentity({
-        email: googleUser.email,
-        avatarUrl,
-        fullName: typeof metadata?.full_name === 'string' ? metadata.full_name : undefined,
-      })
-    }
+    setSeedUsers((current) => current.some((user) => user.id === nextUser.id) ? current.map((user) => user.id === nextUser.id ? nextUser : user) : [...current, nextUser])
+    setGoogleIdentity({ email: googleUser.email, fullName })
     localStorage.setItem(SESSION_USER_KEY, nextUser.id)
     await loadWorkspaceForUser(nextUser)
     setWorkspaceLayer('overview')
     setSelectedPatientId(null)
-    setAppNotice('Cuenta creada con Google. Completá tu perfil profesional para continuar.')
-    showSavedFloatingNotice()
+    setAppNotice('Sesión iniciada con Google.')
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -6022,6 +5954,7 @@ function App() {
   }
 
   async function handleLogout(): Promise<void> {
+    sessionGenerationRef.current += 1
     stopLiveScanner()
     stopDictation()
     if (isSupabaseConfigured && supabase) {

@@ -19,6 +19,7 @@ const BCRYPT_ROUNDS = 12
 
 interface AuthRequestBody {
   action: 'register' | 'login' | 'change-password' | 'set-password'
+    action: 'register' | 'login' | 'google-login' | 'change-password' | 'set-password'
   username?: string
   password?: string
   currentPassword?: string
@@ -30,6 +31,7 @@ interface AuthRequestBody {
   dni?: string
   email?: string
   networkMemberships?: string[]
+  accessToken?: string
 }
 
 const PROFESSIONAL_PUBLIC_COLUMNS =
@@ -103,15 +105,15 @@ serve(async (request) => {
           return jsonResponse(409, { success: false, message: 'Ese nombre de usuario ya existe.' })
         }
 
-        const { data: existingEmails, error: existingEmailError } = await admin
+        const { data: existingEmail, error: existingEmailError } = await admin
           .from('professionals')
           .select('id')
           .ilike('email', email)
-          .limit(2)
+          .maybeSingle()
         if (existingEmailError) {
           return jsonResponse(500, { success: false, message: `No se pudo validar el email: ${existingEmailError.message}` })
         }
-        if ((existingEmails || []).length > 0) {
+        if (existingEmail) {
           return jsonResponse(409, { success: false, message: 'Ese email ya está asociado a otro usuario.' })
         }
 
@@ -179,6 +181,49 @@ serve(async (request) => {
         const { password_hash: _omit, ...sanitized } = data as Record<string, unknown>
         const sessionToken = await createProfessionalSession(admin, String(sanitized.id))
         return jsonResponse(200, { success: true, professional: sanitized, sessionToken })
+      }
+
+      case 'google-login': {
+        const accessToken = body.accessToken?.trim()
+        if (!accessToken) return jsonResponse(400, { success: false, message: 'Falta validar la sesión de Google.' })
+        const { data: googleUser, error: googleError } = await admin.auth.getUser(accessToken)
+        if (googleError || !googleUser.user?.email) {
+          return jsonResponse(401, { success: false, message: 'La sesión de Google no es válida.' })
+        }
+        const email = googleUser.user.email.trim().toLowerCase()
+        const metadata = googleUser.user.user_metadata && typeof googleUser.user.user_metadata === 'object'
+          ? googleUser.user.user_metadata as Record<string, unknown>
+          : {}
+        const fullName = body.fullName?.trim() || (typeof metadata.full_name === 'string' ? metadata.full_name : email.split('@')[0])
+        const { data: existing, error: existingError } = await admin.from('professionals').select(PROFESSIONAL_PUBLIC_COLUMNS).ilike('email', email).maybeSingle()
+        if (existingError) return jsonResponse(500, { success: false, message: `No se pudo buscar el email: ${existingError.message}` })
+        if (existing) {
+          if (existing.active === false) return jsonResponse(401, { success: false, message: 'El usuario está inactivo.' })
+          const sessionToken = await createProfessionalSession(admin, String(existing.id))
+          return jsonResponse(200, { success: true, professional: existing, sessionToken })
+        }
+        const baseUsername = email.split('@')[0].replace(/[^a-z0-9._-]/g, '').slice(0, 40) || 'profesional'
+        let username = baseUsername
+        for (let suffix = 2; suffix < 100; suffix += 1) {
+          const { data: collision } = await admin.from('professionals').select('id').ilike('username', username).maybeSingle()
+          if (!collision) break
+          username = `${baseUsername.slice(0, 40 - String(suffix).length - 1)}-${suffix}`
+        }
+        const password = crypto.randomUUID()
+        const { data: inserted, error: insertError } = await admin.from('professionals').insert({
+          username,
+          password_hash: await bcrypt.hash(password, BCRYPT_ROUNDS),
+          full_name: fullName,
+          specialty: '',
+          license_number: '',
+          email,
+          network_memberships_json: [],
+          trial_started_at: new Date().toISOString(),
+          subscription_status: 'trial',
+        }).select(PROFESSIONAL_PUBLIC_COLUMNS).single()
+        if (insertError || !inserted) return jsonResponse(500, { success: false, message: insertError?.message || 'No se pudo crear el usuario de Google.' })
+        const sessionToken = await createProfessionalSession(admin, String(inserted.id))
+        return jsonResponse(200, { success: true, professional: inserted, sessionToken })
       }
 
       case 'change-password': {
