@@ -7210,6 +7210,14 @@ function App() {
     if (!activeUserId) return
     const current = publicBookingSettings || buildDefaultPublicBookingSettings()
     if (!current) return
+    if (!mercadoPagoConnected) {
+      setAppError('Conectá y verificá tu cuenta de Mercado Pago antes de publicar la turnera particular.')
+      return
+    }
+    if (Number(appointmentAmountToCharge) <= 0) {
+      setAppError('Cargá el monto de la consulta antes de publicar la turnera particular.')
+      return
+    }
     const block = {
       ...(current.blocks[0] || {}),
       id: current.blocks[0]?.id || crypto.randomUUID(),

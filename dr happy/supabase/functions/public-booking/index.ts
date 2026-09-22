@@ -694,11 +694,14 @@ serve(async (request) => {
             } catch (paymentError) {
               console.error('[public-booking] No se pudo crear checkout del profesional:', paymentError)
             }
+          } else {
+            await admin.from('public_booking_reservations').update({ status: 'cancelled', payment_status: 'account_not_connected' }).eq('appointment_id', appointmentId)
+            return jsonResponse(503, { success: false, message: 'El profesional todavía no conectó Mercado Pago. El turno no quedó reservado.' })
           }
         }
         if (amount && !paymentInitPoint) {
           await admin.from('public_booking_reservations').update({ status: 'cancelled', payment_status: 'error' }).eq('appointment_id', appointmentId)
-          return jsonResponse(503, { success: false, message: 'No se pudo preparar el pago Mercado Pago. El turno no quedó reservado; intentá nuevamente.' })
+          return jsonResponse(503, { success: false, message: 'Mercado Pago no pudo preparar el checkout. El turno no quedó reservado; intentá nuevamente.' })
         }
 
         const newAppointment = {
