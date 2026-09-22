@@ -255,6 +255,11 @@
         if (!result.data.success) {
           msg.className = 'msg err'; msg.textContent = result.data.message || 'No pudimos reservar el turno.'; el('confirmBtn').disabled = false; el('confirmBtn').textContent = 'Confirmar turno'; loadAgenda(); return;
         }
+        if (result.data.paymentUrl) {
+          msg.className = 'msg ok'; msg.textContent = 'Redirigiendo a Mercado Pago para confirmar tu reserva...';
+          window.location.assign(result.data.paymentUrl);
+          return;
+        }
         msg.className = 'msg ok';
         msg.textContent = 'Turno confirmado para el ' + formatDate(result.data.appointment.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' a las ' + result.data.appointment.time + ' hs.' + (result.data.emailSent ? ' Te enviamos la confirmación por email.' : ' Revisá los datos del turno en pantalla.') + (result.data.appointment.amountToCharge ? ' Recordá completar el pago indicado por el profesional.' : '');
         el('confirmBtn').style.display = 'none';
