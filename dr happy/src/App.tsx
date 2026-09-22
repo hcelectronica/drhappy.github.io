@@ -11228,10 +11228,7 @@ function App() {
               </div>
             </div>
             <div className="capacity-status">{appointmentDaysLabel || 'Elegí al menos un día'} · Configuración guardada automáticamente al cambiar los campos.</div>
-            <button type="button" className="screen-action" onClick={() => saveAppointmentCapacity(appointmentDays, appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)}>
-              <span aria-hidden="true">💾</span> Guardar configuración
-            </button>
-            <button type="button" className="screen-action primary" disabled={publicBookingSaving} onClick={() => void handleGenerateFixedBookingLink()}><span aria-hidden="true">🔗</span> {publicBookingSaving ? 'Generando...' : 'Generar link fijo para compartir'}</button>
+                    <button type="button" className="screen-action primary" disabled={publicBookingSaving} onClick={() => void handleGenerateFixedBookingLink()}><span aria-hidden="true">💾</span> {publicBookingSaving ? 'Guardando y generando link...' : 'Guardar y generar link de turnera'}</button>
             {freeSlotGeneratedUrl ? (
               <div className="capacity-generated-link">
                 <strong>Tu link fijo</strong>

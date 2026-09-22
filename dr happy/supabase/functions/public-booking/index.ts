@@ -450,7 +450,7 @@ serve(async (request) => {
           .upsert({
             professional_id: settings.professionalId,
             slug: settings.slug,
-            enabled: settings.enabled,
+            enabled: true,
             professional_name: settings.professionalName,
             location: settings.location || null,
             reason: settings.reason || null,
