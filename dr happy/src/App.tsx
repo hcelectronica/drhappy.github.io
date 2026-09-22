@@ -11124,7 +11124,7 @@ function App() {
               {selectedCalendarDay ? (
                 <div className="turnera-calendar-day-detail">
                   <strong>
-                    {formatDate(selectedCalendarDay)}: {appointmentCountByDate.get(selectedCalendarDay) ?? 0} paciente(s) agendado(s)
+                    {formatShortDate(selectedCalendarDay)}: {appointmentCountByDate.get(selectedCalendarDay) ?? 0} paciente(s) agendado(s)
                     <small className="turnera-calendar-day-breakdown-detail">Ocupación de la agenda</small>
                   </strong>
                   <button
