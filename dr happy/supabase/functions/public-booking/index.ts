@@ -716,7 +716,7 @@ serve(async (request) => {
         }
 
         let emailSent = false
-        if (patientEmail) {
+        if (patientEmail && !amount) {
           const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
             method: 'POST',
             headers: {
@@ -747,6 +747,7 @@ serve(async (request) => {
 
         return jsonResponse(200, {
           success: true,
+          paymentRequired: Boolean(amount),
           paymentUrl: paymentInitPoint,
           paymentPreferenceId,
           appointment: {

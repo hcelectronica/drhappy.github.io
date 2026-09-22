@@ -39,7 +39,7 @@ Deno.serve(async (request) => {
   const payment = await paymentResponse.json().catch(() => null)
   if (!paymentResponse.ok || !payment) return jsonResponse(502, { success: false, message: 'No se pudo validar el pago.' })
   const externalReference = String(payment.external_reference || '').trim()
-  const { data: reservation } = await admin.from('public_booking_reservations').select('id, appointment_id, professional_id, amount_to_charge, payment_status').eq('professional_id', account.professional_id).eq('appointment_id', externalReference).maybeSingle()
+  const { data: reservation } = await admin.from('public_booking_reservations').select('id, appointment_id, professional_id, patient_name, patient_email, patient_phone, slot_date, slot_time, amount_to_charge, amount_concept, payment_status').eq('professional_id', account.professional_id).eq('appointment_id', externalReference).maybeSingle()
   if (!reservation) return jsonResponse(200, { success: true, ignored: true })
 
   const paymentStatus = String(payment.status || 'pending')
@@ -50,6 +50,30 @@ Deno.serve(async (request) => {
     const appointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json : []
     const updated = appointments.map((appointment: Record<string, unknown>) => appointment.id === reservation.appointment_id ? { ...appointment, status: 'confirmed', paymentStatus: 'approved', paymentId } : appointment)
     await admin.from('user_workspaces').upsert({ user_id: reservation.professional_id, appointments_json: updated }, { onConflict: 'user_id' })
+    if (reservation.patient_email && reservation.payment_status !== 'approved') {
+      const { data: professional } = await admin.from('professionals').select('full_name, specialty').eq('id', reservation.professional_id).maybeSingle()
+      const appointment = updated.find((item: Record<string, unknown>) => item.id === reservation.appointment_id) as Record<string, unknown> | undefined
+      await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: reservation.patient_email,
+          subject: `Turno confirmado con ${professional?.full_name || 'tu profesional'} - ${reservation.slot_date} ${reservation.slot_time} hs`,
+          type: 'appointment',
+          templateData: {
+            patientName: reservation.patient_name,
+            professionalName: professional?.full_name || 'tu profesional',
+            specialty: professional?.specialty || 'Consulta médica',
+            date: reservation.slot_date,
+            time: reservation.slot_time,
+            location: appointment?.location || 'Consultorio médico',
+            notes: appointment?.notes || 'Pago aprobado por Mercado Pago.',
+            amountToCharge: reservation.amount_to_charge,
+            amountConcept: reservation.amount_concept || 'sena',
+          },
+        }),
+      })
+    }
   }
   return jsonResponse(200, { success: true, paymentStatus })
 })
