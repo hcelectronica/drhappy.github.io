@@ -625,6 +625,9 @@ serve(async (request) => {
         if (block.modality === 'private' && (!block.amountToCharge || block.amountToCharge <= 0)) {
           return jsonResponse(409, { success: false, message: 'Este turno particular todavía no tiene un monto configurado para pagar por Mercado Pago.' })
         }
+        if (block.modality === 'private' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) {
+          return jsonResponse(400, { success: false, message: 'Para pagar con Mercado Pago necesitás ingresar un email válido.' })
+        }
 
         const { data: workspace } = await admin
           .from('user_workspaces')
@@ -677,11 +680,17 @@ serve(async (request) => {
               const accessToken = await decryptPaymentToken(paymentAccount.access_token_encrypted)
               const preferenceResponse = await fetch('https://api.mercadopago.com/checkout/preferences', {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': crypto.randomUUID() },
                 body: JSON.stringify({
                   items: [{ id: appointmentId, title: block.reason || settings.reason || 'Consulta médica', quantity: 1, currency_id: 'ARS', unit_price: amount }],
-                  payer: patientEmail ? { email: patientEmail, name: patientName } : { name: patientName },
+                  payer: { email: patientEmail, name: patientName },
                   external_reference: appointmentId,
+                  back_urls: {
+                    success: `${Deno.env.get('APP_BASE_URL') || 'https://drhappy.com.ar'}/turnos/`,
+                    pending: `${Deno.env.get('APP_BASE_URL') || 'https://drhappy.com.ar'}/turnos/`,
+                    failure: `${Deno.env.get('APP_BASE_URL') || 'https://drhappy.com.ar'}/turnos/`,
+                  },
+                  auto_return: 'approved',
                   notification_url: `${supabaseUrl}/functions/v1/mercadopago-patient-webhook?professional_id=${encodeURIComponent(settings.professional_id)}`,
                 }),
               })

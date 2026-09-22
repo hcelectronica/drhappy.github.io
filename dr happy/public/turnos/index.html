@@ -135,8 +135,8 @@
           <input id="patientDni" inputmode="numeric" />
           <label for="patientPhone">WhatsApp</label>
           <input id="patientPhone" type="tel" autocomplete="tel" />
-          <label for="patientEmail">Email</label>
-          <input id="patientEmail" type="email" autocomplete="email" />
+          <label for="patientEmail">Email *</label>
+          <input id="patientEmail" type="email" autocomplete="email" required />
           <button type="button" id="confirmBtn" style="width:100%; margin-top:16px" disabled>Confirmar turno</button>
           <div id="message"></div>
         </aside>
@@ -249,9 +249,11 @@
       var msg = el('message'); msg.className = 'msg'; msg.textContent = '';
       if (!selected) { msg.className = 'msg err'; msg.textContent = 'Elegí un horario.'; return; }
       if (!patientName || !patientDni) { msg.className = 'msg err'; msg.textContent = 'Completá nombre y DNI.'; return; }
+      var patientEmail = el('patientEmail').value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) { msg.className = 'msg err'; msg.textContent = 'Ingresá un email válido para continuar con el pago.'; return; }
       el('confirmBtn').disabled = true;
       el('confirmBtn').textContent = 'Confirmando...';
-      callFunction({ action: 'book-public-slot', slug: slug, modality: fixedModality, slotDate: selected.date, slotTime: selected.time, blockId: selected.blockId, patientName: patientName, patientDni: patientDni, patientPhone: el('patientPhone').value.trim(), patientEmail: el('patientEmail').value.trim() }).then(function (result) {
+      callFunction({ action: 'book-public-slot', slug: slug, modality: fixedModality, slotDate: selected.date, slotTime: selected.time, blockId: selected.blockId, patientName: patientName, patientDni: patientDni, patientPhone: el('patientPhone').value.trim(), patientEmail: patientEmail }).then(function (result) {
         if (!result.data.success) {
           msg.className = 'msg err'; msg.textContent = result.data.message || 'No pudimos reservar el turno.'; el('confirmBtn').disabled = false; el('confirmBtn').textContent = 'Confirmar turno'; loadAgenda(); return;
         }
