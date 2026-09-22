@@ -18,7 +18,6 @@ import { createProfessionalSession } from '../_shared/professionalSession.ts'
 const BCRYPT_ROUNDS = 12
 
 interface AuthRequestBody {
-  action: 'register' | 'login' | 'change-password' | 'set-password'
     action: 'register' | 'login' | 'google-login' | 'change-password' | 'set-password'
   username?: string
   password?: string

@@ -2763,8 +2763,6 @@ function App() {
         return true
       }
       const profession = normalizeSearchText(activeUser?.specialty || profile?.specialty || '')
-      const isTrial = trialInfo?.status === 'trial'
-      if (isTrial) return true
       if (profession.includes('odont')) {
         return ['attention', 'appointments', 'ledger'].includes(moduleId)
       }
@@ -2774,6 +2772,8 @@ function App() {
       if (profession.includes('medic')) {
         return true
       }
+      const isTrial = trialInfo?.status === 'trial'
+      if (isTrial) return true
       const configured = activeUser?.enabledModules
       if (!configured) {
         return !OPT_IN_APP_MODULE_IDS.includes(moduleId)
@@ -5637,7 +5637,6 @@ function App() {
         await loadWorkspaceForUser(user)
         setWorkspaceLayer('overview')
         setSelectedPatientId(null)
-        setPassword('')
       } catch (error) {
         setAppError(
           error instanceof Error
