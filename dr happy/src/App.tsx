@@ -119,6 +119,15 @@ function calculateDailyCapacity(startTime: string, endTime: string, durationMinu
   return availableMinutes > 0 && durationMinutes > 0 ? Math.floor(availableMinutes / durationMinutes) : 0
 }
 
+const APPOINTMENT_TIME_OPTIONS = Array.from({ length: 25 }, (_, index) => {
+  const totalMinutes = 7 * 60 + index * 30
+  const hour24 = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  const suffix = hour24 >= 12 ? 'PM' : 'AM'
+  const hour12 = hour24 % 12 || 12
+  return { value: `${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`, label: `${hour12}:${String(minutes).padStart(2, '0')} ${suffix}` }
+})
+
 /**
  * Módulos que no se habilitan por defecto: requieren activación explícita del
  * admin (o, en el caso del balance, una especialidad odontológica).
@@ -7228,6 +7237,13 @@ function App() {
     const url = buildFixedPublicBookingUrl(result.settings.slug)
     setFreeSlotGeneratedUrl(url)
     setAppNotice('Turnera pública publicada. Link fijo generado.')
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      await navigator.share({ title: `Turnera de ${profile?.fullName || activeUser?.fullName || 'Dr Happy'}`, text: 'Elegí tu turno disponible:', url }).catch(() => {
+        window.open(buildWhatsAppShareUrl(url, profile?.fullName || activeUser?.fullName), '_blank', 'noopener,noreferrer')
+      })
+    } else {
+      window.open(buildWhatsAppShareUrl(url, profile?.fullName || activeUser?.fullName), '_blank', 'noopener,noreferrer')
+    }
   }
 
   async function handleConnectMercadoPago(): Promise<void> {
@@ -11154,19 +11170,15 @@ function App() {
             <div className="capacity-controls">
               <label>
                 Desde
-                <input
-                  type="time"
-                  value={appointmentStartTime}
-                  onChange={(event) => saveAppointmentCapacity(appointmentDays, event.target.value, appointmentEndTime, appointmentDurationMinutes)}
-                />
+                <select value={appointmentStartTime} onChange={(event) => saveAppointmentCapacity(appointmentDays, event.target.value, appointmentEndTime, appointmentDurationMinutes)}>
+                  {APPOINTMENT_TIME_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
               </label>
               <label>
                 Hasta
-                <input
-                  type="time"
-                  value={appointmentEndTime}
-                  onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, event.target.value, appointmentDurationMinutes)}
-                />
+                <select value={appointmentEndTime} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, event.target.value, appointmentDurationMinutes)}>
+                  {APPOINTMENT_TIME_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
               </label>
               <label>
                 Duración del turno
@@ -11353,7 +11365,7 @@ function App() {
             </section>
           ) : null}
 
-          {turneraViewMode === 'calendar' && !hasPremiumTurneraAccess ? (
+          {(turneraViewMode === 'calendar' || turneraViewMode === 'capacity') && !hasPremiumTurneraAccess ? (
             <section className="panel turnera-premium-locked">
               <h3 style={{ marginTop: 0 }}>🔒 Calendario de ocupación — función Premium</h3>
               <p className="flow-hint">
@@ -11363,7 +11375,7 @@ function App() {
             </section>
           ) : null}
 
-          {turneraViewMode === 'calendar' && hasPremiumTurneraAccess ? (
+          {(turneraViewMode === 'calendar' || turneraViewMode === 'capacity') && hasPremiumTurneraAccess ? (
             <section className="panel turnera-calendar-panel">
               <div className="turnera-calendar-header">
                 <button
