@@ -2763,22 +2763,17 @@ function App() {
         return true
       }
       const profession = normalizeSearchText(activeUser?.specialty || profile?.specialty || '')
-      if (profession.includes('odont')) {
-        return ['attention', 'appointments', 'ledger'].includes(moduleId)
-      }
-      if (profession.includes('psic')) {
-        return ['attention', 'appointments', 'tools'].includes(moduleId)
-      }
-      if (profession.includes('medic')) {
-        return true
-      }
-      const isTrial = trialInfo?.status === 'trial'
-      if (isTrial) return true
+      const professionModules = profession.includes('odont')
+        ? ['attention', 'appointments', 'ledger']
+        : profession.includes('psic')
+          ? ['attention', 'appointments', 'tools']
+          : profession.includes('medic')
+            ? ALL_APP_MODULE_IDS.filter((entry) => entry !== 'community')
+            : null
       const configured = activeUser?.enabledModules
-      if (!configured) {
-        return !OPT_IN_APP_MODULE_IDS.includes(moduleId)
-      }
-      return configured.includes(moduleId)
+      if (professionModules && !professionModules.includes(moduleId)) return false
+      if (configured) return configured.includes(moduleId)
+      return !OPT_IN_APP_MODULE_IDS.includes(moduleId)
     },
     [isAdminSession, activeUser, profile, trialInfo],
   )
@@ -3334,7 +3329,7 @@ function App() {
   }
 
   async function loadWorkspaceForUser(user: SeedUser): Promise<void> {
-    const sessionGeneration = sessionGenerationRef.current
+    const sessionGeneration = ++sessionGenerationRef.current
     const localProfile = readJsonStorage<ProfessionalProfile>(profileStorageKey(user.id), profileFromSeed(user))
     const localLoaded = loadAccessiblePatientsForUser(user.id)
     const localAppointments = readJsonStorage<AppointmentRecord[]>(appointmentsStorageKey(user.id), [])
@@ -5629,6 +5624,16 @@ function App() {
       }
       const user = mapAuthProfessionalPublic(result.professional)
       try {
+        sessionGenerationRef.current += 1
+        setActiveUserId(null)
+        setProfile(null)
+        setPatients([])
+        setAvailablePatients([])
+        setAppointments([])
+        setTreatmentLedger([])
+        setSeedUsers((current) => current.some((entry) => entry.id === user.id)
+          ? current.map((entry) => entry.id === user.id ? user : entry)
+          : [...current, user])
         if (result.sessionToken) {
           sessionStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
           localStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
