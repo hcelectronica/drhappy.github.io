@@ -622,6 +622,9 @@ serve(async (request) => {
         if (!block || !block.days.includes(dateDay(slotDate)) || !buildBlockSlotTimes(block).includes(slotTime)) {
           return jsonResponse(409, { success: false, message: 'Ese horario ya no está habilitado.' })
         }
+        if (block.modality === 'private' && (!block.amountToCharge || block.amountToCharge <= 0)) {
+          return jsonResponse(409, { success: false, message: 'Este turno particular todavía no tiene un monto configurado para pagar por Mercado Pago.' })
+        }
 
         const { data: workspace } = await admin
           .from('user_workspaces')
