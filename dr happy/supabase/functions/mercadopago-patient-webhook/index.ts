@@ -46,13 +46,30 @@ Deno.serve(async (request) => {
   const approved = paymentStatus === 'approved'
   await admin.from('public_booking_reservations').update({ payment_status: paymentStatus, status: approved ? 'confirmed' : 'pending_payment' }).eq('id', reservation.id)
   if (approved && reservation.appointment_id) {
-    const { data: workspace } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', reservation.professional_id).maybeSingle()
+    const { data: workspace } = await admin.from('user_workspaces').select('appointments_json, treatment_ledger_json').eq('user_id', reservation.professional_id).maybeSingle()
     const appointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json : []
     const updated = appointments.map((appointment: Record<string, unknown>) => appointment.id === reservation.appointment_id ? { ...appointment, status: 'confirmed', paymentStatus: 'approved', paymentId } : appointment)
-    await admin.from('user_workspaces').upsert({ user_id: reservation.professional_id, appointments_json: updated }, { onConflict: 'user_id' })
+    const targetAppointment = updated.find((item: Record<string, unknown>) => item.id === reservation.appointment_id) as Record<string, unknown> | undefined
+    const ledger = Array.isArray(workspace?.treatment_ledger_json) ? workspace.treatment_ledger_json : []
+    const ledgerId = `mercadopago-${paymentId}`
+    const nextLedger = ledger.some((entry: Record<string, unknown>) => entry.id === ledgerId)
+      ? ledger
+      : [...ledger, {
+          id: ledgerId,
+          patientId: String(targetAppointment?.patientId || reservation.appointment_id),
+          patientName: reservation.patient_name,
+          date: reservation.slot_date,
+          intervention: reservation.amount_concept === 'consulta' ? 'Turno médico' : 'Seña de turno',
+          totalAmount: Number(reservation.amount_to_charge || payment.transaction_amount || 0),
+          paidAmount: Number(payment.transaction_amount || reservation.amount_to_charge || 0),
+          notes: 'Pago aprobado por Mercado Pago.',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }]
+    await admin.from('user_workspaces').upsert({ user_id: reservation.professional_id, appointments_json: updated, treatment_ledger_json: nextLedger }, { onConflict: 'user_id' })
     if (reservation.patient_email && reservation.payment_status !== 'approved') {
       const { data: professional } = await admin.from('professionals').select('full_name, specialty').eq('id', reservation.professional_id).maybeSingle()
-      const appointment = updated.find((item: Record<string, unknown>) => item.id === reservation.appointment_id) as Record<string, unknown> | undefined
+      const appointment = targetAppointment
       await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' },

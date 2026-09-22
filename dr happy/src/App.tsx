@@ -1090,19 +1090,6 @@ function isAppointmentConsultation(entry: ConsultationEntry): boolean {
   return entry.motivoConsulta.trim().startsWith('[TURNO]')
 }
 
-/**
- * Detecta si el profesional es odontólogo a partir de su especialidad, para
- * habilitar automáticamente el Balance de pagos (tratamientos y saldos).
- * La especialidad es texto libre, así que contempla las variantes y subespecialidades
- * más frecuentes. El texto llega sin acentos y en minúsculas.
- */
-function isDentistSpecialty(specialty?: string | null): boolean {
-  const normalized = normalizeSearchText(specialty ?? '')
-  return /odonto|dental|dentist|estomatolog|ortodon|endodon|periodon|implantolog|protesis dental|maxilofacial/.test(
-    normalized,
-  )
-}
-
 function normalizeTreatmentLedgerEntry(raw: unknown): TreatmentLedgerEntry | null {
   if (!raw || typeof raw !== 'object') {
     return null
@@ -2946,12 +2933,8 @@ function App() {
       .slice(0, 6)
   }, [patients, appointmentPatientQuery])
 
-  // Acceso al Balance de pagos: odontólogos (por especialidad) o cualquier
-  // usuario al que el admin le habilite el módulo. Siempre requiere premium.
-  const isDentist = isDentistSpecialty(profile?.specialty || activeUser?.specialty)
-  const canUseTreatmentLedger = Boolean(
-    (isDentist || isModuleEnabled('ledger')) && hasPremiumTurneraAccess,
-  )
+  // El Balance de pagos queda disponible para cualquier profesional con acceso premium.
+  const canUseTreatmentLedger = hasPremiumTurneraAccess
 
   const ledgerTotals = useMemo(() => {
     return treatmentLedger.reduce(
@@ -11154,7 +11137,7 @@ function App() {
             >
               <span aria-hidden="true">📊</span> Estadísticas{!hasPremiumTurneraAccess ? ' 🔒' : ''}
             </button>
-            {isDentist || isModuleEnabled('ledger') ? (
+            {isModuleEnabled('appointments') ? (
               <button
                 type="button"
                 className={`screen-action${turneraViewMode === 'ledger' ? ' active' : ''}${!canUseTreatmentLedger ? ' locked' : ''}`}
