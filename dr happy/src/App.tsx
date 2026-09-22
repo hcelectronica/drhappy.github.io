@@ -13995,7 +13995,7 @@ function App() {
                     <label style={{ flex: 1.2 }}>
                       Link corto
                       <div className="public-booking-url-row">
-                        <span>drhappy.com.ar/turnos/?p=</span>
+                        <span>drhappy.com.ar/turnera/?p=</span>
                         <input
                           type="text"
                           value={publicBookingSettings.slug}
