@@ -69,7 +69,6 @@ import { CONSULT_PATHOLOGIES } from './consultPathologies'
 import AuthBackground from './AuthBackground'
 import SplashScreen from './SplashScreen'
 import diagnosisCsv from '../cie-10.csv?raw'
-import specialtiesCsv from '../especialidades-medicas.csv?raw'
 
 type WorkspaceLayer =
   | 'overview'
@@ -944,45 +943,6 @@ function buildDiagnosisSuggestions(catalog: string[], query: string, limit = 35)
   }
 
   return ranked.slice(0, limit).map((entry) => entry.diagnosis)
-}
-
-function loadSimpleCatalogFromCsv(csvText: string): string[] {
-  const lines = csvText.split(/\r?\n/).filter((line) => line.trim())
-  if (lines.length === 0) {
-    return []
-  }
-
-  const parsedRows = lines.map((line) => parseCsvLine(line))
-  const header = parsedRows[0].map((cell) => normalizeHeader(cell))
-  const preferredIndex = header.findIndex((cell) =>
-    ['especialidad', 'specialty', 'nombre', 'name', 'titulo', 'title'].includes(cell),
-  )
-  const startIndex = preferredIndex >= 0 ? 1 : 0
-  const values = new Set<string>()
-
-  for (let index = startIndex; index < parsedRows.length; index += 1) {
-    const row = parsedRows[index]
-    const candidate = preferredIndex >= 0 ? row[preferredIndex] : row[0]
-    if (candidate?.trim()) {
-      values.add(candidate.trim())
-    }
-  }
-
-  return Array.from(values).sort((left, right) => left.localeCompare(right, 'es'))
-}
-
-function buildStringSuggestions(catalog: string[], query: string, limit = 12): string[] {
-  const normalizedQuery = normalizeSearchText(query)
-  if (!normalizedQuery) {
-    return catalog.slice(0, limit)
-  }
-
-  return catalog
-    .map((entry) => ({ entry, score: scoreDiagnosisSuggestion(entry, query) }))
-    .filter((entry) => Number.isFinite(entry.score))
-    .sort((left, right) => left.score - right.score || left.entry.localeCompare(right.entry, 'es'))
-    .slice(0, limit)
-    .map((entry) => entry.entry)
 }
 
 function loadMedicationCatalogFromJson(rawCatalog: unknown): MedicationEntry[] {
@@ -2513,7 +2473,6 @@ function App() {
   const [myPatientsQuery, setMyPatientsQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [diagnosisCatalog, setDiagnosisCatalog] = useState<string[]>([])
-  const [specialtyCatalog, setSpecialtyCatalog] = useState<string[]>([])
   const [medicationCatalog, setMedicationCatalog] = useState<MedicationEntry[]>([])
   const [medicalNewsLoading, setMedicalNewsLoading] = useState(false)
   const [medicalNews, setMedicalNews] = useState<MedicalNewsItem[]>([])
@@ -4274,10 +4233,6 @@ function App() {
   }, [])
 
   useEffect(() => {
-    setSpecialtyCatalog(loadSimpleCatalogFromCsv(specialtiesCsv))
-  }, [])
-
-  useEffect(() => {
     const loadMedicationCatalog = async () => {
       try {
         const response = await fetch(`${import.meta.env.BASE_URL}vademecum.json`)
@@ -5721,7 +5676,7 @@ function App() {
     }
   }
 
-  function handleRegisterFieldChange(event: ChangeEvent<HTMLInputElement>): void {
+  function handleRegisterFieldChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>): void {
     const { name, value } = event.target
     setRegisterDraft((current) => {
       if (name === 'email') {
