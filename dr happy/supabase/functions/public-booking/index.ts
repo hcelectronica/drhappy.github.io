@@ -682,7 +682,7 @@ serve(async (request) => {
                   items: [{ id: appointmentId, title: block.reason || settings.reason || 'Consulta médica', quantity: 1, currency_id: 'ARS', unit_price: amount }],
                   payer: patientEmail ? { email: patientEmail, name: patientName } : { name: patientName },
                   external_reference: appointmentId,
-                  notification_url: `${supabaseUrl}/functions/v1/mercadopago-patient-webhook`,
+                  notification_url: `${supabaseUrl}/functions/v1/mercadopago-patient-webhook?professional_id=${encodeURIComponent(settings.professional_id)}`,
                 }),
               })
               const preference = await preferenceResponse.json().catch(() => null)
@@ -740,7 +740,7 @@ serve(async (request) => {
         }
 
         let emailSent = false
-        if (patientEmail && !amount) {
+        if (patientEmail) {
           const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
             method: 'POST',
             headers: {
@@ -750,7 +750,9 @@ serve(async (request) => {
             },
             body: JSON.stringify({
               to: patientEmail,
-              subject: `Turno confirmado con ${settings.professional_name} - ${slotDate} ${slotTime} hs`,
+              subject: amount
+                ? `Completá el pago para confirmar tu turno con ${settings.professional_name}`
+                : `Turno confirmado con ${settings.professional_name} - ${slotDate} ${slotTime} hs`,
               type: 'appointment',
               templateData: {
                 patientName,
@@ -759,7 +761,7 @@ serve(async (request) => {
                 date: slotDate,
                 time: slotTime,
                 location: newAppointment.location,
-                notes: newAppointment.notes,
+                notes: amount ? 'Tu turno quedará confirmado cuando Mercado Pago apruebe el pago.' : newAppointment.notes,
                 amountToCharge: amount,
                 amountConcept: amount ? block.amountConcept || 'consulta' : undefined,
                 paymentLink: amount ? paymentInitPoint || block.paymentLink || undefined : undefined,

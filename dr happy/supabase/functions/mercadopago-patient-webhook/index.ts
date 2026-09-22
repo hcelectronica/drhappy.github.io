@@ -32,7 +32,16 @@ Deno.serve(async (request) => {
   if (!paymentId) return jsonResponse(200, { success: true, ignored: true })
 
   const providerUserId = String(body.user_id || body.userId || '').trim()
-  const { data: account } = await admin.from('professional_payment_accounts').select('professional_id, access_token_encrypted, status').eq('provider', 'mercadopago').eq('provider_user_id', providerUserId).maybeSingle()
+  const professionalIdFromUrl = new URL(request.url).searchParams.get('professional_id')?.trim() || ''
+  let accountQuery = admin.from('professional_payment_accounts').select('professional_id, access_token_encrypted, status').eq('provider', 'mercadopago')
+  if (providerUserId) {
+    accountQuery = accountQuery.eq('provider_user_id', providerUserId)
+  } else if (professionalIdFromUrl) {
+    accountQuery = accountQuery.eq('professional_id', professionalIdFromUrl)
+  } else {
+    return jsonResponse(200, { success: true, ignored: true, message: 'Notificación sin cuenta profesional identificable.' })
+  }
+  const { data: account } = await accountQuery.maybeSingle()
   if (!account || account.status !== 'connected') return jsonResponse(500, { success: false, message: 'Cuenta Mercado Pago del profesional no disponible.' })
   const accessToken = await decryptToken(account.access_token_encrypted)
   const paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, { headers: { Authorization: `Bearer ${accessToken}` } })
