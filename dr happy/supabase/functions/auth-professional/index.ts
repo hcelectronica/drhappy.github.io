@@ -162,7 +162,7 @@ serve(async (request) => {
         const { data, error } = await admin
           .from('professionals')
           .select(`${PROFESSIONAL_PUBLIC_COLUMNS}, password_hash`)
-          .ilike('username', username)
+          .or(`username.ilike.${username},email.ilike.${username}`)
           .maybeSingle()
 
         if (error) {
