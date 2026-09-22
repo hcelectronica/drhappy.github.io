@@ -6787,6 +6787,17 @@ function App() {
     void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments, treatmentLedger)
   }
 
+  function handleAppointmentAmountChange(value: string): void {
+    setAppointmentAmountToCharge(value)
+    if (!activeUserId || !profile) return
+    const nextProfile = {
+      ...profile,
+      appointmentAmountToCharge: Number(value) > 0 ? Number(value) : undefined,
+    }
+    setProfile(nextProfile)
+    localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
+  }
+
   function handleNewAppointmentModal(prefillPatient?: PatientRecord | null, prefillDate?: string): void {
     if (prefillPatient) {
       setAppointmentDraft({
@@ -11243,7 +11254,7 @@ function App() {
               </div>
               <label>
                 Monto a cobrar
-                <input type="number" min="0" step="1" value={appointmentAmountToCharge} onChange={(event) => setAppointmentAmountToCharge(event.target.value)} onBlur={saveAppointmentAmount} placeholder="0 = sin seña" />
+                <input type="number" min="0" step="1" value={appointmentAmountToCharge} onChange={(event) => handleAppointmentAmountChange(event.target.value)} onBlur={saveAppointmentAmount} placeholder="0 = sin seña" />
               </label>
               <label>
                 Concepto
