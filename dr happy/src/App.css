@@ -4108,24 +4108,43 @@ body.theme-night .turnera-metric-info strong {
   color: #64748b;
   font-weight: 600;
   margin-top: 2px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 body.theme-night .turnera-metric-info span {
   color: #94a3b8;
 }
 
+  width: 100%;
+  min-width: 0;
 /* Prueba piloto: overrides de modo oscuro para calendario de ocupación y estadísticas */
 body.theme-night .turnera-view-switch-badge {
   color: #1e1108;
+  min-width: 0;
+  overflow: hidden;
 }
 
 body.theme-night .turnera-calendar-title strong,
 body.theme-night .turnera-calendar-day-detail strong {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
   color: #e2e8f0;
 }
 
 body.theme-night .turnera-calendar-title span,
 body.theme-night .turnera-calendar-weekdays,
+  .turnera-calendar-panel { padding: 10px; }
+  .turnera-calendar-header { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .turnera-calendar-header > button { width: 100%; }
+  .turnera-calendar-title { order: -1; }
+  .turnera-calendar-weekdays, .turnera-calendar-grid { gap: 3px; }
+  .turnera-calendar-weekdays { font-size: 0.65rem; }
+  .turnera-calendar-cell { min-height: 38px; border-radius: 7px; font-size: 0.68rem; }
+  .turnera-calendar-day-number { font-size: 0.72rem; }
+  .turnera-calendar-day-count { padding: 1px 4px; font-size: 0.6rem; }
+  .turnera-calendar-day-breakdown { font-size: 0.52rem; }
 body.theme-night .turnera-calendar-legend,
 body.theme-night .turnera-bar-chart-col small {
   color: #94a3b8;

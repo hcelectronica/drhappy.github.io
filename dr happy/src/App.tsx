@@ -119,14 +119,20 @@ function calculateDailyCapacity(startTime: string, endTime: string, durationMinu
   return availableMinutes > 0 && durationMinutes > 0 ? Math.floor(availableMinutes / durationMinutes) : 0
 }
 
-const APPOINTMENT_TIME_OPTIONS = Array.from({ length: 25 }, (_, index) => {
-  const totalMinutes = 7 * 60 + index * 30
-  const hour24 = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  const suffix = hour24 >= 12 ? 'PM' : 'AM'
-  const hour12 = hour24 % 12 || 12
-  return { value: `${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`, label: `${hour12}:${String(minutes).padStart(2, '0')} ${suffix}` }
-})
+const APPOINTMENT_HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1))
+const APPOINTMENT_PERIOD_OPTIONS = ['AM', 'PM'] as const
+
+function splitAppointmentTime(value: string): { hour: string; period: 'AM' | 'PM' } {
+  const [rawHour] = value.split(':')
+  const hour24 = Number(rawHour)
+  return { hour: String(hour24 % 12 || 12), period: hour24 >= 12 ? 'PM' : 'AM' }
+}
+
+function joinAppointmentTime(hour: string, period: 'AM' | 'PM'): string {
+  const hour12 = Math.max(1, Math.min(12, Number(hour) || 12))
+  const hour24 = period === 'PM' ? (hour12 === 12 ? 12 : hour12 + 12) : hour12 === 12 ? 0 : hour12
+  return `${String(hour24).padStart(2, '0')}:00`
+}
 
 /**
  * Módulos que no se habilitan por defecto: requieren activación explícita del
@@ -11170,15 +11176,25 @@ function App() {
             <div className="capacity-controls">
               <label>
                 Desde
-                <select value={appointmentStartTime} onChange={(event) => saveAppointmentCapacity(appointmentDays, event.target.value, appointmentEndTime, appointmentDurationMinutes)}>
-                  {APPOINTMENT_TIME_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
+                <span className="time-select-pair">
+                  <select value={splitAppointmentTime(appointmentStartTime).hour} onChange={(event) => saveAppointmentCapacity(appointmentDays, joinAppointmentTime(event.target.value, splitAppointmentTime(appointmentStartTime).period), appointmentEndTime, appointmentDurationMinutes)}>
+                    {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}</option>)}
+                  </select>
+                  <select value={splitAppointmentTime(appointmentStartTime).period} onChange={(event) => saveAppointmentCapacity(appointmentDays, joinAppointmentTime(splitAppointmentTime(appointmentStartTime).hour, event.target.value as 'AM' | 'PM'), appointmentEndTime, appointmentDurationMinutes)}>
+                    {APPOINTMENT_PERIOD_OPTIONS.map((period) => <option key={period} value={period}>{period}</option>)}
+                  </select>
+                </span>
               </label>
               <label>
                 Hasta
-                <select value={appointmentEndTime} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, event.target.value, appointmentDurationMinutes)}>
-                  {APPOINTMENT_TIME_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
+                <span className="time-select-pair">
+                  <select value={splitAppointmentTime(appointmentEndTime).hour} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, joinAppointmentTime(event.target.value, splitAppointmentTime(appointmentEndTime).period), appointmentDurationMinutes)}>
+                    {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}</option>)}
+                  </select>
+                  <select value={splitAppointmentTime(appointmentEndTime).period} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, joinAppointmentTime(splitAppointmentTime(appointmentEndTime).hour, event.target.value as 'AM' | 'PM'), appointmentDurationMinutes)}>
+                    {APPOINTMENT_PERIOD_OPTIONS.map((period) => <option key={period} value={period}>{period}</option>)}
+                  </select>
+                </span>
               </label>
               <label>
                 Duración del turno
@@ -11365,7 +11381,7 @@ function App() {
             </section>
           ) : null}
 
-          {(turneraViewMode === 'calendar' || turneraViewMode === 'capacity') && !hasPremiumTurneraAccess ? (
+          {turneraViewMode === 'calendar' && !hasPremiumTurneraAccess ? (
             <section className="panel turnera-premium-locked">
               <h3 style={{ marginTop: 0 }}>🔒 Calendario de ocupación — función Premium</h3>
               <p className="flow-hint">
@@ -11375,7 +11391,7 @@ function App() {
             </section>
           ) : null}
 
-          {(turneraViewMode === 'calendar' || turneraViewMode === 'capacity') && hasPremiumTurneraAccess ? (
+          {turneraViewMode === 'calendar' && hasPremiumTurneraAccess ? (
             <section className="panel turnera-calendar-panel">
               <div className="turnera-calendar-header">
                 <button
@@ -11425,11 +11441,7 @@ function App() {
                       >
                         <span className="turnera-calendar-day-number">{cell.day}</span>
                         {cell.count > 0 ? <span className="turnera-calendar-day-count">{cell.count}</span> : null}
-                        {cell.coverage > 0 || cell.private > 0 ? (
-                          <span className="turnera-calendar-day-breakdown">
-                            {cell.coverage > 0 ? `OS ${cell.coverage}` : ''}{cell.coverage > 0 && cell.private > 0 ? ' · ' : ''}{cell.private > 0 ? `Part. ${cell.private}` : ''}
-                          </span>
-                        ) : null}
+                        {cell.count > 0 ? <span className="turnera-calendar-day-breakdown">{cell.count} turno{cell.count === 1 ? '' : 's'}</span> : null}
                       </button>
                     )
                   })
@@ -11447,7 +11459,7 @@ function App() {
                 <div className="turnera-calendar-day-detail">
                   <strong>
                     {formatDate(selectedCalendarDay)}: {appointmentCountByDate.get(selectedCalendarDay) ?? 0} paciente(s) agendado(s)
-                    {(() => { const counts = appointmentModalityCountByDate.get(selectedCalendarDay) ?? { coverage: 0, private: 0 }; return <small className="turnera-calendar-day-breakdown-detail">Obra social: {counts.coverage} · Particular: {counts.private}</small> })()}
+                    <small className="turnera-calendar-day-breakdown-detail">Ocupación de la agenda</small>
                   </strong>
                   <button
                     type="button"
