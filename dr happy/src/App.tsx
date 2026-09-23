@@ -3291,9 +3291,9 @@ function App() {
       if (patient.ownerUserId !== normalizedOwner) {
         localStorage.setItem(patientGlobalStorageKey(patientId), JSON.stringify(normalizedPatient))
       }
-      availablePatientsList.push(normalizedPatient)
       if (normalizedOwner === userId) {
         patientsList.push(normalizedPatient)
+        availablePatientsList.push(normalizedPatient)
       }
     }
 
@@ -3376,7 +3376,12 @@ function App() {
         workspaceResult = await loadWorkspaceData()
       }
       if (!workspaceResult.success) {
-        setAppNotice('Sesión iniciada. No se pudo sincronizar la nube ahora; tus datos locales siguen disponibles.')
+        setProfile(null)
+        setPatients([])
+        setAvailablePatients([])
+        setAppointments([])
+        setTreatmentLedger([])
+        setAppError('No se pudo validar la sesión en la nube. Por seguridad, no se muestran datos locales hasta volver a iniciar sesión.')
         return
       }
       if (sessionGeneration !== sessionGenerationRef.current) return

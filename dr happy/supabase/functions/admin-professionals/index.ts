@@ -42,22 +42,6 @@ function archiveFileName(username: string, fullName: string, dni: string, delete
   return `archivo-legal-${clean(username)}-${clean(fullName)}-${clean(dni)}-${deletedAt.slice(0, 10)}.json`
 }
 
-async function deleteAuthUserByEmail(admin: ReturnType<typeof createClient>, email: string): Promise<string | null> {
-  const normalizedEmail = email.trim().toLowerCase()
-  if (!normalizedEmail) return null
-  for (let page = 1; page <= 10; page += 1) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 })
-    if (error) return error.message
-    const authUser = data.users.find((user) => user.email?.trim().toLowerCase() === normalizedEmail)
-    if (authUser) {
-      const { error: deleteError } = await admin.auth.admin.deleteUser(authUser.id)
-      return deleteError?.message || null
-    }
-    if (data.users.length < 1000) break
-  }
-  return null
-}
-
 serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -102,7 +86,7 @@ serve(async (request) => {
 
     const { data: target, error: targetError } = await admin
       .from('professionals')
-      .select('id, username, email, is_admin')
+      .select('id, username, is_admin')
       .eq('id', targetId)
       .maybeSingle()
     if (targetError) {
@@ -138,6 +122,9 @@ serve(async (request) => {
         }
         const { error } = await admin.from('professionals').update({ active: body.active }).eq('id', targetId)
         if (error) return jsonResponse(500, { success: false, message: error.message })
+        if (!body.active) {
+          await admin.from('professional_sessions').update({ revoked_at: new Date().toISOString() }).eq('professional_id', targetId).is('revoked_at', null)
+        }
         return jsonResponse(200, { success: true })
       }
 
@@ -177,11 +164,7 @@ serve(async (request) => {
         if (target.is_admin === true) {
           return jsonResponse(400, { success: false, message: 'No se puede eliminar a otro administrador.' })
         }
-        const authDeleteError = await deleteAuthUserByEmail(admin, target.email || '')
-        if (authDeleteError) return jsonResponse(500, { success: false, message: `No se pudo eliminar la identidad de acceso: ${authDeleteError}` })
-        await admin.from('professional_sessions').delete().eq('professional_id', targetId)
-        await admin.from('user_workspaces').delete().eq('user_id', targetId)
-        await admin.from('community_messages').delete().or(`sender_id.eq.${targetId},recipient_id.eq.${targetId}`)
+        await admin.from('professional_sessions').update({ revoked_at: new Date().toISOString() }).eq('professional_id', targetId).is('revoked_at', null)
         const { error } = await admin.from('professionals').delete().eq('id', targetId)
         if (error) return jsonResponse(500, { success: false, message: error.message })
         return jsonResponse(200, { success: true })
@@ -201,11 +184,7 @@ serve(async (request) => {
         const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: [professional.email], subject: `Archivo legal - ${professional.full_name} - DNI ${professional.dni || 'no informado'}`, text: `Se adjunta el archivo legal correspondiente a la eliminación del usuario ${professional.full_name}.`, type: 'legal_archive', attachments: [{ filename: archiveFileName(professional.username, professional.full_name, professional.dni || '', deletedAt), content: JSON.stringify(archive, null, 2), contentType: 'application/json' }] }) })
         const emailResult = await emailResponse.json().catch(() => null)
         if (!emailResponse.ok || !emailResult?.success) return jsonResponse(502, { success: false, message: emailResult?.message || 'No se pudo enviar el archivo legal.' })
-        const authDeleteError = await deleteAuthUserByEmail(admin, professional.email || '')
-        if (authDeleteError) return jsonResponse(500, { success: false, message: `No se pudo eliminar la identidad de acceso: ${authDeleteError}` })
-        await admin.from('professional_sessions').delete().eq('professional_id', targetId)
-        await admin.from('user_workspaces').delete().eq('user_id', targetId)
-        await admin.from('community_messages').delete().or(`sender_id.eq.${targetId},recipient_id.eq.${targetId}`)
+        await admin.from('professional_sessions').update({ revoked_at: new Date().toISOString() }).eq('professional_id', targetId).is('revoked_at', null)
         const { error } = await admin.from('professionals').delete().eq('id', targetId)
         if (error) return jsonResponse(500, { success: false, message: error.message })
         return jsonResponse(200, { success: true })
