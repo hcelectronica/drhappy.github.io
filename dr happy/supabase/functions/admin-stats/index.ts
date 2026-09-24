@@ -76,6 +76,7 @@ serve(async (request) => {
       const names = new Map((professionals ?? []).map((professional) => [professional.id, professional]))
       const usageByProfessional = new Map<string, { requests: number; inputTokens: number; outputTokens: number; totalTokens: number; estimatedCostUsd: number; lastUsedAt: string | null }>()
       for (const event of usageEvents ?? []) {
+        if (!names.has(event.professional_id)) continue
         const current = usageByProfessional.get(event.professional_id) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0, lastUsedAt: null }
         current.requests += 1
         current.inputTokens += Number(event.input_tokens || 0)
@@ -87,8 +88,8 @@ serve(async (request) => {
       }
       const usage = Array.from(usageByProfessional.entries()).map(([professionalId, values]) => ({
         professionalId,
-        fullName: names.get(professionalId)?.full_name || 'Profesional desconocido',
-        username: names.get(professionalId)?.username || '',
+        fullName: names.get(professionalId)!.full_name,
+        username: names.get(professionalId)!.username,
         ...values,
       })).sort((left, right) => right.estimatedCostUsd - left.estimatedCostUsd)
       return jsonResponse(200, {
