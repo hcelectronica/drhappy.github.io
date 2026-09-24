@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChangeEvent,
+  CSSProperties,
   DragEvent as ReactDragEvent,
   FormEvent,
-  PointerEvent as ReactPointerEvent,
 } from 'react'
 import { BrowserPDF417Reader, BrowserQRCodeReader } from '@zxing/browser'
-import * as ExcelJS from 'exceljs'
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
 import {
@@ -41,6 +41,7 @@ import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
 import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
+import { disconnectMercadoPago, getMercadoPagoConnectionStatus, startMercadoPagoConnection, verifyMercadoPagoConnection } from './mercadoPagoConnectService'
 import { communityRequest } from './communityService'
 import { parseClinicalSummary } from './clinicalSummaryParser'
 import { loadProfessionals, loadOwnProfessional, updateOwnProfessionalProfile } from './professionalsService'
@@ -58,6 +59,7 @@ import { buildSignatureSeal } from './signatureSeal'
 import {
   registerProfessional,
   loginProfessional,
+  loginWithGoogle,
   changeProfessionalPassword,
   setProfessionalPassword,
 } from './authService'
@@ -67,7 +69,6 @@ import { CONSULT_PATHOLOGIES } from './consultPathologies'
 import AuthBackground from './AuthBackground'
 import SplashScreen from './SplashScreen'
 import diagnosisCsv from '../cie-10.csv?raw'
-import specialtiesCsv from '../especialidades-medicas.csv?raw'
 
 type WorkspaceLayer =
   | 'overview'
@@ -94,7 +95,6 @@ const APP_MODULES: Array<{ id: AppModuleId; label: string; description: string }
   { id: 'appointments', label: 'Turnera', description: 'Agenda de turnos y turnera libre' },
   { id: 'tools', label: 'Herramientas', description: 'Protocolos, vademécum y patologías' },
   { id: 'ambulance', label: 'Modo Ambulancia', description: 'Atención prehospitalaria y traslados' },
-  { id: 'community', label: 'Comunidad', description: 'Mensajería entre profesionales' },
   { id: 'ledger', label: 'Balance de pagos', description: 'Planilla de cobros y saldos (odontología). Automático para odontólogos.' },
 ]
 
@@ -112,14 +112,27 @@ const DEFAULT_DAILY_PATIENT_LIMIT = 10
 const DEFAULT_APPOINTMENT_START_TIME = '09:00'
 const DEFAULT_APPOINTMENT_END_TIME = '19:00'
 
-const APP_FLYER_SLIDES = [
-  { key: 'ambulance', eyebrow: 'Respuesta inmediata', title: 'Modo Ambulancia', description: 'Gestioná rápidamente traslados, guardias y atención prehospitalaria con protocolos listos para usar.', icon: '🚑', visual: 'ambulance' },
-  { key: 'attention', eyebrow: 'Historia clínica', title: 'Atención médica', description: 'Encontrá pacientes, registrá evoluciones y mantené toda la información clínica organizada.', icon: '♙', visual: 'patient' },
-  { key: 'appointments', eyebrow: 'Agenda inteligente', title: 'Turnera médica', description: 'Organizá tus días, definí cupos y ofrecé turnos libres con horarios segmentados.', icon: '◷', visual: 'calendar' },
-  { key: 'tools', eyebrow: 'Decisiones clínicas', title: 'Herramientas clínicas', description: 'Consultá protocolos, vademécum y patologías desde un mismo espacio profesional.', icon: '✦', visual: 'tools' },
-  { key: 'patients', eyebrow: 'Tu base clínica', title: 'Mis pacientes', description: 'Accedé rápidamente a tus pacientes, buscá por DNI y continuá una atención cuando quieras.', icon: '♧', visual: 'patients' },
-  { key: 'ledger', eyebrow: 'Control profesional', title: 'Balance de pagos', description: 'Registrá tratamientos, pagos y saldos pendientes para saber qué está cobrado y qué falta cobrar.', icon: '◈', visual: 'ledger' },
-] as const
+function calculateDailyCapacity(startTime: string, endTime: string, durationMinutes: number): number {
+  const [startHour, startMinute] = startTime.split(':').map(Number)
+  const [endHour, endMinute] = endTime.split(':').map(Number)
+  const availableMinutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute)
+  return availableMinutes > 0 && durationMinutes > 0 ? Math.floor(availableMinutes / durationMinutes) : 0
+}
+
+const APPOINTMENT_HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1))
+const APPOINTMENT_PERIOD_OPTIONS = ['AM', 'PM'] as const
+
+function splitAppointmentTime(value: string): { hour: string; period: 'AM' | 'PM' } {
+  const [rawHour] = value.split(':')
+  const hour24 = Number(rawHour)
+  return { hour: String(hour24 % 12 || 12), period: hour24 >= 12 ? 'PM' : 'AM' }
+}
+
+function joinAppointmentTime(hour: string, period: 'AM' | 'PM'): string {
+  const hour12 = Math.max(1, Math.min(12, Number(hour) || 12))
+  const hour24 = period === 'PM' ? (hour12 === 12 ? 12 : hour12 + 12) : hour12 === 12 ? 0 : hour12
+  return `${String(hour24).padStart(2, '0')}:00`
+}
 
 /**
  * Módulos que no se habilitan por defecto: requieren activación explícita del
@@ -253,6 +266,9 @@ interface ProfessionalProfile {
   paymentLink?: string
   appointmentDays?: number[]
   dailyPatientLimit?: number
+  appointmentDurationMinutes?: number
+  appointmentAmountToCharge?: number
+  appointmentAmountConcept?: 'sena' | 'consulta'
   appointmentStartTime?: string
   appointmentEndTime?: string
 }
@@ -501,6 +517,7 @@ interface RemotePasswordRecoveryRow {
 
 const SESSION_USER_KEY = 'drhappy-active-user'
 const SESSION_USER_CACHE_KEY = 'drhappy-active-user-cache'
+const SESSION_TOKEN_KEY = 'drhappy-professional-session'
 const CREATED_USERS_KEY = 'drhappy-created-users'
 const THEME_MODE_KEY = 'drhappy-theme-mode'
 const PATIENT_REGISTRY_KEY = 'drhappy-patient-registry'
@@ -928,45 +945,6 @@ function buildDiagnosisSuggestions(catalog: string[], query: string, limit = 35)
   return ranked.slice(0, limit).map((entry) => entry.diagnosis)
 }
 
-function loadSimpleCatalogFromCsv(csvText: string): string[] {
-  const lines = csvText.split(/\r?\n/).filter((line) => line.trim())
-  if (lines.length === 0) {
-    return []
-  }
-
-  const parsedRows = lines.map((line) => parseCsvLine(line))
-  const header = parsedRows[0].map((cell) => normalizeHeader(cell))
-  const preferredIndex = header.findIndex((cell) =>
-    ['especialidad', 'specialty', 'nombre', 'name', 'titulo', 'title'].includes(cell),
-  )
-  const startIndex = preferredIndex >= 0 ? 1 : 0
-  const values = new Set<string>()
-
-  for (let index = startIndex; index < parsedRows.length; index += 1) {
-    const row = parsedRows[index]
-    const candidate = preferredIndex >= 0 ? row[preferredIndex] : row[0]
-    if (candidate?.trim()) {
-      values.add(candidate.trim())
-    }
-  }
-
-  return Array.from(values).sort((left, right) => left.localeCompare(right, 'es'))
-}
-
-function buildStringSuggestions(catalog: string[], query: string, limit = 12): string[] {
-  const normalizedQuery = normalizeSearchText(query)
-  if (!normalizedQuery) {
-    return catalog.slice(0, limit)
-  }
-
-  return catalog
-    .map((entry) => ({ entry, score: scoreDiagnosisSuggestion(entry, query) }))
-    .filter((entry) => Number.isFinite(entry.score))
-    .sort((left, right) => left.score - right.score || left.entry.localeCompare(right.entry, 'es'))
-    .slice(0, limit)
-    .map((entry) => entry.entry)
-}
-
 function loadMedicationCatalogFromJson(rawCatalog: unknown): MedicationEntry[] {
   if (!Array.isArray(rawCatalog)) {
     return []
@@ -1071,19 +1049,6 @@ function isAmbulanceConsultation(entry: ConsultationEntry): boolean {
 
 function isAppointmentConsultation(entry: ConsultationEntry): boolean {
   return entry.motivoConsulta.trim().startsWith('[TURNO]')
-}
-
-/**
- * Detecta si el profesional es odontólogo a partir de su especialidad, para
- * habilitar automáticamente el Balance de pagos (tratamientos y saldos).
- * La especialidad es texto libre, así que contempla las variantes y subespecialidades
- * más frecuentes. El texto llega sin acentos y en minúsculas.
- */
-function isDentistSpecialty(specialty?: string | null): boolean {
-  const normalized = normalizeSearchText(specialty ?? '')
-  return /odonto|dental|dentist|estomatolog|ortodon|endodon|periodon|implantolog|protesis dental|maxilofacial/.test(
-    normalized,
-  )
 }
 
 function normalizeTreatmentLedgerEntry(raw: unknown): TreatmentLedgerEntry | null {
@@ -1217,12 +1182,21 @@ function normalizeRemoteProfile(raw: unknown, fallback: ProfessionalProfile): Pr
       typeof candidate.dailyPatientLimit === 'number' && candidate.dailyPatientLimit > 0
         ? candidate.dailyPatientLimit
         : DEFAULT_DAILY_PATIENT_LIMIT,
+    appointmentDurationMinutes:
+      typeof candidate.appointmentDurationMinutes === 'number' && candidate.appointmentDurationMinutes > 0
+        ? candidate.appointmentDurationMinutes
+        : 30,
     appointmentStartTime: typeof candidate.appointmentStartTime === 'string' && /^\d{2}:\d{2}$/.test(candidate.appointmentStartTime)
       ? candidate.appointmentStartTime
       : DEFAULT_APPOINTMENT_START_TIME,
     appointmentEndTime: typeof candidate.appointmentEndTime === 'string' && /^\d{2}:\d{2}$/.test(candidate.appointmentEndTime)
       ? candidate.appointmentEndTime
       : DEFAULT_APPOINTMENT_END_TIME,
+    appointmentAmountToCharge:
+      typeof candidate.appointmentAmountToCharge === 'number' && candidate.appointmentAmountToCharge > 0
+        ? candidate.appointmentAmountToCharge
+        : undefined,
+    appointmentAmountConcept: candidate.appointmentAmountConcept === 'consulta' ? 'consulta' : 'sena',
     matriculaPhoto: normalizeStoredFile(candidate.matriculaPhoto) ?? undefined,
     signatureImage: normalizeStoredFile(candidate.signatureImage) ?? undefined,
     communitySeenMessageIds: normalizeStringList(candidate.communitySeenMessageIds),
@@ -1490,6 +1464,7 @@ function profileFromSeed(user: SeedUser): ProfessionalProfile {
     communitySeenMessageIds: [],
     appointmentDays: DEFAULT_APPOINTMENT_DAYS,
     dailyPatientLimit: DEFAULT_DAILY_PATIENT_LIMIT,
+    appointmentDurationMinutes: 30,
     appointmentStartTime: DEFAULT_APPOINTMENT_START_TIME,
     appointmentEndTime: DEFAULT_APPOINTMENT_END_TIME,
   }
@@ -1565,6 +1540,23 @@ function linkAppointmentsToPatients(appointmentList: AppointmentRecord[], patien
       patientEmail: linked.email || appointment.patientEmail,
     }
   })
+}
+
+function ensurePatientsForAppointments(appointmentList: AppointmentRecord[], patientList: PatientRecord[], ownerUserId: string): PatientRecord[] {
+  const nextPatients = [...patientList]
+  for (const appointment of appointmentList) {
+    if (nextPatients.some((patient) => patient.id === appointment.patientId)) continue
+    const nameParts = appointment.patientName.split(',')
+    nextPatients.push({
+      id: appointment.patientId || crypto.randomUUID(), ownerUserId,
+      nombre: nameParts.slice(1).join(',').trim(), apellido: nameParts[0]?.trim() || appointment.patientName,
+      dni: appointment.patientDni || '', email: appointment.patientEmail || '', obraSocial: '', numeroAfiliado: '', plan: '',
+      birthDate: '', edad: 0, diagnosticoPrincipal: appointment.reason || '', patologiasConocidas: '', patologiasCronicas: '',
+      ultimaInternacion: '', cirugiasPrevias: '', direccion: '', documents: [], consultations: [],
+      createdAt: appointment.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(),
+    })
+  }
+  return sortPatientsByName(nextPatients)
 }
 
 function normalizeSearchText(value: string): string {
@@ -1783,37 +1775,6 @@ function mapDictationError(errorCode?: string): string {
   }
 }
 
-function setupSignatureCanvas(
-  canvas: HTMLCanvasElement,
-  signatureImageDataUrl?: string,
-): Promise<boolean> {
-  const context = canvas.getContext('2d')
-  if (!context) {
-    return Promise.resolve(false)
-  }
-
-  context.fillStyle = '#ffffff'
-  context.fillRect(0, 0, canvas.width, canvas.height)
-  context.lineWidth = 2.2
-  context.lineCap = 'round'
-  context.lineJoin = 'round'
-  context.strokeStyle = '#0f172a'
-
-  if (!signatureImageDataUrl) {
-    return Promise.resolve(false)
-  }
-
-  return new Promise((resolve) => {
-    const image = new Image()
-    image.onload = () => {
-      context.drawImage(image, 0, 0, canvas.width, canvas.height)
-      resolve(true)
-    }
-    image.onerror = () => resolve(false)
-    image.src = signatureImageDataUrl
-  })
-}
-
 function normalizeBirthDate(value: string): string {
   const text = value.trim()
   if (!text) {
@@ -1994,65 +1955,6 @@ function extractLikelyDniFromRaw(rawValue: string): string {
   return best.slice(0, 9)
 }
 
-async function fileToImageElement(file: File): Promise<HTMLImageElement> {
-  const objectUrl = URL.createObjectURL(file)
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const candidate = new Image()
-      candidate.onload = () => resolve(candidate)
-      candidate.onerror = () => reject(new Error(`No se pudo cargar la imagen: ${file.name}`))
-      candidate.src = objectUrl
-    })
-    return image
-  } finally {
-    URL.revokeObjectURL(objectUrl)
-  }
-}
-
-async function detectBarcodesFromImage(
-  file: File,
-  formats: BarcodeFormat[],
-): Promise<DetectedBarcode[]> {
-  const detectorCtor = window.BarcodeDetector
-  if (!detectorCtor) {
-    throw new Error('Tu navegador no soporta escaneo automático de códigos (BarcodeDetector).')
-  }
-  const image = await fileToImageElement(file)
-  const canvas = document.createElement('canvas')
-  canvas.width = image.naturalWidth
-  canvas.height = image.naturalHeight
-  const context = canvas.getContext('2d')
-  if (!context) {
-    throw new Error('No se pudo preparar la imagen para escanear códigos.')
-  }
-  context.drawImage(image, 0, 0)
-  const detector = new detectorCtor({ formats })
-  return detector.detect(canvas)
-}
-
-function buildRotatedImageDataUrls(image: HTMLImageElement): string[] {
-  const dataUrls: string[] = []
-  const rotations = [0, 90, 180, 270]
-  for (const degrees of rotations) {
-    const radians = (degrees * Math.PI) / 180
-    const swapSides = degrees === 90 || degrees === 270
-    const width = swapSides ? image.naturalHeight : image.naturalWidth
-    const height = swapSides ? image.naturalWidth : image.naturalHeight
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('2d')
-    if (!context) {
-      continue
-    }
-    context.translate(width / 2, height / 2)
-    context.rotate(radians)
-    context.drawImage(image, -image.naturalWidth / 2, -image.naturalHeight / 2)
-    dataUrls.push(canvas.toDataURL('image/jpeg', 0.94))
-  }
-  return dataUrls
-}
-
 function hasParsedDniData(parsed: Partial<PatientDraft>): boolean {
   return Boolean(parsed.nombre || parsed.apellido || parsed.dni || parsed.birthDate)
 }
@@ -2082,18 +1984,6 @@ async function parseDniFromImageUrlWithZxing(source: string): Promise<Partial<Pa
   }
 }
 
-async function parseDniFromFileWithZxing(file: File): Promise<Partial<PatientDraft> | null> {
-  const image = await fileToImageElement(file)
-  const candidates = buildRotatedImageDataUrls(image)
-  for (const candidate of candidates) {
-    const parsed = await parseDniFromImageUrlWithZxing(candidate)
-    if (parsed) {
-      return parsed
-    }
-  }
-  return null
-}
-
 async function parseQrFromImageUrlWithZxing(source: string): Promise<Partial<PatientDraft> | null> {
   const reader = new BrowserQRCodeReader()
   try {
@@ -2108,18 +1998,6 @@ async function parseQrFromImageUrlWithZxing(source: string): Promise<Partial<Pat
   } catch {
     return null
   }
-}
-
-async function parseInsuranceFromFileWithZxing(file: File): Promise<Partial<PatientDraft> | null> {
-  const image = await fileToImageElement(file)
-  const candidates = buildRotatedImageDataUrls(image)
-  for (const candidate of candidates) {
-    const parsed = await parseQrFromImageUrlWithZxing(candidate)
-    if (parsed) {
-      return parsed
-    }
-  }
-  return null
 }
 
 function parseDniFromBarcode(rawValue: string): Partial<PatientDraft> {
@@ -2490,6 +2368,7 @@ function App() {
   const [recoveryPassword, setRecoveryPassword] = useState('')
   const [recoveryDemoCode, setRecoveryDemoCode] = useState<string | null>(null)
   const [activeUserId, setActiveUserId] = useState<string | null>(null)
+  const sessionGenerationRef = useRef(0)
   const [googleIdentity, setGoogleIdentity] = useState<{
     email: string
     avatarUrl?: string
@@ -2504,11 +2383,14 @@ function App() {
   const [appointmentDateFilter, setAppointmentDateFilter] = useState('')
   const [appointmentDays, setAppointmentDays] = useState<number[]>(DEFAULT_APPOINTMENT_DAYS)
   const [dailyPatientLimit, setDailyPatientLimit] = useState(DEFAULT_DAILY_PATIENT_LIMIT)
+  const [appointmentDurationMinutes, setAppointmentDurationMinutes] = useState(30)
+  const [appointmentAmountToCharge, setAppointmentAmountToCharge] = useState('')
+  const [appointmentAmountConcept, setAppointmentAmountConcept] = useState<'sena' | 'consulta'>('sena')
   const [appointmentStartTime, setAppointmentStartTime] = useState(DEFAULT_APPOINTMENT_START_TIME)
   const [appointmentEndTime, setAppointmentEndTime] = useState(DEFAULT_APPOINTMENT_END_TIME)
   // Prueba piloto: vista alternativa de la Turnera con calendario mensual de ocupación
   // y estadísticas de pacientes atendidos por semana/mes (candidata a feature premium anual).
-  const [turneraViewMode, setTurneraViewMode] = useState<'list' | 'calendar' | 'stats' | 'ledger'>('list')
+  const [turneraViewMode, setTurneraViewMode] = useState<'list' | 'calendar' | 'stats' | 'ledger' | 'capacity'>('list')
   // Balance de pagos (odontología): tratamientos realizados, cobrado y saldo pendiente.
   const [treatmentLedger, setTreatmentLedger] = useState<TreatmentLedgerEntry[]>([])
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
@@ -2517,6 +2399,7 @@ function App() {
   const [ledgerSuggestionsOpen, setLedgerSuggestionsOpen] = useState(false)
   const [ledgerFilter, setLedgerFilter] = useState<'all' | 'debt' | 'settled'>('all')
   const [paymentTarget, setPaymentTarget] = useState<{ entryId: string; amount: string } | null>(null)
+  const [ledgerReminderSendingId, setLedgerReminderSendingId] = useState<string | null>(null)
   const [ledgerSearch, setLedgerSearch] = useState('')
   const [calendarMonthCursor, setCalendarMonthCursor] = useState(() => {
     const now = new Date()
@@ -2556,6 +2439,10 @@ function App() {
   const [publicBookingSaving, setPublicBookingSaving] = useState(false)
   const [publicBookingError, setPublicBookingError] = useState<string | null>(null)
   const [publicBookingNotice, setPublicBookingNotice] = useState<string | null>(null)
+  const [mercadoPagoConnected, setMercadoPagoConnected] = useState(false)
+  const [mercadoPagoAccountEmail, setMercadoPagoAccountEmail] = useState<string | null>(null)
+  const [mercadoPagoConnectionBusy, setMercadoPagoConnectionBusy] = useState(false)
+  const [mercadoPagoVerificationMessage, setMercadoPagoVerificationMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!freeSlotModalOpen) {
@@ -2567,6 +2454,31 @@ function App() {
       document.body.style.overflow = previousOverflow
     }
   }, [freeSlotModalOpen])
+
+  useEffect(() => {
+    if (!activeUserId) return
+    void getMercadoPagoConnectionStatus().then((result) => {
+      setMercadoPagoConnected(Boolean(result.success && result.connected))
+      setMercadoPagoAccountEmail(result.account?.public_email ?? null)
+    })
+  }, [activeUserId])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const connectionState = params.get('mp_connection')
+    if (!connectionState) return
+    if (connectionState === 'connected') {
+      setAppNotice('Cuenta de Mercado Pago conectada correctamente.')
+      void verifyMercadoPagoConnection().then((result) => {
+        setMercadoPagoConnected(Boolean(result.success && result.connected))
+        setMercadoPagoAccountEmail(result.account?.public_email ?? null)
+        setMercadoPagoVerificationMessage(result.connected ? 'Conexión verificada con Mercado Pago.' : result.message || 'La conexión necesita revisión.')
+      })
+    } else if (connectionState === 'error') {
+      setAppError(params.get('message') || 'No se pudo conectar Mercado Pago.')
+    }
+    window.history.replaceState({}, document.title, window.location.pathname)
+  }, [])
   // Métricas de uso por usuario (solo conteos y fechas, sin datos clínicos).
   const [adminUserStats, setAdminUserStats] = useState<AdminUserStats[]>([])
   const [adminUserStatsLoading, setAdminUserStatsLoading] = useState(false)
@@ -2577,9 +2489,7 @@ function App() {
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
   const [myPatientsQuery, setMyPatientsQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [flyerSlideIndex, setFlyerSlideIndex] = useState(0)
   const [diagnosisCatalog, setDiagnosisCatalog] = useState<string[]>([])
-  const [specialtyCatalog, setSpecialtyCatalog] = useState<string[]>([])
   const [medicationCatalog, setMedicationCatalog] = useState<MedicationEntry[]>([])
   const [medicalNewsLoading, setMedicalNewsLoading] = useState(false)
   const [medicalNews, setMedicalNews] = useState<MedicalNewsItem[]>([])
@@ -2587,7 +2497,11 @@ function App() {
   const [vademecumSearchQuery, setVademecumSearchQuery] = useState('')
   const [selectedMedicationId, setSelectedMedicationId] = useState<string | null>(null)
 
-  const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult'>('protocols')
+  const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult' | 'community'>('protocols')
+  const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo'>('usuarios')
+  const [adminUserQuery, setAdminUserQuery] = useState('')
+  const [adminExpandedUserId, setAdminExpandedUserId] = useState<string | null>(null)
+  const [premiumPrompt, setPremiumPrompt] = useState<{ icon: string; title: string; pitch: string; bullets: string[] } | null>(null)
   const [protocolSearchQuery, setProtocolSearchQuery] = useState('')
   const [protocolCategoryFilter, setProtocolCategoryFilter] = useState<string>('all')
   const [selectedProtocolId, setSelectedProtocolId] = useState<string | null>(null)
@@ -2611,7 +2525,6 @@ function App() {
   const [communityOpen, setCommunityOpen] = useState(false)
   const [communityTargetId, setCommunityTargetId] = useState<string | null>(null)
   const [communitySearchQuery, setCommunitySearchQuery] = useState('')
-  const [communityNetworkFilters, setCommunityNetworkFilters] = useState<string[]>([])
   const [communityDraftText, setCommunityDraftText] = useState('')
   const [communityDraftFiles, setCommunityDraftFiles] = useState<StoredFile[]>([])
   const [communityDragActive, setCommunityDragActive] = useState(false)
@@ -2629,9 +2542,6 @@ function App() {
   const dictationBaseTextRef = useRef('')
   const dictationCommittedTextRef = useRef('')
   const dictationHadErrorRef = useRef(false)
-  const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const signatureDrawingRef = useRef(false)
-  const signatureHasStrokeRef = useRef(false)
   const floatingTimerRef = useRef<number | null>(null)
   const lastCommunityNotifiedAtRef = useRef<string>('')
   const [liveScanTarget, setLiveScanTarget] = useState<LiveScanTarget | null>(null)
@@ -2749,10 +2659,27 @@ function App() {
     setSofiaBusy(false)
   }
 
+  async function handleConfirmSofiaAction(): Promise<void> {
+    if (!sofiaPendingConfirmation || sofiaBusy) return
+    setSofiaBusy(true)
+    const confirmation = sofiaPendingConfirmation
+    const result = await askSofia({
+      messages: sofiaMessages,
+      professionalName: profile?.fullName || activeUser?.fullName,
+      context: 'Ejecutá la acción pendiente exactamente con los parámetros confirmados.',
+      confirmation: { action: confirmation.action, input: { ...confirmation.proposal } },
+    })
+    setSofiaMessages((current) => [...current, { role: 'user', content: 'Confirmo la acción propuesta.' }, {
+      role: 'assistant',
+      content: result.success ? result.reply || 'Acción completada.' : (result.message || 'No se pudo completar la acción.'),
+    }])
+    setSofiaPendingConfirmation(null)
+    setSofiaBusy(false)
+  }
+
   // --- Trial / Suscripción ---
   const trialInfo = useMemo(() => {
-    const TRIAL_DAYS = 14
-    const TRIAL_PATIENTS = 15
+    const TRIAL_DAYS = 7
     const user = seedUsers.find((u) => u.id === activeUserId)
     if (!user) return null
     if (user.isAdmin) {
@@ -2816,22 +2743,18 @@ function App() {
 
     const daysPassed = Math.floor((Date.now() - new Date(user.trialStartedAt).getTime()) / DAY_IN_MS)
     const daysLeft = Math.max(0, TRIAL_DAYS - daysPassed)
-
-    // Contar solo los pacientes propios del usuario
     const ownPatientCount = patients.filter((p) => p.ownerUserId === activeUserId).length
-    const patientsLeft = Math.max(0, TRIAL_PATIENTS - ownPatientCount)
 
     const expiredByTime = daysPassed >= TRIAL_DAYS
-    const expiredByPatients = ownPatientCount >= TRIAL_PATIENTS
-    const expired = expiredByTime || expiredByPatients
+    const expired = expiredByTime
 
     return {
       status: expired ? ('expired' as const) : ('trial' as const),
       daysLeft,
-      patientsLeft,
+      patientsLeft: Infinity,
       ownPatientCount,
       expiredByTime,
-      expiredByPatients,
+      expiredByPatients: false,
       expiredBySubscription: false,
       expired,
     }
@@ -2850,16 +2773,26 @@ function App() {
   // un usuario sin configuración (undefined) también, para no romper cuentas previas.
   const isModuleEnabled = useCallback(
     (moduleId: AppModuleId): boolean => {
+      if (moduleId === 'community') {
+        return false
+      }
       if (isAdminSession) {
         return true
       }
+      const profession = normalizeSearchText(activeUser?.specialty || profile?.specialty || '')
+      const professionModules = profession.includes('odont')
+        ? ['attention', 'appointments', 'ledger']
+        : profession.includes('psic')
+          ? ['attention', 'appointments', 'tools']
+          : profession.includes('medic')
+            ? ALL_APP_MODULE_IDS.filter((entry) => entry !== 'community')
+            : null
       const configured = activeUser?.enabledModules
-      if (!configured) {
-        return !OPT_IN_APP_MODULE_IDS.includes(moduleId)
-      }
-      return configured.includes(moduleId)
+      if (professionModules && !professionModules.includes(moduleId)) return false
+      if (configured) return configured.includes(moduleId)
+      return !OPT_IN_APP_MODULE_IDS.includes(moduleId)
     },
-    [isAdminSession, activeUser],
+    [isAdminSession, activeUser, profile, trialInfo],
   )
 
   const freeSlotCapacity = useMemo(() => {
@@ -2907,12 +2840,8 @@ function App() {
       .slice(0, 6)
   }, [patients, appointmentPatientQuery])
 
-  // Acceso al Balance de pagos: odontólogos (por especialidad) o cualquier
-  // usuario al que el admin le habilite el módulo. Siempre requiere premium.
-  const isDentist = isDentistSpecialty(profile?.specialty || activeUser?.specialty)
-  const canUseTreatmentLedger = Boolean(
-    (isDentist || isModuleEnabled('ledger')) && hasPremiumTurneraAccess,
-  )
+  // El Balance de pagos queda disponible para cualquier profesional con acceso premium.
+  const canUseTreatmentLedger = hasPremiumTurneraAccess
 
   const ledgerTotals = useMemo(() => {
     return treatmentLedger.reduce(
@@ -3024,24 +2953,6 @@ function App() {
           left.patient.apellido.localeCompare(right.patient.apellido, 'es'),
       )
   }, [patients, profile?.fullName, profile?.licenseNumber])
-  const registerSpecialtySuggestions = useMemo(
-    () => {
-      const catalogByNormalizedName = new Map<string, string>()
-      for (const specialty of [...specialtyCatalog, ...seedUsers.map((user) => user.specialty)]) {
-        const trimmedSpecialty = specialty.trim()
-        const normalizedSpecialty = normalizeSearchText(trimmedSpecialty)
-        if (normalizedSpecialty && !catalogByNormalizedName.has(normalizedSpecialty)) {
-          catalogByNormalizedName.set(normalizedSpecialty, trimmedSpecialty)
-        }
-      }
-      return buildStringSuggestions(
-        Array.from(catalogByNormalizedName.values()),
-        registerDraft.specialty,
-        8,
-      )
-    },
-    [specialtyCatalog, seedUsers, registerDraft.specialty],
-  )
   const registerUsernameExists = useMemo(() => {
     const normalizedUsername = registerDraft.username.trim().toLowerCase()
     return (
@@ -3056,24 +2967,6 @@ function App() {
       seedUsers.some((user) => user.email.trim().toLowerCase() === normalizedEmail)
     )
   }, [registerDraft.email, seedUsers])
-  const profileSpecialtySuggestions = useMemo(
-    () => {
-      const catalogByNormalizedName = new Map<string, string>()
-      for (const specialty of [...specialtyCatalog, ...seedUsers.map((user) => user.specialty)]) {
-        const trimmedSpecialty = specialty.trim()
-        const normalizedSpecialty = normalizeSearchText(trimmedSpecialty)
-        if (normalizedSpecialty && !catalogByNormalizedName.has(normalizedSpecialty)) {
-          catalogByNormalizedName.set(normalizedSpecialty, trimmedSpecialty)
-        }
-      }
-      return buildStringSuggestions(
-        Array.from(catalogByNormalizedName.values()),
-        profile?.specialty ?? '',
-        8,
-      )
-    },
-    [specialtyCatalog, seedUsers, profile?.specialty],
-  )
   const filteredMedicationCatalog = useMemo(() => {
     const normalizedQuery = normalizeSearchText(vademecumSearchQuery)
     if (normalizedQuery.length < VADEMECUM_MIN_QUERY_LENGTH) {
@@ -3415,9 +3308,9 @@ function App() {
       if (patient.ownerUserId !== normalizedOwner) {
         localStorage.setItem(patientGlobalStorageKey(patientId), JSON.stringify(normalizedPatient))
       }
-      availablePatientsList.push(normalizedPatient)
       if (normalizedOwner === userId) {
         patientsList.push(normalizedPatient)
+        availablePatientsList.push(normalizedPatient)
       }
     }
 
@@ -3453,6 +3346,7 @@ function App() {
   }
 
   async function loadWorkspaceForUser(user: SeedUser): Promise<void> {
+    const sessionGeneration = ++sessionGenerationRef.current
     const localProfile = readJsonStorage<ProfessionalProfile>(profileStorageKey(user.id), profileFromSeed(user))
     const localLoaded = loadAccessiblePatientsForUser(user.id)
     const localAppointments = readJsonStorage<AppointmentRecord[]>(appointmentsStorageKey(user.id), [])
@@ -3467,7 +3361,12 @@ function App() {
     let loadedLedger = readJsonStorage<unknown[]>(treatmentLedgerStorageKey(user.id), [])
       .map(normalizeTreatmentLedgerEntry)
       .filter((entry): entry is TreatmentLedgerEntry => Boolean(entry))
-    const localSeenIds = readJsonStorage<string[]>(communitySeenStorageKey(user.id), [])
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('drhappy-community-thread-') || key.startsWith('drhappy-community-seen-')) {
+        localStorage.removeItem(key)
+      }
+    }
+    const localSeenIds: string[] = []
 
     localStorage.setItem(SESSION_USER_KEY, user.id)
     localStorage.setItem(SESSION_USER_CACHE_KEY, JSON.stringify(user))
@@ -3484,10 +3383,25 @@ function App() {
       // Desde el cliente solo se refrescan los campos del propio perfil: id y username
       // no son actualizables, y los privilegiados los maneja admin-professionals.
       const professionalUpdate = await updateOwnProfessionalProfile({ fullName: user.fullName, specialty: user.specialty, licenseNumber: user.licenseNumber, dni: user.dni ?? null, email: user.email, networkMemberships: user.networkMemberships ?? [] })
-      if (!professionalUpdate.success) throw new Error(`No se pudo sincronizar el profesional: ${professionalUpdate.message}`)
+      if (!professionalUpdate.success) {
+        console.warn('No se pudo sincronizar el perfil remoto al iniciar:', professionalUpdate.message)
+      }
 
-      const workspaceResult = await loadWorkspaceData()
-      if (!workspaceResult.success) throw new Error(`No se pudo cargar la base personal del profesional: ${workspaceResult.message}`)
+      let workspaceResult = await loadWorkspaceData()
+      for (let attempt = 1; !workspaceResult.success && attempt < 3; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, attempt * 350))
+        workspaceResult = await loadWorkspaceData()
+      }
+      if (!workspaceResult.success) {
+        setProfile(null)
+        setPatients([])
+        setAvailablePatients([])
+        setAppointments([])
+        setTreatmentLedger([])
+        setAppError('No se pudo validar la sesión en la nube. Por seguridad, no se muestran datos locales hasta volver a iniciar sesión.')
+        return
+      }
+      if (sessionGeneration !== sessionGenerationRef.current) return
       const data = workspaceResult.workspace as RemoteWorkspaceRow | null
 
       if (data) {
@@ -3540,7 +3454,14 @@ function App() {
     }
 
     localStorage.setItem(profileStorageKey(user.id), JSON.stringify(loadedProfile))
+    if (sessionGeneration !== sessionGenerationRef.current) return
     loadedAppointments = linkAppointmentsToPatients(loadedAppointments, patientsList)
+    const patientsBeforeAppointmentRepair = patientsList.length
+    patientsList = ensurePatientsForAppointments(loadedAppointments, patientsList, user.id)
+    if (patientsList.length > patientsBeforeAppointmentRepair) {
+      availablePatientsList = sortPatientsByName(patientsList)
+      void persistWorkspaceRemote(user.id, loadedProfile, patientsList, loadedAppointments, loadedLedger)
+    }
     localStorage.setItem(appointmentsStorageKey(user.id), JSON.stringify(loadedAppointments))
     localStorage.setItem(
       patientIndexStorageKey(user.id),
@@ -4112,6 +4033,10 @@ function App() {
 
   useEffect(() => {
     const loadSeedUsers = async () => {
+      const persistedSessionToken = localStorage.getItem(SESSION_TOKEN_KEY)
+      if (persistedSessionToken && !sessionStorage.getItem(SESSION_TOKEN_KEY)) {
+        sessionStorage.setItem(SESSION_TOKEN_KEY, persistedSessionToken)
+      }
       const storedUserId = localStorage.getItem(SESSION_USER_KEY)
       const cachedSessionUser = readJsonStorage<SeedUser | null>(SESSION_USER_CACHE_KEY, null)
       try {
@@ -4122,7 +4047,7 @@ function App() {
         )
         let merged: SeedUser[] = []
 
-        if (isSupabaseConfigured && supabase) {
+        if (isSupabaseConfigured && supabase && persistedSessionToken) {
           const result = await loadProfessionals()
           if (!result.success) throw new Error(`No se pudo cargar profesionales remotos: ${result.message}`)
           for (const row of result.professionals ?? []) {
@@ -4136,7 +4061,7 @@ function App() {
               merged.push(remoteUser)
             }
           }
-        } else {
+        } else if (!isSupabaseConfigured) {
           merged = []
           for (const localUser of localUsers) {
             const normalizedLocalUser: SeedUser = {
@@ -4151,6 +4076,8 @@ function App() {
           setAppNotice(
             'Modo local activo: los nuevos profesionales y chats solo se comparten en este navegador.',
           )
+        } else {
+          merged = []
         }
         const normalizedUsers = merged.map((user) => ({
           ...user,
@@ -4236,7 +4163,18 @@ function App() {
           await loadWorkspaceForUser(sessionUser)
         }
       } catch (error) {
-        setAppError(error instanceof Error ? error.message : 'Error cargando usuarios.')
+        const errorMessage = error instanceof Error ? error.message : 'Error cargando usuarios.'
+        const invalidSession = /sesión profesional requerida|unauthorized|401/i.test(errorMessage)
+        if (invalidSession) {
+          localStorage.removeItem(SESSION_USER_KEY)
+          localStorage.removeItem(SESSION_USER_CACHE_KEY)
+          localStorage.removeItem(SESSION_TOKEN_KEY)
+          sessionStorage.removeItem(SESSION_TOKEN_KEY)
+          setSeedUsers([])
+          setAppError(null)
+          return
+        }
+        setAppError(errorMessage)
         if (cachedSessionUser?.id === storedUserId) {
           setSeedUsers([cachedSessionUser])
           await loadWorkspaceForUser(cachedSessionUser).catch((workspaceError: unknown) => {
@@ -4315,10 +4253,6 @@ function App() {
     }
 
     void loadDiagnosisCatalog()
-  }, [])
-
-  useEffect(() => {
-    setSpecialtyCatalog(loadSimpleCatalogFromCsv(specialtiesCsv))
   }, [])
 
   useEffect(() => {
@@ -4412,14 +4346,6 @@ function App() {
       window.clearInterval(intervalId)
     }
   }, [medicalNews])
-
-  useEffect(() => {
-    if (workspaceLayer !== 'overview') return
-    const intervalId = window.setInterval(() => {
-      setFlyerSlideIndex((current) => (current + 1) % APP_FLYER_SLIDES.length)
-    }, 6500)
-    return () => window.clearInterval(intervalId)
-  }, [workspaceLayer])
 
   useEffect(() => {
     if (!selectedMedicationId) {
@@ -4836,6 +4762,11 @@ function App() {
       window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`)
       return
     }
+    if (window.location.hash.includes('access_token') || window.location.hash.includes('refresh_token')) {
+      // Supabase ya procesó el fragmento al inicializarse; no lo dejamos visible
+      // mientras resolvemos el perfil profesional.
+      window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`)
+    }
     // Al volver del redirect de Google, Supabase deja la sesión activa; la resolvemos
     // buscando/creando el profesional correspondiente al email de Google.
     const storedUserId = localStorage.getItem(SESSION_USER_KEY)
@@ -4882,16 +4813,13 @@ function App() {
     [seedUsers, activeUserId],
   )
 
-  const communityHasActiveFilters = Boolean(
-    communitySearchQuery.trim() || communityNetworkFilters.length > 0,
-  )
+  const communityHasActiveFilters = Boolean(communitySearchQuery.trim())
 
   const filteredCommunityMembers = useMemo(() => {
     if (!communityHasActiveFilters) {
       return []
     }
 
-    const selectedNetworks = new Set(communityNetworkFilters)
     return communityMembers
       .map((member) => ({
         member,
@@ -4899,13 +4827,7 @@ function App() {
           ? scoreProfessionalSearch(member, communitySearchQuery)
           : 0,
       }))
-      .filter(({ member, score }) => {
-        const matchesSearch = !communitySearchQuery.trim() || Number.isFinite(score)
-        const matchesNetwork =
-          selectedNetworks.size === 0 ||
-          (member.networkMemberships ?? []).some((network) => selectedNetworks.has(network))
-        return matchesSearch && matchesNetwork
-      })
+      .filter(({ score }) => !communitySearchQuery.trim() || Number.isFinite(score))
       .sort((left, right) => {
         if (left.score !== right.score) {
           return left.score - right.score
@@ -4916,7 +4838,6 @@ function App() {
   }, [
     communityMembers,
     communityHasActiveFilters,
-    communityNetworkFilters,
     communitySearchQuery,
   ])
 
@@ -5019,6 +4940,9 @@ function App() {
     if (!profile) return
     setAppointmentDays(profile.appointmentDays?.length ? profile.appointmentDays : DEFAULT_APPOINTMENT_DAYS)
     setDailyPatientLimit(profile.dailyPatientLimit || DEFAULT_DAILY_PATIENT_LIMIT)
+    setAppointmentDurationMinutes(profile.appointmentDurationMinutes || 30)
+    setAppointmentAmountToCharge(typeof profile.appointmentAmountToCharge === 'number' ? String(profile.appointmentAmountToCharge) : '')
+    setAppointmentAmountConcept(profile.appointmentAmountConcept === 'consulta' ? 'consulta' : 'sena')
     setAppointmentStartTime(profile.appointmentStartTime || DEFAULT_APPOINTMENT_START_TIME)
     setAppointmentEndTime(profile.appointmentEndTime || DEFAULT_APPOINTMENT_END_TIME)
   }, [profile])
@@ -5034,7 +4958,7 @@ function App() {
   }, [communityOpen, communityTargetId, communityDisplayedMembers, activeUserId])
 
   useEffect(() => {
-    if (!activeUserId || !communityTargetId) {
+    if (!communityOpen || !activeUserId || !communityTargetId) {
       setCommunityMessages([])
       return
     }
@@ -5077,7 +5001,7 @@ function App() {
     void readThread()
     const intervalId = window.setInterval(() => {
       void readThread()
-    }, 2000)
+    }, 10000)
 
     const handleVisibilityOrOnline = () => {
       if (!document.hidden && navigator.onLine) {
@@ -5092,7 +5016,7 @@ function App() {
       document.removeEventListener('visibilitychange', handleVisibilityOrOnline)
       window.removeEventListener('online', handleVisibilityOrOnline)
     }
-  }, [activeUserId, communityTargetId])
+  }, [communityOpen, activeUserId, communityTargetId])
 
   useEffect(() => {
     if (!communityOpen || !activeUserId || !communityTargetId) {
@@ -5102,6 +5026,9 @@ function App() {
   }, [communityOpen, activeUserId, communityTargetId])
 
   useEffect(() => {
+    if (!isModuleEnabled('community')) {
+      return
+    }
     if (!activeUserId) {
       setCommunityUnreadCount(0)
       setCommunityUnreadByMember({})
@@ -5109,6 +5036,9 @@ function App() {
     }
 
     const scanUnread = async () => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        return
+      }
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         return
       }
@@ -5210,7 +5140,7 @@ function App() {
     void scanUnread()
     const intervalId = window.setInterval(() => {
       void scanUnread()
-    }, 2500)
+    }, 30000)
 
     const handleVisibilityOrOnline = () => {
       if (navigator.onLine) {
@@ -5226,20 +5156,6 @@ function App() {
       window.removeEventListener('online', handleVisibilityOrOnline)
     }
   }, [activeUserId, communitySeenIds, seedUsers])
-
-  useEffect(() => {
-    if (workspaceLayer !== 'profile') {
-      return
-    }
-    const canvas = signatureCanvasRef.current
-    if (!canvas || !profile) {
-      return
-    }
-
-    void setupSignatureCanvas(canvas, profile.signatureImage?.dataUrl).then((hasExisting) => {
-      signatureHasStrokeRef.current = hasExisting
-    })
-  }, [workspaceLayer, profile?.signatureImage?.dataUrl])
 
   function showSavedFloatingNotice(message = 'Datos guardados'): void {
     setFloatingNotice(message)
@@ -5400,6 +5316,30 @@ function App() {
 
   function persistPatient(nextPatient: PatientRecord): void {
     persistPatientsBatch([nextPatient])
+  }
+
+  async function handleDeletePatient(patientId: string): Promise<void> {
+    if (!activeUserId) return
+    const target = patients.find((patient) => patient.id === patientId)
+    if (!target || target.ownerUserId !== activeUserId) {
+      setAppError('Solo podés eliminar pacientes creados por tu cuenta.')
+      return
+    }
+    if (!window.confirm(`¿Eliminar definitivamente la ficha de ${target.nombre} ${target.apellido}?`)) return
+    const nextPatients = patients.filter((patient) => patient.id !== patientId)
+    const ownerIndex = readJsonStorage<string[]>(patientIndexStorageKey(activeUserId), []).filter((id) => id !== patientId)
+    const registry = readJsonStorage<string[]>(PATIENT_REGISTRY_KEY, []).filter((id) => id !== patientId)
+    localStorage.setItem(patientIndexStorageKey(activeUserId), JSON.stringify(ownerIndex))
+    localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(registry))
+    localStorage.removeItem(patientGlobalStorageKey(patientId))
+    setPatients(nextPatients)
+    setAvailablePatients((current) => current.filter((patient) => patient.id !== patientId))
+    if (selectedPatientId === patientId) {
+      setSelectedPatientId(null)
+      setWorkspaceLayer('my-patients')
+    }
+    if (profile) await persistWorkspaceRemote(activeUserId, profile, nextPatients, appointments, treatmentLedger)
+    setAppNotice('Paciente eliminado correctamente.')
   }
 
   function persistPatientConsultation(patientId: string, entry: ConsultationEntry): void {
@@ -5672,6 +5612,7 @@ function App() {
   }
 
   async function resolveGoogleSession(): Promise<void> {
+    const sessionGeneration = sessionGenerationRef.current
     if (!isSupabaseConfigured || !supabase) {
       return
     }
@@ -5682,99 +5623,25 @@ function App() {
     }
 
     const email = googleUser.email.toLowerCase()
-    const existing = seedUsers.find((entry) => entry.email.toLowerCase() === email)
-
-    if (existing) {
-      const metadata =
-        googleUser.user_metadata && typeof googleUser.user_metadata === 'object'
-          ? (googleUser.user_metadata as Record<string, unknown>)
-          : null
-      const avatarUrl =
-        typeof metadata?.avatar_url === 'string'
-          ? metadata.avatar_url
-          : typeof metadata?.picture === 'string'
-            ? metadata.picture
-            : undefined
-      setGoogleIdentity({
-        email: googleUser.email,
-        avatarUrl,
-        fullName: typeof metadata?.full_name === 'string' ? metadata.full_name : undefined,
-      })
-      localStorage.setItem(SESSION_USER_KEY, existing.id)
-      await loadWorkspaceForUser(existing)
-      setWorkspaceLayer('overview')
-      setSelectedPatientId(null)
+    const fullName = (googleUser.user_metadata?.full_name as string | undefined) ?? email.split('@')[0]
+    const result = await loginWithGoogle({ accessToken: data.session?.access_token || '', email, fullName })
+    if (sessionGeneration !== sessionGenerationRef.current) return
+    if (!result.success || !result.professional) {
+      setAuthError(result.message || 'No se pudo iniciar sesión con Google.')
       return
     }
-
-    // Usuario nuevo vía Google: crear profesional con datos básicos de Google.
-    const fullName = (googleUser.user_metadata?.full_name as string | undefined) ?? email.split('@')[0]
-    const generatedUsername = email.split('@')[0]
-    const draft = {
-      username: generatedUsername,
-      password: crypto.randomUUID(),
-      fullName,
-      specialty: '',
-      licenseNumber: '',
-      email: googleUser.email,
-      networkMemberships: [] as string[],
+    const nextUser = mapAuthProfessionalPublic(result.professional)
+    if (result.sessionToken) {
+      sessionStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
+      localStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
     }
-
-    let nextUser: SeedUser
-    const trialStartedAt = new Date().toISOString()
-    if (isSupabaseConfigured) {
-      const result = await registerProfessional({
-        username: draft.username,
-        password: draft.password,
-        fullName: draft.fullName,
-        specialty: draft.specialty,
-        licenseNumber: draft.licenseNumber,
-        email: draft.email,
-        networkMemberships: draft.networkMemberships,
-      })
-      if (!result.success || !result.professional) {
-        setAuthError(result.message || 'No se pudo crear el usuario con Google.')
-        return
-      }
-      nextUser = mapAuthProfessionalPublic(result.professional)
-      await persistWorkspaceRemote(nextUser.id, profileFromSeed(nextUser), [], [])
-    } else {
-      nextUser = {
-        id: crypto.randomUUID(),
-        ...draft,
-        isAdmin: false,
-        active: true,
-        trialStartedAt,
-        subscriptionStatus: 'trial',
-      }
-      const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
-      localStorage.setItem(CREATED_USERS_KEY, JSON.stringify([...localUsers, nextUser]))
-    }
-
-    setSeedUsers((current) => [...current, nextUser])
-    {
-      const metadata =
-        googleUser.user_metadata && typeof googleUser.user_metadata === 'object'
-          ? (googleUser.user_metadata as Record<string, unknown>)
-          : null
-      const avatarUrl =
-        typeof metadata?.avatar_url === 'string'
-          ? metadata.avatar_url
-          : typeof metadata?.picture === 'string'
-            ? metadata.picture
-            : undefined
-      setGoogleIdentity({
-        email: googleUser.email,
-        avatarUrl,
-        fullName: typeof metadata?.full_name === 'string' ? metadata.full_name : undefined,
-      })
-    }
+    setSeedUsers((current) => current.some((user) => user.id === nextUser.id) ? current.map((user) => user.id === nextUser.id ? nextUser : user) : [...current, nextUser])
+    setGoogleIdentity({ email: googleUser.email, fullName })
     localStorage.setItem(SESSION_USER_KEY, nextUser.id)
     await loadWorkspaceForUser(nextUser)
     setWorkspaceLayer('overview')
     setSelectedPatientId(null)
-    setAppNotice('Cuenta creada con Google. Completá tu perfil profesional para continuar.')
-    showSavedFloatingNotice()
+    setAppNotice('Sesión iniciada con Google.')
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -5790,14 +5657,24 @@ function App() {
       }
       const user = mapAuthProfessionalPublic(result.professional)
       try {
+        sessionGenerationRef.current += 1
+        setActiveUserId(null)
+        setProfile(null)
+        setPatients([])
+        setAvailablePatients([])
+        setAppointments([])
+        setTreatmentLedger([])
+        setSeedUsers((current) => current.some((entry) => entry.id === user.id)
+          ? current.map((entry) => entry.id === user.id ? user : entry)
+          : [...current, user])
         if (result.sessionToken) {
-          sessionStorage.setItem('drhappy-professional-session', result.sessionToken)
+          sessionStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
+          localStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
         }
         localStorage.setItem(SESSION_USER_KEY, user.id)
         await loadWorkspaceForUser(user)
         setWorkspaceLayer('overview')
         setSelectedPatientId(null)
-        setPassword('')
       } catch (error) {
         setAppError(
           error instanceof Error
@@ -5836,7 +5713,7 @@ function App() {
     }
   }
 
-  function handleRegisterFieldChange(event: ChangeEvent<HTMLInputElement>): void {
+  function handleRegisterFieldChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>): void {
     const { name, value } = event.target
     setRegisterDraft((current) => {
       if (name === 'email') {
@@ -5852,18 +5729,6 @@ function App() {
       return {
         ...current,
         [name]: name === 'username' ? value.toLowerCase() : value,
-      }
-    })
-  }
-
-  function handleRegisterNetworkToggle(network: string): void {
-    setRegisterDraft((current) => {
-      const isSelected = current.networkMemberships.includes(network)
-      return {
-        ...current,
-        networkMemberships: isSelected
-          ? current.networkMemberships.filter((entry) => entry !== network)
-          : [...current.networkMemberships, network],
       }
     })
   }
@@ -6004,6 +5869,7 @@ function App() {
   }
 
   async function handleLogout(): Promise<void> {
+    sessionGenerationRef.current += 1
     stopLiveScanner()
     stopDictation()
     if (isSupabaseConfigured && supabase) {
@@ -6012,6 +5878,7 @@ function App() {
     localStorage.removeItem(SESSION_USER_KEY)
     localStorage.removeItem(SESSION_USER_CACHE_KEY)
     sessionStorage.removeItem('drhappy-professional-session')
+    localStorage.removeItem(SESSION_TOKEN_KEY)
     setGoogleIdentity(null)
     setActiveUserId(null)
     setProfile(null)
@@ -6026,7 +5893,6 @@ function App() {
     setCommunityOpen(false)
     setCommunityTargetId(null)
     setCommunitySearchQuery('')
-    setCommunityNetworkFilters([])
     setCommunityDraftText('')
     setCommunityDraftFiles([])
     setCommunityDragActive(false)
@@ -6059,22 +5925,6 @@ function App() {
     lastLiveDetectedAtRef.current = 0
     setLiveScanTarget(null)
     setLiveScanStatus('')
-  }
-
-  async function waitForLiveScanVideo(sessionId: number): Promise<HTMLVideoElement> {
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      if (sessionId !== liveScanSessionRef.current) {
-        throw new Error('El escaneo fue cancelado.')
-      }
-      const video = liveScanVideoRef.current
-      if (video) {
-        return video
-      }
-      await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, 50)
-      })
-    }
-    throw new Error('No se pudo preparar la vista previa de cámara para escanear.')
   }
 
   function applyPatientAutofill(
@@ -6215,201 +6065,6 @@ function App() {
     }
   }
 
-  async function startLiveScanner(target: LiveScanTarget): Promise<void> {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setAppError('Tu navegador no permite abrir la cámara para escaneo en vivo.')
-      return
-    }
-
-    stopLiveScanner()
-    setAppError(null)
-    setLiveScanTarget(target)
-    setLiveScanStatus('Iniciando cámara…')
-    liveDecodeBusyRef.current = false
-    lastLiveDetectedRawRef.current = ''
-    lastLiveDetectedAtRef.current = 0
-    const sessionId = liveScanSessionRef.current + 1
-    liveScanSessionRef.current = sessionId
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280, max: 4032 },
-          height: { ideal: 960, max: 3024 },
-          frameRate: { ideal: 30, max: 60 },
-        },
-      })
-      if (sessionId !== liveScanSessionRef.current) {
-        for (const track of stream.getTracks()) {
-          track.stop()
-        }
-        return
-      }
-
-      liveScanStreamRef.current = stream
-      const video = await waitForLiveScanVideo(sessionId)
-      await new Promise<void>((resolve, reject) => {
-        const timeoutId = window.setTimeout(() => {
-          reject(new Error('No se pudo inicializar la cámara para escaneo.'))
-        }, 3500)
-        const onLoaded = () => {
-          video.removeEventListener('loadedmetadata', onLoaded)
-          video.removeEventListener('error', onError)
-          window.clearTimeout(timeoutId)
-          resolve()
-        }
-        const onError = () => {
-          video.removeEventListener('loadedmetadata', onLoaded)
-          video.removeEventListener('error', onError)
-          window.clearTimeout(timeoutId)
-          reject(new Error('No se pudo abrir la cámara para escanear.'))
-        }
-        video.addEventListener('loadedmetadata', onLoaded, { once: true })
-        video.addEventListener('error', onError, { once: true })
-        video.srcObject = stream
-      })
-      video.setAttribute('playsinline', 'true')
-      await video.play().catch(() => undefined)
-      setLiveScanStatus(
-        target === 'dni'
-          ? 'Cámara lista. Toma la foto del frente del DNI y luego presiona “Leer foto guardada”.'
-          : 'Cámara lista. Toma la foto de la credencial y luego presiona “Leer foto guardada”.',
-      )
-
-      // El escaneo automático se desactiva por compatibilidad móvil. La lectura robusta se hace
-      // siempre a partir de la foto capturada del documento y la lectura manual posterior.
-      liveDecodeBusyRef.current = false
-      lastLiveDetectedRawRef.current = ''
-      lastLiveDetectedAtRef.current = 0
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'No se pudo abrir la cámara para escaneo.'
-      stopLiveScanner()
-      setAppError(message)
-    }
-  }
-
-  async function autofillFromDniBarcode(file: File): Promise<void> {
-    let parsed: Partial<PatientDraft> | null =
-      (await detectBarcodesFromImage(file, ['pdf417']))
-        .map((item) => parseDniFromBarcode(item.rawValue))
-        .find((entry) => hasParsedDniData(entry)) ?? null
-
-    if (!parsed) {
-      parsed = await parseDniFromFileWithZxing(file)
-    }
-
-    if (!parsed) {
-      setAppNotice('No encontré datos legibles en el código de barras del DNI.')
-      return
-    }
-
-    const changed = applyPatientAutofill(parsed)
-    setAppNotice(
-      changed
-        ? 'DNI escaneado: se autocompletaron datos de la ficha.'
-        : 'DNI leído correctamente, pero los datos ya estaban cargados.',
-    )
-  }
-
-  async function autofillFromInsuranceQr(file: File): Promise<void> {
-    let parsed: Partial<PatientDraft> | null =
-      (await detectBarcodesFromImage(file, ['qr_code']))
-        .map((item) => parseInsuranceFromQr(item.rawValue))
-        .find((entry) => entry.obraSocial || entry.numeroAfiliado || entry.plan) ?? null
-
-    if (!parsed) {
-      parsed = await parseInsuranceFromFileWithZxing(file)
-    }
-
-    if (!parsed) {
-      setAppNotice('No encontré datos de obra social/afiliado en el QR del carnet.')
-      return
-    }
-
-    const changed = applyPatientAutofill(parsed)
-    setAppNotice(
-      changed
-        ? 'QR escaneado: se autocompletaron obra social, afiliado y plan.'
-        : 'QR leído correctamente, pero los datos ya estaban cargados.',
-    )
-  }
-
-  async function handleSingleUpload(
-    event: ChangeEvent<HTMLInputElement>,
-    field: 'photoCarnet' | 'dniPhoto' | 'matriculaPhoto' | 'signatureImage',
-  ): Promise<void> {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) {
-      return
-    }
-
-    const storedFile = await fileToStoredFile(file)
-    if (field === 'photoCarnet' || field === 'dniPhoto') {
-      setPatientDraft((current) => ({ ...current, [field]: storedFile }))
-      setAppError(null)
-      try {
-        if (field === 'dniPhoto') {
-          await autofillFromDniBarcode(file)
-        } else {
-          await autofillFromInsuranceQr(file)
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'No se pudo escanear el código.'
-        setAppError(message)
-      }
-      return
-    }
-
-    if (profile) {
-      const nextProfile = { ...profile, [field]: storedFile }
-      setProfile(nextProfile)
-      persistProfile(nextProfile)
-    }
-  }
-
-  function openFileDialog(inputId: string): void {
-    const input = document.getElementById(inputId)
-    if (!input || !(input instanceof HTMLInputElement)) {
-      setAppError('No se pudo abrir la cámara/galería en este dispositivo.')
-      return
-    }
-    input.click()
-  }
-
-  async function handleDocumentsUpload(event: ChangeEvent<HTMLInputElement>): Promise<void> {
-    const files = Array.from(event.target.files ?? [])
-    if (files.length === 0) {
-      return
-    }
-
-    const patientName = `${patientDraft.nombre} ${patientDraft.apellido}`.trim() || 'Paciente'
-
-    const storedFiles = await Promise.all(
-      files.map(async (file) => {
-        const stored = await fileToStoredFile(file)
-        const lower = file.name.toLowerCase()
-        const ext = lower.includes('.') ? lower.split('.').pop() ?? '' : ''
-        let prefix = 'Documento'
-        if (/\bdni\b/.test(lower)) prefix = 'DNI'
-        else if (/carnet|credencial|obrasocial|obra_social/.test(lower)) prefix = 'Credencial'
-        else if (/historia|clinica|hc\b/.test(lower)) prefix = 'HistoriaClinica'
-        else if (/receta|prescription/.test(lower)) prefix = 'Receta'
-        else if (/laborat|lab\b/.test(lower)) prefix = 'Laboratorio'
-        else if (/image|foto|photo/.test(lower) || file.type.startsWith('image/')) prefix = 'Imagen'
-        const structuredName = `${prefix}-${patientName}${ext ? '.' + ext : ''}`.replace(/\s+/g, '_')
-        return { ...stored, name: structuredName }
-      }),
-    )
-    setPatientDraft((current) => ({
-      ...current,
-      documents: [...current.documents, ...storedFiles],
-    }))
-  }
-
   function handlePatientDraftChange(
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ): void {
@@ -6422,6 +6077,43 @@ function App() {
   ): void {
     const { name, value } = event.target
     setConsultationDraft((current) => ({ ...current, [name]: value }))
+  }
+
+  async function handleSofiaClinicalDocumentUpload(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!selectedPatient) {
+      setAppError('Seleccioná un paciente antes de subir un laboratorio a Sofía.')
+      return
+    }
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+    if (!isPdf && !/\.(txt|csv|md|json)$/i.test(file.name) && !file.type.startsWith('text/')) {
+      setAppError('Por ahora Sofía puede leer archivos de laboratorio en formato PDF, TXT, CSV, MD o JSON.')
+      return
+    }
+    let text = ''
+    if (isPdf) {
+      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), disableWorker: true }).promise
+      const pages: string[] = []
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber)
+        const content = await page.getTextContent()
+        pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '))
+      }
+      text = pages.join('\n\n').trim()
+    } else {
+      text = (await file.text()).trim()
+    }
+    if (!text) {
+      setAppError('El archivo no contiene texto legible.')
+      return
+    }
+    setConsultationDraft((current) => ({
+      ...current,
+      detalleAtencion: [current.detalleAtencion.trim(), `Laboratorio adjunto (${file.name}):\n${text}`].filter(Boolean).join('\n\n'),
+    }))
+    setAppNotice(`Laboratorio ${file.name} cargado en el borrador. Usá Sofía para ordenarlo y luego guardá la evolución.`)
   }
 
   async function summarizeClinicalInterview(): Promise<void> {
@@ -6609,7 +6301,7 @@ function App() {
     }
   }
 
-  function handleProfileFieldChange(event: ChangeEvent<HTMLInputElement>): void {
+  function handleProfileFieldChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>): void {
     const { name, value } = event.target
     if (!profile || !name) {
       return
@@ -6622,136 +6314,13 @@ function App() {
     setPasswordChangeDraft((current) => ({ ...current, [name]: value }))
   }
 
-  function getCanvasPoint(
-    canvas: HTMLCanvasElement,
-    event: ReactPointerEvent<HTMLCanvasElement>,
-  ): { x: number; y: number } {
-    const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
-    return {
-      x: (event.clientX - rect.left) * scaleX,
-      y: (event.clientY - rect.top) * scaleY,
-    }
-  }
-
-  function handleSignaturePointerDown(event: ReactPointerEvent<HTMLCanvasElement>): void {
-    const canvas = signatureCanvasRef.current
-    if (!canvas) {
-      return
-    }
-    const context = canvas.getContext('2d')
-    if (!context) {
-      setAppError('No se pudo inicializar el pad de firma.')
-      return
-    }
-
-    const point = getCanvasPoint(canvas, event)
-    signatureDrawingRef.current = true
-    signatureHasStrokeRef.current = true
-    context.beginPath()
-    context.moveTo(point.x, point.y)
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  function handleSignaturePointerMove(event: ReactPointerEvent<HTMLCanvasElement>): void {
-    if (!signatureDrawingRef.current) {
-      return
-    }
-    const canvas = signatureCanvasRef.current
-    if (!canvas) {
-      return
-    }
-    const context = canvas.getContext('2d')
-    if (!context) {
-      return
-    }
-
-    const point = getCanvasPoint(canvas, event)
-    context.lineTo(point.x, point.y)
-    context.stroke()
-  }
-
-  function handleSignaturePointerUp(event: ReactPointerEvent<HTMLCanvasElement>): void {
-    if (!signatureDrawingRef.current) {
-      return
-    }
-    signatureDrawingRef.current = false
-    event.currentTarget.releasePointerCapture(event.pointerId)
-  }
-
-  function handleClearSignaturePad(): void {
-    const canvas = signatureCanvasRef.current
-    if (!canvas) {
-      return
-    }
-    const context = canvas.getContext('2d')
-    if (!context) {
-      setAppError('No se pudo limpiar el pad de firma.')
-      return
-    }
-
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, canvas.width, canvas.height)
-    context.lineWidth = 2.2
-    context.lineCap = 'round'
-    context.lineJoin = 'round'
-    context.strokeStyle = '#0f172a'
-    signatureHasStrokeRef.current = false
-    setAppNotice('Pad de firma limpio.')
-  }
-
-  function handleSaveHandwrittenSignature(): void {
-    if (!profile) {
-      return
-    }
-    const canvas = signatureCanvasRef.current
-    if (!canvas) {
-      setAppError('No se encontró el pad de firma.')
-      return
-    }
-    if (!signatureHasStrokeRef.current) {
-      setAppError('Primero dibuja la firma en el pad.')
-      return
-    }
-
-    const dataUrl = canvas.toDataURL('image/png')
-    const storedFile: StoredFile = {
-      id: crypto.randomUUID(),
-      name: 'firma-manual.png',
-      type: 'image/png',
-      size: Math.round((dataUrl.length * 3) / 4),
-      dataUrl,
-      uploadedAt: new Date().toISOString(),
-    }
-
-    const nextProfile = {
-      ...profile,
-      signatureImage: storedFile,
-    }
-    setProfile(nextProfile)
-    persistProfile(nextProfile)
-    setAppError(null)
-    setAppNotice('Firma manual guardada correctamente.')
-    showSavedFloatingNotice()
-  }
-
-  function handleToggleCommunity(): void {
-    if (!isModuleEnabled('community')) {
-      setAppError('El módulo Comunidad no está habilitado para tu cuenta.')
-      return
-    }
-    setCommunityOpen((current) => !current)
-    setAppError(null)
-    setAppNotice(null)
-  }
-
-  function handleToggleCommunityNetworkFilter(network: string): void {
-    setCommunityNetworkFilters((current) =>
-      current.includes(network)
-        ? current.filter((entry) => entry !== network)
-        : [...current, network],
-    )
+  /** Las pestañas de Herramientas ahora incluyen Comunidad: al salir se corta el polling. */
+  function handleSelectToolsTab(tab: 'protocols' | 'vademecum' | 'consult' | 'community'): void {
+    const profession = normalizeSearchText(activeUser?.specialty || profile?.specialty || '')
+    const restrictedProfession = profession.includes('psic') || profession.includes('odont')
+    const safeTab = restrictedProfession && (tab === 'protocols' || tab === 'consult') ? 'vademecum' : tab
+    setToolsActiveTab(safeTab)
+    setCommunityOpen(safeTab === 'community')
   }
 
   function handleToggleThemeMode(): void {
@@ -6815,6 +6384,10 @@ function App() {
       setAppError('El módulo Herramientas no está habilitado para tu cuenta.')
       return
     }
+    const profession = normalizeSearchText(activeUser?.specialty || profile?.specialty || '')
+    if (profession.includes('psic') || profession.includes('odont')) {
+      setToolsActiveTab('vademecum')
+    }
     stopDictation()
     setCommunityOpen(false)
     setWorkspaceLayer('tools')
@@ -6851,11 +6424,12 @@ function App() {
     setAppError(null)
   }
 
-  function saveAppointmentCapacity(nextDays: number[], nextLimit: number, nextStartTime = appointmentStartTime, nextEndTime = appointmentEndTime): void {
+  function saveAppointmentCapacity(nextDays: number[], nextStartTime = appointmentStartTime, nextEndTime = appointmentEndTime, nextDuration = appointmentDurationMinutes): void {
     const normalizedDays = Array.from(new Set(nextDays)).filter((day) => day >= 0 && day <= 6)
-    const normalizedLimit = Math.max(1, Math.min(100, Math.round(nextLimit)))
+    const normalizedLimit = Math.max(1, Math.min(100, calculateDailyCapacity(nextStartTime, nextEndTime, nextDuration)))
     const normalizedStartTime = /^\d{2}:\d{2}$/.test(nextStartTime) ? nextStartTime : DEFAULT_APPOINTMENT_START_TIME
     const normalizedEndTime = /^\d{2}:\d{2}$/.test(nextEndTime) ? nextEndTime : DEFAULT_APPOINTMENT_END_TIME
+    const normalizedDuration = Math.max(5, Math.min(240, Math.round(nextDuration)))
     if (normalizedStartTime >= normalizedEndTime) {
       setAppError('El horario Desde debe ser anterior al horario Hasta.')
       return
@@ -6864,18 +6438,45 @@ function App() {
     setDailyPatientLimit(normalizedLimit)
     setAppointmentStartTime(normalizedStartTime)
     setAppointmentEndTime(normalizedEndTime)
+    setAppointmentDurationMinutes(normalizedDuration)
     if (!activeUserId || !profile) return
     const nextProfile = {
       ...profile,
       appointmentDays: normalizedDays,
       dailyPatientLimit: normalizedLimit,
+      appointmentDurationMinutes: normalizedDuration,
+      appointmentAmountToCharge: Number(appointmentAmountToCharge) > 0 ? Number(appointmentAmountToCharge) : undefined,
+      appointmentAmountConcept,
       appointmentStartTime: normalizedStartTime,
       appointmentEndTime: normalizedEndTime,
     }
     setProfile(nextProfile)
     localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
     void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments, treatmentLedger)
-    setAppNotice(`Cupo actualizado: ${normalizedLimit} pacientes por día · ${WEEK_DAYS.filter((day) => normalizedDays.includes(day.value)).map((day) => day.label).join(', ')}.`)
+    setAppNotice(`Configuración guardada: ${normalizedLimit} turnos posibles por día.`)
+  }
+
+  function saveAppointmentAmount(): void {
+    if (!activeUserId || !profile) return
+    const nextProfile = {
+      ...profile,
+      appointmentAmountToCharge: Number(appointmentAmountToCharge) > 0 ? Number(appointmentAmountToCharge) : undefined,
+      appointmentAmountConcept,
+    }
+    setProfile(nextProfile)
+    localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
+    void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments, treatmentLedger)
+  }
+
+  function handleAppointmentAmountChange(value: string): void {
+    setAppointmentAmountToCharge(value)
+    if (!activeUserId || !profile) return
+    const nextProfile = {
+      ...profile,
+      appointmentAmountToCharge: Number(value) > 0 ? Number(value) : undefined,
+    }
+    setProfile(nextProfile)
+    localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
   }
 
   function handleNewAppointmentModal(prefillPatient?: PatientRecord | null, prefillDate?: string): void {
@@ -7088,6 +6689,40 @@ function App() {
     setAppNotice('Registro eliminado del balance.')
   }
 
+  /** Envía por email el mismo recordatorio de saldo pendiente que puede generar Sofía. */
+  async function handleSendLedgerPaymentReminder(entryId: string): Promise<void> {
+    const entry = treatmentLedger.find((e) => e.id === entryId)
+    if (!entry) return
+    const pending = entry.totalAmount - entry.paidAmount
+    if (pending <= 0) {
+      setAppNotice(`El tratamiento de ${entry.patientName} ya está saldado.`)
+      return
+    }
+    const patient = patients.find((p) => p.id === entry.patientId)
+    const relatedAppointment = appointments.find((appointment) => appointment.patientId === entry.patientId && appointment.patientEmail?.trim())
+    const email = patient?.email?.trim() || relatedAppointment?.patientEmail?.trim()
+    if (!email) {
+      setAppError(`${entry.patientName} no tiene un email cargado para enviarle el recordatorio.`)
+      return
+    }
+    setLedgerReminderSendingId(entryId)
+    const message = `Hola ${patient?.nombre || entry.patientName},\n\nTe informamos el saldo pendiente registrado:\n\nTratamiento: ${entry.intervention}\nTotal: ${formatMoney(entry.totalAmount)}\nPagado: ${formatMoney(entry.paidAmount)}\nPendiente: ${formatMoney(pending)}\n\nSaludos cordiales.`
+    const result = await sendEmail({
+      to: email,
+      subject: 'Recordatorio de saldo pendiente',
+      type: 'custom',
+      text: message,
+      templateData: { message },
+    })
+    setLedgerReminderSendingId(null)
+    if (result.success) {
+      setAppNotice(`Recordatorio de pago enviado a ${entry.patientName}.`)
+      showSavedFloatingNotice()
+    } else {
+      setAppError(`No se pudo enviar el recordatorio: ${result.message || 'error de envío'}.`)
+    }
+  }
+
   async function handleSaveAppointment(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!activeUserId) return
@@ -7294,26 +6929,98 @@ function App() {
     showSavedFloatingNotice('Turno cancelado')
   }
 
-  // --- NUEVA función "Turnos libres" (independiente de la Turnera) ---
-  function handleOpenFreeSlotModal(): void {
-    setFreeSlotError(null)
-    setFreeSlotGeneratedUrl(null)
-    setPublicBookingError(null)
-    setPublicBookingNotice(null)
-    setFreeSlotDraft({
-      slotDate: todayLocalISO(),
-      startTime: '09:00',
-      endTime: '17:00',
-      slotCount: 5,
-      durationMinutes: 30,
-      location: '',
-      reason: '',
-      amountToCharge: '',
-      amountConcept: 'consulta' as 'sena' | 'consulta',
-    })
-    setFreeSlotModalOpen(true)
-    void refreshFreeSlotLinks()
-    void refreshPublicBookingSettings()
+  async function handleGenerateFixedBookingLink(): Promise<void> {
+    if (!activeUserId) return
+    const current = publicBookingSettings || buildDefaultPublicBookingSettings()
+    if (!current) return
+    if (!mercadoPagoConnected) {
+      setAppError('Conectá y verificá tu cuenta de Mercado Pago antes de publicar la turnera particular.')
+      return
+    }
+    if (Number(appointmentAmountToCharge) <= 0) {
+      setAppError('Cargá el monto de la consulta antes de publicar la turnera particular.')
+      return
+    }
+    const block = {
+      ...(current.blocks[0] || {}),
+      id: current.blocks[0]?.id || crypto.randomUUID(),
+      label: 'Turno disponible',
+      modality: 'private' as const,
+      days: appointmentDays,
+      startTime: appointmentStartTime,
+      endTime: appointmentEndTime,
+      durationMinutes: appointmentDurationMinutes,
+      slotCount: calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes),
+      reason: current.blocks[0]?.reason || 'Consulta médica',
+      amountToCharge: Number(appointmentAmountToCharge) > 0 ? Number(appointmentAmountToCharge) : undefined,
+      amountConcept: appointmentAmountConcept,
+    }
+    const professionalName = profile?.fullName || activeUser?.fullName || current.professionalName || 'profesional'
+    const baseSlug = buildDefaultPublicBookingSlug(professionalName, activeUserId)
+    const settings = { ...current, professionalId: activeUserId, professionalName, slug: current.slug || baseSlug, enabled: true, blocks: [block] }
+    setPublicBookingSaving(true)
+    const result = await savePublicBookingSettings(settings)
+    setPublicBookingSaving(false)
+    if (!result.success || !result.settings) {
+      setAppError(result.message || 'No se pudo generar el link fijo.')
+      return
+    }
+    setPublicBookingSettings(result.settings)
+    const url = buildFixedPublicBookingUrl(result.settings.slug)
+    setFreeSlotGeneratedUrl(url)
+    setAppNotice('Turnera pública publicada. Link fijo generado.')
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      await navigator.share({ title: `Turnera de ${profile?.fullName || activeUser?.fullName || 'Dr Happy'}`, text: 'Elegí tu turno disponible:', url }).catch(() => {
+        window.open(buildWhatsAppShareUrl(url, profile?.fullName || activeUser?.fullName), '_blank', 'noopener,noreferrer')
+      })
+    } else {
+      window.open(buildWhatsAppShareUrl(url, profile?.fullName || activeUser?.fullName), '_blank', 'noopener,noreferrer')
+    }
+  }
+
+  async function handleConnectMercadoPago(): Promise<void> {
+    setMercadoPagoConnectionBusy(true)
+    setAppError(null)
+    try {
+      const result = await startMercadoPagoConnection()
+      if (!result.success || !result.authorizationUrl) {
+        setAppError(result.message || 'No se pudo iniciar la conexión con Mercado Pago.')
+        return
+      }
+      window.location.assign(result.authorizationUrl)
+    } finally {
+      setMercadoPagoConnectionBusy(false)
+    }
+  }
+
+  async function handleDisconnectMercadoPago(): Promise<void> {
+    if (!window.confirm('¿Desconectar tu cuenta de Mercado Pago? Los cobros futuros dejarán de usarla.')) return
+    setMercadoPagoConnectionBusy(true)
+    try {
+      const result = await disconnectMercadoPago()
+      if (!result.success) {
+        setAppError(result.message || 'No se pudo desconectar Mercado Pago.')
+        return
+      }
+      setMercadoPagoConnected(false)
+      setMercadoPagoAccountEmail(null)
+      setAppNotice('Cuenta de Mercado Pago desconectada.')
+    } finally {
+      setMercadoPagoConnectionBusy(false)
+    }
+  }
+
+  async function handleVerifyMercadoPago(): Promise<void> {
+    setMercadoPagoConnectionBusy(true)
+    setMercadoPagoVerificationMessage(null)
+    try {
+      const result = await verifyMercadoPagoConnection()
+      setMercadoPagoConnected(Boolean(result.success && result.connected))
+      setMercadoPagoAccountEmail(result.account?.public_email ?? null)
+      setMercadoPagoVerificationMessage(result.connected ? 'Conexión verificada con Mercado Pago.' : result.message || 'La conexión necesita revisión.')
+    } finally {
+      setMercadoPagoConnectionBusy(false)
+    }
   }
 
   async function refreshFreeSlotLinks(): Promise<void> {
@@ -7333,7 +7040,6 @@ function App() {
     if (!activeUserId) return null
     const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
     const professionalName = currentProf?.fullName || activeUser?.fullName || 'Profesional Dr Happy'
-    const paymentLink = currentProf?.paymentLink?.trim() || ''
     return {
       professionalId: activeUserId,
       slug: buildDefaultPublicBookingSlug(professionalName, activeUserId),
@@ -7345,30 +7051,15 @@ function App() {
       blocks: [
         {
           id: crypto.randomUUID(),
-          label: 'Paciente con obra social',
-          modality: 'coverage',
-          days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
-          startTime: '09:00',
-          endTime: '12:00',
-          durationMinutes: 30,
-          slotCount: 5,
-          location: '',
-          reason: 'Consulta médica',
-        },
-        {
-          id: crypto.randomUUID(),
-          label: 'Paciente particular',
+          label: 'Turno disponible',
           modality: 'private',
           days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
-          startTime: '16:00',
-          endTime: '18:30',
-          durationMinutes: 30,
-          slotCount: 5,
+          startTime: appointmentStartTime,
+          endTime: appointmentEndTime,
+          durationMinutes: appointmentDurationMinutes,
+          slotCount: calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes),
           location: '',
-          reason: 'Consulta particular',
-          amountToCharge: 25000,
-          amountConcept: 'consulta',
-          paymentLink,
+          reason: 'Consulta médica',
         },
       ],
     }
@@ -7380,14 +7071,22 @@ function App() {
     try {
       const result = await getPublicBookingSettings(activeUserId)
       if (result.success && result.settings) {
-        const blocksByModality = new Map(result.settings.blocks.map((block) => [block.modality, block]))
+        const existingBlock = result.settings.blocks[0]
         setPublicBookingSettings({
           ...result.settings,
-          blocks: Array.from(blocksByModality.values()).map((block) => ({
-            ...block,
-            label: block.modality === 'private' ? 'Paciente particular' : 'Paciente con obra social',
-          })),
+          blocks: [{
+            ...(existingBlock || buildDefaultPublicBookingSettings()!.blocks[0]),
+            label: 'Turno disponible',
+            modality: 'private',
+            days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
+            startTime: appointmentStartTime,
+            endTime: appointmentEndTime,
+            durationMinutes: appointmentDurationMinutes,
+            slotCount: calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes),
+          }],
         })
+        setAppointmentAmountToCharge(existingBlock?.amountToCharge ? String(existingBlock.amountToCharge) : '')
+        setAppointmentAmountConcept(existingBlock?.amountConcept === 'consulta' ? 'consulta' : 'sena')
       } else {
         setPublicBookingSettings(buildDefaultPublicBookingSettings())
       }
@@ -7401,6 +7100,13 @@ function App() {
       ? { ...current, blocks: current.blocks.map((block) => (block.id === blockId ? { ...block, ...patch } : block)) }
       : current)
   }
+
+  /* El checklist de Inicio necesita saber si la turnera pública ya está publicada. */
+  useEffect(() => {
+    if (!activeUserId) return
+    void refreshPublicBookingSettings()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeUserId])
 
   function togglePublicBookingBlockDay(blockId: string, dayValue: number): void {
     setPublicBookingSettings((current) => current
@@ -7749,24 +7455,18 @@ function App() {
       sentAt: new Date().toISOString(),
     }
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase
-        .from('community_messages')
-        .insert({
-          sender_id: nextMessage.senderId,
-          recipient_id: nextMessage.recipientId,
-          text: nextMessage.text,
-          attachments_json: nextMessage.attachments,
-          sent_at: nextMessage.sentAt,
-        })
-        .select('id, sender_id, recipient_id, text, attachments_json, sent_at')
-        .single()
-      if (error) {
-        setAppError(`No se pudo enviar el mensaje al servidor: ${error.message}`)
+      const result = await communityRequest({
+        action: 'send',
+        recipientId: nextMessage.recipientId,
+        text: nextMessage.text,
+        attachments: nextMessage.attachments,
+      })
+      if (!result.success) {
+        setAppError(`No se pudo enviar el mensaje al servidor: ${result.message || 'error desconocido'}`)
         return
       }
-      const persisted = mapRemoteCommunityMessage(data as RemoteCommunityMessageRow)
       setCommunityMessages((current) =>
-        [...current, persisted].sort((a, b) => a.sentAt.localeCompare(b.sentAt)),
+        [...current, nextMessage].sort((a, b) => a.sentAt.localeCompare(b.sentAt)),
       )
     } else {
       const key = communityThreadStorageKey(activeUserId, communityTargetId)
@@ -7800,6 +7500,26 @@ function App() {
       body: pushBody,
       tag: `drhappy-chat-${activeUserId}`,
     })
+  }
+
+  /** Elimina un mensaje propio del chat de comunidad, por si se envió por error. */
+  async function handleDeleteCommunityMessage(messageId: string): Promise<void> {
+    if (!window.confirm('¿Eliminar este mensaje?')) {
+      return
+    }
+    if (isSupabaseConfigured && supabase) {
+      const result = await communityRequest({ action: 'delete', messageId })
+      if (!result.success) {
+        setAppError(`No se pudo eliminar el mensaje: ${result.message || 'error desconocido'}`)
+        return
+      }
+    } else if (activeUserId && communityTargetId) {
+      const key = communityThreadStorageKey(activeUserId, communityTargetId)
+      const currentThread = readJsonStorage<CommunityMessage[]>(key, [])
+      const nextThread = currentThread.filter((message) => message.id !== messageId)
+      localStorage.setItem(key, JSON.stringify(nextThread))
+    }
+    setCommunityMessages((current) => current.filter((message) => message.id !== messageId))
   }
 
   async function handleSaveProfile(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -8227,143 +7947,6 @@ function App() {
     )
   }
 
-  async function handleImportPadronExcel(event: ChangeEvent<HTMLInputElement>): Promise<void> {
-    if (!activeUserId) {
-      return
-    }
-    const file = event.target.files?.[0]
-    if (!file) {
-      return
-    }
-
-    const buffer = await file.arrayBuffer()
-    const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.load(buffer)
-    const worksheet = workbook.worksheets[0]
-    if (!worksheet) {
-      setAppError('El Excel no tiene hojas con datos.')
-      return
-    }
-
-    const headerValues: string[] = []
-    worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, columnNumber) => {
-      headerValues[columnNumber - 1] = asText(cell.value)
-    })
-    const rows: Array<Record<string, unknown>> = []
-    worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return
-      const record: Record<string, unknown> = {}
-      row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
-        const header = headerValues[columnNumber - 1]
-        if (header) record[header] = cell.value instanceof Date ? cell.value : asText(cell.value)
-      })
-      if (Object.keys(record).length > 0) rows.push(record)
-    })
-
-    if (rows.length === 0) {
-      setAppError('El padrón está vacío.')
-      return
-    }
-
-    const byDni = new Map(patients.map((patient) => [patient.dni, patient]))
-    const imported: PatientRecord[] = []
-    let skipped = 0
-
-    for (const row of rows) {
-      const normalizedRow = new Map<string, string>()
-      for (const [key, value] of Object.entries(row)) {
-        normalizedRow.set(normalizeHeader(key), asText(value))
-      }
-
-      const apellido =
-        normalizedRow.get('apellido') ??
-        normalizedRow.get('apellidos') ??
-        normalizedRow.get('lastname') ??
-        ''
-      const dni = normalizedRow.get('dni') ?? normalizedRow.get('documento') ?? ''
-
-      if (!apellido || !dni) {
-        skipped += 1
-        continue
-      }
-
-      const nombre =
-        normalizedRow.get('nombre') ??
-        normalizedRow.get('nombres') ??
-        normalizedRow.get('firstname') ??
-        ''
-      const obraSocial =
-        normalizedRow.get('obrasocial') ??
-        normalizedRow.get('cobertura') ??
-        normalizedRow.get('seguro') ??
-        ''
-      const numeroAfiliado =
-        normalizedRow.get('numeroafiliado') ??
-        normalizedRow.get('nroafiliado') ??
-        normalizedRow.get('afiliado') ??
-        normalizedRow.get('nrosocio') ??
-        normalizedRow.get('socio') ??
-        ''
-      const plan =
-        normalizedRow.get('plan') ??
-        normalizedRow.get('plancobertura') ??
-        normalizedRow.get('producto') ??
-        ''
-      const email =
-        normalizedRow.get('email') ?? normalizedRow.get('correo') ?? normalizedRow.get('mail') ?? ''
-      const birthDate = excelDateToIso(
-        normalizedRow.get('fechadenacimiento') ??
-          normalizedRow.get('nacimiento') ??
-          normalizedRow.get('birthdate') ??
-          '',
-      )
-
-      const existing = byDni.get(dni)
-      if (existing && existing.ownerUserId !== activeUserId) {
-        skipped += 1
-        continue
-      }
-      const now = new Date().toISOString()
-      imported.push({
-        id: existing?.id ?? crypto.randomUUID(),
-        ownerUserId: existing?.ownerUserId ?? activeUserId,
-        nombre,
-        apellido,
-        dni,
-        email,
-        obraSocial,
-        numeroAfiliado,
-        plan,
-        birthDate,
-        edad: calculateAge(birthDate),
-        patologiasConocidas: existing?.patologiasConocidas ?? '',
-        patologiasCronicas: existing?.patologiasCronicas ?? '',
-        ultimaInternacion: existing?.ultimaInternacion ?? '',
-        cirugiasPrevias: existing?.cirugiasPrevias ?? '',
-        direccion: existing?.direccion ?? '',
-        photoCarnet: existing?.photoCarnet,
-        dniPhoto: existing?.dniPhoto,
-        documents: existing?.documents ?? [],
-        consultations: existing?.consultations ?? [],
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      })
-    }
-
-    if (imported.length === 0) {
-      setAppError('No se detectaron filas válidas. Verifica que existan columnas Apellido y DNI.')
-      setAppNotice(null)
-      return
-    }
-
-    persistPatientsBatch(imported)
-    setWorkspaceLayer('patient-search')
-    setAppError(null)
-    setAppNotice(
-      `Padrón importado: ${imported.length} pacientes agregados/actualizados${skipped > 0 ? `, ${skipped} filas omitidas` : ''}.`,
-    )
-  }
-
   function exportSelectedPatient(): void {
     if (!selectedPatient) {
       return
@@ -8777,8 +8360,19 @@ function App() {
             </section>
           )}
           {registerOpen ? (
-            <form className="grid register-form" onSubmit={handleCreateUser}>
-              <h2>Nuevo profesional</h2>
+            <div className="drhappy-modal-overlay" onClick={() => setRegisterOpen(false)}>
+              <div
+                className="drhappy-modal-card register-modal-card"
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="register-modal-title"
+              >
+                <div className="drhappy-modal-header">
+                  <h2 id="register-modal-title">Nuevo profesional</h2>
+                  <button type="button" className="ghost compact" onClick={() => setRegisterOpen(false)} aria-label="Cerrar registro">×</button>
+                </div>
+                <form className="grid register-form" onSubmit={handleCreateUser}>
               <label>
                 Nombre
                 <input
@@ -8809,33 +8403,18 @@ function App() {
                 />
               </label>
               <label>
-                Especialidad (ej: Traumatología, Hematología)
-                <input
+                Profesión
+                <select
                   name="specialty"
                   value={registerDraft.specialty}
                   onChange={handleRegisterFieldChange}
-                  autoComplete="off"
                   required
-                />
-                {registerDraft.specialty.trim() && registerSpecialtySuggestions.length > 0 ? (
-                  <ul className="specialty-suggestions">
-                    {registerSpecialtySuggestions.map((specialty) => (
-                      <li key={specialty}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setRegisterDraft((current) => ({ ...current, specialty }))
-                          }
-                        >
-                          {specialty}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                <small>
-                  Podés elegir una sugerencia o escribir una especialidad nueva para incorporarla al catálogo.
-                </small>
+                >
+                  <option value="">Seleccioná tu profesión</option>
+                  <option value="Médico">Médico</option>
+                  <option value="Odontólogo">Odontólogo</option>
+                  <option value="Psicólogo">Psicólogo</option>
+                </select>
               </label>
               <label>
                 Matrícula
@@ -8916,24 +8495,10 @@ function App() {
                 </div>
                 <small>Mínimo 6 caracteres.</small>
               </label>
-              <fieldset className="register-networks-fieldset">
-                <legend>Redes en las que trabaja</legend>
-                <div className="register-networks-grid">
-                  {PROFESSIONAL_NETWORK_OPTIONS.map((network) => (
-                    <label key={network} className="toggle-option">
-                      <input
-                        type="checkbox"
-                        checked={registerDraft.networkMemberships.includes(network)}
-                        onChange={() => handleRegisterNetworkToggle(network)}
-                      />
-                      <span className="toggle-switch" aria-hidden="true" />
-                      <span>{network}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-              <button type="submit">Guardar usuario</button>
-            </form>
+                  <button type="submit">Guardar usuario</button>
+                </form>
+              </div>
+            </div>
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
@@ -8961,15 +8526,11 @@ function App() {
               </div>
               <div className="drhappy-modal-body">
                 <p style={{ margin: '0 0 16px', color: '#475569', fontSize: '0.92rem', lineHeight: 1.5 }}>
-                  Estamos a tu disposición para soporte técnico inmediato, consultas sobre tu cuenta, sugerencias o dudas sobre el funcionamiento de DrHappy.
+                  Para recibir soporte, escribinos a soporte@drhappy.com.ar.
                 </p>
                 <div className="drhappy-contact-options">
                   <a
-                    href={`mailto:soporte@drhappy.com.ar?subject=${encodeURIComponent(
-                      'Soporte DrHappy - Consulta desde acceso'
-                    )}&body=${encodeURIComponent(
-                      `Dispositivo: ${navigator.userAgent}\nURL: ${window.location.href}\n\nDetalle de la consulta o duda de acceso:\n`
-                    )}`}
+                    href="mailto:soporte@drhappy.com.ar"
                     className="drhappy-contact-btn email"
                   >
                     <span className="contact-icon">✉️</span>
@@ -8979,24 +8540,6 @@ function App() {
                     </div>
                   </a>
 
-                  <button
-                    type="button"
-                    className="drhappy-contact-btn diagnostic"
-                    onClick={() => {
-                      const info = `=== Diagnóstico DrHappy ===\nFecha: ${new Date().toISOString()}\nUsuario: Pantalla de acceso\nURL: ${window.location.href}\nNavegador: ${navigator.userAgent}\nPWA Instalada / Standalone: ${window.matchMedia('(display-mode: standalone)').matches ? 'Sí' : 'No'}\nPermiso Notificaciones: ${('Notification' in window) ? Notification.permission : 'No soportado'}\nServiceWorker: ${('serviceWorker' in navigator) ? 'Soportado' : 'No soportado'}`
-                      navigator.clipboard.writeText(info).then(() => {
-                        showSavedFloatingNotice('📋 Información técnica copiada al portapapeles')
-                      }).catch(() => {
-                        showSavedFloatingNotice('No se pudo copiar automáticamente')
-                      })
-                    }}
-                  >
-                    <span className="contact-icon">📋</span>
-                    <div>
-                      <strong>Copiar diagnóstico del dispositivo</strong>
-                      <small>Copia detalles técnicos para adjuntar en tu consulta</small>
-                    </div>
-                  </button>
                 </div>
               </div>
               <div className="drhappy-modal-footer">
@@ -9017,8 +8560,6 @@ function App() {
 
   // ── Pantalla de acceso vencido ────────────────────────────────────────────
   if (trialInfo?.expired || previewTrialExpired) {
-    const expiredByPatients = trialInfo?.expiredByPatients ?? false
-    const expiredByTime = trialInfo?.expiredByTime ?? true
     const expiredBySubscription = trialInfo?.expiredBySubscription ?? false
     const isPlanPreview = previewTrialExpired && !trialInfo?.expired
     return (
@@ -9037,11 +8578,7 @@ function App() {
               ? <>Elegí entre <strong>30 días</strong>, <strong>6 meses</strong> o <strong>1 año</strong> de acceso completo.</>
               : expiredBySubscription
               ? <>Ya pasaron los <strong>30 días</strong> de tu suscripción actual.</>
-              : expiredByPatients && !expiredByTime
-              ? <>Alcanzaste el límite de <strong>15 pacientes</strong> del período de prueba gratuita.</>
-              : expiredByTime && !expiredByPatients
-              ? <>Los <strong>14 días</strong> de acceso gratuito a <strong>Dr Happy 😊</strong> terminaron.</>
-              : <>Alcanzaste el límite del período de prueba gratuita (<strong>14 días</strong> y <strong>15 pacientes</strong>).</>
+              : <>Los <strong>7 días</strong> de prueba gratuita de <strong>Dr Happy 😊</strong> terminaron. Tus datos siguen guardados.</>
             }
           </p>
           <p style={{ color: '#555', marginBottom: 24, lineHeight: 1.6 }}>
@@ -9144,18 +8681,132 @@ function App() {
     )
   }
 
+  /* Primeros pasos: guía de activación que desaparece sola al completarse. */
+  const onboardingSteps = [
+    {
+      key: 'patient',
+      label: 'Cargá tu primer paciente',
+      hint: 'Empezá tu base clínica',
+      done: patients.length > 0,
+      action: handleStartAttentionFlow,
+    },
+    {
+      key: 'mercado-pago',
+      label: 'Vinculá tu cuenta con Mercado Pago',
+      hint: 'Los pacientes pagan directamente en tu cuenta',
+      done: mercadoPagoConnected,
+      action: handleOpenProfile,
+    },
+    {
+      key: 'profile',
+      label: 'Completá tus datos profesionales',
+      hint: 'Nombre, matrícula y datos de contacto',
+      done: Boolean(profile?.fullName && profile?.email && profile?.licenseNumber),
+      action: handleOpenProfile,
+    },
+  ]
+  const onboardingDone = onboardingSteps.filter((step) => step.done).length
+
+  /* En móvil la navegación se resuelve con esta botonera de Inicio en lugar de la barra lateral. */
+  const homeQuickActions: Array<{
+    key: string
+    icon: string
+    label: string
+    hint: string
+    tone: string
+    wide?: boolean
+    badge?: number
+    onClick: () => void
+  }> = [
+    isModuleEnabled('ambulance') ? {
+      key: 'ambulance', icon: '🚑', label: 'Modo Ambulancia', hint: 'Traslados y guardia', tone: '#15945f', wide: true,
+      onClick: handleOpenAmbulance,
+    } : null,
+    isModuleEnabled('attention') ? {
+      key: 'attention', icon: '🩺', label: 'Atención médica', hint: 'Buscar y atender', tone: '#2563eb',
+      onClick: handleStartAttentionFlow,
+    } : null,
+    isModuleEnabled('appointments') ? {
+      key: 'appointments', icon: '📅', label: 'Turnera', hint: 'Agenda y cupos', tone: '#d97706',
+      onClick: handleOpenAppointments,
+    } : null,
+    {
+      key: 'patients', icon: '👥', label: 'Mis pacientes', hint: `${patients.length} fichas`, tone: '#0891b2',
+      onClick: () => { stopDictation(); setCommunityOpen(false); setWorkspaceLayer('my-patients'); setAppError(null) },
+    },
+    isModuleEnabled('tools') ? {
+      key: 'tools', icon: '💊', label: normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') ? 'Vademécum' : 'Herramientas', hint: normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') ? 'Consulta farmacológica' : 'Protocolos y vademécum', tone: '#7c3aed',
+      onClick: handleOpenTools,
+    } : null,
+    canUseTreatmentLedger ? {
+      key: 'ledger', icon: '💰', label: 'Balance', hint: 'Deudas y cobros', tone: '#dc2626',
+      onClick: () => { handleOpenAppointments(); setTurneraViewMode('ledger') },
+    } : null,
+    {
+      key: 'profile', icon: '👤', label: 'Perfil', hint: 'Firma y ajustes', tone: '#4f46e5',
+      onClick: handleOpenProfile,
+    },
+    isAdminSession ? {
+      key: 'admin', icon: '⚙️', label: 'Administrar', hint: 'Usuarios y planes', tone: '#64748b',
+      onClick: handleOpenUserAdmin,
+    } : null,
+    {
+      key: 'theme', icon: themeMode === 'night' ? '☀️' : '🌙', label: themeMode === 'night' ? 'Modo claro' : 'Modo nocturno', hint: 'Cambiar contraste', tone: '#0f766e',
+      onClick: handleToggleThemeMode,
+    },
+    {
+      key: 'logout', icon: '🚪', label: 'Cerrar sesión', hint: 'Salir de la cuenta', tone: '#9f1239',
+      onClick: () => { void handleLogout() },
+    },
+  ].filter((action): action is NonNullable<typeof action> => action !== null)
+
+  /* Encabezado compartido de Herramientas: lo reusa la pestaña Comunidad, que se
+     renderiza antes en el árbol pero debe verse como una sección más de esa página. */
+  const toolsPageHeader = (
+    <>
+      <section className="panel layer-header">
+        <div>
+          <h2>Herramientas clínicas y protocolos</h2>
+          <p className="flow-hint">Guías de emergencia, conducta terapéutica y vademécum profesional.</p>
+        </div>
+        <button type="button" className="ghost" onClick={handleBackToOverview}>
+          Volver
+        </button>
+      </section>
+
+      <nav className="screen-action-bar" aria-label="Secciones de herramientas">
+        {!(normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') || normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('odont')) ? (
+          <button
+            type="button"
+            className={`screen-action${toolsActiveTab === 'protocols' ? ' active' : ''}`}
+            onClick={() => handleSelectToolsTab('protocols')}
+          >
+            <span aria-hidden="true">📖</span> Guías y Protocolos
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={`screen-action${toolsActiveTab === 'vademecum' ? ' active' : ''}`}
+          onClick={() => handleSelectToolsTab('vademecum')}
+        >
+          <span aria-hidden="true">💊</span> Vademécum
+        </button>
+        {!(normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') || normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('odont')) ? (
+          <button
+            type="button"
+            className={`screen-action${toolsActiveTab === 'consult' ? ' active' : ''}`}
+            onClick={() => handleSelectToolsTab('consult')}
+          >
+            <span aria-hidden="true">🩺</span> Patologías en consultorio
+          </button>
+        ) : null}
+      </nav>
+    </>
+  )
+
   return (
     <main className="app">
       <header className="topbar">
-        <button
-          type="button"
-          className="sidebar-toggle"
-          aria-label="Abrir navegación"
-          aria-expanded={sidebarOpen}
-          onClick={() => setSidebarOpen((current) => !current)}
-        >
-          ☰
-        </button>
         <div className="brand-block compact">
           <span className="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 64 64" role="presentation">
@@ -9191,70 +8842,36 @@ function App() {
               )}
             </button>
           ) : null}
-          <span className="build-badge compact">Compilación {APP_BUILD_ID}</span>
+          {isAdminSession ? <span className="build-badge compact">Compilación {APP_BUILD_ID}</span> : null}
           {trialInfo?.status === 'active' && Number.isFinite(trialInfo.daysLeft) && (
-            <span className="subscription-status" style={{
-              display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
-              background: trialInfo.daysLeft <= 7 ? '#1d4ed8' : '#1f7a3d',
-              color: '#fff', fontSize: '0.75rem', fontWeight: 600,
-              padding: '4px 10px', borderRadius: 20,
-            }}>
-              <span>
-                {trialInfo.daysLeft <= 0
-                  ? 'Suscripción vencida'
-                  : `Suscripción activa — ${trialInfo.daysLeft} día${trialInfo.daysLeft === 1 ? '' : 's'} restante${trialInfo.daysLeft === 1 ? '' : 's'}`}
+            <span className={`subscription-status plan-chip${trialInfo.daysLeft <= 7 ? ' warn' : ' ok'}`}>
+              <span className="plan-chip-copy">
+                <strong>{trialInfo.daysLeft <= 0 ? 'Suscripción vencida' : 'Suscripción activa'}</strong>
+                <small>
+                  {trialInfo.daysLeft <= 0
+                    ? 'Renovala para seguir usando la app'
+                    : `Quedan ${trialInfo.daysLeft} día${trialInfo.daysLeft === 1 ? '' : 's'}`}
+                </small>
               </span>
               {trialInfo.daysLeft <= 7 && (
-                <>
-                  <button
-                    type="button"
-                    style={{ background: '#fff', color: '#1d4ed8', border: 'none', borderRadius: 12, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    disabled={subscriptionCheckoutLoading !== null}
-                    onClick={() => {
-                      void handleStartSubscriptionCheckout('monthly')
-                    }}
-                  >
-                    {subscriptionCheckoutLoading === 'monthly' ? 'Abriendo pago...' : 'Renovar ahora'}
-                  </button>
-                  <button
-                    type="button"
-                    style={{ background: '#dbeafe', color: '#1d4ed8', border: 'none', borderRadius: 12, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    onClick={() => setPreviewTrialExpired(true)}
-                  >
-                    Mejorar plan
-                  </button>
-                </>
+                <button type="button" className="plan-chip-cta" onClick={() => setPreviewTrialExpired(true)}>
+                  Renovar
+                </button>
               )}
             </span>
           )}
           {trialInfo?.status === 'trial' && (
-            <span className="subscription-status" style={{
-              display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
-              background: (trialInfo.daysLeft <= 3 || trialInfo.patientsLeft <= 3) ? '#c0392b' : trialInfo.daysLeft <= 7 || trialInfo.patientsLeft <= 7 ? '#e67e22' : '#555',
-              color: '#fff', fontSize: '0.75rem', fontWeight: 600,
-              padding: '4px 10px', borderRadius: 20,
-            }}>
-              <span>
-                ⏳ Trial — {trialInfo.daysLeft === 0 ? 'último día' : `${trialInfo.daysLeft} día${trialInfo.daysLeft === 1 ? '' : 's'}`}
-                {' · '}
-                {trialInfo.patientsLeft === 0 ? 'sin pacientes restantes' : `${trialInfo.patientsLeft} paciente${trialInfo.patientsLeft === 1 ? '' : 's'} restante${trialInfo.patientsLeft === 1 ? '' : 's'}`}
+            <span className={`subscription-status plan-chip${trialInfo.daysLeft <= 2 ? ' danger' : ' warn'}`}>
+              <span className="plan-chip-copy">
+                <strong>Prueba gratis</strong>
+                <small>
+                  {trialInfo.daysLeft === 0
+                    ? 'Último día'
+                    : `${trialInfo.daysLeft} de 7 días restantes`}
+                </small>
               </span>
-              <button
-                type="button"
-                style={{ background: '#fff', color: '#c0392b', border: 'none', borderRadius: 12, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                disabled={subscriptionCheckoutLoading !== null}
-                onClick={() => {
-                  void handleStartSubscriptionCheckout('monthly')
-                }}
-              >
-                {subscriptionCheckoutLoading === 'monthly' ? 'Abriendo pago...' : 'Suscribirme'}
-              </button>
-              <button
-                type="button"
-                style={{ background: '#fdecea', color: '#c0392b', border: 'none', borderRadius: 12, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                onClick={() => setPreviewTrialExpired(true)}
-              >
-                Ver planes
+              <button type="button" className="plan-chip-cta" onClick={() => setPreviewTrialExpired(true)}>
+                Suscribir
               </button>
             </span>
           )}
@@ -9282,9 +8899,6 @@ function App() {
               Herramientas
             </button>
           ) : null}
-          <button type="button" className={workspaceLayer === 'medical-news' ? 'active' : ''} onClick={() => { setWorkspaceLayer('medical-news'); setSidebarOpen(false) }}>
-            <span>◫</span> Noticias médicas
-          </button>
           {isAdminSession ? (
             <button type="button" className="ghost" onClick={handleOpenUserAdmin}>
               Editar usuarios
@@ -9301,19 +8915,6 @@ function App() {
               👁 Ver pantalla de trial
             </button>
           ) : null}
-          {isModuleEnabled('community') ? (
-            <button type="button" className="ghost" onClick={handleToggleCommunity}>
-              Comunidad {communityUnreadCount > 0 ? `(${communityUnreadCount})` : ''}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => void handleShareApp()}
-            title="Compartir DrHappy con un colega"
-          >
-            📲 Compartir
-          </button>
           <button
             type="button"
             className="ghost"
@@ -9341,6 +8942,13 @@ function App() {
             ×
           </button>
         </div>
+        <button type="button" className="sidebar-sofia" onClick={() => { setSofiaOpen(true); setSidebarOpen(false) }}>
+          <span aria-hidden="true">✨</span>
+          <span className="sidebar-sofia-copy">
+            <strong>Sofía</strong>
+            <small>Tu secretaria clínica</small>
+          </span>
+        </button>
         <nav className="sidebar-nav">
           {isModuleEnabled('ambulance') ? (
             <label className="sidebar-toggle-row ambulance-sidebar-item">
@@ -9350,63 +8958,96 @@ function App() {
             </label>
           ) : null}
           <button type="button" className={workspaceLayer === 'overview' ? 'active' : ''} onClick={() => { handleBackToOverview(); setSidebarOpen(false) }}>
-            <span>⌂</span> Inicio
+            <span>🏠</span> Inicio
           </button>
           <button type="button" className={workspaceLayer === 'my-patients' ? 'active' : ''} onClick={() => { setWorkspaceLayer('my-patients'); setSidebarOpen(false) }}>
-            <span>♙</span> Mis pacientes <small>{patients.length}</small>
+            <span>👥</span> Mis pacientes <small>{patients.length}</small>
           </button>
           {isModuleEnabled('appointments') ? (
             <button type="button" className={workspaceLayer === 'appointments' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setSidebarOpen(false) }}>
-              <span>◷</span> Turnera
+              <span>📅</span> Turnera
             </button>
           ) : null}
           {isModuleEnabled('tools') ? (
             <button type="button" className={workspaceLayer === 'tools' ? 'active' : ''} onClick={() => { handleOpenTools(); setSidebarOpen(false) }}>
-              <span>✦</span> Herramientas
-            </button>
-          ) : null}
-          {isModuleEnabled('community') ? (
-            <button type="button" onClick={() => { handleToggleCommunity(); setSidebarOpen(false) }}>
-              <span>◌</span> Comunidad {communityUnreadCount > 0 ? <small>{communityUnreadCount}</small> : null}
+              <span>🧰</span> Herramientas {communityUnreadCount > 0 ? <small>{communityUnreadCount}</small> : null}
             </button>
           ) : null}
           {canUseTreatmentLedger ? (
             <button type="button" className={workspaceLayer === 'appointments' && turneraViewMode === 'ledger' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setTurneraViewMode('ledger'); setSidebarOpen(false) }}>
-              <span>◈</span> Balance de pagos
+              <span>💰</span> Balance de pagos
             </button>
           ) : null}
           {isAdminSession ? (
             <button type="button" className={workspaceLayer === 'user-admin' ? 'active' : ''} onClick={() => { handleOpenUserAdmin(); setSidebarOpen(false) }}>
-              <span>⚙</span> Administrar usuarios
+              <span>⚙️</span> Administrar usuarios
             </button>
           ) : null}
         </nav>
         <div className="sidebar-footer">
-          <button type="button" onClick={() => { void handleShareApp(); setSidebarOpen(false) }}>
-            <span>↗</span> Compartir esta app
-          </button>
-          <button type="button" onClick={() => { setContactModalOpen(true); setSidebarOpen(false) }}>
-            <span>✉</span> Contactar desarrolladores
-          </button>
-          <button type="button" onClick={() => { setSofiaOpen(true); setSidebarOpen(false) }}>
-            <span>✦</span> Sofía, secretaria clínica
-          </button>
           <button type="button" onClick={() => { handleOpenProfile(); setSidebarOpen(false) }}>
-            <span>{googleIdentity ? '◉' : '⚙'}</span> {googleIdentity ? 'Perfil' : 'Perfil y ajustes'}
+            <span>👤</span> {googleIdentity ? 'Perfil' : 'Perfil y ajustes'}
           </button>
           <button type="button" onClick={() => { handleToggleThemeMode(); setSidebarOpen(false) }}>
-            <span>◐</span> {themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'}
+            <span>{themeMode === 'night' ? '☀️' : '🌙'}</span> {themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'}
           </button>
-          <button type="button" onClick={handleLogout}><span>↪</span> Cerrar sesión</button>
+          <button type="button" onClick={handleLogout}><span>🚪</span> Cerrar sesión</button>
         </div>
       </aside>
       {sidebarOpen ? <button type="button" className="sidebar-scrim" aria-label="Cerrar navegación" onClick={() => setSidebarOpen(false)} /> : null}
+      <button
+        type="button"
+        className={`sidebar-handle${sidebarOpen ? ' open' : ''}`}
+        aria-label={sidebarOpen ? 'Cerrar navegación' : 'Abrir navegación'}
+        aria-expanded={sidebarOpen}
+        onClick={() => setSidebarOpen((current) => !current)}
+      >
+        <span className="sidebar-handle-arrow" aria-hidden="true">{sidebarOpen ? '‹' : '›'}</span>
+        <span className="sidebar-handle-label" aria-hidden="true">Menú</span>
+      </button>
+
+      {/* Solo visible en móvil: reemplaza a la barra lateral como navegación principal. */}
+      <nav className="mobile-tabbar" aria-label="Navegación rápida">
+        <button
+          type="button"
+          className={workspaceLayer === 'overview' ? 'active' : ''}
+          onClick={handleBackToOverview}
+        >
+          <span aria-hidden="true">🏠</span> Inicio
+        </button>
+        <button
+          type="button"
+          className={workspaceLayer === 'appointments' ? 'active' : ''}
+          onClick={handleOpenAppointments}
+        >
+          <span aria-hidden="true">📅</span> Turnos
+        </button>
+        <button type="button" className="mobile-tab-sofia" onClick={() => setSofiaOpen(true)}>
+          <span className="sofia-face" aria-hidden="true" /> Sofía IA
+        </button>
+        <button
+          type="button"
+          className={workspaceLayer === 'my-patients' || workspaceLayer === 'patient-search' || workspaceLayer === 'patient-record' ? 'active' : ''}
+          onClick={() => { stopDictation(); setCommunityOpen(false); setWorkspaceLayer('my-patients'); setAppError(null) }}
+        >
+          <span aria-hidden="true">👥</span> Pacientes
+        </button>
+        <button
+          type="button"
+          className={workspaceLayer === 'profile' ? 'active' : ''}
+          onClick={handleOpenProfile}
+        >
+          <span aria-hidden="true">👤</span> Perfil
+        </button>
+      </nav>
 
       {appError ? <p className="error">{appError}</p> : null}
       {appNotice ? <p className="notice">{appNotice}</p> : null}
 
-      {communityOpen ? (
-        <section className="panel community-panel">
+      {workspaceLayer === 'tools' && toolsActiveTab === 'community' ? (
+        <div className="screen-stage">
+          {toolsPageHeader}
+          <section className="panel community-panel">
           <h2>Comunidad médica</h2>
           <div className="community-grid">
             <aside>
@@ -9420,22 +9061,6 @@ function App() {
                     placeholder="Ej: cardiólogo, Pérez, traumatología"
                   />
                 </label>
-                <fieldset className="community-network-filters">
-                  <legend>Filtrar por red</legend>
-                  <div className="register-networks-grid">
-                    {PROFESSIONAL_NETWORK_OPTIONS.map((network) => (
-                      <label key={network} className="toggle-option">
-                        <input
-                          type="checkbox"
-                          checked={communityNetworkFilters.includes(network)}
-                          onChange={() => handleToggleCommunityNetworkFilter(network)}
-                        />
-                        <span className="toggle-switch" aria-hidden="true" />
-                        <span>{network}</span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
               </div>
               <div className="community-results">
                 <ul className="community-member-list">
@@ -9494,7 +9119,14 @@ function App() {
                           ))}
                         </ul>
                       ) : null}
-                      <small>{formatDate(message.sentAt)}</small>
+                      <div className="community-message-footer">
+                        <small>{formatDate(message.sentAt)}</small>
+                        {mine ? (
+                          <button type="button" className="ghost compact" onClick={() => void handleDeleteCommunityMessage(message.id)}>
+                            🗑️ Borrar
+                          </button>
+                        ) : null}
+                      </div>
                     </li>
                   )
                 })}
@@ -9565,7 +9197,8 @@ function App() {
               </form>
             </section>
           </div>
-        </section>
+          </section>
+        </div>
       ) : null}
 
       {workspaceLayer === 'user-admin' ? (
@@ -9614,7 +9247,26 @@ function App() {
               </div>
             </div>
 
+            <nav className="screen-action-bar" aria-label="Secciones de administración">
+              <button type="button" className={`screen-action${adminSection === 'usuarios' ? ' active' : ''}`} onClick={() => setAdminSection('usuarios')}>
+                <span aria-hidden="true">👥</span> Usuarios y planes
+              </button>
+              <button type="button" className={`screen-action${adminSection === 'actividad' ? ' active' : ''}`} onClick={() => setAdminSection('actividad')}>
+                <span aria-hidden="true">📈</span> Actividad
+              </button>
+              <button type="button" className={`screen-action${adminSection === 'sofia' ? ' active' : ''}`} onClick={() => setAdminSection('sofia')}>
+                <span aria-hidden="true">✨</span> Consumo de Sofía
+              </button>
+              <button type="button" className={`screen-action${adminSection === 'comunicados' ? ' active' : ''}`} onClick={() => setAdminSection('comunicados')}>
+                <span aria-hidden="true">📢</span> Comunicados
+              </button>
+              <button type="button" className={`screen-action${adminSection === 'correo' ? ' active' : ''}`} onClick={() => setAdminSection('correo')}>
+                <span aria-hidden="true">📧</span> Correo
+              </button>
+            </nav>
+
             {/* Métricas de uso por usuario — solo conteos y fechas, sin datos clínicos */}
+            {adminSection === 'actividad' ? (
             <section style={{ marginBottom: 24 }}>
               <div className="panel-header" style={{ marginBottom: 12 }}>
                 <div>
@@ -9625,11 +9277,16 @@ function App() {
                 </div>
               </div>
               {adminUserStatsLoading ? (
-                <p>Cargando métricas...</p>
+                <div className="skeleton-block">
+                  <div className="skeleton-line wide" />
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line short" />
+                </div>
               ) : adminUserStats.length === 0 ? (
                 <p className="flow-hint">No hay métricas disponibles todavía.</p>
               ) : (
-                <div style={{ overflowX: 'auto' }}>
+                <div className="admin-table-scroll">
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                     <thead>
                       <tr style={{ textAlign: 'left', borderBottom: '2px solid #d8e2ee' }}>
@@ -9670,7 +9327,9 @@ function App() {
                 </div>
               )}
             </section>
+            ) : null}
 
+            {adminSection === 'sofia' ? (
             <section style={{ marginBottom: 24 }}>
               <div className="panel-header" style={{ marginBottom: 12 }}>
                 <div>
@@ -9683,8 +9342,14 @@ function App() {
                 <article className="analytics-stat-card"><strong>{adminAITotal.tokens.toLocaleString('es-AR')}</strong><span>Tokens usados</span></article>
                 <article className="analytics-stat-card warn"><strong>USD {adminAITotal.costUsd.toFixed(4)}</strong><span>Costo estimado</span></article>
               </div>
-              {adminAIUsageLoading ? <p className="flow-hint">Cargando consumo...</p> : adminAIUsage.length === 0 ? <p className="flow-hint">Todavía no hay consumo registrado.</p> : (
-                <div style={{ overflowX: 'auto' }}>
+              {adminAIUsageLoading ? (
+                <div className="skeleton-block">
+                  <div className="skeleton-line wide" />
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line short" />
+                </div>
+              ) : adminAIUsage.length === 0 ? <p className="flow-hint">Todavía no hay consumo registrado.</p> : (
+                <div className="admin-table-scroll">
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                     <thead><tr style={{ textAlign: 'left', borderBottom: '2px solid #d8e2ee' }}><th style={{ padding: '8px 6px' }}>Profesional</th><th style={{ padding: '8px 6px' }}>Consultas</th><th style={{ padding: '8px 6px' }}>Tokens</th><th style={{ padding: '8px 6px' }}>Costo estimado</th><th style={{ padding: '8px 6px' }}>Último uso</th></tr></thead>
                     <tbody>{adminAIUsage.map((item) => <tr key={item.professionalId} style={{ borderBottom: '1px solid #eef2f7' }}><td style={{ padding: '8px 6px' }}><strong>{item.fullName}</strong><span style={{ display: 'block', fontSize: '.78rem', color: '#667' }}>@{item.username}</span></td><td style={{ padding: '8px 6px', textAlign: 'center' }}>{item.requests}</td><td style={{ padding: '8px 6px' }}>{item.totalTokens.toLocaleString('es-AR')}</td><td style={{ padding: '8px 6px' }}>USD {item.estimatedCostUsd.toFixed(4)}</td><td style={{ padding: '8px 6px' }}>{item.lastUsedAt ? formatDate(item.lastUsedAt) : 'Nunca'}</td></tr>)}</tbody>
@@ -9692,11 +9357,31 @@ function App() {
                 </div>
               )}
             </section>
+            ) : null}
 
+            {adminSection === 'usuarios' ? (
+            <>
+            <label className="admin-user-search">
+              Buscar profesional
+              <input
+                type="search"
+                value={adminUserQuery}
+                onChange={(event) => setAdminUserQuery(event.target.value)}
+                placeholder="Nombre, usuario, especialidad o email"
+              />
+            </label>
             <ul className="admin-user-list">
               {[...seedUsers]
+                .filter((user) => {
+                  const query = adminUserQuery.trim().toLowerCase()
+                  if (!query) return true
+                  return [user.fullName, user.username, user.specialty, user.email]
+                    .some((field) => (field ?? '').toLowerCase().includes(query))
+                })
                 .sort((left, right) => left.fullName.localeCompare(right.fullName, 'es'))
-                .map((user) => (
+                .map((user) => {
+                  const expanded = adminExpandedUserId === user.id
+                  return (
                   <li key={user.id} style={{ alignItems: 'flex-start', flexDirection: 'column', gap: 10 }}>
                     <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                       <div>
@@ -9725,16 +9410,29 @@ function App() {
                         </span>
                         <button
                           type="button"
-                          className="ghost"
-                          onClick={() => void handleToggleUserActive(user.id)}
-                          disabled={isAdminUser(user) || adminBusyUserId === user.id}
+                          className={`screen-action${expanded ? ' active' : ''}`}
+                          aria-expanded={expanded}
+                          onClick={() => setAdminExpandedUserId(expanded ? null : user.id)}
                         >
-                          {user.active === false ? 'Activar' : 'Desactivar'}
+                          <span aria-hidden="true">{expanded ? '✕' : '⚙️'}</span> {expanded ? 'Cerrar' : 'Gestionar'}
                         </button>
                       </div>
                     </div>
 
-                    {!isAdminUser(user) ? (
+                    {expanded ? (
+                      <div className="admin-user-detail">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => void handleToggleUserActive(user.id)}
+                          disabled={isAdminUser(user) || adminBusyUserId === user.id}
+                        >
+                          {user.active === false ? 'Activar acceso' : 'Desactivar acceso'}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {expanded && !isAdminUser(user) ? (
                       <div className="admin-modules-box">
                         <strong className="admin-modules-title">Módulos habilitados</strong>
                         <div className="admin-modules-grid">
@@ -9762,8 +9460,8 @@ function App() {
                       </div>
                     ) : null}
 
-                    {!isAdminUser(user) ? (
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {expanded && !isAdminUser(user) ? (
+                      <div className="admin-subscription-actions">
                         <button
                           type="button"
                           className="ghost"
@@ -9808,9 +9506,13 @@ function App() {
                       </div>
                     ) : null}
                   </li>
-                ))}
+                  )
+                })}
             </ul>
+            </>
+            ) : null}
 
+            {adminSection === 'comunicados' ? (
             <section className="panel" style={{ marginTop: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                 <h3 style={{ margin: 0 }}>📢 Centro de Notificaciones Push y Comunicados</h3>
@@ -9900,7 +9602,9 @@ function App() {
                 </div>
               </div>
             </section>
+            ) : null}
 
+            {adminSection === 'correo' ? (
             <section className="panel" style={{ marginTop: 20 }}>
               <h3>📧 Servidor de Correo Institucional (soporte@drhappy.com.ar)</h3>
               <p className="flow-hint">
@@ -9928,48 +9632,19 @@ function App() {
                 </div>
               </div>
             </section>
+            ) : null}
           </section>
         </div>
       ) : null}
 
       {workspaceLayer === 'tools' ? (
         <div className="screen-stage">
-          <section className="panel layer-header">
-            <div>
-              <h2>Herramientas clínicas y protocolos</h2>
-              <p className="flow-hint">Guías de emergencia, conducta terapéutica y vademécum de apoyo médico.</p>
-            </div>
-            <button type="button" className="ghost" onClick={handleBackToOverview}>
-              Volver
-            </button>
-          </section>
+          {toolsActiveTab === 'community' ? null : (
+            <>
+              {toolsPageHeader}
 
-          <div className="protocol-tabs-nav" style={{ padding: '0 10px', marginTop: 12 }}>
-            <button
-              type="button"
-              className={`protocol-tab-btn ${toolsActiveTab === 'protocols' ? 'active' : ''}`}
-              onClick={() => setToolsActiveTab('protocols')}
-            >
-              📖 Guías y Protocolos de Emergencia
-            </button>
-            <button
-              type="button"
-              className={`protocol-tab-btn ${toolsActiveTab === 'vademecum' ? 'active' : ''}`}
-              onClick={() => setToolsActiveTab('vademecum')}
-            >
-              💊 Vademécum farmacológico
-            </button>
-            <button
-              type="button"
-              className={`protocol-tab-btn ${toolsActiveTab === 'consult' ? 'active' : ''}`}
-              onClick={() => setToolsActiveTab('consult')}
-            >
-              🩺 Patologías en consultorio
-            </button>
-          </div>
-
-          <section className="workspace single-column">
-            {toolsActiveTab === 'protocols' ? (
+              <section className="workspace single-column">
+                {toolsActiveTab === 'protocols' ? (
               <section className="panel">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 16 }}>
                   <div>
@@ -10194,7 +9869,9 @@ function App() {
                 </ul>
               </section>
             )}
-          </section>
+              </section>
+            </>
+          )}
         </div>
       ) : null}
 
@@ -10812,31 +10489,56 @@ function App() {
 
       {workspaceLayer === 'overview' ? (
         <div className="screen-stage">
-          <section className="app-tools-flyer" aria-label="Herramientas de Dr Happy">
-            {(() => {
-              const slide = APP_FLYER_SLIDES[flyerSlideIndex]
-              return (
-                <article className={`flyer-slide flyer-slide-${slide.visual}`}>
-                  <div className="flyer-slide-copy">
-                    <span className="section-kicker">{slide.eyebrow}</span>
-                    <h2>{slide.icon} {slide.title}</h2>
-                    <p>{slide.description}</p>
-                    <span className="flyer-slide-caption">Dr Happy · herramientas para tu práctica profesional</span>
-                  </div>
-                  <div className="flyer-slide-visual" aria-hidden="true">
-                    <div className="flyer-window-bar"><i /><i /><i /></div>
-                    {slide.visual === 'ambulance' ? <><div className="flyer-mock-alert">🚑 Atención prioritaria</div><div className="flyer-mock-lines"><b>Paciente en traslado</b><span>Protocolo · Ubicación · Destino</span><span>✓ Registro guardado</span></div></> : null}
-                    {slide.visual === 'patient' ? <><div className="flyer-mock-search">⌕ Buscar paciente...</div><div className="flyer-mock-profile"><b>García, María</b><span>DNI 28.456.789</span><small>Última evolución · Hoy</small></div></> : null}
-                    {slide.visual === 'calendar' ? <><div className="flyer-mock-calendar"><b>Agenda semanal</b><span>09:00&nbsp;&nbsp; García, María</span><span>10:30&nbsp;&nbsp; López, Juan</span><span>12:00&nbsp;&nbsp; Turno libre</span></div></> : null}
-                    {slide.visual === 'tools' ? <><div className="flyer-mock-tools"><b>Herramientas clínicas</b><span>✦ Protocolos</span><span>▣ Vademécum</span><span>⌕ Patologías</span></div></> : null}
-                    {slide.visual === 'patients' ? <><div className="flyer-mock-patient-list"><b>Mis pacientes <em>19</em></b><span>García, María</span><span>Rodríguez, Ana</span><span>Martínez, Carlos</span></div></> : null}
-                    {slide.visual === 'ledger' ? <><div className="flyer-mock-ledger"><b>Balance de pagos</b><span>✓ Sin deuda&nbsp;&nbsp; 12</span><span>! Pendientes&nbsp;&nbsp; 3</span><strong>Total adeudado&nbsp; $ 125.000</strong></div></> : null}
-                  </div>
-                  <div className="flyer-slide-dots">{APP_FLYER_SLIDES.map((item, index) => <span key={item.key} className={index === flyerSlideIndex ? 'active' : ''} />)}</div>
-                </article>
-              )
-            })()}
-          </section>
+          {onboardingDone < onboardingSteps.length ? (
+            <section className="onboarding-card" aria-label="Primeros pasos">
+              <div className="onboarding-head">
+                <div>
+                  <span className="section-kicker">Primeros pasos</span>
+                  <strong>Dejá tu consultorio listo en 4 pasos</strong>
+                </div>
+                <span className="onboarding-count">{onboardingDone}/{onboardingSteps.length}</span>
+              </div>
+              <div className="onboarding-bar" aria-hidden="true">
+                <span style={{ width: `${(onboardingDone / onboardingSteps.length) * 100}%` }} />
+              </div>
+              <ul className="onboarding-list">
+                {onboardingSteps.map((step) => (
+                  <li key={step.key} className={step.done ? 'done' : ''}>
+                    <span className="onboarding-check" aria-hidden="true">{step.done ? '✓' : ''}</span>
+                    <span className="onboarding-copy">
+                      <strong>{step.label}</strong>
+                      <small>{step.hint}</small>
+                    </span>
+                    {step.done ? null : (
+                      <button type="button" className="screen-action" onClick={step.action}>
+                        Hacerlo
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          <nav className="home-botonera" aria-label="Accesos rápidos">
+            {homeQuickActions.map((action) => (
+              <button
+                key={action.key}
+                type="button"
+                className={`smart-btn${action.wide ? ' wide' : ''}`}
+                style={{ '--tone': action.tone } as CSSProperties}
+                onClick={action.onClick}
+              >
+                {action.badge && action.badge > 0 ? <span className="smart-badge">{action.badge}</span> : null}
+                <span className="smart-ico" aria-hidden="true">{action.icon}</span>
+                <span className="smart-txt">
+                  <strong>{action.label}</strong>
+                  <small>{action.hint}</small>
+                </span>
+              </button>
+            ))}
+          </nav>
+
         </div>
       ) : null}
 
@@ -10851,7 +10553,13 @@ function App() {
             <button type="button" className="ghost" onClick={handleBackToOverview}>Volver</button>
           </section>
           <section className="panel medical-news-page">
-            {medicalNewsLoading ? <p className="flow-hint">Cargando noticias...</p> : null}
+            {medicalNewsLoading ? (
+              <div className="skeleton-block">
+                <div className="skeleton-line wide" />
+                <div className="skeleton-line" />
+                <div className="skeleton-line short" />
+              </div>
+            ) : null}
             {medicalNews.length > 0 ? (
               <>
                 <div className="medical-news-source-tabs">
@@ -10927,50 +10635,142 @@ function App() {
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {turneraViewMode !== 'ledger' ? <button type="button" onClick={() => handleNewAppointmentModal()}>
-                ➕ Nuevo turno
-              </button> : null}
-              {turneraViewMode !== 'ledger' ? <button type="button" className="ghost" onClick={handleOpenFreeSlotModal}>
-                📅 Administrar turnera pública
-              </button> : null}
               <button type="button" className="ghost" onClick={handleBackToOverview}>
                 Volver
               </button>
             </div>
           </section>
 
-          {turneraViewMode !== 'ledger' ? <section className="panel appointment-capacity-panel">
+          {/* Todos los accesos de la Turnera juntos y arriba, sin scroll previo. */}
+          <nav className="screen-action-bar" aria-label="Acciones de la turnera">
+            <button type="button" className="screen-action primary" onClick={() => handleNewAppointmentModal()}>
+              <span aria-hidden="true">➕</span> Nuevo turno
+            </button>
+            <button type="button" className={`screen-action${turneraViewMode === 'list' ? ' active' : ''}`} onClick={() => setTurneraViewMode('list')}>
+              <span aria-hidden="true">📋</span> Lista de turnos
+            </button>
+            <button type="button" className={`screen-action${turneraViewMode === 'capacity' ? ' active' : ''}`} onClick={() => setTurneraViewMode('capacity')}>
+              <span aria-hidden="true">⚙️</span> Cupos y link público
+            </button>
+            <button
+              type="button"
+              className={`screen-action${turneraViewMode === 'calendar' ? ' active' : ''}${!hasPremiumTurneraAccess ? ' locked' : ''}`}
+              onClick={() => {
+                if (!hasPremiumTurneraAccess) {
+                  setPremiumPrompt({
+                    icon: '🗓️',
+                    title: 'Calendario de ocupación',
+                    pitch: 'Veí de un vistazo qué días tenés llenos y cuáles te quedan libres, y acomodá tu agenda antes de que se te complique.',
+                    bullets: [
+                      'Mapa mensual con el nivel de ocupación de cada día',
+                      'Detectá huecos y llená tu agenda con turnos públicos',
+                      'Evitá sobreturnos viendo tu cupo real al instante',
+                    ],
+                  })
+                  return
+                }
+                setTurneraViewMode('calendar')
+              }}
+            >
+              <span aria-hidden="true">🗓️</span> Calendario de ocupación{!hasPremiumTurneraAccess ? ' 🔒' : ''}
+            </button>
+            <button
+              type="button"
+              className={`screen-action${turneraViewMode === 'stats' ? ' active' : ''}${!hasPremiumTurneraAccess ? ' locked' : ''}`}
+              onClick={() => {
+                if (!hasPremiumTurneraAccess) {
+                  setPremiumPrompt({
+                    icon: '📊',
+                    title: 'Estadísticas de atención',
+                    pitch: 'Sabé cuánto estás creciendo: pacientes atendidos por semana y por mes, con la tendencia a la vista.',
+                    bullets: [
+                      'Pacientes atendidos por semana y por mes',
+                      'Tendencia de crecimiento de tu consultorio',
+                      'Detectá tus días y horarios más demandados',
+                    ],
+                  })
+                  return
+                }
+                setTurneraViewMode('stats')
+              }}
+            >
+              <span aria-hidden="true">📊</span> Estadísticas{!hasPremiumTurneraAccess ? ' 🔒' : ''}
+            </button>
+            {isModuleEnabled('appointments') ? (
+              <button
+                type="button"
+                className={`screen-action${turneraViewMode === 'ledger' ? ' active' : ''}${!canUseTreatmentLedger ? ' locked' : ''}`}
+                onClick={() => {
+                  if (!canUseTreatmentLedger) {
+                    setPremiumPrompt({
+                      icon: '💰',
+                      title: 'Balance de pagos',
+                      pitch: 'Dejá de anotar en papel quién te debe. Registrá cada tratamiento, lo cobrado y lo pendiente, y mandá recordatorios de pago.',
+                      bullets: [
+                        'Saldo pendiente por paciente, siempre actualizado',
+                        'Recordatorios de pago por email en un toque',
+                        'Total facturado y total adeudado del consultorio',
+                      ],
+                    })
+                    return
+                  }
+                  setTurneraViewMode('ledger')
+                }}
+              >
+                <span aria-hidden="true">💰</span> Balance de pagos{!canUseTreatmentLedger ? ' 🔒' : ''}
+              </button>
+            ) : null}
+          </nav>
+
+          {turneraViewMode === 'capacity' ? <section className="panel appointment-capacity-panel">
             <div>
               <span className="section-kicker">Control de agenda</span>
               <h3 style={{ margin: 0 }}>Cupos de atención</h3>
-              <p className="flow-hint">Elegí qué días atendés y cuántos pacientes aceptás como máximo por día.</p>
+              <p className="flow-hint">Definí tu horario y la duración de cada turno. Dr Happy calcula automáticamente cuántos entran.</p>
             </div>
             <div className="capacity-controls">
               <label>
-                Máximo diario
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={dailyPatientLimit}
-                  onChange={(event) => saveAppointmentCapacity(appointmentDays, Number(event.target.value))}
-                />
-              </label>
-              <label>
                 Desde
-                <input
-                  type="time"
-                  value={appointmentStartTime}
-                  onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, event.target.value, appointmentEndTime)}
-                />
+                <span className="time-select-pair">
+                  <select value={splitAppointmentTime(appointmentStartTime).hour} onChange={(event) => saveAppointmentCapacity(appointmentDays, joinAppointmentTime(event.target.value, splitAppointmentTime(appointmentStartTime).period), appointmentEndTime, appointmentDurationMinutes)}>
+                    {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}</option>)}
+                  </select>
+                  <select value={splitAppointmentTime(appointmentStartTime).period} onChange={(event) => saveAppointmentCapacity(appointmentDays, joinAppointmentTime(splitAppointmentTime(appointmentStartTime).hour, event.target.value as 'AM' | 'PM'), appointmentEndTime, appointmentDurationMinutes)}>
+                    {APPOINTMENT_PERIOD_OPTIONS.map((period) => <option key={period} value={period}>{period}</option>)}
+                  </select>
+                </span>
               </label>
               <label>
                 Hasta
-                <input
-                  type="time"
-                  value={appointmentEndTime}
-                  onChange={(event) => saveAppointmentCapacity(appointmentDays, dailyPatientLimit, appointmentStartTime, event.target.value)}
-                />
+                <span className="time-select-pair">
+                  <select value={splitAppointmentTime(appointmentEndTime).hour} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, joinAppointmentTime(event.target.value, splitAppointmentTime(appointmentEndTime).period), appointmentDurationMinutes)}>
+                    {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}</option>)}
+                  </select>
+                  <select value={splitAppointmentTime(appointmentEndTime).period} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, joinAppointmentTime(splitAppointmentTime(appointmentEndTime).hour, event.target.value as 'AM' | 'PM'), appointmentDurationMinutes)}>
+                    {APPOINTMENT_PERIOD_OPTIONS.map((period) => <option key={period} value={period}>{period}</option>)}
+                  </select>
+                </span>
+              </label>
+              <label>
+                Duración del turno
+                <select value={appointmentDurationMinutes} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, appointmentEndTime, Number(event.target.value))}>
+                  {[15, 20, 30, 45, 60, 90].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutos</option>)}
+                </select>
+              </label>
+              <div className="capacity-calculated">
+                <strong>{calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)}</strong>
+                <span>turnos posibles por día</span>
+              </div>
+              <label>
+                Monto a cobrar
+                <input type="number" min="0" step="1" value={appointmentAmountToCharge} onChange={(event) => handleAppointmentAmountChange(event.target.value)} onBlur={saveAppointmentAmount} placeholder="0 = sin seña" />
+              </label>
+              <label>
+                Concepto
+                <select value={appointmentAmountConcept} onChange={(event) => setAppointmentAmountConcept(event.target.value as 'sena' | 'consulta')}>
+                  <option value="sena">Reserva / seña</option>
+                  <option value="consulta">Turno completo</option>
+                </select>
               </label>
               <div className="capacity-days">
                 <span>Días de atención</span>
@@ -10984,7 +10784,7 @@ function App() {
                           const nextDays = appointmentDays.includes(day.value)
                             ? appointmentDays.filter((value) => value !== day.value)
                             : [...appointmentDays, day.value]
-                          saveAppointmentCapacity(nextDays, dailyPatientLimit)
+                          saveAppointmentCapacity(nextDays, appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)
                         }}
                       />
                       <span>{day.label.slice(0, 3)}</span>
@@ -10993,65 +10793,16 @@ function App() {
                 </div>
               </div>
             </div>
-            <div className="capacity-status">
-              {appointmentDaysLabel || 'Elegí al menos un día'} · {appointmentCapacityByDate.get(todayLocalISO()) ?? 0}/{dailyPatientLimit} usados hoy
-            </div>
-          </section> : null}
-
-          {/* Prueba piloto: selector de vista Lista / Calendario de ocupación / Estadísticas */}
-          {turneraViewMode !== 'ledger' ? <div className="turnera-view-switch">
-            <button
-              type="button"
-              className={`ghost ${turneraViewMode === 'list' ? 'active' : ''}`}
-              onClick={() => setTurneraViewMode('list')}
-            >
-              📋 Lista de turnos
-            </button>
-            <button
-              type="button"
-              className={`ghost ${turneraViewMode === 'calendar' ? 'active' : ''} ${!hasPremiumTurneraAccess ? 'locked' : ''}`}
-              onClick={() => {
-                if (!hasPremiumTurneraAccess) {
-                  setAppError('El Calendario de ocupación es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
-                  return
-                }
-                setTurneraViewMode('calendar')
-              }}
-            >
-              🗓️ Calendario de ocupación{!hasPremiumTurneraAccess ? ' 🔒' : ''}
-            </button>
-            <button
-              type="button"
-              className={`ghost ${turneraViewMode === 'stats' ? 'active' : ''} ${!hasPremiumTurneraAccess ? 'locked' : ''}`}
-              onClick={() => {
-                if (!hasPremiumTurneraAccess) {
-                  setAppError('Las Estadísticas son exclusivas para suscriptores con plan activo. Activá tu suscripción para desbloquearlas.')
-                  return
-                }
-                setTurneraViewMode('stats')
-              }}
-            >
-              📊 Estadísticas{!hasPremiumTurneraAccess ? ' 🔒' : ''}
-            </button>
-            {isDentist || isModuleEnabled('ledger') ? (
-              <button
-                type="button"
-                className={`ghost ${!canUseTreatmentLedger ? 'locked' : ''}`}
-                onClick={() => {
-                  if (!canUseTreatmentLedger) {
-                    setAppError('El Balance de pagos es exclusivo para suscriptores con plan activo. Activá tu suscripción para desbloquearlo.')
-                    return
-                  }
-                  setTurneraViewMode('ledger')
-                }}
-              >
-                💰 Balance de pagos{!canUseTreatmentLedger ? ' 🔒' : ''}
-              </button>
+            <div className="capacity-status">{appointmentDaysLabel || 'Elegí al menos un día'} · Configuración guardada automáticamente al cambiar los campos.</div>
+                    <button type="button" className="screen-action primary" disabled={publicBookingSaving} onClick={() => void handleGenerateFixedBookingLink()}><span aria-hidden="true">💾</span> {publicBookingSaving ? 'Guardando y generando link...' : 'Guardar y generar link de turnera'}</button>
+            {freeSlotGeneratedUrl ? (
+              <div className="capacity-generated-link">
+                <strong>Tu link fijo</strong>
+                <span>{freeSlotGeneratedUrl}</span>
+                <button type="button" className="ghost compact" onClick={() => void navigator.clipboard.writeText(freeSlotGeneratedUrl!)}>Copiar link</button>
+              </div>
             ) : null}
-            <span className="turnera-view-switch-badge" title="Función premium — incluida en planes con suscripción activa">
-              ⭐ Premium
-            </span>
-          </div> : null}
+          </section> : null}
 
           {turneraViewMode === 'ledger' && canUseTreatmentLedger ? (
             <section className="panel turnera-ledger-panel">
@@ -11168,6 +10919,11 @@ function App() {
                               💵 Registrar pago
                             </button>
                           ) : null}
+                          {pending > 0 ? (
+                            <button type="button" className="ghost" disabled={ledgerReminderSendingId === entry.id} onClick={() => void handleSendLedgerPaymentReminder(entry.id)}>
+                              {ledgerReminderSendingId === entry.id ? 'Enviando...' : '📧 Enviar recordatorio de pago'}
+                            </button>
+                          ) : null}
                           <button type="button" className="ghost" onClick={() => handleOpenLedgerModal(entry)}>
                             ✏️ Editar
                           </button>
@@ -11248,11 +11004,7 @@ function App() {
                       >
                         <span className="turnera-calendar-day-number">{cell.day}</span>
                         {cell.count > 0 ? <span className="turnera-calendar-day-count">{cell.count}</span> : null}
-                        {cell.coverage > 0 || cell.private > 0 ? (
-                          <span className="turnera-calendar-day-breakdown">
-                            {cell.coverage > 0 ? `OS ${cell.coverage}` : ''}{cell.coverage > 0 && cell.private > 0 ? ' · ' : ''}{cell.private > 0 ? `Part. ${cell.private}` : ''}
-                          </span>
-                        ) : null}
+                        {cell.count > 0 ? <span className="turnera-calendar-day-breakdown">{cell.count} turno{cell.count === 1 ? '' : 's'}</span> : null}
                       </button>
                     )
                   })
@@ -11269,8 +11021,8 @@ function App() {
               {selectedCalendarDay ? (
                 <div className="turnera-calendar-day-detail">
                   <strong>
-                    {formatDate(selectedCalendarDay)}: {appointmentCountByDate.get(selectedCalendarDay) ?? 0} paciente(s) agendado(s)
-                    {(() => { const counts = appointmentModalityCountByDate.get(selectedCalendarDay) ?? { coverage: 0, private: 0 }; return <small className="turnera-calendar-day-breakdown-detail">Obra social: {counts.coverage} · Particular: {counts.private}</small> })()}
+                    {formatShortDate(selectedCalendarDay)}: {appointmentCountByDate.get(selectedCalendarDay) ?? 0} paciente(s) agendado(s)
+                    <small className="turnera-calendar-day-breakdown-detail">Ocupación de la agenda</small>
                   </strong>
                   <button
                     type="button"
@@ -11401,34 +11153,34 @@ function App() {
           <>
           {/* Metrics bar */}
           <div className="turnera-metrics-grid">
-            <div className="turnera-metric-card">
+            <button type="button" className={`turnera-metric-card ${appointmentFilterTab === 'today' ? 'active' : ''}`} onClick={() => setAppointmentFilterTab('today')}>
               <span className="turnera-metric-icon">📅</span>
               <div className="turnera-metric-info">
                 <strong>{appointmentsMetrics.todayCount}</strong>
                 <span>Turnos para hoy</span>
               </div>
-            </div>
-            <div className="turnera-metric-card">
+            </button>
+            <button type="button" className={`turnera-metric-card ${appointmentFilterTab === 'upcoming' ? 'active' : ''}`} onClick={() => setAppointmentFilterTab('upcoming')}>
               <span className="turnera-metric-icon">⏳</span>
               <div className="turnera-metric-info">
                 <strong>{appointmentsMetrics.upcomingCount}</strong>
                 <span>Próximos turnos</span>
               </div>
-            </div>
-            <div className="turnera-metric-card">
+            </button>
+            <button type="button" className="turnera-metric-card" onClick={() => setAppointmentFilterTab('all')}>
               <span className="turnera-metric-icon">✉️</span>
               <div className="turnera-metric-info">
                 <strong>{appointmentsMetrics.emailSentCount}</strong>
                 <span>Confirmados por email</span>
               </div>
-            </div>
-            <div className="turnera-metric-card">
+            </button>
+            <button type="button" className={`turnera-metric-card ${appointmentFilterTab === 'all' ? 'active' : ''}`} onClick={() => setAppointmentFilterTab('all')}>
               <span className="turnera-metric-icon">📋</span>
               <div className="turnera-metric-info">
                 <strong>{appointmentsMetrics.total}</strong>
                 <span>Total agendados</span>
               </div>
-            </div>
+            </button>
           </div>
 
           {/* Toolbar & Filters */}
@@ -11441,36 +11193,6 @@ function App() {
                   value={appointmentSearchQuery}
                   onChange={(e) => setAppointmentSearchQuery(e.target.value)}
                 />
-              </div>
-              <div className="turnera-tab-buttons">
-                <button
-                  type="button"
-                  className={`ghost ${appointmentFilterTab === 'today' ? 'active' : ''}`}
-                  onClick={() => setAppointmentFilterTab('today')}
-                >
-                  Hoy ({appointmentsMetrics.todayCount})
-                </button>
-                <button
-                  type="button"
-                  className={`ghost ${appointmentFilterTab === 'upcoming' ? 'active' : ''}`}
-                  onClick={() => setAppointmentFilterTab('upcoming')}
-                >
-                  Próximos ({appointmentsMetrics.upcomingCount})
-                </button>
-                <button
-                  type="button"
-                  className={`ghost ${appointmentFilterTab === 'all' ? 'active' : ''}`}
-                  onClick={() => setAppointmentFilterTab('all')}
-                >
-                  Todos ({appointmentsMetrics.total})
-                </button>
-                <button
-                  type="button"
-                  className={`ghost ${appointmentFilterTab === 'past' ? 'active' : ''}`}
-                  onClick={() => setAppointmentFilterTab('past')}
-                >
-                  Historial ({appointmentsMetrics.pastCount})
-                </button>
               </div>
               <div className="turnera-date-filter">
                 <input
@@ -11498,9 +11220,13 @@ function App() {
             {filteredAppointments.length > 0 ? (
               <div className="turnera-cards-grid">
                 {filteredAppointments.map((record) => {
-                  const todayStr = new Date().toISOString().slice(0, 10)
+                  const now = new Date()
+                  const todayStr = localDateKey(now)
                   const isToday = record.scheduledDate === todayStr
                   const isPast = record.scheduledDate < todayStr
+                  const appointmentEnd = new Date(`${record.scheduledDate}T${record.scheduledTime}:00`)
+                  appointmentEnd.setMinutes(appointmentEnd.getMinutes() + (record.durationMinutes ?? 30))
+                  const isOutsideSchedule = record.status !== 'attended' && (isPast || (isToday && now >= appointmentEnd))
                   const dateBadgeClass = isToday
                     ? 'turnera-badge-today'
                     : isPast
@@ -11514,7 +11240,7 @@ function App() {
                           {formatShortDate(record.scheduledDate)} · {record.scheduledTime} hs
                         </span>
                         <span className="turnera-status-badge">
-                          {isToday ? '🟢 Hoy' : isPast ? '⚪ Pasado' : '🔵 Confirmado'}
+                          {record.status === 'attended' ? '✅ Atendido' : isOutsideSchedule ? '🔴 Fuera de horario' : isToday ? '🟢 Hoy' : '🔵 Confirmado'}
                         </span>
                       </div>
 
@@ -11615,9 +11341,6 @@ function App() {
             ) : (
               <div className="turnera-empty-state">
                 <p>No hay turnos agendados con los filtros seleccionados.</p>
-                <button type="button" onClick={() => handleNewAppointmentModal()}>
-                  ➕ Agendar un turno nuevo
-                </button>
               </div>
             )}
           </section>
@@ -11680,22 +11403,8 @@ function App() {
                     id="import-patient-json"
                     className="file-input-hidden"
                     type="file"
-                    accept=".txt,.md,.json,text/plain,text/markdown,application/json,.pdf,.doc,.docx"
+                    accept=".txt,.md,.json,text/plain,text/markdown,application/json"
                     onChange={handleImportPatient}
-                  />
-                </div>
-                <div className="file-picker">
-                  <label htmlFor="import-padron-excel" className="file-picker-button compact">
-                    Importar padrón
-                  </label>
-                  <input
-                    id="import-padron-excel"
-                    className="file-input-hidden"
-                    type="file"
-                    accept=".xlsx,.xls,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-                    onChange={(event) => {
-                      void handleImportPadronExcel(event)
-                    }}
                   />
                 </div>
               </div>
@@ -11742,6 +11451,9 @@ function App() {
                       </div>
                       <div className="patient-directory-actions">
                         <button type="button" onClick={() => handleSelectPatient(patient.id)}>Abrir ficha</button>
+                        {patient.ownerUserId === activeUserId ? (
+                          <button type="button" className="ghost danger" onClick={() => void handleDeletePatient(patient.id)}>Eliminar</button>
+                        ) : null}
                         <button type="button" className="ghost" onClick={() => handleNewAppointmentModal(patient)}>Agendar</button>
                       </div>
                     </article>
@@ -11845,62 +11557,6 @@ function App() {
                 ) : null}
                 {!selectedPatient || canEditSelectedPatientRecord ? (
                   <div className="record-mode-actions">
-                    <div className="record-scan-actions">
-                      <button
-                        type="button"
-                        className="file-picker-button compact"
-                        onClick={() => {
-                          openFileDialog('patient-photo-carnet-upload')
-                        }}
-                      >
-                        SUBIR FOTO CREDENCIAL
-                      </button>
-                      <button
-                        type="button"
-                        className="file-picker-button compact"
-                        onClick={() => {
-                          void startLiveScanner('credential')
-                        }}
-                      >
-                        SCANEAR CREDENCIAL
-                      </button>
-                      <button
-                        type="button"
-                        className="file-picker-button compact"
-                        onClick={() => {
-                          openFileDialog('patient-photo-dni-upload')
-                        }}
-                      >
-                        SUBIR FOTO DNI
-                      </button>
-                      <button
-                        type="button"
-                        className="file-picker-button compact"
-                        onClick={() => {
-                          void startLiveScanner('dni')
-                        }}
-                      >
-                        SCANEAR DNI
-                      </button>
-                      <input
-                        id="patient-photo-carnet-upload"
-                        className="file-input-hidden"
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) => {
-                          void handleSingleUpload(event, 'photoCarnet')
-                        }}
-                      />
-                      <input
-                        id="patient-photo-dni-upload"
-                        className="file-input-hidden"
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) => {
-                          void handleSingleUpload(event, 'dniPhoto')
-                        }}
-                      />
-                    </div>
                     {selectedPatient ? (
                       !patientFormUnlocked ? (
                         <button
@@ -11999,53 +11655,6 @@ function App() {
                       Cirugías previas
                       <textarea name="cirugiasPrevias" value={patientDraft.cirugiasPrevias} onChange={handlePatientDraftChange} />
                     </label>
-                  </section>
-                  <section className="patient-form-block">
-                    <h4 className="block-title">📁 Documentación del paciente</h4>
-                    <label>
-                      Adjuntar documentos (foto, PDF, DOCX, imagen)
-                      <div className="file-picker">
-                        <label htmlFor="patient-documents" className="file-picker-button">Seleccionar archivos</label>
-                        <input
-                          id="patient-documents"
-                          className="file-input-hidden"
-                          type="file"
-                          multiple
-                          accept="image/*,.pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          onChange={(event) => { void handleDocumentsUpload(event) }}
-                        />
-                      </div>
-                    </label>
-                    <ul className="file-list">
-                      {patientDraft.dniPhoto ? (
-                        <li>
-                          <strong>DNI:</strong>{' '}
-                          <a href={patientDraft.dniPhoto.dataUrl} target="_blank" rel="noreferrer">{patientDraft.dniPhoto.name}</a>
-                        </li>
-                      ) : null}
-                      {patientDraft.photoCarnet ? (
-                        <li>
-                          <strong>Credencial:</strong>{' '}
-                          <a href={patientDraft.photoCarnet.dataUrl} target="_blank" rel="noreferrer">{patientDraft.photoCarnet.name}</a>
-                        </li>
-                      ) : null}
-                      {patientDraft.documents.map((document) => (
-                        <li key={document.id}>
-                          <a href={document.dataUrl} download={document.name}>{document.name}</a>
-                          {` `}
-                          <button
-                            type="button"
-                            className="ghost compact"
-                            onClick={() => {
-                              setPatientDraft((current) => ({
-                                ...current,
-                                documents: current.documents.filter((d) => d.id !== document.id),
-                              }))
-                            }}
-                          >✕</button>
-                        </li>
-                      ))}
-                    </ul>
                   </section>
                   <button type="submit">Guardar ficha</button>
                   <small>Cada paciente se almacena de forma individual en su archivo plano local.</small>
@@ -12230,6 +11839,17 @@ function App() {
                   {dictationAvailable ? (
                     <small>Tip: permite el micrófono cuando el navegador lo solicite.</small>
                   ) : null}
+                  <div className="clinical-document-upload">
+                    <label htmlFor="sofia-clinical-document" className="file-picker-button compact">📄 Subir laboratorio a Sofía</label>
+                    <input
+                      id="sofia-clinical-document"
+                      className="file-input-hidden"
+                      type="file"
+                      accept=".pdf,.txt,.csv,.md,.json,application/pdf,text/plain,text/csv,application/json"
+                      onChange={(event) => { void handleSofiaClinicalDocumentUpload(event) }}
+                    />
+                    <small>Lee el texto, lo agrega al borrador y permite resumirlo en la evolución.</small>
+                  </div>
                   {dictating && dictationField === 'detalleAtencion' ? (
                     <small>Dictando en este recuadro...</small>
                   ) : null}
@@ -12361,34 +11981,22 @@ function App() {
                   />
                 </label>
                 <label>
-                  Especialidad
-                  <input
+                  Usuario
+                  <input value={activeUser?.username ?? ''} readOnly />
+                </label>
+                <label>
+                  Profesión
+                  <select
                     name="specialty"
                     value={profile.specialty}
                     onChange={handleProfileFieldChange}
-                    autoComplete="off"
-                  />
-                  {profile.specialty.trim() && profileSpecialtySuggestions.length > 0 ? (
-                    <ul className="specialty-suggestions">
-                      {profileSpecialtySuggestions.map((specialty) => (
-                        <li key={specialty}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setProfile((current) =>
-                                current ? { ...current, specialty } : current,
-                              )
-                            }
-                          >
-                            {specialty}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  <small>
-                    La búsqueda ignora tildes y mayúsculas. Las especialidades nuevas quedan disponibles para todos.
-                  </small>
+                    disabled={Boolean(profile.specialty.trim())}
+                  >
+                    <option value="">Seleccioná tu profesión</option>
+                    <option value="Médico">Médico</option>
+                    <option value="Odontólogo">Odontólogo</option>
+                    <option value="Psicólogo">Psicólogo</option>
+                  </select>
                 </label>
                 <label>
                   Matrícula
@@ -12402,18 +12010,40 @@ function App() {
                   Email
                   <input name="email" value={profile.email} onChange={handleProfileFieldChange} />
                 </label>
-                <label>
-                  Teléfono
-                  <input name="phone" value={profile.phone} onChange={handleProfileFieldChange} />
-                </label>
-                <label>
-                  Texto de firma digital
-                  <input
-                    name="signatureText"
-                    value={profile.signatureText}
-                    onChange={handleProfileFieldChange}
-                  />
-                </label>
+                <section className="mercadopago-connect-card" aria-labelledby="mercadopago-connect-title">
+                  <div className="mercadopago-connect-copy">
+                    <span className="section-kicker">Cobros para tu consultorio</span>
+                    <h3 id="mercadopago-connect-title">Mercado Pago</h3>
+                    <p>
+                      Conectá tu propia cuenta para que los pacientes puedan pagarte a vos. Dr Happy no recibe ni administra ese dinero.
+                    </p>
+                    {mercadoPagoConnected ? (
+                      <small className="mercadopago-connected-status">
+                        ✓ Cuenta conectada{mercadoPagoAccountEmail ? ` · ${mercadoPagoAccountEmail}` : ''}
+                      </small>
+                    ) : (
+                      <small className="field-hint">Todavía no conectaste una cuenta.</small>
+                    )}
+                  </div>
+                  {mercadoPagoConnected ? (
+                    <div className="mercadopago-connect-actions">
+                      <button type="button" className="ghost" disabled={mercadoPagoConnectionBusy} onClick={() => void handleVerifyMercadoPago()}>
+                        {mercadoPagoConnectionBusy ? 'Verificando...' : 'Verificar conexión'}
+                      </button>
+                      <button type="button" className="ghost" disabled={mercadoPagoConnectionBusy} onClick={() => void handleDisconnectMercadoPago()}>
+                        Desconectar
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="mercadopago-connect-button" disabled={mercadoPagoConnectionBusy} onClick={() => void handleConnectMercadoPago()}>
+                      <span className="mercadopago-logo" aria-hidden="true">MP</span>
+                      {mercadoPagoConnectionBusy ? 'Conectando...' : 'Conectar Mercado Pago'}
+                    </button>
+                  )}
+                  {mercadoPagoVerificationMessage ? <small className="mercadopago-verification-message">{mercadoPagoVerificationMessage}</small> : null}
+                </section>
+                <details className="profile-advanced-settings">
+                  <summary>Ajustes avanzados</summary>
                 <label>
                   Link de cobro (Mercado Pago, alias o CBU)
                   <input
@@ -12427,79 +12057,12 @@ function App() {
                     directo a vos: Dr Happy no participa de la transacción.
                   </span>
                 </label>
-                <label>
-                  Foto de matrícula
-                  <div className="file-picker">
-                    <label htmlFor="profile-matricula-photo" className="file-picker-button">
-                      Seleccionar imagen
-                    </label>
-                    <input
-                      id="profile-matricula-photo"
-                      className="file-input-hidden"
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => {
-                        void handleSingleUpload(event, 'matriculaPhoto')
-                      }}
-                    />
-                  </div>
-                </label>
-                <label>
-                  Imagen de firma digital
-                  <div className="file-picker">
-                    <label htmlFor="profile-signature-image" className="file-picker-button">
-                      Seleccionar imagen
-                    </label>
-                    <input
-                      id="profile-signature-image"
-                      className="file-input-hidden"
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => {
-                        void handleSingleUpload(event, 'signatureImage')
-                      }}
-                    />
-                  </div>
-                </label>
-                <div className="signature-pad-group">
-                  <p>Firma a mano alzada (mouse, touch o lápiz)</p>
-                  <canvas
-                    ref={signatureCanvasRef}
-                    width={640}
-                    height={220}
-                    className="signature-pad"
-                    onPointerDown={handleSignaturePointerDown}
-                    onPointerMove={handleSignaturePointerMove}
-                    onPointerUp={handleSignaturePointerUp}
-                    onPointerLeave={handleSignaturePointerUp}
-                  />
-                  <div className="dictation-actions">
-                    <button type="button" className="ghost" onClick={handleClearSignaturePad}>
-                      Limpiar firma
-                    </button>
-                    <button type="button" onClick={handleSaveHandwrittenSignature}>
-                      Guardar firma manual
-                    </button>
-                  </div>
-                </div>
-                {profile.matriculaPhoto ? (
-                  <img
-                    src={profile.matriculaPhoto.dataUrl}
-                    alt="Foto matrícula"
-                    className="signature-preview"
-                  />
-                ) : null}
-                {profile.signatureImage ? (
-                  <img
-                    src={profile.signatureImage.dataUrl}
-                    alt="Firma digital"
-                    className="signature-preview"
-                  />
-                ) : null}
+                </details>
                 <button type="submit">Guardar perfil</button>
               </form>
             </section>
-            <section className="panel">
+            <details className="panel profile-password-settings">
+              <summary>⚙️ Seguridad y contraseña</summary>
               <h3>Cambiar contraseña</h3>
               <form className="grid" onSubmit={handleSaveOwnPassword}>
                 <label>
@@ -12536,99 +12099,16 @@ function App() {
                 </label>
                 <button type="submit">Actualizar contraseña</button>
               </form>
-            </section>
-            <section className="panel">
-              <h3>🔔 Notificaciones en tu dispositivo</h3>
-              <p className="flow-hint">
-                Recibe alertas en pantalla y vibración cuando un colega te envíe un mensaje privado o el administrador publique novedades.
-              </p>
-              <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <strong>Estado:</strong>
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      color:
-                        notificationPermission === 'granted'
-                          ? '#16a34a'
-                          : notificationPermission === 'denied'
-                            ? '#dc2626'
-                            : '#d97706',
-                    }}
-                  >
-                    {notificationPermission === 'granted'
-                      ? '✅ Notificaciones activas'
-                      : notificationPermission === 'denied'
-                        ? '❌ Bloqueadas en tu navegador'
-                        : '⚠️ Pendiente de activación'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {notificationPermission === 'denied' ? (
-                    <div style={{ display: 'grid', gap: 10, width: '100%', background: 'var(--surface-elevated, #fef2f2)', border: '1px solid #fca5a5', padding: '14px', borderRadius: '8px' }}>
-                      <div style={{ color: '#991b1b', fontSize: '0.92rem', lineHeight: 1.45 }}>
-                        <strong>¿Por qué el botón no abre la ventana?</strong>
-                        <br />
-                        Por normas de seguridad del navegador, cuando las notificaciones están bloqueadas, las páginas web no pueden forzar la ventana emergente. Para habilitarlas, hacelo en 2 pasos:
-                      </div>
-                      <div style={{ fontSize: '0.88rem', color: 'var(--text-muted, #4b5563)', display: 'grid', gap: 6 }}>
-                        <div>📱 <strong>En Celular (Chrome/Android):</strong> Tocá el candado 🔒 o ícono a la izquierda de <code>drhappy.com.ar</code> en la barra superior ➔ <em>Permisos</em> ➔ <em>Notificaciones</em> ➔ <strong>Permitir</strong>.</div>
-                        <div>🍎 <strong>En iPhone/iPad (iOS):</strong> Abrí <em>Ajustes de iOS</em> ➔ <em>Notificaciones</em> ➔ <em>Dr. Happy</em> ➔ <strong>Permitir notificaciones</strong>.</div>
-                        <div>💻 <strong>En PC (Chrome/Edge):</strong> Hacé clic en el candado 🔒 junto a la URL ➔ <em>Notificaciones</em> ➔ <strong>Permitir</strong>.</div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const p = getNotificationPermission()
-                            setNotificationPermission(p)
-                            if (p === 'granted') {
-                              if (activeUserId) void registerPushSubscription(activeUserId)
-                              setAppNotice('¡Notificaciones habilitadas con éxito!')
-                            } else {
-                              setAppError('Aún figuran bloqueadas en el navegador. Por favor seguí los pasos arriba y volvé a presionar este botón.')
-                            }
-                          }}
-                        >
-                          🔄 Ya las desbloqueé (Re-verificar)
-                        </button>
-                      </div>
-                    </div>
-                  ) : notificationPermission !== 'granted' ? (
-                    <button type="button" onClick={() => void handleEnableNotifications()}>
-                      🔔 Activar notificaciones en este celular / equipo
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="ghost"
-                        disabled={adminTestingPush}
-                        onClick={() => void handleTestDevicePush()}
-                      >
-                        {adminTestingPush ? 'Enviando prueba...' : '📲 Probar Notificación Push del Servidor'}
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => void handleEnableNotifications()}
-                      >
-                        🔄 Re-sincronizar suscripción
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </section>
-
+            </details>
             {/* Zona de auto-eliminación de cuenta (requisito de Google Play).
                 Dispara el flujo completo: archivo legal + emails + baja. */}
             {!isAdminSession ? (
-              <section
-                className="panel"
+              <details
+                className="panel profile-delete-settings"
                 style={{ border: '1px solid #fca5a5', background: 'var(--surface-elevated, #fff5f5)' }}
               >
-                <h3 style={{ color: '#b91c1c' }}>🗑️ Eliminar mi cuenta</h3>
+                <summary>🗑️ Eliminar mi cuenta</summary>
+                <h3 style={{ color: '#b91c1c' }}>Eliminar mi cuenta</h3>
                 <p className="flow-hint">
                   Podés eliminar tu cuenta de forma permanente desde acá. Antes de borrarla, el sistema genera
                   automáticamente tu <strong>archivo legal</strong> (respaldo de tu información registrada) y lo envía
@@ -12678,7 +12158,7 @@ function App() {
                     {selfDeleteBusy ? 'Procesando baja y archivo legal...' : 'Eliminar mi cuenta definitivamente'}
                   </button>
                 </div>
-              </section>
+              </details>
             ) : null}
           </section>
         </div>
@@ -13930,7 +13410,7 @@ function App() {
                     <label style={{ flex: 1.2 }}>
                       Link corto
                       <div className="public-booking-url-row">
-                        <span>drhappy.com.ar/turnos/?p=</span>
+                        <span>drhappy.com.ar/turnera/?p=</span>
                         <input
                           type="text"
                           value={publicBookingSettings.slug}
@@ -14403,7 +13883,7 @@ function App() {
                   </div>
                   <small>La acción se ejecutará solo cuando confirmes.</small>
                   <div>
-                    <button type="button" onClick={() => { setSofiaDraft('Sí, confirmo la acción propuesta.'); setSofiaPendingConfirmation(null) }} disabled={sofiaBusy}>Confirmar</button>
+                    <button type="button" onClick={() => { void handleConfirmSofiaAction() }} disabled={sofiaBusy}>Confirmar</button>
                     <button type="button" className="ghost" onClick={() => setSofiaPendingConfirmation(null)} disabled={sofiaBusy}>Cancelar</button>
                   </div>
                 </div>
@@ -14417,6 +13897,45 @@ function App() {
               </div>
             </form>
             <small className="sofia-disclaimer">Revisá toda respuesta antes de incorporarla a una historia clínica.</small>
+          </div>
+        </div>
+      ) : null}
+      {premiumPrompt ? (
+        <div className="drhappy-modal-overlay" onClick={() => setPremiumPrompt(null)}>
+          <div
+            className="drhappy-modal-card premium-prompt-card"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="premium-prompt-title"
+          >
+            <span className="premium-prompt-badge">⭐ Incluido con tu suscripción activa</span>
+            <span className="premium-prompt-icon" aria-hidden="true">{premiumPrompt.icon}</span>
+            <h3 id="premium-prompt-title">{premiumPrompt.title}</h3>
+            <p className="premium-prompt-pitch">{premiumPrompt.pitch}</p>
+            <ul className="premium-prompt-list">
+              {premiumPrompt.bullets.map((bullet) => (
+                <li key={bullet}>{bullet}</li>
+              ))}
+            </ul>
+            <div className="premium-prompt-actions">
+              <button
+                type="button"
+                disabled={subscriptionCheckoutLoading !== null}
+                onClick={() => {
+                  setPremiumPrompt(null)
+                  void handleStartSubscriptionCheckout('monthly')
+                }}
+              >
+                {subscriptionCheckoutLoading === 'monthly' ? 'Abriendo pago...' : 'Activar ahora'}
+              </button>
+              <button type="button" className="ghost" onClick={() => { setPremiumPrompt(null); setPreviewTrialExpired(true) }}>
+                Ver planes y precios
+              </button>
+              <button type="button" className="text-button" onClick={() => setPremiumPrompt(null)}>
+                Ahora no
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -14444,15 +13963,11 @@ function App() {
             </div>
             <div className="drhappy-modal-body">
               <p style={{ margin: '0 0 16px', color: '#475569', fontSize: '0.92rem', lineHeight: 1.5 }}>
-                Estamos a tu disposición para soporte técnico inmediato, sugerencias, reporte de errores o dudas sobre el funcionamiento de DrHappy.
+                Para recibir soporte, escribinos a soporte@drhappy.com.ar.
               </p>
               <div className="drhappy-contact-options">
                 <a
-                  href={`mailto:soporte@drhappy.com.ar?subject=${encodeURIComponent(
-                    `Soporte DrHappy - ${activeUser ? activeUser.fullName : 'Consulta General'}`
-                  )}&body=${encodeURIComponent(
-                    `Usuario: ${activeUser ? activeUser.fullName + ' (@' + activeUser.username + ')' : 'No logueado'}\nDispositivo: ${navigator.userAgent}\nURL: ${window.location.href}\n\nDetalle de la consulta o sugerencia:\n`
-                  )}`}
+                  href="mailto:soporte@drhappy.com.ar"
                   className="drhappy-contact-btn email"
                 >
                   <span className="contact-icon">✉️</span>
@@ -14462,24 +13977,6 @@ function App() {
                   </div>
                 </a>
 
-                <button
-                  type="button"
-                  className="drhappy-contact-btn diagnostic"
-                  onClick={() => {
-                    const info = `=== Diagnóstico DrHappy ===\nFecha: ${new Date().toISOString()}\nUsuario: ${activeUser ? activeUser.fullName + ' (@' + activeUser.username + ')' : 'Sin sesión'}\nURL: ${window.location.href}\nNavegador: ${navigator.userAgent}\nPWA Instalada / Standalone: ${window.matchMedia('(display-mode: standalone)').matches ? 'Sí' : 'No'}\nPermiso Notificaciones: ${('Notification' in window) ? Notification.permission : 'No soportado'}\nServiceWorker: ${('serviceWorker' in navigator) ? 'Soportado' : 'No soportado'}`
-                    navigator.clipboard.writeText(info).then(() => {
-                      showSavedFloatingNotice('📋 Información técnica copiada al portapapeles')
-                    }).catch(() => {
-                      showSavedFloatingNotice('No se pudo copiar automáticamente')
-                    })
-                  }}
-                >
-                  <span className="contact-icon">📋</span>
-                  <div>
-                    <strong>Copiar diagnóstico del dispositivo</strong>
-                    <small>Copia detalles técnicos (OS, navegador, PWA) para enviarnos</small>
-                  </div>
-                </button>
               </div>
             </div>
             <div className="drhappy-modal-footer">

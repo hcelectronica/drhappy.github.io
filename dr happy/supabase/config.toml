@@ -1,0 +1,7 @@
+project_id = "stzsobirxdivbgqxwkhc"
+
+[functions.mercadopago-connect]
+verify_jwt = false
+
+[functions.mercadopago-patient-webhook]
+verify_jwt = false

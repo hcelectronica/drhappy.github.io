@@ -61,6 +61,10 @@ function getBaseTemplate(title: string, innerHtml: string): string {
     <div class="footer">
       <p style="margin: 0 0 6px;">Este es un mensaje institucional enviado desde <strong>soporte@drhappy.com.ar</strong></p>
       <p style="margin: 0 0 10px;">Sitio oficial: <a href="https://drhappy.com.ar/" target="_blank">drhappy.com.ar</a></p>
+      <p style="margin: 0 0 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+        ¿Sos profesional de la salud? Gestioná turnos, historias clínicas y cobros en un solo lugar.
+        <a href="https://drhappy.com.ar/?utm_source=email&utm_medium=turnos&utm_campaign=marca" target="_blank" style="font-weight: 700;">Probá Dr Happy gratis</a>
+      </p>
       <p style="margin: 0; font-size: 12px; color: #94a3b8;">© ${new Date().getFullYear()} DrHappy. Todos los derechos reservados.</p>
     </div>
   </div>
@@ -272,10 +276,10 @@ serve(async (request) => {
 
   const smtpHost = Deno.env.get('SMTP_HOST')?.trim() || 'smtp.hostinger.com'
   const smtpPort = Number(Deno.env.get('SMTP_PORT')?.trim() || '465')
-  const smtpUser = Deno.env.get('SMTP_USER')?.trim() || 'soporte@drhappy.com.ar'
-  const smtpPass = Deno.env.get('SMTP_PASSWORD')?.trim() || Deno.env.get('HOSTINGER_MAIL_PASSWORD')?.trim() || ''
+  const smtpUser = Deno.env.get('SMTP_TURNOS_USER')?.trim() || Deno.env.get('SMTP_USER')?.trim() || 'turnos@drhappy.com.ar'
+  const smtpPass = Deno.env.get('SMTP_TURNOS_PASSWORD')?.trim() || Deno.env.get('SMTP_PASSWORD')?.trim() || Deno.env.get('HOSTINGER_MAIL_PASSWORD')?.trim() || ''
   const fromName = Deno.env.get('SMTP_FROM_NAME')?.trim() || 'Dr Happy'
-  const fromEmail = Deno.env.get('SMTP_FROM_EMAIL')?.trim() || 'soporte@drhappy.com.ar'
+  const fromEmail = 'turnos@drhappy.com.ar'
 
   let payload: EmailPayload
   try {
@@ -293,7 +297,7 @@ serve(async (request) => {
   if (!smtpPass) {
     return jsonResponse(500, {
       success: false,
-      message: 'Falta configurar la contraseña SMTP (secret SMTP_PASSWORD) en Supabase para soporte@drhappy.com.ar.',
+      message: 'Falta configurar la contraseña SMTP (secret SMTP_PASSWORD) en Supabase para turnos@drhappy.com.ar.',
       hint: 'Por favor asigna la contraseña de la casilla de correo en Hostinger a SMTP_PASSWORD.',
       configuredUser: smtpUser,
       configuredHost: smtpHost,

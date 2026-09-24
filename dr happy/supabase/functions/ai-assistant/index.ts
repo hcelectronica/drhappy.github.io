@@ -77,6 +77,34 @@ const tools = [
     },
   },
   {
+    name: 'registrar_balance_pendiente',
+    description: 'Registra en el balance de pagos un tratamiento o cobro pendiente de un paciente. Requiere confirmation=true; si es false, solo prepara una propuesta.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        patient: { type: 'string', description: 'Nombre, apellido o DNI del paciente.' },
+        intervention: { type: 'string', description: 'Tratamiento o concepto a cobrar.' },
+        totalAmount: { type: 'number', description: 'Monto total pendiente en pesos.' },
+        date: { type: 'string', description: 'Fecha YYYY-MM-DD opcional.' },
+        confirmation: { type: 'boolean' },
+      },
+      required: ['patient', 'intervention', 'totalAmount', 'confirmation'],
+    },
+  },
+  {
+    name: 'registrar_pago_balance',
+    description: 'Registra un pago parcial o total sobre un tratamiento del balance y reduce el saldo pendiente. El pago no puede superar la deuda existente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        patient: { type: 'string', description: 'Nombre, apellido o DNI del paciente.' },
+        intervention: { type: 'string', description: 'Tratamiento opcional; si el paciente tiene uno solo pendiente se usa ese.' },
+        amount: { type: 'number', description: 'Importe del nuevo pago en pesos.' },
+      },
+      required: ['patient', 'amount'],
+    },
+  },
+  {
     name: 'preparar_borrador_evolucion',
     description: 'Prepara un borrador de evolución clínica a partir de información que el profesional proporciona. Nunca lo guarda automáticamente.',
     input_schema: {
@@ -91,7 +119,7 @@ const tools = [
   {
     name: 'agendar_turno',
     description: 'Agenda directamente un turno solicitado por el profesional. Convertí hoy/mañana a una fecha YYYY-MM-DD usando la fecha actual del sistema. La hora es opcional: si no se indica, elegí el primer bloque libre de la jornada. No pidas confirmación adicional. Solo detente si el día no atiende, no hay cupo o el horario se superpone con otro turno.',
-    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD, nunca texto relativo.' }, time: { type: 'string', description: 'Hora HH:MM opcional; si falta se asigna el primer bloque libre.' }, reason: { type: 'string' }, durationMinutes: { type: 'number' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'date', 'confirmation'] },
+    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string', description: 'Fecha YYYY-MM-DD opcional; si falta se busca el primer día habilitado con cupo.' }, time: { type: 'string', description: 'Hora HH:MM opcional; si falta se asigna el primer bloque libre.' }, reason: { type: 'string' }, durationMinutes: { type: 'number' }, location: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'confirmation'] },
   },
   {
     name: 'crear_paciente_y_agendar_turno',
@@ -109,9 +137,29 @@ const tools = [
     input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string' }, time: { type: 'string' }, newDate: { type: 'string' }, newTime: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'newDate', 'confirmation'] },
   },
   {
+    name: 'reprogramar_turnos_de_fecha',
+    description: 'Reprograma todos los turnos activos de una fecha al próximo día habilitado donde entren todos, conserva los datos de cada paciente, elimina los turnos anteriores y envía un email individual. Siempre requiere confirmation=true; si es false, solo prepara una propuesta.',
+    input_schema: { type: 'object', properties: { date: { type: 'string', description: 'Fecha origen YYYY-MM-DD.' }, newDate: { type: 'string', description: 'Fecha destino opcional; si falta se busca el próximo día con capacidad para todos.' }, confirmation: { type: 'boolean' } }, required: ['date', 'confirmation'] },
+  },
+  {
     name: 'enviar_notificacion_paciente',
     description: 'Envía un email a un paciente. Siempre requiere confirmation=true; si es false, solo prepara una propuesta y no envía nada.',
     input_schema: { type: 'object', properties: { patient: { type: 'string' }, subject: { type: 'string' }, message: { type: 'string' }, confirmation: { type: 'boolean' } }, required: ['patient', 'subject', 'message', 'confirmation'] },
+  },
+  {
+    name: 'enviar_recordatorio_turno',
+    description: 'Envía un recordatorio del próximo turno activo de un paciente usando el mismo flujo de email de turnos. Requiere confirmation=true; si es false, prepara la propuesta.',
+    input_schema: { type: 'object', properties: { patient: { type: 'string' }, date: { type: 'string', description: 'Fecha del turno opcional.' }, time: { type: 'string', description: 'Hora del turno opcional.' }, confirmation: { type: 'boolean' } }, required: ['patient', 'confirmation'] },
+  },
+  {
+    name: 'enviar_recordatorios_balance',
+    description: 'Envía recordatorios de saldo pendiente a varios pacientes. Usala cuando el profesional pida enviar el recordatorio a dos o más pacientes. Genera un email individual por paciente y requiere confirmation=true.',
+    input_schema: { type: 'object', properties: { patients: { type: 'array', items: { type: 'string' }, description: 'Nombres, apellidos o DNI de los pacientes.' }, confirmation: { type: 'boolean' } }, required: ['patients', 'confirmation'] },
+  },
+  {
+    name: 'revisar_y_enviar_recordatorios_pagos',
+    description: 'Revisa todo el balance de pagos, identifica pacientes con deuda pendiente y prepara o envía recordatorios individuales. Si patients está vacío incluye todos los deudores. Requiere confirmation=true para enviar.',
+    input_schema: { type: 'object', properties: { patients: { type: 'array', items: { type: 'string' }, description: 'Pacientes opcionales; vacío significa todos los que deben dinero.' }, confirmation: { type: 'boolean' } }, required: ['confirmation'] },
   },
   {
     name: 'completar_email_y_enviar_confirmacion',
@@ -304,7 +352,24 @@ async function recoverPersistedAppointment(
     .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')))[0] || null
 }
 
-async function runTool(name: string, input: Record<string, unknown>, admin: ReturnType<typeof createClient>, professionalId: string): Promise<unknown> {
+async function recoverPersistedRescheduledAppointment(
+  admin: ReturnType<typeof createClient>,
+  professionalId: string,
+  input: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  const { data } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
+  const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+  const query = input.patient
+  const newDate = String(input.newDate || '').trim()
+  return appointments.find((appointment) => (
+    appointment.status !== 'cancelled' &&
+    appointment.scheduledDate === newDate &&
+    Boolean(appointment.previousAppointmentId) &&
+    matchesPatientQuery(appointment.patientName, appointment.patientDni, query)
+  )) || null
+}
+
+async function runTool(name: string, input: Record<string, unknown>, admin: ReturnType<typeof createClient>, professionalId: string, supabaseUrl: string, serviceRoleKey: string): Promise<unknown> {
   if (name === 'buscar_turnos') {
     const { data } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
@@ -418,8 +483,10 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
   if (name === 'buscar_pacientes') {
     const query = normalizeSearch(input.query)
     if (query.length < 2) return { count: 0, patients: [], message: 'La búsqueda necesita al menos 2 caracteres.' }
-    const { data } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
+    const { data } = await admin.from('user_workspaces').select('patients_json, appointments_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
     const matches = patients.filter((patient) => normalizeSearch(`${patient.nombre || ''} ${patient.apellido || ''} ${patient.dni || ''}`).includes(query)).slice(0, 20).map((patient) => ({ id: patient.id, name: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), dni: patient.dni, email: patient.email, obraSocial: patient.obraSocial }))
     return { count: matches.length, patients: matches }
   }
@@ -438,8 +505,10 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
   if (name === 'consultar_historia_paciente') {
     const query = normalizeSearch(input.query)
     if (query.length < 2) return { matches: [], message: 'La búsqueda necesita al menos 2 caracteres.' }
-    const { data } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
+    const { data } = await admin.from('user_workspaces').select('patients_json, appointments_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
     const topic = normalizeSearch(input.topic)
     const dateFrom = typeof input.dateFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.dateFrom) ? input.dateFrom : ''
     const dateTo = typeof input.dateTo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.dateTo) ? input.dateTo : ''
@@ -460,6 +529,20 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
         diagnosticoPrincipal: patient.diagnosticoPrincipal,
         patologiasConocidas: patient.patologiasConocidas,
         patologiasCronicas: patient.patologiasCronicas,
+        appointments: appointments.filter((appointment) => appointment.patientId === patient.id && appointment.status !== 'cancelled').map((appointment) => ({
+          date: appointment.scheduledDate,
+          time: appointment.scheduledTime,
+          reason: appointment.reason,
+          location: appointment.location,
+          status: appointment.status,
+        })),
+        paymentBalance: ledger.filter((entry) => entry.patientId === patient.id).map((entry) => ({
+          date: entry.date,
+          intervention: entry.intervention,
+          total: entry.totalAmount,
+          paid: entry.paidAmount,
+          pending: Number(entry.totalAmount || 0) - Number(entry.paidAmount || 0),
+        })),
         consultations: Array.isArray(patient.consultations)
           ? patient.consultations
             .filter((consultation: Record<string, unknown>) => {
@@ -492,6 +575,75 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     return { count: matches.length, entries: matches }
   }
 
+  if (name === 'registrar_balance_pendiente') {
+    const query = normalizeSearch(input.patient)
+    const intervention = String(input.intervention || '').trim()
+    const totalAmount = Number(input.totalAmount)
+    const date = typeof input.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.date)
+      ? input.date
+      : new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+    if (query.length < 2) return { success: false, message: 'Necesito el nombre, apellido o DNI del paciente.' }
+    if (!intervention) return { success: false, message: 'Necesito indicar el tratamiento o concepto.' }
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) return { success: false, message: 'El monto debe ser mayor que cero.' }
+    const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json, profile_json').eq('user_id', professionalId).maybeSingle()
+    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const patient = patients.find((item) => matchesPatientQuery(`${item.nombre || ''} ${item.apellido || ''}`, item.dni, query))
+    if (!patient) return { success: false, message: 'No encontré ese paciente en la base de datos.' }
+    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
+    const matchingEntry = ledger.find((entry) => entry.patientId === patient.id && normalizeSearch(entry.intervention) === normalizeSearch(intervention) && Number(entry.paidAmount || 0) < Number(entry.totalAmount || 0))
+    const duplicate = matchingEntry && String(matchingEntry.date || '') === date && Number(matchingEntry.totalAmount) === totalAmount
+    const patientName = `${patient.apellido || ''}, ${patient.nombre || ''}`.trim()
+    const proposal = { patient: patientName, patientId: patient.id, date, intervention, totalAmount, paidAmount: 0, pending: totalAmount }
+    if (duplicate) return { success: true, idempotent: true, message: `Ese saldo ya estaba registrado para ${patientName}: ${intervention} por $${totalAmount.toLocaleString('es-AR')} pendiente.` }
+    if (matchingEntry) {
+      const nextLedger = ledger.map((entry) => entry.id === matchingEntry.id ? { ...entry, totalAmount, updatedAt: new Date().toISOString() } : entry)
+      const updated = await admin.from('user_workspaces').upsert({ user_id: professionalId, treatment_ledger_json: nextLedger }, { onConflict: 'user_id' })
+      if (updated.error) return { success: false, message: updated.error.message }
+      return { success: true, message: `Actualicé el total de ${intervention} para ${patientName} a $${totalAmount.toLocaleString('es-AR')}. Queda pendiente $${Math.max(0, totalAmount - Number(matchingEntry.paidAmount || 0)).toLocaleString('es-AR')}.` }
+    }
+    const now = new Date().toISOString()
+    const entry = { id: crypto.randomUUID(), patientId: String(patient.id), patientName, date, intervention, totalAmount, paidAmount: 0, createdAt: now, updatedAt: now }
+    const saved = await admin.from('user_workspaces').upsert({ user_id: professionalId, treatment_ledger_json: [entry, ...ledger] }, { onConflict: 'user_id' })
+    if (saved.error) return { success: false, message: saved.error.message }
+    return { success: true, message: `Registré en el balance de pagos a ${patientName}: ${intervention} por $${totalAmount.toLocaleString('es-AR')} pendiente.` }
+  }
+
+  if (name === 'registrar_pago_balance') {
+    const query = normalizeSearch(input.patient)
+    const interventionQuery = normalizeSearch(input.intervention)
+    const amount = Number(input.amount)
+    if (query.length < 2) return { success: false, message: 'Necesito el nombre, apellido o DNI del paciente.' }
+    if (!Number.isFinite(amount) || amount <= 0) return { success: false, message: 'El importe del pago debe ser mayor que cero.' }
+    const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
+    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const patient = patients.find((item) => matchesPatientQuery(`${item.nombre || ''} ${item.apellido || ''}`, item.dni, query))
+    if (!patient) return { success: false, message: 'No encontré ese paciente en la base de datos.' }
+    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
+    const pendingEntries = ledger.filter((entry) => entry.patientId === patient.id && Number(entry.totalAmount || 0) > Number(entry.paidAmount || 0) && (!interventionQuery || normalizeSearch(entry.intervention).includes(interventionQuery)))
+    if (pendingEntries.length === 0) return { success: false, message: 'No encontré un tratamiento con saldo pendiente para ese paciente.' }
+    if (pendingEntries.length > 1 && !interventionQuery) return { success: false, message: `Encontré ${pendingEntries.length} tratamientos pendientes. Indicá cuál querés cobrar.` }
+    const entry = pendingEntries[0]
+    const total = Number(entry.totalAmount || 0)
+    const paid = Number(entry.paidAmount || 0)
+    const pending = total - paid
+    if (amount > pending) return { success: false, message: `El pago de $${amount.toLocaleString('es-AR')} supera el saldo pendiente de $${pending.toLocaleString('es-AR')}.` }
+    const nextPaid = paid + amount
+    const nextLedger = ledger.map((item) => item.id === entry.id ? { ...item, paidAmount: nextPaid, updatedAt: new Date().toISOString() } : item)
+    const saved = await admin.from('user_workspaces').upsert({ user_id: professionalId, treatment_ledger_json: nextLedger }, { onConflict: 'user_id' })
+    if (saved.error) return { success: false, message: saved.error.message }
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const patientEmail = patients.find((item) => item.id === entry.patientId)?.email
+    const pendingAfterPayment = total - nextPaid
+    const emailResult = await sendAppointmentNotice({
+      supabaseUrl,
+      serviceRoleKey,
+      email: typeof patientEmail === 'string' ? patientEmail : undefined,
+      subject: `Pago registrado - saldo pendiente con ${String(profile.fullName || 'Dr Happy')}`,
+      message: `Hola ${entry.patientName},\n\nRegistramos un pago de $${amount.toLocaleString('es-AR')} correspondiente a ${entry.intervention}.\n\nMonto total: $${total.toLocaleString('es-AR')}\nPagos acumulados: $${nextPaid.toLocaleString('es-AR')}\nSaldo pendiente: $${pendingAfterPayment.toLocaleString('es-AR')}\n\nSaludos cordiales.`,
+    })
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Registré un pago de $${amount.toLocaleString('es-AR')} para ${entry.patientName}, correspondiente a ${entry.intervention}. Saldo pendiente: $${pendingAfterPayment.toLocaleString('es-AR')}.${emailResult.sent ? ' Aviso enviado por email.' : ` No se pudo enviar el aviso: ${emailResult.message}`}` }
+  }
+
   if (name === 'preparar_borrador_evolucion') {
     return {
       draft: {
@@ -516,29 +668,45 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(patient.email || '').trim()) ? 'email válido' : '',
     ].filter(Boolean)
     if (missingPatientData.length > 0) return { success: false, message: `Antes de agendar necesito completar: ${missingPatientData.join(', ')}.` }
-    const proposal = { patient: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), patientId: patient.id, date: input.date, time: input.time, reason: input.reason || 'Consulta médica', durationMinutes: Number(input.durationMinutes) || 30, location: input.location || 'Consultorio médico' }
+    let date = String(input.date || '').trim()
+    const durationMinutes = Number(input.durationMinutes) || 30
+    const proposal = { patient: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), patientId: patient.id, date, time: input.time, reason: input.reason || 'Consulta médica', durationMinutes, location: input.location || 'Consultorio médico' }
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
     const profileData = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
     const dailyLimit = Number(profileData.dailyPatientLimit) || 10
     const appointmentDays = Array.isArray(profileData.appointmentDays) ? profileData.appointmentDays : [1, 2, 4]
     const openingTime = typeof profileData.appointmentStartTime === 'string' ? profileData.appointmentStartTime : '09:00'
     const closingTime = typeof profileData.appointmentEndTime === 'string' ? profileData.appointmentEndTime : '19:00'
-    if (!appointmentDays.includes(dateWeekday(String(input.date)))) return { success: false, message: 'Ese día no está habilitado en la agenda profesional.' }
-    const activeOnDate = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === input.date)
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { success: false, message: 'La fecha debe tener formato YYYY-MM-DD.' }
+    if (!date) {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+      for (let offset = 0; offset < 60 && !date; offset += 1) {
+        const candidate = new Date(`${today}T12:00:00`)
+        candidate.setDate(candidate.getDate() + offset)
+        const candidateDate = candidate.toISOString().slice(0, 10)
+        if (!appointmentDays.includes(dateWeekday(candidateDate))) continue
+        const candidateAppointments = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === candidateDate)
+        if (candidateAppointments.length < dailyLimit && findFirstAvailableTime(candidateAppointments, durationMinutes, openingTime, closingTime)) date = candidateDate
+      }
+    }
+    if (!date) return { success: false, message: 'No encontré disponibilidad en los próximos 60 días.' }
+    proposal.date = date
+    if (!appointmentDays.includes(dateWeekday(date))) return { success: false, message: 'Ese día no está habilitado en la agenda profesional.' }
+    const activeOnDate = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === date)
     if (activeOnDate.length >= dailyLimit) return { success: false, message: `El cupo diario está completo (${dailyLimit} turnos).` }
-    const selectedTime = typeof input.time === 'string' && /^\d{2}:\d{2}$/.test(input.time) ? input.time : findFirstAvailableTime(activeOnDate, proposal.durationMinutes, openingTime, closingTime)
+    const selectedTime = typeof input.time === 'string' && /^\d{2}:\d{2}$/.test(input.time) ? input.time : findFirstAvailableTime(activeOnDate, durationMinutes, openingTime, closingTime)
     if (!selectedTime) return { success: false, message: 'No encontré un bloque libre en la jornada para ese día.' }
-    if (timeToMinutes(selectedTime) < timeToMinutes(openingTime) || timeToMinutes(selectedTime) + proposal.durationMinutes > timeToMinutes(closingTime)) return { success: false, message: `El horario debe estar dentro de tu agenda: ${openingTime} a ${closingTime}.` }
+    if (timeToMinutes(selectedTime) < timeToMinutes(openingTime) || timeToMinutes(selectedTime) + durationMinutes > timeToMinutes(closingTime)) return { success: false, message: `El horario debe estar dentro de tu agenda: ${openingTime} a ${closingTime}.` }
     proposal.time = selectedTime
     const requestedStart = timeToMinutes(selectedTime)
-    const requestedEnd = requestedStart + proposal.durationMinutes
+    const requestedEnd = requestedStart + durationMinutes
     const conflict = activeOnDate.some((item) => { const start = timeToMinutes(item.scheduledTime); const end = start + (Number(item.durationMinutes) || 30); return requestedStart < end && requestedEnd > start })
     if (conflict) return { success: false, message: 'Ese horario ya está ocupado.' }
-    const appointment = { id: crypto.randomUUID(), patientId: patient.id, patientName: proposal.patient, patientEmail: patient.email || '', patientDni: patient.dni || '', scheduledDate: input.date, scheduledTime: selectedTime, scheduledAt: `${input.date}T${selectedTime}:00`, durationMinutes: proposal.durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
+    const appointment = { id: crypto.randomUUID(), patientId: patient.id, patientName: proposal.patient, patientEmail: patient.email || '', patientDni: patient.dni || '', scheduledDate: date, scheduledTime: selectedTime, scheduledAt: `${date}T${selectedTime}:00`, durationMinutes, reason: proposal.reason, location: proposal.location, status: 'confirmed', createdAt: new Date().toISOString(), createdByUserId: professionalId }
     const saved = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: [...appointments, appointment] }, String(appointment.id))
     if (!saved.success) return saved
-    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(patient.email || ''), patientName: proposal.patient, professionalName: String(profileData.fullName || 'Dr Happy'), date: String(input.date), time: selectedTime, location: proposal.location, reason: proposal.reason, paymentLink: typeof profileData.paymentLink === 'string' ? profileData.paymentLink : undefined })
-    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno confirmado para ${proposal.patient} el ${input.date} a las ${selectedTime}.${emailResult.sent ? ' Confirmación enviada por email.' : ' El turno quedó guardado, pero no se envió email porque el paciente no tiene una dirección válida cargada.'}` }
+    const emailResult = await sendAppointmentConfirmation({ supabaseUrl, serviceRoleKey, email: String(patient.email || ''), patientName: proposal.patient, professionalName: String(profileData.fullName || 'Dr Happy'), date, time: selectedTime, location: proposal.location, reason: proposal.reason, paymentLink: typeof profileData.paymentLink === 'string' ? profileData.paymentLink : undefined })
+    return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno confirmado para ${proposal.patient} el ${date} a las ${selectedTime}.${emailResult.sent ? ' Confirmación enviada por email.' : ' El turno quedó guardado, pero no se envió email porque el paciente no tiene una dirección válida cargada.'}` }
   }
 
   if (name === 'crear_paciente_y_agendar_turno') {
@@ -617,7 +785,11 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const { data } = await admin.from('user_workspaces').select('appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
     const match = appointments.find((item) => item.status !== 'cancelled' && matchesPatientQuery(item.patientName, item.patientDni, query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time))
-    if (!match) return { success: false, message: 'No encontré ese turno.' }
+    if (!match) {
+      const alreadyRescheduled = appointments.find((item) => item.status !== 'cancelled' && item.scheduledDate === newDate && item.previousAppointmentId && matchesPatientQuery(item.patientName, item.patientDni, query))
+      if (alreadyRescheduled) return { success: true, idempotent: true, message: `El turno de ${alreadyRescheduled.patientName} ya estaba reprogramado para el ${alreadyRescheduled.scheduledDate} a las ${alreadyRescheduled.scheduledTime}. No hice cambios adicionales.` }
+      return { success: false, message: 'No encontré ese turno.' }
+    }
     const proposal = { patient: match.patientName, date: match.scheduledDate, time: match.scheduledTime, reason: match.reason }
     if (input.confirmation !== true) return { requiresConfirmation: true, action: 'cancelar_turno', proposal, message: 'Pedí confirmación explícita antes de cancelar.' }
     const nextAppointments = appointments.map((item) => item.id === match.id ? { ...item, status: 'cancelled' } : item)
@@ -642,7 +814,11 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const { data } = await admin.from('user_workspaces').select('appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
     const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
     const match = appointments.find((item) => item.status !== 'cancelled' && matchesPatientQuery(item.patientName, item.patientDni, query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time))
-    if (!match) return { success: false, message: 'No encontré ese turno.' }
+    if (!match) {
+      const alreadyRescheduled = appointments.find((item) => item.status !== 'cancelled' && item.scheduledDate === newDate && item.previousAppointmentId && matchesPatientQuery(item.patientName, item.patientDni, query))
+      if (alreadyRescheduled) return { success: true, idempotent: true, message: `El turno de ${alreadyRescheduled.patientName} ya estaba reprogramado para el ${alreadyRescheduled.scheduledDate} a las ${alreadyRescheduled.scheduledTime}. No hice cambios adicionales.` }
+      return { success: false, message: 'No encontré ese turno.' }
+    }
     const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
     const dailyLimit = Number(profile.dailyPatientLimit) || 10
     const appointmentDays = Array.isArray(profile.appointmentDays) ? profile.appointmentDays : [1, 2, 4]
@@ -661,11 +837,15 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const proposal = { patient: match.patientName, fromDate: match.scheduledDate, fromTime: match.scheduledTime, toDate: newDate, toTime: selectedTime }
     if (input.confirmation !== true) return { requiresConfirmation: true, action: 'reprogramar_turno', proposal, message: 'Pedí confirmación antes de cambiar el turno.' }
     const rescheduledAt = new Date().toISOString()
-    const cancelledAppointment = { ...match, status: 'cancelled', cancellationReason: 'Reprogramado por el profesional', cancelledAt: rescheduledAt, updatedAt: rescheduledAt }
     const newAppointment = { ...match, id: crypto.randomUUID(), scheduledDate: newDate, scheduledTime: selectedTime, scheduledAt: `${newDate}T${selectedTime}:00`, status: 'confirmed', previousAppointmentId: match.id, rescheduledAt, updatedAt: rescheduledAt }
-    const nextAppointments = appointments.flatMap((item) => item.id === match.id ? [cancelledAppointment, newAppointment] : [item])
-    const saved = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: nextAppointments }, String(newAppointment.id))
-    if (!saved.success) return saved
+    const createdFirst = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: [...appointments, newAppointment] }, String(newAppointment.id))
+    if (!createdFirst.success) return { success: false, message: `No se pudo crear el nuevo turno; el turno original se conserva. ${createdFirst.message || ''}`.trim() }
+    const withoutOriginal = appointments.filter((item) => item.id !== match.id)
+    const removedOriginal = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: [...withoutOriginal, newAppointment] }, String(newAppointment.id))
+    if (!removedOriginal.success) {
+      await admin.from('user_workspaces').upsert({ user_id: professionalId, appointments_json: appointments }, { onConflict: 'user_id' })
+      return { success: false, message: `Se creó el nuevo turno, pero no se pudo retirar el anterior. Se restauró la agenda original para evitar duplicados. ${removedOriginal.message || ''}`.trim() }
+    }
     const emailResult = await sendAppointmentNotice({
       supabaseUrl,
       serviceRoleKey,
@@ -676,16 +856,170 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     return { success: true, emailSent: emailResult.sent, emailMessage: emailResult.message, message: `Turno reprogramado para ${match.patientName}: ${newDate} a las ${selectedTime}.${emailResult.sent ? ' Aviso enviado por email.' : ` No se pudo enviar el aviso: ${emailResult.message}`}` }
   }
 
+  if (name === 'reprogramar_turnos_de_fecha') {
+    const sourceDate = String(input.date || '').trim()
+    let destinationDate = String(input.newDate || '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(sourceDate)) return { success: false, message: 'La fecha origen debe tener formato YYYY-MM-DD.' }
+    if (destinationDate && !/^\d{4}-\d{2}-\d{2}$/.test(destinationDate)) return { success: false, message: 'La fecha destino debe tener formato YYYY-MM-DD.' }
+    const { data } = await admin.from('user_workspaces').select('appointments_json, profile_json').eq('user_id', professionalId).maybeSingle()
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const sourceAppointments = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === sourceDate)
+    if (!sourceAppointments.length) return { success: false, message: `No encontré turnos activos para el ${sourceDate}.` }
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const dailyLimit = Number(profile.dailyPatientLimit) || 10
+    const appointmentDays = Array.isArray(profile.appointmentDays) ? profile.appointmentDays : [1, 2, 4]
+    const openingTime = typeof profile.appointmentStartTime === 'string' ? profile.appointmentStartTime : '09:00'
+    const closingTime = typeof profile.appointmentEndTime === 'string' ? profile.appointmentEndTime : '19:00'
+    const tryDate = (candidateDate: string): Array<{ appointment: Record<string, unknown>; time: string }> | null => {
+      if (!appointmentDays.includes(dateWeekday(candidateDate))) return null
+      const candidateAppointments = appointments.filter((item) => item.status !== 'cancelled' && item.scheduledDate === candidateDate)
+      if (candidateAppointments.length + sourceAppointments.length > dailyLimit) return null
+      const simulated = [...candidateAppointments]
+      const assignments: Array<{ appointment: Record<string, unknown>; time: string }> = []
+      for (const appointment of sourceAppointments) {
+        const duration = Number(appointment.durationMinutes) || 30
+        const time = findFirstAvailableTime(simulated, duration, openingTime, closingTime)
+        if (!time) return null
+        assignments.push({ appointment, time })
+        simulated.push({ scheduledTime: time, durationMinutes: duration })
+      }
+      return assignments
+    }
+    let assignments: Array<{ appointment: Record<string, unknown>; time: string }> | null = null
+    if (destinationDate) {
+      assignments = tryDate(destinationDate)
+    } else {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+      for (let offset = 1; offset <= 60 && !assignments; offset += 1) {
+        const candidate = new Date(`${sourceDate || today}T12:00:00`)
+        candidate.setDate(candidate.getDate() + offset)
+        const candidateDate = candidate.toISOString().slice(0, 10)
+        const candidateAssignments = tryDate(candidateDate)
+        if (candidateAssignments) {
+          destinationDate = candidateDate
+          assignments = candidateAssignments
+        }
+      }
+    }
+    if (!assignments || !destinationDate) return { success: false, message: `No encontré un día habilitado con capacidad para los ${sourceAppointments.length} turnos en los próximos 60 días.` }
+    const proposal = { sourceDate, destinationDate, count: sourceAppointments.length, patients: assignments.map(({ appointment, time }) => ({ patient: appointment.patientName, from: appointment.scheduledTime, to: time })) }
+    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'reprogramar_turnos_de_fecha', proposal, message: `Encontré lugar para reprogramar ${sourceAppointments.length} turnos al ${destinationDate}. Pedí confirmación antes de aplicar el cambio.` }
+    const rescheduledAt = new Date().toISOString()
+    const newAppointments = assignments.map(({ appointment, time }) => ({ ...appointment, id: crypto.randomUUID(), scheduledDate: destinationDate, scheduledTime: time, scheduledAt: `${destinationDate}T${time}:00`, status: 'confirmed', previousAppointmentId: appointment.id, rescheduledAt, updatedAt: rescheduledAt }))
+    const created = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: [...appointments, ...newAppointments] }, String(newAppointments[0].id))
+    if (!created.success) return { success: false, message: `No se pudieron crear los nuevos turnos; los originales se conservan. ${created.message || ''}`.trim() }
+    const originalIds = new Set(sourceAppointments.map((appointment) => appointment.id))
+    const removed = await saveWorkspaceAndVerifyAppointment(admin, professionalId, { appointments_json: [...appointments.filter((appointment) => !originalIds.has(appointment.id)), ...newAppointments] }, String(newAppointments[0].id))
+    if (!removed.success) {
+      await admin.from('user_workspaces').upsert({ user_id: professionalId, appointments_json: appointments }, { onConflict: 'user_id' })
+      return { success: false, message: 'Se crearon los nuevos turnos, pero no se pudieron retirar los originales. Se restauró la agenda para evitar duplicados.' }
+    }
+    const emailResults = await Promise.all(newAppointments.map((appointment) => sendAppointmentNotice({
+      supabaseUrl,
+      serviceRoleKey,
+      email: String(appointment.patientEmail || ''),
+      subject: `Turno reprogramado con ${String(profile.fullName || 'Dr Happy')}`,
+      message: `Hola ${String(appointment.patientName || 'Paciente')},\n\nTu turno del ${String(sourceDate)} fue reprogramado para el ${destinationDate} a las ${String(appointment.scheduledTime)} hs.\n\nSi necesitás modificarlo nuevamente, comunicate con el profesional.`,
+    })))
+    const sent = emailResults.filter((result) => result.sent).length
+    return { success: true, emailSent: sent === newAppointments.length, emailsSent: sent, total: newAppointments.length, message: `Se reprogramaron ${newAppointments.length} turnos del ${sourceDate} al ${destinationDate}. Se enviaron ${sent} de ${newAppointments.length} avisos por email.` }
+  }
+
   if (name === 'enviar_notificacion_paciente') {
     const query = normalizeSearch(input.patient)
-    const { data } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
+    const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
     const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
-    const patient = patients.find((item) => normalizeSearch(`${item.nombre || ''} ${item.apellido || ''} ${item.dni || ''}`).includes(query))
+    const patient = patients.find((item) => matchesPatientQuery(`${item.nombre || ''} ${item.apellido || ''}`, item.dni, query))
     if (!patient || typeof patient.email !== 'string' || !patient.email.trim()) return { success: false, message: 'No encontré un paciente con email cargado.' }
-    const proposal = { patient: `${patient.apellido || ''}, ${patient.nombre || ''}`.trim(), email: patient.email, subject: input.subject, message: input.message }
-    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'enviar_notificacion_paciente', proposal, message: 'Pedí confirmación explícita antes de enviar.' }
-    const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: patient.email, subject: input.subject, type: 'custom', text: input.message }) })
-    return emailResponse.ok ? { success: true, message: `Email enviado a ${proposal.patient}.` } : { success: false, message: 'No se pudo enviar el email.' }
+    const ledger = Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []
+    const debts = ledger.filter((entry) => entry.patientId === patient.id && Number(entry.totalAmount || 0) > Number(entry.paidAmount || 0))
+    const fallbackMessage = debts.map((entry) => {
+      const total = Number(entry.totalAmount || 0)
+      const paid = Number(entry.paidAmount || 0)
+      return `Tratamiento: ${String(entry.intervention || 'Tratamiento')}\nMonto total: $${total.toLocaleString('es-AR')}\nPagado: $${paid.toLocaleString('es-AR')}\nSaldo pendiente: $${(total - paid).toLocaleString('es-AR')}`
+    }).join('\n\n')
+    const patientName = `${patient.apellido || ''}, ${patient.nombre || ''}`.trim()
+    const subject = String(input.subject || 'Recordatorio de saldo pendiente')
+    const message = String(input.message || `Hola ${patientName},\n\nTe escribimos para informarte tu saldo pendiente:\n\n${fallbackMessage || 'No encontramos un saldo pendiente registrado.'}\n\nSaludos cordiales.`)
+    const proposal = { patient: patientName, email: patient.email, subject, message }
+    if (input.confirmation !== true && String(input.confirmation || '').toLowerCase() !== 'true') return { requiresConfirmation: true, action: 'enviar_notificacion_paciente', proposal, message: 'Pedí confirmación explícita antes de enviar.' }
+    const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ to: patient.email, subject, type: 'custom', text: message, templateData: { message } }) })
+    const emailResult = await emailResponse.json().catch(() => null)
+    if (!emailResponse.ok || !emailResult?.success) return { success: false, message: typeof emailResult?.message === 'string' ? emailResult.message : `No se pudo enviar el email (HTTP ${emailResponse.status}).` }
+    return { success: true, message: `Email enviado a ${proposal.patient}.` }
+  }
+
+  if (name === 'enviar_recordatorio_turno') {
+    const query = normalizeSearch(input.patient)
+    const { data } = await admin.from('user_workspaces').select('appointments_json, patients_json, profile_json').eq('user_id', professionalId).maybeSingle()
+    const appointments = Array.isArray(data?.appointments_json) ? data.appointments_json as Array<Record<string, unknown>> : []
+    const patients = Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []
+    const profile = data?.profile_json && typeof data.profile_json === 'object' ? data.profile_json as Record<string, unknown> : {}
+    const matches = appointments.filter((item) => item.status !== 'cancelled' && matchesPatientQuery(item.patientName, item.patientDni, query) && (!input.date || item.scheduledDate === input.date) && (!input.time || item.scheduledTime === input.time)).sort((left, right) => `${left.scheduledDate}T${left.scheduledTime}`.localeCompare(`${right.scheduledDate}T${right.scheduledTime}`))
+    const appointment = matches[0]
+    if (!appointment) return { success: false, message: 'No encontré un turno activo para ese paciente.' }
+    const patient = patients.find((item) => item.id === appointment.patientId)
+    const email = String(appointment.patientEmail || patient?.email || '').trim()
+    if (!email) return { success: false, message: 'El paciente no tiene un email válido cargado.' }
+    const patientName = String(appointment.patientName || `${patient?.apellido || ''}, ${patient?.nombre || ''}`).trim()
+    const subject = `Recordatorio de turno - ${String(profile.fullName || 'Dr Happy')}`
+    const message = `Hola ${patientName},\n\nTe recordamos tu turno con ${String(profile.fullName || 'Dr Happy')}.\n\nFecha: ${String(appointment.scheduledDate)}\nHora: ${String(appointment.scheduledTime)} hs\nMotivo: ${String(appointment.reason || 'Consulta médica')}\nLugar: ${String(appointment.location || 'Consultorio médico')}\n\nSi necesitás modificarlo, comunicate con el profesional.`
+    const proposal = { patient: patientName, email, date: appointment.scheduledDate, time: appointment.scheduledTime, subject, message }
+    if (input.confirmation !== true && String(input.confirmation || '').toLowerCase() !== 'true') return { requiresConfirmation: true, action: 'enviar_recordatorio_turno', proposal, message: `Preparé el recordatorio del turno del ${appointment.scheduledDate} a las ${appointment.scheduledTime}. Pedí confirmación para enviarlo.` }
+    const emailResult = await sendAppointmentNotice({ supabaseUrl, serviceRoleKey, email, subject, message })
+    return emailResult.sent
+      ? { success: true, message: `Recordatorio de turno enviado a ${patientName} (${email}).` }
+      : { success: false, message: `No se pudo enviar el recordatorio del turno: ${emailResult.message || 'error de envío'}.` }
+  }
+
+  if (name === 'enviar_recordatorios_balance') {
+    const queries = Array.isArray(input.patients) ? input.patients.map((value) => normalizeSearch(value)).filter(Boolean) : []
+    if (!queries.length) return { success: false, message: 'Necesito al menos un paciente.' }
+    const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
+    const patients = (Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []).filter(Boolean)
+    const ledger = (Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []).filter(Boolean)
+    const targets = queries.map((query) => patients.find((item) => matchesPatientQuery(`${item?.nombre || ''} ${item?.apellido || ''}`, item?.dni, query))).filter((patient): patient is Record<string, unknown> => Boolean(patient))
+    if (targets.length !== queries.length) return { success: false, message: 'No encontré a todos los pacientes indicados en la base de datos.' }
+    const proposals = targets.map((patient) => {
+      const patientName = `${patient?.apellido || ''}, ${patient?.nombre || ''}`.trim()
+      const debts = ledger.filter((entry) => entry?.patientId === patient?.id && Number(entry?.totalAmount || 0) > Number(entry?.paidAmount || 0))
+      const details = debts.map((entry) => {
+        const total = Number(entry?.totalAmount || 0)
+        const paid = Number(entry?.paidAmount || 0)
+        return `Tratamiento: ${String(entry?.intervention || 'Tratamiento')}\nMonto total: $${total.toLocaleString('es-AR')}\nPagado: $${paid.toLocaleString('es-AR')}\nSaldo pendiente: $${(total - paid).toLocaleString('es-AR')}`
+      }).join('\n\n')
+      return { patientName, email: patient?.email, subject: 'Recordatorio de saldo pendiente', message: `Hola ${patient?.nombre || patientName},\n\nTe escribimos para informarte tu saldo pendiente:\n\n${details || 'No encontramos un saldo pendiente registrado.'}\n\nSaludos cordiales.` }
+    })
+    if (input.confirmation !== true) return { requiresConfirmation: true, action: 'enviar_recordatorios_balance', proposal: { patients: proposals }, message: `Preparé ${proposals.length} recordatorios de saldo. Pedí confirmación para enviarlos.` }
+    const results = await Promise.all(proposals.map((proposal) => sendAppointmentNotice({ supabaseUrl, serviceRoleKey, email: String(proposal.email || ''), subject: proposal.subject, message: proposal.message })))
+    const sent = results.filter((result) => result.sent).length
+    return { success: true, emailsSent: sent, total: results.length, message: `Se enviaron ${sent} de ${results.length} recordatorios de saldo.` }
+  }
+
+  if (name === 'revisar_y_enviar_recordatorios_pagos') {
+    const requestedPatients = Array.isArray(input.patients) ? input.patients.map((value) => normalizeSearch(value)).filter(Boolean) : []
+    const { data } = await admin.from('user_workspaces').select('patients_json, treatment_ledger_json').eq('user_id', professionalId).maybeSingle()
+    const patients = (Array.isArray(data?.patients_json) ? data.patients_json as Array<Record<string, unknown>> : []).filter(Boolean)
+    const ledger = (Array.isArray(data?.treatment_ledger_json) ? data.treatment_ledger_json as Array<Record<string, unknown>> : []).filter(Boolean)
+    const debtors = patients.filter((patient) => {
+      const selected = requestedPatients.length === 0 || requestedPatients.some((query) => matchesPatientQuery(`${patient?.nombre || ''} ${patient?.apellido || ''}`, patient?.dni, query))
+      return selected && ledger.some((entry) => entry?.patientId === patient?.id && Number(entry?.totalAmount || 0) > Number(entry?.paidAmount || 0))
+    })
+    if (!debtors.length) return { success: false, message: requestedPatients.length ? 'Ninguno de los pacientes indicados tiene saldo pendiente.' : 'No encontré pacientes con saldo pendiente.' }
+    const proposals = debtors.map((patient) => {
+      const patientName = `${patient?.apellido || ''}, ${patient?.nombre || ''}`.trim()
+      const debts = ledger.filter((entry) => entry?.patientId === patient?.id && Number(entry?.totalAmount || 0) > Number(entry?.paidAmount || 0))
+      const details = debts.map((entry) => {
+        const total = Number(entry?.totalAmount || 0)
+        const paid = Number(entry?.paidAmount || 0)
+        return `Tratamiento: ${String(entry?.intervention || 'Tratamiento')}\nTotal: $${total.toLocaleString('es-AR')}\nPagado: $${paid.toLocaleString('es-AR')}\nPendiente: $${(total - paid).toLocaleString('es-AR')}`
+      }).join('\n\n')
+      return { patientName, email: patient?.email, subject: 'Recordatorio de saldo pendiente', message: `Hola ${patient?.nombre || patientName},\n\nTe informamos el saldo pendiente registrado:\n\n${details}\n\nSaludos cordiales.` }
+    })
+    if (input.confirmation !== true && String(input.confirmation || '').toLowerCase() !== 'true') return { requiresConfirmation: true, action: 'revisar_y_enviar_recordatorios_pagos', proposal: { patients: proposals }, message: `Revisé el balance y encontré ${proposals.length} pacientes con deuda. Pedí confirmación para enviar los recordatorios.` }
+    const results = await Promise.all(proposals.map((proposal) => sendAppointmentNotice({ supabaseUrl, serviceRoleKey, email: String(proposal.email || ''), subject: proposal.subject, message: proposal.message })))
+    const sent = results.filter((result) => result.sent).length
+    return { success: true, emailsSent: sent, total: results.length, message: `Se enviaron ${sent} de ${results.length} recordatorios a pacientes con saldo pendiente.` }
   }
 
   if (name === 'completar_email_y_enviar_confirmacion') {
@@ -757,7 +1091,7 @@ Deno.serve(async (request) => {
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!supabaseUrl || !serviceRoleKey) return jsonResponse(500, { success: false, message: 'Falta configuración de Supabase.' })
 
-  let payload: { action?: string; messages?: unknown; professionalId?: string; professionalName?: string; context?: string }
+  let payload: { action?: string; messages?: unknown; professionalId?: string; professionalName?: string; context?: string; confirmation?: { action?: string; input?: Record<string, unknown> } }
   try {
     payload = await request.json()
   } catch {
@@ -766,6 +1100,10 @@ Deno.serve(async (request) => {
 
   if (payload.action !== 'chat') {
     return jsonResponse(400, { success: false, message: 'Acción no soportada.' })
+  }
+
+  if (payload.confirmation?.action && payload.confirmation.input && typeof payload.confirmation.input === 'object') {
+    payload.confirmation.input.confirmation = true
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
@@ -809,6 +1147,20 @@ Deno.serve(async (request) => {
     return jsonResponse(429, { success: false, message: `Alcanzaste el límite ${limitDescription} de Sofía (${usageLimit} consultas).`, monthlyUsage, monthlyLimit: usageLimit })
   }
 
+  if (payload.confirmation?.action && payload.confirmation.input && typeof payload.confirmation.input === 'object') {
+    try {
+      const confirmedData = await runTool(payload.confirmation.action, payload.confirmation.input, admin, professionalId, supabaseUrl, serviceRoleKey)
+      const confirmedRecord = confirmedData && typeof confirmedData === 'object' ? confirmedData as Record<string, unknown> : null
+      if (confirmedRecord?.success === true && typeof confirmedRecord.message === 'string') {
+        return jsonResponse(200, { success: true, reply: confirmedRecord.message })
+      }
+      return jsonResponse(200, { success: false, message: typeof confirmedRecord?.message === 'string' ? confirmedRecord.message : 'No se pudo ejecutar la acción confirmada.' })
+    } catch (error) {
+      console.error('[ai-assistant] confirmed tool failed', { tool: payload.confirmation.action, message: error instanceof Error ? error.message : String(error) })
+      return jsonResponse(500, { success: false, message: 'No se pudo ejecutar la acción confirmada.' })
+    }
+  }
+
   const messages = cleanMessages(payload.messages)
   if (!messages.length || messages[messages.length - 1].role !== 'user') {
     return jsonResponse(400, { success: false, message: 'Sofía necesita una pregunta.' })
@@ -828,13 +1180,14 @@ Deno.serve(async (request) => {
     'No diagnostiques ni indiques tratamientos autónomamente. Separá hechos, sugerencias y datos faltantes.',
     'Cuando el profesional pida una acción que todavía no está conectada, explicá que se incorporará como herramienta en la próxima etapa.',
     'Para agendar un turno solicitado directamente por el profesional, ejecutá la acción sin pedir confirmación adicional. Solo informá y detenete si no hay cupo, el día no está habilitado o existe una superposición. Cancelaciones, notificaciones y memorias sí requieren confirmación.',
-    'Si el profesional pide cambiar, mover o pasar un turno a otra fecha, usá reprogramar_turno. No lo canceles ni crees otro turno separado: la herramienta cancela el registro anterior, crea un único turno nuevo y avisa al paciente.',
+    'FLUJO OBLIGATORIO DE TURNERA: primero consultá la agenda/calendario cuando necesites disponibilidad. Para un paciente nuevo, buscá sus datos; si no existe o no lo encontrás, usá crear_paciente_y_agendar_turno. Para un paciente existente, usá agendar_turno con la fecha y hora indicadas o sin fecha/hora para elegir el primer turno disponible. Todo turno confirmado debe enviar email al paciente. Para reprogramar un turno individual, usá reprogramar_turno. Si el profesional pide reprogramar todos los turnos de una fecha, usá reprogramar_turnos_de_fecha: busca el próximo día habilitado con capacidad para todos, primero crea y verifica los nuevos turnos, después elimina los anteriores y finalmente envía un email individual a cada paciente. Si falla la creación de cualquier nuevo turno, no borres los anteriores. Nunca dejes dos turnos activos por una reprogramación. Para registrar o actualizar un tratamiento y su monto, usá registrar_balance_pendiente; para descontar un pago nuevo usá registrar_pago_balance; para consultar saldos, usá consultar_balance_pagos.',
     'No digas que una acción ocurrió si la herramienta no devolvió success=true. Si una operación falla o requiere confirmación, informalo claramente y no lo presentes como realizado.',
     `Fecha y hora actual de Argentina: ${currentDate} ${currentTime}. Si el profesional dice hoy, mañana o pasado mañana, convertílo a YYYY-MM-DD sin preguntarle qué fecha es.`,
     'Si preguntan por turnos o agenda, consultá buscar_turnos cuando necesites informar datos. Si piden agendar, usá directamente la herramienta de agendamiento; no hagas una consulta previa ni pidas confirmación adicional.',
     'Para una pregunta histórica específica sobre un paciente, usá consultar_historia_paciente con topic o dateFrom/dateTo. Por defecto usa las últimas evoluciones; si piden algo antiguo, buscá explícitamente en todo el historial permitido y aclarà qué encontraste.',
     'Si preguntan por los turnos liberados al público, la turnera pública o qué horarios puede elegir un paciente, usá consultar_turnera_publica. Es una herramienta de solo lectura: nunca intentes modificarla ni reservar desde Sofía.',
     'Si preguntan por ocupación, cupos o disponibilidad diaria, usá consultar_calendario_ocupacion. Si piden un link de pago, usá obtener_link_pago_profesional.',
+    'Cuando el profesional pida recordar un turno, usá enviar_recordatorio_turno, que consulta la agenda real y usa el flujo de email de turnos. Cuando pida revisar quién debe dinero o enviar recordatorios de pago, usá revisar_y_enviar_recordatorios_pagos: consulta todo el balance, incluye solo deudores y pide una confirmación antes del envío. Al aprobar cualquier propuesta, llamá la herramienta correspondiente con confirmation=true y no respondas solo con una propuesta.',
     'PROTOCOLO OBLIGATORIO DE TURNOS: antes de crear un paciente o asignar cualquier turno debés tener nombre, apellido, DNI y email válido. Si falta cualquiera, pedí todos los datos faltantes juntos y no llames a ninguna herramienta de agendamiento. Recién cuando estén los cuatro datos, usá crear_paciente_y_agendar_turno. Para pacientes existentes, agendar_turno verificará que su ficha tenga esos cuatro datos; si falta alguno, pedí completarlo antes de reintentar. Fecha y hora pueden omitirse para elegir el primer turno disponible.',
     'Si el profesional dice que recuerdes una preferencia o tema de trabajo, proponé guardar_memoria_sofia y pedí confirmación. Nunca guardes datos clínicos de pacientes en esa memoria. Si pregunta por algo que podría haber recordado, usá buscar_memorias_sofia.',
     context ? `Contexto disponible de la sesión:\n${context}` : '',
@@ -869,39 +1222,62 @@ Deno.serve(async (request) => {
     for (const toolUse of toolUses) {
       let toolData: unknown
       try {
-        toolData = await runTool(toolUse.name, toolUse.input || {}, admin, professionalId)
+        const toolInput = { ...(toolUse.input || {}) } as Record<string, unknown>
+        const latestUserMessage = messages[messages.length - 1]?.content.toLowerCase().trim() || ''
+        const affirmative = /^(si|sí|ok|dale|mandalo|mandalo|envi[aá]lo|confirmo|confirmar|hacelo|hace(lo)?|mandaselo|mandáselo)([.! ]|$)/i.test(latestUserMessage)
+        if ((toolUse.name === 'enviar_notificacion_paciente' || toolUse.name === 'enviar_recordatorios_balance' || toolUse.name === 'revisar_y_enviar_recordatorios_pagos') && affirmative) toolInput.confirmation = true
+        toolData = await runTool(toolUse.name, toolInput, admin, professionalId, supabaseUrl, serviceRoleKey)
       } catch (error) {
         console.error('[ai-assistant] tool failed', { tool: toolUse.name, message: error instanceof Error ? error.message : String(error) })
         const schedulingTool = toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno'
-        const recovered = schedulingTool ? await recoverPersistedAppointment(admin, professionalId, toolUse.input || {}) : null
+        const reschedulingTool = toolUse.name === 'reprogramar_turno'
+        const recovered = schedulingTool
+          ? await recoverPersistedAppointment(admin, professionalId, toolUse.input || {})
+          : reschedulingTool
+            ? await recoverPersistedRescheduledAppointment(admin, professionalId, toolUse.input || {})
+            : null
         if (recovered) {
           const recoveredEmail = String(recovered.patientEmail || toolUse.input?.email || '').trim()
           const emailResult = recoveredEmail
-            ? await sendAppointmentConfirmation({
-              supabaseUrl,
-              serviceRoleKey,
-              email: recoveredEmail,
-              patientName: String(recovered.patientName || 'Paciente'),
-              professionalName: 'Dr Happy',
-              date: String(recovered.scheduledDate || ''),
-              time: String(recovered.scheduledTime || ''),
-              location: String(recovered.location || 'Consultorio médico'),
-              reason: String(recovered.reason || 'Consulta médica'),
-            })
+            ? reschedulingTool
+              ? await sendAppointmentNotice({
+                supabaseUrl,
+                serviceRoleKey,
+                email: recoveredEmail,
+                subject: 'Turno reprogramado con Dr Happy',
+                message: `Hola ${String(recovered.patientName || 'Paciente')},\n\nTu turno fue reprogramado para el ${String(recovered.scheduledDate || '')} a las ${String(recovered.scheduledTime || '')} hs.`,
+              })
+              : await sendAppointmentConfirmation({
+                supabaseUrl,
+                serviceRoleKey,
+                email: recoveredEmail,
+                patientName: String(recovered.patientName || 'Paciente'),
+                professionalName: 'Dr Happy',
+                date: String(recovered.scheduledDate || ''),
+                time: String(recovered.scheduledTime || ''),
+                location: String(recovered.location || 'Consultorio médico'),
+                reason: String(recovered.reason || 'Consulta médica'),
+              })
             : { sent: false, message: 'No hay email válido cargado.' }
           toolData = {
             success: true,
-            message: `Turno confirmado para ${recovered.patientName} el ${recovered.scheduledDate} a las ${recovered.scheduledTime}.${emailResult.sent ? ` Confirmación enviada a ${recoveredEmail}.` : ` El turno quedó guardado, pero no se pudo enviar el email: ${emailResult.message || 'error de envío'}.`}`,
+            message: reschedulingTool
+              ? `Turno reprogramado para ${recovered.patientName} el ${recovered.scheduledDate} a las ${recovered.scheduledTime}.${emailResult.sent ? ` Aviso enviado a ${recoveredEmail}.` : ` El turno quedó reprogramado, pero no se pudo enviar el aviso: ${emailResult.message || 'error de envío'}.`}`
+              : `Turno confirmado para ${recovered.patientName} el ${recovered.scheduledDate} a las ${recovered.scheduledTime}.${emailResult.sent ? ` Confirmación enviada a ${recoveredEmail}.` : ` El turno quedó guardado, pero no se pudo enviar el email: ${emailResult.message || 'error de envío'}.`}`,
           }
+        } else if (reschedulingTool) {
+          toolData = { success: false, message: 'No pude completar la reprogramación. El turno original no fue modificado.' }
         } else {
-          toolData = { success: false, message: schedulingTool ? 'No pude confirmar el turno. No se encontró una reserva nueva en la agenda.' : 'No pude completar esa acción por un error interno.' }
+          const rawMessage = error instanceof Error ? error.message : String(error)
+          const reminderTool = toolUse.name === 'enviar_recordatorios_balance' || toolUse.name === 'revisar_y_enviar_recordatorios_pagos' || toolUse.name === 'enviar_recordatorio_turno' || toolUse.name === 'enviar_notificacion_paciente'
+          toolData = { success: false, message: schedulingTool ? 'No pude confirmar el turno. No se encontró una reserva nueva en la agenda.' : reminderTool ? `No pude completar el envío: ${rawMessage}` : 'No pude completar esa acción por un error interno.' }
         }
       }
       const toolRecord = toolData && typeof toolData === 'object' ? toolData as Record<string, unknown> : null
       if (toolRecord?.requiresConfirmation === true && typeof toolRecord.action === 'string' && toolRecord.proposal && typeof toolRecord.proposal === 'object') {
         pendingConfirmation = { action: toolRecord.action, proposal: toolRecord.proposal as Record<string, unknown> }
       }
-      if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno') && toolRecord && typeof toolRecord.message === 'string') {
+      if ((toolUse.name === 'agendar_turno' || toolUse.name === 'crear_paciente_y_agendar_turno' || toolUse.name === 'reprogramar_turno' || toolUse.name === 'reprogramar_turnos_de_fecha' || toolUse.name === 'registrar_pago_balance' || toolUse.name === 'enviar_recordatorios_balance' || toolUse.name === 'enviar_recordatorio_turno' || toolUse.name === 'revisar_y_enviar_recordatorios_pagos') && toolRecord && typeof toolRecord.message === 'string') {
         directSchedulingReply = toolRecord.message
         if (toolRecord.success === true) break
       }

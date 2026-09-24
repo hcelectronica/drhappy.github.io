@@ -21,6 +21,7 @@ export async function askSofia(params: {
   messages: AssistantMessage[]
   professionalName?: string
   context?: string
+  confirmation?: { action: string; input: Record<string, unknown> }
 }): Promise<AssistantResult> {
   if (!isSupabaseConfigured || !supabase) {
     return { success: false, message: 'Sofía todavía no está conectada al servicio de IA en este entorno.' }
@@ -38,6 +39,7 @@ export async function askSofia(params: {
       messages: params.messages,
       professionalName: params.professionalName,
       context: params.context,
+      confirmation: params.confirmation,
     },
   })
 

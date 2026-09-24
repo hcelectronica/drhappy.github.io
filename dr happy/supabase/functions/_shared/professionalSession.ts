@@ -23,12 +23,12 @@ export async function resolveProfessionalId(request: Request, admin: SupabaseCli
     const tokenHash = await hashToken(sessionToken)
     const { data } = await admin
       .from('professional_sessions')
-      .select('professional_id')
+      .select('professional_id, professionals!inner(active)')
       .eq('token_hash', tokenHash)
       .is('revoked_at', null)
       .gt('expires_at', new Date().toISOString())
       .maybeSingle()
-    if (data?.professional_id) return data.professional_id
+    if (data?.professional_id && (data.professionals as { active?: boolean | null } | null)?.active !== false) return data.professional_id
   }
 
   const authorization = request.headers.get('Authorization')
@@ -37,6 +37,6 @@ export async function resolveProfessionalId(request: Request, admin: SupabaseCli
   const { data: authData } = await admin.auth.getUser(bearer)
   const email = authData.user?.email?.trim().toLowerCase()
   if (!email) return null
-  const { data: professional } = await admin.from('professionals').select('id').ilike('email', email).maybeSingle()
-  return professional?.id || null
+  const { data: professional } = await admin.from('professionals').select('id, active').ilike('email', email).maybeSingle()
+  return professional?.active === false ? null : professional?.id || null
 }

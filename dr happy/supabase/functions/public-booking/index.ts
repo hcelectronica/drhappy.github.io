@@ -103,6 +103,21 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
   })
 }
 
+function decodeBase64(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (value.length % 4)) % 4)
+  return Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0))
+}
+
+async function decryptPaymentToken(value: string): Promise<string> {
+  const keyValue = Deno.env.get('MP_TOKEN_ENCRYPTION_KEY')?.trim()
+  if (!keyValue) throw new Error('Falta MP_TOKEN_ENCRYPTION_KEY.')
+  const [ivPart, dataPart] = value.split('.')
+  if (!ivPart || !dataPart) throw new Error('Token Mercado Pago inválido.')
+  const key = await crypto.subtle.importKey('raw', decodeBase64(keyValue), 'AES-GCM', false, ['decrypt'])
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decodeBase64(ivPart) }, key, decodeBase64(dataPart))
+  return new TextDecoder().decode(decrypted)
+}
+
 function generateToken(): string {
   const bytes = new Uint8Array(16)
   crypto.getRandomValues(bytes)
@@ -122,6 +137,10 @@ function normalizeSlug(value: string): string {
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+function pendingReservationCutoff(): string {
+  return new Date(Date.now() - 15 * 60 * 1000).toISOString()
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -176,17 +195,10 @@ function normalizeSettings(raw: PublicBookingSettingsPayload | undefined): Publi
   const professionalName = raw?.professionalName?.trim() ?? ''
   const slug = normalizeSlug(raw?.slug ?? professionalName)
   const horizonDays = 60
-  const blocks = Array.from(
-    new Map(
-      (raw?.blocks ?? [])
-        .map(normalizeBlock)
-        .filter((block): block is PublicBookingBlock => Boolean(block))
-        .map((block) => [block.modality, block] as const),
-    ).values(),
-  ).map((block) => ({
-    ...block,
-    label: block.modality === 'private' ? 'Paciente particular' : 'Paciente con obra social',
-  }))
+  const firstBlock = (raw?.blocks ?? [])
+    .map(normalizeBlock)
+    .find((block): block is PublicBookingBlock => Boolean(block))
+  const blocks = firstBlock ? [{ ...firstBlock, label: 'Turno disponible', modality: 'private' as const }] : []
 
   if (!professionalId || !professionalName || !slug || !blocks.length) {
     return null
@@ -442,7 +454,7 @@ serve(async (request) => {
           .upsert({
             professional_id: settings.professionalId,
             slug: settings.slug,
-            enabled: settings.enabled,
+            enabled: true,
             professional_name: settings.professionalName,
             location: settings.location || null,
             reason: settings.reason || null,
@@ -468,7 +480,6 @@ serve(async (request) => {
 
       case 'get-public-agenda': {
         const slug = normalizeSlug(body.slug ?? '')
-        const requestedModality = body.modality === 'private' || body.modality === 'coverage' ? body.modality : null
         if (!slug) {
           return jsonResponse(400, { success: false, message: 'Falta el link público del profesional.' })
         }
@@ -485,12 +496,13 @@ serve(async (request) => {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
 
-        const blocks = Array.from(new Map(
-          (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
-            .map(normalizeBlock)
-            .filter((block): block is PublicBookingBlock => Boolean(block))
-            .map((block) => [block.modality, block] as const),
-        ).values()).filter((block) => !requestedModality || block.modality === requestedModality)
+        const normalizedBlock = (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
+          .map(normalizeBlock)
+          .find((block): block is PublicBookingBlock => Boolean(block))
+        if (!normalizedBlock) {
+          return jsonResponse(404, { success: false, message: 'El profesional todavía no configuró sus cupos de atención.' })
+        }
+        const blocks = [{ ...normalizedBlock, label: 'Turno disponible', modality: 'private' as const }]
         const horizonDays = 60
         const startDate = body.startDate && body.startDate >= todayISO() ? body.startDate : todayISO()
         const requestedDays = Math.max(1, Math.min(35, Number(body.days) || 21))
@@ -502,6 +514,12 @@ serve(async (request) => {
           .select('appointments_json')
           .eq('user_id', settings.professional_id)
           .maybeSingle()
+        await admin
+          .from('public_booking_reservations')
+          .update({ status: 'cancelled', payment_status: 'expired' })
+          .eq('professional_id', settings.professional_id)
+          .eq('status', 'pending_payment')
+          .lt('created_at', pendingReservationCutoff())
         const currentAppointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json as AppointmentLike[] : []
         const bookedAppointments = new Set(
           currentAppointments
@@ -568,7 +586,6 @@ serve(async (request) => {
         const slotDate = body.slotDate?.trim() ?? ''
         const slotTime = body.slotTime?.trim() ?? ''
         const blockId = body.blockId?.trim() ?? ''
-        const requestedModality = body.modality === 'private' || body.modality === 'coverage' ? body.modality : null
         const patientName = body.patientName?.trim() ?? ''
         const patientDni = body.patientDni?.trim() ?? ''
         const patientEmail = body.patientEmail?.trim() ?? ''
@@ -589,19 +606,27 @@ serve(async (request) => {
         if (!settings || !settings.enabled) {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
+        await admin
+          .from('public_booking_reservations')
+          .update({ status: 'cancelled', payment_status: 'expired' })
+          .eq('professional_id', settings.professional_id)
+          .eq('status', 'pending_payment')
+          .lt('created_at', pendingReservationCutoff())
         if (slotDate < todayISO() || slotDate > addDays(todayISO(), 59)) {
           return jsonResponse(409, { success: false, message: 'La fecha elegida está fuera del rango habilitado.' })
         }
 
-        const blocks = Array.from(new Map(
-          (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
-            .map(normalizeBlock)
-            .filter((block): block is PublicBookingBlock => Boolean(block))
-            .map((block) => [block.modality, block] as const),
-        ).values())
-        const block = blocks.find((entry) => entry.id === blockId)
-        if (!block || (requestedModality && block.modality !== requestedModality) || !block.days.includes(dateDay(slotDate)) || !buildBlockSlotTimes(block).includes(slotTime)) {
+        const block = (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])
+          .map(normalizeBlock)
+          .find((entry): entry is PublicBookingBlock => Boolean(entry))
+        if (!block || !block.days.includes(dateDay(slotDate)) || !buildBlockSlotTimes(block).includes(slotTime)) {
           return jsonResponse(409, { success: false, message: 'Ese horario ya no está habilitado.' })
+        }
+        if (block.modality === 'private' && (!block.amountToCharge || block.amountToCharge <= 0)) {
+          return jsonResponse(409, { success: false, message: 'Este turno particular todavía no tiene un monto configurado para pagar por Mercado Pago.' })
+        }
+        if (block.modality === 'private' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) {
+          return jsonResponse(400, { success: false, message: 'Para pagar con Mercado Pago necesitás ingresar un email válido.' })
         }
 
         const { data: workspace } = await admin
@@ -641,6 +666,53 @@ serve(async (request) => {
           return jsonResponse(409, { success: false, message: 'Ese horario ya fue reservado. Elegí otro disponible.' })
         }
 
+        let paymentPreferenceId: string | null = null
+        let paymentInitPoint: string | null = null
+        if (amount && block.modality === 'private') {
+          const { data: paymentAccount } = await admin
+            .from('professional_payment_accounts')
+            .select('access_token_encrypted, status')
+            .eq('professional_id', settings.professional_id)
+            .eq('provider', 'mercadopago')
+            .maybeSingle()
+          if (paymentAccount?.status === 'connected') {
+            try {
+              const accessToken = await decryptPaymentToken(paymentAccount.access_token_encrypted)
+              const preferenceResponse = await fetch('https://api.mercadopago.com/checkout/preferences', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': crypto.randomUUID() },
+                body: JSON.stringify({
+                  items: [{ id: appointmentId, title: block.reason || settings.reason || 'Consulta médica', quantity: 1, currency_id: 'ARS', unit_price: amount }],
+                  payer: { email: patientEmail, name: patientName },
+                  external_reference: appointmentId,
+                  back_urls: {
+                    success: `${Deno.env.get('APP_BASE_URL') || 'https://drhappy.com.ar'}/turnos/`,
+                    pending: `${Deno.env.get('APP_BASE_URL') || 'https://drhappy.com.ar'}/turnos/`,
+                    failure: `${Deno.env.get('APP_BASE_URL') || 'https://drhappy.com.ar'}/turnos/`,
+                  },
+                  auto_return: 'approved',
+                  notification_url: `${supabaseUrl}/functions/v1/mercadopago-patient-webhook?professional_id=${encodeURIComponent(settings.professional_id)}`,
+                }),
+              })
+              const preference = await preferenceResponse.json().catch(() => null)
+              if (preferenceResponse.ok && preference?.id && preference?.init_point) {
+                paymentPreferenceId = String(preference.id)
+                paymentInitPoint = String(preference.init_point)
+                await admin.from('public_booking_reservations').update({ payment_preference_id: paymentPreferenceId, payment_init_point: paymentInitPoint, payment_status: 'pending' }).eq('appointment_id', appointmentId)
+              }
+            } catch (paymentError) {
+              console.error('[public-booking] No se pudo crear checkout del profesional:', paymentError)
+            }
+          } else {
+            await admin.from('public_booking_reservations').update({ status: 'cancelled', payment_status: 'account_not_connected' }).eq('appointment_id', appointmentId)
+            return jsonResponse(503, { success: false, message: 'El profesional todavía no conectó Mercado Pago. El turno no quedó reservado.' })
+          }
+        }
+        if (amount && !paymentInitPoint) {
+          await admin.from('public_booking_reservations').update({ status: 'cancelled', payment_status: 'error' }).eq('appointment_id', appointmentId)
+          return jsonResponse(503, { success: false, message: 'Mercado Pago no pudo preparar el checkout. El turno no quedó reservado; intentá nuevamente.' })
+        }
+
         const newAppointment = {
           id: appointmentId,
           patientId: crypto.randomUUID(),
@@ -665,13 +737,15 @@ serve(async (request) => {
           ...(amount ? { amountToCharge: amount, amountConcept: block.amountConcept || 'consulta' } : {}),
         }
 
-        const { error: upsertError } = await admin.from('user_workspaces').upsert(
-          { user_id: settings.professional_id, appointments_json: [...currentAppointments, newAppointment] },
-          { onConflict: 'user_id' },
-        )
-        if (upsertError) {
-          await admin.from('public_booking_reservations').update({ status: 'cancelled' }).eq('appointment_id', appointmentId)
-          return jsonResponse(500, { success: false, message: `No se pudo agendar el turno: ${upsertError.message}` })
+        if (!amount) {
+          const { error: upsertError } = await admin.from('user_workspaces').upsert(
+            { user_id: settings.professional_id, appointments_json: [...currentAppointments, newAppointment] },
+            { onConflict: 'user_id' },
+          )
+          if (upsertError) {
+            await admin.from('public_booking_reservations').update({ status: 'cancelled' }).eq('appointment_id', appointmentId)
+            return jsonResponse(500, { success: false, message: `No se pudo agendar el turno: ${upsertError.message}` })
+          }
         }
 
         let emailSent = false
@@ -685,7 +759,9 @@ serve(async (request) => {
             },
             body: JSON.stringify({
               to: patientEmail,
-              subject: `Turno confirmado con ${settings.professional_name} - ${slotDate} ${slotTime} hs`,
+              subject: amount
+                ? `Completá el pago para confirmar tu turno con ${settings.professional_name}`
+                : `Turno confirmado con ${settings.professional_name} - ${slotDate} ${slotTime} hs`,
               type: 'appointment',
               templateData: {
                 patientName,
@@ -694,10 +770,10 @@ serve(async (request) => {
                 date: slotDate,
                 time: slotTime,
                 location: newAppointment.location,
-                notes: newAppointment.notes,
+                notes: amount ? 'Tu turno quedará confirmado cuando Mercado Pago apruebe el pago.' : newAppointment.notes,
                 amountToCharge: amount,
                 amountConcept: amount ? block.amountConcept || 'consulta' : undefined,
-                paymentLink: amount ? block.paymentLink || undefined : undefined,
+                paymentLink: amount ? paymentInitPoint || block.paymentLink || undefined : undefined,
               },
             }),
           })
@@ -706,6 +782,9 @@ serve(async (request) => {
 
         return jsonResponse(200, {
           success: true,
+          paymentRequired: Boolean(amount),
+          paymentUrl: paymentInitPoint,
+          paymentPreferenceId,
           appointment: {
             date: slotDate,
             time: slotTime,
