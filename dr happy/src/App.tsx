@@ -1728,36 +1728,6 @@ function asText(value: unknown): string {
   return String(value).trim()
 }
 
-function excelDateToIso(value: unknown): string {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString().slice(0, 10)
-  }
-  if (typeof value === 'number') {
-    const excelEpoch = Date.UTC(1899, 11, 30)
-    const parsed = new Date(excelEpoch + value * 86400000)
-    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10)
-  }
-
-  const text = asText(value)
-  if (!text) {
-    return ''
-  }
-
-  const slashDate = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text)
-  if (slashDate) {
-    const day = slashDate[1].padStart(2, '0')
-    const month = slashDate[2].padStart(2, '0')
-    const year = slashDate[3]
-    return `${year}-${month}-${day}`
-  }
-
-  const nativeDate = new Date(text)
-  if (!Number.isNaN(nativeDate.getTime())) {
-    return nativeDate.toISOString().slice(0, 10)
-  }
-  return ''
-}
-
 function mapDictationError(errorCode?: string): string {
   switch (errorCode) {
     case 'not-allowed':
@@ -6110,7 +6080,7 @@ function App() {
         await worker.terminate()
       }
     } else if (isPdf) {
-      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), disableWorker: true }).promise
+      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise
       const pages: string[] = []
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
         const page = await pdf.getPage(pageNumber)
