@@ -7,6 +7,7 @@ import type {
 } from 'react'
 import { BrowserPDF417Reader, BrowserQRCodeReader } from '@zxing/browser'
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
+import mammoth from 'mammoth'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
 import {
@@ -6088,12 +6089,27 @@ function App() {
       return
     }
     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
-    if (!isPdf && !/\.(txt|csv|md|json)$/i.test(file.name) && !file.type.startsWith('text/')) {
-      setAppError('Por ahora Sofía puede leer archivos de laboratorio en formato PDF, TXT, CSV, MD o JSON.')
+    const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx$/i.test(file.name)
+    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(file.name)
+    if (!isPdf && !isDocx && !isImage && !/\.(txt|csv|md|json)$/i.test(file.name) && !file.type.startsWith('text/')) {
+      setAppError('Sofía puede leer laboratorios en PDF, DOCX, imágenes, TXT, CSV, MD o JSON.')
       return
     }
     let text = ''
-    if (isPdf) {
+    if (isDocx) {
+      const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })
+      text = result.value.trim()
+    } else if (isImage) {
+      setAppNotice(`Sofía está leyendo ${file.name}. Esto puede tardar unos segundos.`)
+      const { createWorker } = await import('tesseract.js')
+      const worker = await createWorker('spa')
+      try {
+        const result = await worker.recognize(file)
+        text = result.data.text.trim()
+      } finally {
+        await worker.terminate()
+      }
+    } else if (isPdf) {
       const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), disableWorker: true }).promise
       const pages: string[] = []
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -11845,10 +11861,10 @@ function App() {
                       id="sofia-clinical-document"
                       className="file-input-hidden"
                       type="file"
-                      accept=".pdf,.txt,.csv,.md,.json,application/pdf,text/plain,text/csv,application/json"
+                      accept=".pdf,.docx,.txt,.csv,.md,.json,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/json"
                       onChange={(event) => { void handleSofiaClinicalDocumentUpload(event) }}
                     />
-                    <small>Lee el texto, lo agrega al borrador y permite resumirlo en la evolución.</small>
+                    <small>Lee PDF, DOCX e imágenes, lo agrega al borrador y permite resumirlo en la evolución.</small>
                   </div>
                   {dictating && dictationField === 'detalleAtencion' ? (
                     <small>Dictando en este recuadro...</small>
