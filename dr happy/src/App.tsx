@@ -6070,6 +6070,31 @@ function App() {
       setAppError('Sofía puede leer laboratorios en PDF, DOCX, imágenes, TXT, CSV, MD o JSON.')
       return
     }
+    if (isImage || isPdf) {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result || ''))
+        reader.onerror = () => reject(new Error('No se pudo preparar el archivo.'))
+        reader.readAsDataURL(file)
+      })
+      const [, data] = dataUrl.split(',', 2)
+      if (!data) {
+        setAppError('El archivo no contiene datos legibles.')
+        return
+      }
+      setSofiaAttachment({
+        name: file.name,
+        block: isImage
+          ? { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data } }
+          : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } },
+      })
+      setConsultationDraft((current) => ({
+        ...current,
+        detalleAtencion: [current.detalleAtencion.trim(), `Archivo mostrado a Sofía (${file.name}).`].filter(Boolean).join('\n\n'),
+      }))
+      setAppNotice(`${file.name} quedó listo para que Sofía lo interprete al resumir la evolución.`)
+      return
+    }
     let text = ''
     if (isDocx) {
       const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })
@@ -6173,11 +6198,15 @@ function App() {
     setAppError(null)
     try {
       const patientName = `${selectedPatient.apellido}, ${selectedPatient.nombre}`.trim()
+      const summaryText = `Convertí la entrevista en una evolución clínica revisable. No inventes datos, no diagnostiques ni indiques tratamientos. Devolvé exactamente: MOTIVO:, ENFERMEDAD ACTUAL:, EXAMEN FÍSICO:, IMPRESIÓN DIAGNÓSTICA:, PLAN DE MANEJO:, ANTECEDENTES RELEVANTES: y PENSAMIENTO:. MOTIVO debe ser una etiqueta breve de 1 a 4 palabras. ENFERMEDAD ACTUAL debe contener solo lo relatado hoy. En examen, impresión y plan indicá No consignado o A revisar si faltan datos. ${patientName}. Transcripción:\n${consultationDraft.detalleAtencion.trim()}`
+      const summaryContent: AssistantMessage['content'] = sofiaAttachment
+        ? [{ type: 'text', text: summaryText }, sofiaAttachment.block]
+        : summaryText
       const result = await askSofia({
         professionalName: profile?.fullName || activeUser?.fullName,
         messages: [{
           role: 'user',
-          content: `Convertí la entrevista en una evolución clínica revisable. No inventes datos, no diagnostiques ni indiques tratamientos. Devolvé exactamente: MOTIVO:, ENFERMEDAD ACTUAL:, EXAMEN FÍSICO:, IMPRESIÓN DIAGNÓSTICA:, PLAN DE MANEJO:, ANTECEDENTES RELEVANTES: y PENSAMIENTO:. MOTIVO debe ser una etiqueta breve de 1 a 4 palabras. ENFERMEDAD ACTUAL debe contener solo lo relatado hoy. En examen, impresión y plan indicá No consignado o A revisar si faltan datos. ${patientName}. Transcripción:\n${consultationDraft.detalleAtencion.trim()}`,
+          content: summaryContent,
         }],
         context: 'El profesional está completando una evolución clínica. El resultado es un borrador no guardado y debe ser revisado por el profesional antes de incorporarlo a la historia clínica.',
       })
@@ -6201,6 +6230,7 @@ function App() {
         planManejo: planManejo || current.planManejo,
         pensamientoMedico: pensamiento || current.pensamientoMedico,
       }))
+      setSofiaAttachment(null)
       setAppNotice('Sofía preparó un borrador. Revisalo antes de guardar la evolución.')
     } finally {
       setClinicalSummaryBusy(false)
