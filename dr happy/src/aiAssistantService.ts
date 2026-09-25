@@ -2,8 +2,13 @@ import { supabase, isSupabaseConfigured } from './supabaseClient'
 
 export interface AssistantMessage {
   role: 'user' | 'assistant'
-  content: string
+  content: string | AssistantContentBlock[]
 }
+
+export type AssistantContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  | { type: 'document'; source: { type: 'base64'; media_type: 'application/pdf'; data: string } }
 
 export interface AssistantPendingConfirmation {
   action: string

@@ -46,7 +46,7 @@ import { disconnectMercadoPago, getMercadoPagoConnectionStatus, startMercadoPago
 import { communityRequest } from './communityService'
 import { parseClinicalSummary } from './clinicalSummaryParser'
 import { loadProfessionals, loadOwnProfessional, updateOwnProfessionalProfile } from './professionalsService'
-import type { AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
+import type { AssistantContentBlock, AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
 import { selfDeleteAccount } from './selfDeleteService'
 import {
@@ -2550,6 +2550,7 @@ function App() {
   const [sofiaOpen, setSofiaOpen] = useState(false)
   const [sofiaDraft, setSofiaDraft] = useState('')
   const [sofiaBusy, setSofiaBusy] = useState(false)
+  const [sofiaAttachment, setSofiaAttachment] = useState<{ name: string; block: AssistantContentBlock } | null>(null)
   const [sofiaDictating, setSofiaDictating] = useState(false)
   const sofiaRecognitionRef = useRef<BrowserSpeechRecognition | null>(null)
   const [sofiaPendingConfirmation, setSofiaPendingConfirmation] = useState<AssistantPendingConfirmation | null>(null)
@@ -2610,9 +2611,13 @@ function App() {
   async function handleAskSofia(): Promise<void> {
     const question = sofiaDraft.trim()
     if (!question || sofiaBusy) return
-    const nextMessages: AssistantMessage[] = [...sofiaMessages, { role: 'user', content: question }]
+    const userContent: AssistantMessage['content'] = sofiaAttachment
+      ? [{ type: 'text', text: question }, sofiaAttachment.block]
+      : question
+    const nextMessages: AssistantMessage[] = [...sofiaMessages, { role: 'user', content: userContent }]
     setSofiaMessages(nextMessages)
     setSofiaDraft('')
+    setSofiaAttachment(null)
     setSofiaBusy(true)
     const result = await askSofia({
       messages: nextMessages,
@@ -6114,29 +6119,37 @@ function App() {
       return
     }
 
+    if (file.size > 8 * 1024 * 1024) {
+      setAppError('El archivo supera el límite de 8 MB para mostrarlo directamente a Sofía.')
+      return
+    }
+
     setAppError(null)
-    setAppNotice(`Sofía está leyendo ${file.name}. Esto puede tardar unos segundos.`)
+    setAppNotice(`Sofía está preparando ${file.name} para interpretarlo directamente.`)
     try {
       let text = ''
+      if (isImage || isPdf) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result || ''))
+          reader.onerror = () => reject(new Error('No se pudo preparar el archivo.'))
+          reader.readAsDataURL(file)
+        })
+        const [, data] = dataUrl.split(',', 2)
+        if (!data) throw new Error('El archivo no contiene datos legibles.')
+        const mediaType = isImage ? (file.type || 'image/jpeg') : 'application/pdf'
+        setSofiaAttachment({
+          name: file.name,
+          block: isImage
+            ? { type: 'image', source: { type: 'base64', media_type: mediaType, data } }
+            : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } },
+        })
+        setSofiaDraft((current) => [current.trim(), `Interpretá visualmente el archivo ${file.name}. Describí qué contiene, transcribí los datos legibles y señalá cualquier dato incierto.`].filter(Boolean).join('\n\n'))
+        setAppNotice(`${file.name} quedó listo para que Sofía lo interprete visualmente.`)
+        return
+      }
       if (isDocx) {
         text = (await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })).value.trim()
-      } else if (isImage) {
-        const { createWorker } = await import('tesseract.js')
-        const worker = await createWorker('spa')
-        try {
-          text = (await worker.recognize(file)).data.text.trim()
-        } finally {
-          await worker.terminate()
-        }
-      } else if (isPdf) {
-        const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise
-        const pages: string[] = []
-        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-          const page = await pdf.getPage(pageNumber)
-          const content = await page.getTextContent()
-          pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '))
-        }
-        text = pages.join('\n\n').trim()
       } else {
         text = (await file.text()).trim()
       }

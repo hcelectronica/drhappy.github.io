@@ -3735,7 +3735,9 @@ body.theme-night .sofia-confirmation-card { background: #132c4d; border-color: #
 body.theme-night .sofia-confirmation-card small { color: #a8c1df; }
 .sofia-compose { display: grid; gap: 8px; }
 .sofia-compose-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-.sofia-file-button { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.sofia-file-button { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 9px 13px; border: 1px solid #7fa4dc; border-radius: 10px; background: #edf4ff; color: #24539a; cursor: pointer; font-weight: 700; }
+.sofia-file-button:hover, .sofia-file-button:focus-visible { background: #dceaff; border-color: #4773bd; outline: none; }
+body.theme-night .sofia-file-button { border-color: #547bb7; background: #172d4c; color: #cfe0fb; }
 .sofia-compose textarea { width: 100%; resize: vertical; min-height: 78px; padding: 11px 12px; border: 1px solid #b7cae5; border-radius: 12px; font: inherit; box-sizing: border-box; }
 .sofia-disclaimer { color: #64748b; font-size: .72rem; }
 .sofia-usage { color: #536b87; font-size: .72rem; font-weight: 700; }

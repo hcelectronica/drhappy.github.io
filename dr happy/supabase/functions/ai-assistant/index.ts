@@ -4,8 +4,13 @@ import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 interface AssistantMessage {
   role: 'user' | 'assistant'
-  content: string
+  content: string | AssistantContentBlock[]
 }
+
+type AssistantContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  | { type: 'document'; source: { type: 'base64'; media_type: 'application/pdf'; data: string } }
 
 const tools = [
   {
@@ -1059,19 +1064,29 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
 
 function cleanMessages(value: unknown): AssistantMessage[] {
   if (!Array.isArray(value)) return []
-  return value
-    .filter((message): message is AssistantMessage => (
-      Boolean(message) &&
-      typeof message === 'object' &&
-      ((message as AssistantMessage).role === 'user' || (message as AssistantMessage).role === 'assistant') &&
-      typeof (message as AssistantMessage).content === 'string'
-    ))
-    .slice(-20)
-    .map((message) => ({
-      role: message.role,
-      content: message.content.trim().slice(0, 6000),
-    }))
-    .filter((message) => message.content.length > 0)
+  return value.slice(-20).flatMap((rawMessage) => {
+    if (!rawMessage || typeof rawMessage !== 'object') return []
+    const message = rawMessage as Partial<AssistantMessage>
+    if (message.role !== 'user' && message.role !== 'assistant') return []
+    if (typeof message.content === 'string') {
+      const content = message.content.trim().slice(0, 12000)
+      return content ? [{ role: message.role, content }] : []
+    }
+    if (!Array.isArray(message.content)) return []
+    const content = message.content.filter((block): block is AssistantContentBlock => {
+      if (!block || typeof block !== 'object' || typeof block.type !== 'string') return false
+      if (block.type === 'text') return typeof block.text === 'string' && block.text.trim().length > 0
+      if (block.type === 'image') return block.source?.type === 'base64' && typeof block.source.data === 'string' && /^image\/(jpeg|png|webp|gif)$/.test(block.source.media_type)
+      if (block.type === 'document') return block.source?.type === 'base64' && typeof block.source.data === 'string' && block.source.media_type === 'application/pdf'
+      return false
+    }).map((block) => block.type === 'text' ? { ...block, text: block.text.trim().slice(0, 12000) } : block)
+    return content.length > 0 ? [{ role: message.role, content }] : []
+  })
+}
+
+function messageText(message: AssistantMessage): string {
+  if (typeof message.content === 'string') return message.content
+  return message.content.filter((block): block is { type: 'text'; text: string } => block.type === 'text').map((block) => block.text).join(' ')
 }
 
 Deno.serve(async (request) => {
@@ -1223,7 +1238,7 @@ Deno.serve(async (request) => {
       let toolData: unknown
       try {
         const toolInput = { ...(toolUse.input || {}) } as Record<string, unknown>
-        const latestUserMessage = messages[messages.length - 1]?.content.toLowerCase().trim() || ''
+        const latestUserMessage = messageText(messages[messages.length - 1] || { role: 'user', content: '' }).toLowerCase().trim()
         const affirmative = /^(si|sí|ok|dale|mandalo|mandalo|envi[aá]lo|confirmo|confirmar|hacelo|hace(lo)?|mandaselo|mandáselo)([.! ]|$)/i.test(latestUserMessage)
         if ((toolUse.name === 'enviar_notificacion_paciente' || toolUse.name === 'enviar_recordatorios_balance' || toolUse.name === 'revisar_y_enviar_recordatorios_pagos') && affirmative) toolInput.confirmation = true
         toolData = await runTool(toolUse.name, toolInput, admin, professionalId, supabaseUrl, serviceRoleKey)
