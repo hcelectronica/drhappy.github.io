@@ -20,6 +20,7 @@
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
     "exceljs": "^4.4.0",
+    "jsbarcode": "^3.12.3",
     "mammoth": "^1.12.3",
     "pdfjs-dist": "^6.3.289",
     "react": "^19.2.8",

@@ -8,6 +8,7 @@ import type {
 import { BrowserPDF417Reader, BrowserQRCodeReader } from '@zxing/browser'
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import mammoth from 'mammoth'
+import JsBarcode from 'jsbarcode'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
 import {
@@ -258,6 +259,8 @@ interface ProfessionalProfile {
   licenseNumber: string
   email: string
   phone: string
+  // Domicilio profesional: dato obligatorio en la receta electrónica (Anexo Decreto 98/2023).
+  address?: string
   matriculaPhoto?: StoredFile
   signatureImage?: StoredFile
   signatureText: string
@@ -296,6 +299,32 @@ interface ConsultationEntry {
   appointmentId?: string
 }
 
+/** Un medicamento dentro de una receta. El nombre genérico es obligatorio (Ley 25.649). */
+interface PrescriptionItem {
+  id: string
+  genericName: string
+  brand?: string
+  presentation: string
+  pharmaceuticalForm: string
+  quantity: string
+}
+
+interface PrescriptionEntry {
+  id: string
+  date: string
+  diagnostico: string
+  items: PrescriptionItem[]
+  professionalSignature: {
+    fullName: string
+    licenseNumber: string
+    specialty: string
+    address: string
+    signatureText: string
+    signatureImageDataUrl?: string
+  }
+  signatureSeal?: import('./signatureSeal').SignatureSeal
+}
+
 interface PatientRecord {
   id: string
   ownerUserId: string
@@ -318,6 +347,7 @@ interface PatientRecord {
   dniPhoto?: StoredFile
   documents: StoredFile[]
   consultations: ConsultationEntry[]
+  prescriptions?: PrescriptionEntry[]
   createdAt: string
   updatedAt: string
 }
@@ -1174,6 +1204,7 @@ function normalizeRemoteProfile(raw: unknown, fallback: ProfessionalProfile): Pr
     licenseNumber: candidate.licenseNumber,
     email: candidate.email,
     phone: candidate.phone,
+    address: typeof candidate.address === 'string' ? candidate.address : undefined,
     signatureText: candidate.signatureText,
     paymentLink: typeof candidate.paymentLink === 'string' ? candidate.paymentLink : undefined,
     appointmentDays: Array.isArray(candidate.appointmentDays)
@@ -1252,6 +1283,7 @@ function normalizeRemotePatient(raw: unknown, ownerUserId: string): PatientRecor
           diagnostico: typeof entry.diagnostico === 'string' ? entry.diagnostico : '',
         }))
       : [],
+    prescriptions: Array.isArray(candidate.prescriptions) ? (candidate.prescriptions as PrescriptionEntry[]) : [],
     createdAt:
       typeof candidate.createdAt === 'string' ? candidate.createdAt : new Date().toISOString(),
     updatedAt:
@@ -2467,6 +2499,12 @@ function App() {
   const [currentMedicalNewsIndex, setCurrentMedicalNewsIndex] = useState(0)
   const [vademecumSearchQuery, setVademecumSearchQuery] = useState('')
   const [selectedMedicationId, setSelectedMedicationId] = useState<string | null>(null)
+
+  const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false)
+  const [prescriptionDiagnostico, setPrescriptionDiagnostico] = useState('')
+  const [prescriptionItems, setPrescriptionItems] = useState<PrescriptionItem[]>([])
+  const [prescriptionMedQuery, setPrescriptionMedQuery] = useState('')
+  const [prescriptionSaving, setPrescriptionSaving] = useState(false)
 
   const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult' | 'community'>('protocols')
   const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo'>('usuarios')
@@ -8184,6 +8222,203 @@ function App() {
     setAppNotice('Documento preparado para guardar o imprimir en PDF.')
   }
 
+  function handleOpenPrescriptionModal(): void {
+    if (!selectedPatient) {
+      setAppError('Selecciona un paciente para emitir una receta.')
+      return
+    }
+    if (!profile?.licenseNumber?.trim() || !profile?.address?.trim()) {
+      setAppError('Completa matrícula y domicilio profesional en tu perfil antes de emitir recetas.')
+      return
+    }
+    setPrescriptionDiagnostico(selectedPatient.diagnosticoPrincipal || '')
+    setPrescriptionItems([])
+    setPrescriptionMedQuery('')
+    setPrescriptionModalOpen(true)
+  }
+
+  function handleAddPrescriptionMedication(medication: MedicationEntry): void {
+    setPrescriptionItems((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        genericName: medication.drug,
+        brand: medication.brand,
+        presentation: medication.presentation,
+        pharmaceuticalForm: '',
+        quantity: '1',
+      },
+    ])
+    setPrescriptionMedQuery('')
+  }
+
+  function handleAddPrescriptionManualItem(): void {
+    setPrescriptionItems((current) => [
+      ...current,
+      { id: crypto.randomUUID(), genericName: '', presentation: '', pharmaceuticalForm: '', quantity: '1' },
+    ])
+  }
+
+  function handlePrescriptionItemChange(itemId: string, patch: Partial<PrescriptionItem>): void {
+    setPrescriptionItems((current) => current.map((item) => (item.id === itemId ? { ...item, ...patch } : item)))
+  }
+
+  function handleRemovePrescriptionItem(itemId: string): void {
+    setPrescriptionItems((current) => current.filter((item) => item.id !== itemId))
+  }
+
+  const prescriptionMedicationSuggestions = useMemo(() => {
+    const query = normalizeSearchText(prescriptionMedQuery)
+    if (query.length < 3) return []
+    return medicationCatalog
+      .filter((med) => normalizeSearchText(med.drug).includes(query) || normalizeSearchText(med.brand).includes(query))
+      .slice(0, 8)
+  }, [medicationCatalog, prescriptionMedQuery])
+
+  /** Genera el código de barras obligatorio (CODE128) como imagen embebible en el documento impreso. */
+  function buildBarcodeDataUrl(value: string): string {
+    const canvas = document.createElement('canvas')
+    JsBarcode(canvas, value, { format: 'CODE128', displayValue: false, height: 40, margin: 4 })
+    return canvas.toDataURL('image/png')
+  }
+
+  async function handleSavePrescription(): Promise<void> {
+    if (!selectedPatient || !profile || !activeUserId) return
+    const validItems = prescriptionItems.filter((item) => item.genericName.trim() && item.presentation.trim())
+    if (validItems.length === 0) {
+      setAppError('Agregá al menos un medicamento con nombre genérico y presentación.')
+      return
+    }
+    if (!prescriptionDiagnostico.trim()) {
+      setAppError('Indicá el diagnóstico de la receta.')
+      return
+    }
+    setPrescriptionSaving(true)
+    try {
+      const now = new Date().toISOString()
+      const signatureSeal = await buildSignatureSeal({
+        contentToSign: { patientId: selectedPatient.id, diagnostico: prescriptionDiagnostico, items: validItems, date: now },
+        signerUserId: activeUserId,
+        signerFullName: profile.fullName,
+        signerLicense: profile.licenseNumber,
+      })
+      const entry: PrescriptionEntry = {
+        id: crypto.randomUUID(),
+        date: now,
+        diagnostico: prescriptionDiagnostico.trim(),
+        items: validItems,
+        professionalSignature: {
+          fullName: profile.fullName,
+          licenseNumber: profile.licenseNumber,
+          specialty: profile.specialty,
+          address: profile.address?.trim() || '',
+          signatureText: profile.signatureText,
+          signatureImageDataUrl: profile.signatureImage?.dataUrl,
+        },
+        signatureSeal,
+      }
+      const updatedPatient: PatientRecord = {
+        ...selectedPatient,
+        prescriptions: [entry, ...(selectedPatient.prescriptions ?? [])],
+        updatedAt: now,
+      }
+      persistPatient(updatedPatient)
+      setPrescriptionModalOpen(false)
+      setAppNotice('Receta emitida y guardada en la historia clínica.')
+      showSavedFloatingNotice()
+      printPrescriptionDocument(entry, updatedPatient)
+    } finally {
+      setPrescriptionSaving(false)
+    }
+  }
+
+  function printPrescriptionDocument(entry: PrescriptionEntry, patientForPrint: PatientRecord): void {
+    const printWindow = window.open('', '_blank', 'width=900,height=700')
+    if (!printWindow) {
+      setAppError('No se pudo abrir la vista de impresión. Verifica bloqueador de ventanas.')
+      return
+    }
+    const barcodeDataUrl = buildBarcodeDataUrl(entry.id)
+    const itemsMarkup = entry.items
+      .map(
+        (item) => `
+          <li>
+            <strong>${escapeHtml(item.genericName)}</strong>${item.brand ? ` (${escapeHtml(item.brand)})` : ''}<br />
+            ${escapeHtml(item.presentation)}${item.pharmaceuticalForm ? ` · ${escapeHtml(item.pharmaceuticalForm)}` : ''} · Cantidad: ${escapeHtml(item.quantity)}
+          </li>`,
+      )
+      .join('')
+    const signatureImage = entry.professionalSignature.signatureImageDataUrl
+      ? `<img src="${entry.professionalSignature.signatureImageDataUrl}" alt="Firma digital" style="max-width:160px; max-height:70px; display:block; margin-top:6px;" />`
+      : ''
+    printWindow.document.write(`<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Receta electrónica - ${escapeHtml(patientForPrint.apellido)} ${escapeHtml(patientForPrint.nombre)}</title>
+    <style>
+      body { font-family: Arial, sans-serif; color: #1f2d3d; padding: 24px; }
+      h1 { margin: 0 0 4px; font-size: 22px; }
+      h2 { font-size: 15px; border-bottom: 1px solid #d8e2ee; padding-bottom: 4px; margin-top: 18px; }
+      p { margin: 3px 0; line-height: 1.4; font-size: 13px; }
+      .muted { color: #506079; font-size: 12px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+      ul { margin: 6px 0 0 16px; }
+      li { margin-bottom: 8px; font-size: 13px; }
+      .barcode { text-align: center; margin-top: 14px; }
+      .legend { margin-top: 18px; font-size: 10px; color: #64748b; }
+      @media print { body { padding: 0; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Receta Electrónica</h1>
+      <p class="muted">Fecha de emisión: ${escapeHtml(formatDate(entry.date))}</p>
+    </header>
+    <section>
+      <h2>Profesional</h2>
+      <div class="grid">
+        <p><strong>Nombre y apellido:</strong> ${escapeHtml(entry.professionalSignature.fullName)}</p>
+        <p><strong>Matrícula:</strong> ${escapeHtml(entry.professionalSignature.licenseNumber)}</p>
+        <p><strong>Especialidad:</strong> ${escapeHtml(entry.professionalSignature.specialty)}</p>
+        <p><strong>Domicilio:</strong> ${escapeHtml(entry.professionalSignature.address)}</p>
+      </div>
+    </section>
+    <section>
+      <h2>Paciente</h2>
+      <div class="grid">
+        <p><strong>Nombre y apellido:</strong> ${escapeHtml(patientForPrint.apellido)}, ${escapeHtml(patientForPrint.nombre)}</p>
+        <p><strong>DNI:</strong> ${escapeHtml(patientForPrint.dni || 'No informado')}</p>
+        <p><strong>Fecha de nacimiento:</strong> ${escapeHtml(formatShortDate(patientForPrint.birthDate))}</p>
+        <p><strong>Sexo:</strong> No informado</p>
+        <p><strong>Obra social/Plan:</strong> ${escapeHtml(patientForPrint.obraSocial || 'No informado')} ${escapeHtml(patientForPrint.plan || '')}</p>
+      </div>
+    </section>
+    <section>
+      <h2>Diagnóstico</h2>
+      <p>${escapeHtml(entry.diagnostico)}</p>
+    </section>
+    <section>
+      <h2>RP: Medicamentos (nombre genérico)</h2>
+      <ul>${itemsMarkup}</ul>
+    </section>
+    <section>
+      <h2>Firma</h2>
+      <p>${escapeHtml(entry.professionalSignature.signatureText)}</p>
+      ${signatureImage}
+      ${entry.signatureSeal ? `<p style="font-size:10px; color:#166534;">🔏 Firmado electrónicamente el ${escapeHtml(formatDate(entry.signatureSeal.signedAt))} · SHA-256: <span style="font-family:monospace;">${escapeHtml(entry.signatureSeal.hashSha256)}</span></p>` : ''}
+    </section>
+    <div class="barcode">
+      <img src="${barcodeDataUrl}" alt="Código de barras de la receta" />
+    </div>
+    <p class="legend">Receta electrónica emitida conforme Ley 27.553, Decreto 98/2023 y Decreto 63/2024. Documento generado por Dr Happy.</p>
+  </body>
+</html>`)
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+  }
+
   function printSelectedPatientSummary(): void {
     const patientForPrint = buildPatientForPrint()
     if (!patientForPrint || !profile) {
@@ -11754,7 +11989,30 @@ function App() {
                   >
                     Imprimir resumen (PDF)
                   </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={handleOpenPrescriptionModal}
+                    disabled={!selectedPatient}
+                  >
+                    🧾 Emitir receta
+                  </button>
                 </div>
+                {selectedPatient?.prescriptions?.length ? (
+                  <section className="patient-form-block">
+                    <h4 className="block-title">🧾 Recetas emitidas</h4>
+                    <ul className="file-list">
+                      {selectedPatient.prescriptions.map((entry) => (
+                        <li key={entry.id}>
+                          <span>{formatDate(entry.date)} · {entry.items.map((item) => item.genericName).join(', ')}</span>
+                          <button type="button" className="ghost compact" onClick={() => printPrescriptionDocument(entry, selectedPatient)}>
+                            Reimprimir
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
               </form>
             </section>
           </section>
@@ -12083,6 +12341,16 @@ function App() {
                     value={profile.licenseNumber}
                     onChange={handleProfileFieldChange}
                   />
+                </label>
+                <label>
+                  Domicilio profesional
+                  <input
+                    name="address"
+                    value={profile.address ?? ''}
+                    onChange={handleProfileFieldChange}
+                    placeholder="Calle, número, localidad"
+                  />
+                  <span className="field-hint">Obligatorio para emitir recetas electrónicas.</span>
                 </label>
                 <label>
                   Email
@@ -13926,6 +14194,82 @@ function App() {
               </div>
             ) : null}
             </></div>) : null}
+          </div>
+        </div>
+      ) : null}
+      {prescriptionModalOpen && selectedPatient ? (
+        <div className="drhappy-modal-overlay" onClick={() => setPrescriptionModalOpen(false)}>
+          <div className="drhappy-modal-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="prescription-title">
+            <div className="drhappy-modal-header">
+              <h3 id="prescription-title" style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>
+                🧾 Emitir receta — {selectedPatient.apellido}, {selectedPatient.nombre}
+              </h3>
+              <button type="button" className="drhappy-modal-close-btn" onClick={() => setPrescriptionModalOpen(false)} aria-label="Cerrar">✕</button>
+            </div>
+            <div className="drhappy-modal-body">
+              <label>
+                Diagnóstico
+                <input value={prescriptionDiagnostico} onChange={(event) => setPrescriptionDiagnostico(event.target.value)} placeholder="Motivo de la prescripción" />
+              </label>
+              <label>
+                Buscar medicamento (nombre genérico obligatorio)
+                <input
+                  value={prescriptionMedQuery}
+                  onChange={(event) => setPrescriptionMedQuery(event.target.value)}
+                  placeholder="Ej: ibuprofeno, amoxicilina..."
+                />
+              </label>
+              {prescriptionMedicationSuggestions.length > 0 ? (
+                <ul className="search-suggestions">
+                  {prescriptionMedicationSuggestions.map((med) => (
+                    <li key={med.id}>
+                      <button type="button" onClick={() => handleAddPrescriptionMedication(med)}>
+                        <strong>{med.drug}</strong>
+                        <span>{med.brand} · {med.presentation}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <button type="button" className="ghost compact" onClick={handleAddPrescriptionManualItem}>
+                + Agregar medicamento manual
+              </button>
+              <ul className="file-list">
+                {prescriptionItems.map((item) => (
+                  <li key={item.id} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+                    <input
+                      value={item.genericName}
+                      onChange={(event) => handlePrescriptionItemChange(item.id, { genericName: event.target.value })}
+                      placeholder="Nombre genérico (obligatorio)"
+                    />
+                    <input
+                      value={item.presentation}
+                      onChange={(event) => handlePrescriptionItemChange(item.id, { presentation: event.target.value })}
+                      placeholder="Presentación"
+                    />
+                    <input
+                      value={item.pharmaceuticalForm}
+                      onChange={(event) => handlePrescriptionItemChange(item.id, { pharmaceuticalForm: event.target.value })}
+                      placeholder="Forma farmacéutica"
+                    />
+                    <input
+                      value={item.quantity}
+                      onChange={(event) => handlePrescriptionItemChange(item.id, { quantity: event.target.value })}
+                      placeholder="Cantidad"
+                    />
+                    <button type="button" className="ghost compact" style={{ color: '#c0392b' }} onClick={() => handleRemovePrescriptionItem(item.id)}>
+                      🗑️ Quitar
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="drhappy-modal-footer">
+              <button type="button" className="ghost" onClick={() => setPrescriptionModalOpen(false)}>Cancelar</button>
+              <button type="button" disabled={prescriptionSaving} onClick={() => void handleSavePrescription()}>
+                {prescriptionSaving ? 'Emitiendo...' : 'Emitir y firmar receta'}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
