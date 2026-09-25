@@ -11989,16 +11989,18 @@ function App() {
                   >
                     Imprimir resumen (PDF)
                   </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={handleOpenPrescriptionModal}
-                    disabled={!selectedPatient}
-                  >
-                    🧾 Emitir receta
-                  </button>
+                  {isAdminSession ? (
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={handleOpenPrescriptionModal}
+                      disabled={!selectedPatient}
+                    >
+                      🧾 Emitir receta
+                    </button>
+                  ) : null}
                 </div>
-                {selectedPatient?.prescriptions?.length ? (
+                {isAdminSession && selectedPatient?.prescriptions?.length ? (
                   <section className="patient-form-block">
                     <h4 className="block-title">🧾 Recetas emitidas</h4>
                     <ul className="file-list">
@@ -12342,16 +12344,18 @@ function App() {
                     onChange={handleProfileFieldChange}
                   />
                 </label>
-                <label>
-                  Domicilio profesional
-                  <input
-                    name="address"
-                    value={profile.address ?? ''}
-                    onChange={handleProfileFieldChange}
-                    placeholder="Calle, número, localidad"
-                  />
-                  <span className="field-hint">Obligatorio para emitir recetas electrónicas.</span>
-                </label>
+                {isAdminSession ? (
+                  <label>
+                    Domicilio profesional
+                    <input
+                      name="address"
+                      value={profile.address ?? ''}
+                      onChange={handleProfileFieldChange}
+                      placeholder="Calle, número, localidad"
+                    />
+                    <span className="field-hint">Obligatorio para emitir recetas electrónicas.</span>
+                  </label>
+                ) : null}
                 <label>
                   Email
                   <input name="email" value={profile.email} onChange={handleProfileFieldChange} />
@@ -14197,7 +14201,7 @@ function App() {
           </div>
         </div>
       ) : null}
-      {prescriptionModalOpen && selectedPatient ? (
+      {prescriptionModalOpen && selectedPatient && isAdminSession ? (
         <div className="drhappy-modal-overlay" onClick={() => setPrescriptionModalOpen(false)}>
           <div className="drhappy-modal-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="prescription-title">
             <div className="drhappy-modal-header">
