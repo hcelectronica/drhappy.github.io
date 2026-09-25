@@ -13947,7 +13947,21 @@ function App() {
             </div>
             <p className="sofia-intro">Tu secretaria clínica para consultar la agenda, preparar información y ejecutar acciones con tu confirmación.</p>
             <div className="sofia-messages" aria-live="polite">
-              {sofiaMessages.map((message, index) => <div className={`sofia-message ${message.role}`} key={`${message.role}-${index}`}><span>{message.role === 'assistant' ? 'Sofía' : 'Vos'}</span><p>{message.content}</p></div>)}
+              {sofiaMessages.map((message, index) => {
+                const messageText = typeof message.content === 'string'
+                  ? message.content
+                  : message.content
+                    .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+                    .map((block) => block.text)
+                    .join('\n')
+                const hasAttachment = typeof message.content !== 'string' && message.content.some((block) => block.type === 'image' || block.type === 'document')
+                return (
+                  <div className={`sofia-message ${message.role}`} key={`${message.role}-${index}`}>
+                    <span>{message.role === 'assistant' ? 'Sofía' : 'Vos'}</span>
+                    <p>{messageText}{hasAttachment ? '\n📎 Archivo mostrado a Sofía' : ''}</p>
+                  </div>
+                )
+              })}
               {sofiaBusy ? <div className="sofia-message assistant"><span>Sofía</span><p>Estoy pensando...</p></div> : null}
               {sofiaPendingConfirmation ? (
                 <div className="sofia-confirmation-card" role="group" aria-label="Confirmación de acción">
