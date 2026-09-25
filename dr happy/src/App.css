@@ -28,20 +28,19 @@ body.theme-night {
   position: fixed;
   z-index: 60;
   top: 50%;
-  left: 0;
+  left: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  width: 26px;
-  min-height: 96px;
-  padding: 12px 0;
-  border: 1px solid rgba(178, 196, 224, 0.75);
-  border-left: 0;
+  width: 36px;
+  min-height: 112px;
+  padding: 12px 4px;
+  border: 2px solid #7d9bd0;
   border-radius: 0 16px 16px 0;
-  background: linear-gradient(135deg, rgba(247, 249, 255, 0.97), rgba(232, 238, 252, 0.94));
-  color: #5a6c8c;
+  background: linear-gradient(135deg, #ffffff, #dce8fb);
+  color: #294d86;
   box-shadow:
     6px 8px 20px rgba(76, 95, 130, 0.16),
     1px 1px 0 rgba(255, 255, 255, 0.85) inset;
@@ -52,8 +51,9 @@ body.theme-night {
 
 .sidebar-handle:hover,
 .sidebar-handle:focus-visible {
-  background: linear-gradient(135deg, #ffffff, #e9effb);
+  background: linear-gradient(135deg, #ffffff, #cfe0ff);
   color: #33507d;
+  border-color: #4773bd;
   box-shadow: 8px 10px 26px rgba(76, 95, 130, 0.24);
   outline: none;
   transform: translateY(-50%);
@@ -66,7 +66,7 @@ body.theme-night {
 }
 
 .sidebar-handle-label {
-  font-size: 0.56rem;
+  font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -263,8 +263,8 @@ body.theme-night .screen-action.active { background: linear-gradient(135deg, rgb
   .screen-action-bar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .screen-action { justify-content: flex-start; min-height: 46px; padding: 9px 11px; font-size: 0.75rem; }
   .screen-action.primary { grid-column: 1 / -1; justify-content: center; }
-  .turnera-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; overflow: visible; padding-bottom: 0; }
-  .turnera-metric-card { min-width: 0; min-height: 68px; padding: 9px 10px; gap: 7px; }
+  .turnera-metrics-grid { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; grid-auto-flow: row; gap: 8px; overflow: visible; padding-bottom: 0; }
+  .turnera-metrics-grid > .turnera-metric-card { display: flex; min-width: 0; width: auto; min-height: 68px; padding: 9px 10px; gap: 7px; }
   .turnera-metric-icon { font-size: 1.3rem; }
   .turnera-metric-info { min-width: 0; }
   .turnera-metric-info strong { font-size: 1.15rem; }
@@ -3735,6 +3735,7 @@ body.theme-night .sofia-confirmation-card { background: #132c4d; border-color: #
 body.theme-night .sofia-confirmation-card small { color: #a8c1df; }
 .sofia-compose { display: grid; gap: 8px; }
 .sofia-compose-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.sofia-file-button { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .sofia-compose textarea { width: 100%; resize: vertical; min-height: 78px; padding: 11px 12px; border: 1px solid #b7cae5; border-radius: 12px; font: inherit; box-sizing: border-box; }
 .sofia-disclaimer { color: #64748b; font-size: .72rem; }
 .sofia-usage { color: #536b87; font-size: .72rem; font-weight: 700; }

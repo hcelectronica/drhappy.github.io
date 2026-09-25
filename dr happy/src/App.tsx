@@ -6102,6 +6102,55 @@ function App() {
     setAppNotice(`Laboratorio ${file.name} cargado en el borrador. Usá Sofía para ordenarlo y luego guardá la evolución.`)
   }
 
+  async function handleSofiaDocumentUpload(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+    const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx$/i.test(file.name)
+    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(file.name)
+    if (!isPdf && !isDocx && !isImage && !/\.(txt|csv|md|json)$/i.test(file.name) && !file.type.startsWith('text/')) {
+      setAppError('Sofía puede leer PDF, DOCX, imágenes, TXT, CSV, MD o JSON.')
+      return
+    }
+
+    setAppError(null)
+    setAppNotice(`Sofía está leyendo ${file.name}. Esto puede tardar unos segundos.`)
+    try {
+      let text = ''
+      if (isDocx) {
+        text = (await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })).value.trim()
+      } else if (isImage) {
+        const { createWorker } = await import('tesseract.js')
+        const worker = await createWorker('spa')
+        try {
+          text = (await worker.recognize(file)).data.text.trim()
+        } finally {
+          await worker.terminate()
+        }
+      } else if (isPdf) {
+        const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise
+        const pages: string[] = []
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          const page = await pdf.getPage(pageNumber)
+          const content = await page.getTextContent()
+          pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '))
+        }
+        text = pages.join('\n\n').trim()
+      } else {
+        text = (await file.text()).trim()
+      }
+      if (!text) {
+        setAppError('El archivo no contiene texto legible.')
+        return
+      }
+      setSofiaDraft((current) => [current.trim(), `Archivo para Sofía (${file.name}):\n${text}`].filter(Boolean).join('\n\n'))
+      setAppNotice(`${file.name} quedó cargado para Sofía. Ahora podés pedirle que lo interprete.`)
+    } catch (error) {
+      setAppError(`No se pudo leer ${file.name}: ${error instanceof Error ? error.message : 'formato no compatible'}.`)
+    }
+  }
+
   async function summarizeClinicalInterview(): Promise<void> {
     if (!selectedPatient || !consultationDraft.detalleAtencion.trim() || clinicalSummaryBusy) {
       setAppError('Transcribí primero el interrogatorio del paciente antes de pedir el resumen.')
@@ -11826,7 +11875,7 @@ function App() {
                     <small>Tip: permite el micrófono cuando el navegador lo solicite.</small>
                   ) : null}
                   <div className="clinical-document-upload">
-                    <label htmlFor="sofia-clinical-document" className="file-picker-button compact">📄 Subir laboratorio a Sofía</label>
+                    <label htmlFor="sofia-clinical-document" className="file-picker-button compact">📄 Mostrar archivo a Sofía</label>
                     <input
                       id="sofia-clinical-document"
                       className="file-input-hidden"
@@ -13878,6 +13927,14 @@ function App() {
             <form className="sofia-compose" onSubmit={(event) => { event.preventDefault(); void handleAskSofia() }}>
               <textarea value={sofiaDraft} onChange={(event) => setSofiaDraft(event.target.value)} placeholder="Ej: agendá a María López para el jueves..." rows={3} disabled={sofiaBusy} />
               <div className="sofia-compose-actions">
+                <label htmlFor="sofia-document-upload" className="ghost sofia-file-button">📎 Mostrar archivo a Sofía</label>
+                <input
+                  id="sofia-document-upload"
+                  className="file-input-hidden"
+                  type="file"
+                  accept=".pdf,.docx,.txt,.csv,.md,.json,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/json"
+                  onChange={(event) => { void handleSofiaDocumentUpload(event) }}
+                />
                 <button type="button" className="ghost" onClick={toggleSofiaDictation} disabled={sofiaBusy}>{sofiaDictating ? '⏹ Detener audio' : '🎙 Dictar a Sofía'}</button>
                 <button type="submit" disabled={sofiaBusy || !sofiaDraft.trim()}>{sofiaBusy ? 'Consultando...' : 'Preguntar a Sofía'}</button>
               </div>
