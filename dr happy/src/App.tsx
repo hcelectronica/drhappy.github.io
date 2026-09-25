@@ -10807,7 +10807,7 @@ function App() {
               <div className="onboarding-head">
                 <div>
                   <span className="section-kicker">Primeros pasos</span>
-                  <strong>Dejá tu consultorio listo en 4 pasos</strong>
+                  <strong>Dejá tu consultorio listo en {onboardingSteps.length} pasos</strong>
                 </div>
                 <span className="onboarding-count">{onboardingDone}/{onboardingSteps.length}</span>
               </div>
