@@ -46,7 +46,7 @@ body.theme-night {
     1px 1px 0 rgba(255, 255, 255, 0.85) inset;
   cursor: pointer;
   transform: translateY(-50%);
-  transition: background 200ms ease, box-shadow 200ms ease, color 200ms ease;
+  transition: left 220ms cubic-bezier(0.22, 1, 0.36, 1), background 200ms ease, box-shadow 200ms ease, color 200ms ease;
 }
 
 .sidebar-handle:hover,
@@ -673,6 +673,7 @@ body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
 .capacity-status { padding: 9px 11px; border-radius: 10px; background: rgba(29, 78, 216, .08); color: #1d4ed8; font-size: .7rem; font-weight: 800; white-space: nowrap; }
 @media (min-width: 900px) {
   .sidebar-handle { left: 8px; width: 48px; min-height: 132px; }
+  .sidebar-handle.open { left: 281px; }
   .sidebar-handle-arrow { font-size: 1.35rem; }
   .sidebar-handle-label { font-size: .72rem; }
   .appointment-capacity-panel { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 16px; }
