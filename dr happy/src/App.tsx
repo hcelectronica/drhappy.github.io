@@ -663,7 +663,6 @@ const PROFESSIONAL_NETWORK_OPTIONS = [
   'RED SWISSMEDICAL',
 ] as const
 
-const APP_BUILD_ID = (import.meta.env.VITE_BUILD_ID as string | undefined) ?? 'dev-local'
 const DAY_IN_MS = 86400000
 const VADEMECUM_MIN_QUERY_LENGTH = 4
 const VADEMECUM_MAX_SUGGESTIONS = 7
@@ -8566,7 +8565,6 @@ function App() {
                   Iniciar sesión con Google
                 </button>
               ) : null}
-              <div className="build-badge">Compilación {APP_BUILD_ID}</div>
               <button
                 type="button"
                 className="text-button"
@@ -9155,7 +9153,6 @@ function App() {
               )}
             </button>
           ) : null}
-          {isAdminSession ? <span className="build-badge compact">Compilación {APP_BUILD_ID}</span> : null}
           {trialInfo?.status === 'active' && Number.isFinite(trialInfo.daysLeft) && (
             <span className={`subscription-status plan-chip${trialInfo.daysLeft <= 7 ? ' warn' : ' ok'}`}>
               <span className="plan-chip-copy">
@@ -9301,7 +9298,7 @@ function App() {
           <button type="button" onClick={() => { handleOpenProfile(); setSidebarOpen(false) }}>
             <span>👤</span> {googleIdentity ? 'Perfil' : 'Perfil y ajustes'}
           </button>
-          <button type="button" onClick={() => { handleToggleThemeMode(); setSidebarOpen(false) }}>
+          <button type="button" className="theme-toggle" onClick={() => { handleToggleThemeMode(); setSidebarOpen(false) }}>
             <span>{themeMode === 'night' ? '☀️' : '🌙'}</span> {themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'}
           </button>
           <button type="button" onClick={handleLogout}><span>🚪</span> Cerrar sesión</button>

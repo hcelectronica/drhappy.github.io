@@ -650,6 +650,16 @@ body.theme-night .plan-chip.danger .plan-chip-copy strong { color: #fca5a5; }
 .analytics-row strong { color: #1d4ed8; }
 .analytics-row .analytics-debt { color: #c2410c; }
 .analytics-row .analytics-paid { color: #16805b; }
+body.theme-night .analytics-stat-card,
+body.theme-night .analytics-columns section { background: #1a2d47; border-color: #526b8b; color: #e8f1ff; }
+body.theme-night .analytics-stat-card strong,
+body.theme-night .analytics-row strong { color: #b8d2ff; }
+body.theme-night .analytics-stat-card span { color: #c2d3eb; }
+body.theme-night .analytics-stat-card.warn strong,
+body.theme-night .analytics-row .analytics-debt { color: #ffc399; }
+body.theme-night .analytics-columns h3 { color: #d9e7ff; }
+body.theme-night .analytics-row { border-bottom-color: #45607e; color: #c2d3eb; }
+body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
 .appointment-capacity-panel { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(300px, 1.5fr) auto; align-items: center; gap: 18px; border-color: #b8cdeb; background: linear-gradient(135deg, #f8fbff, #eef5ff); }
 .appointment-capacity-panel h3 { color: #183759; }
 .capacity-controls { display: flex; align-items: end; gap: 18px; }
@@ -661,6 +671,20 @@ body.theme-night .plan-chip.danger .plan-chip-copy strong { color: #fca5a5; }
 .capacity-day-option:has(input:checked) { border-color: #1d4ed8; background: #e7efff; color: #1d4ed8; }
 .capacity-day-option input { accent-color: #1d4ed8; }
 .capacity-status { padding: 9px 11px; border-radius: 10px; background: rgba(29, 78, 216, .08); color: #1d4ed8; font-size: .7rem; font-weight: 800; white-space: nowrap; }
+@media (min-width: 900px) {
+  .sidebar-handle { left: 8px; width: 48px; min-height: 132px; }
+  .sidebar-handle-arrow { font-size: 1.35rem; }
+  .sidebar-handle-label { font-size: .72rem; }
+  .appointment-capacity-panel { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 16px; }
+  .capacity-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 14px; min-width: 0; }
+  .capacity-controls > label { min-width: 0; }
+  .capacity-controls > label > input, .capacity-controls > label > select { width: 100%; min-width: 0; box-sizing: border-box; }
+  .capacity-controls .time-select-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; }
+  .capacity-controls .time-select-pair select { min-width: 0; width: 100%; }
+  .capacity-days { grid-column: 1 / -1; }
+  .capacity-status { white-space: normal; }
+  .appointment-capacity-panel > .screen-action { justify-self: start; }
+}
 .topbar-actions > button:not(.google-session-chip) { display: none; }
 .topbar-actions .google-session-chip { display: grid; }
 
@@ -716,26 +740,6 @@ body.theme-night .plan-chip.danger .plan-chip-copy strong { color: #fca5a5; }
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
-}
-
-.build-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(69, 116, 191, 0.4);
-  background: rgba(219, 234, 254, 0.8);
-  color: #123a68;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-
-.build-badge.compact {
-  padding: 5px 9px;
-  font-size: 0.62rem;
 }
 
 .brand-block {
@@ -2843,6 +2847,41 @@ body.theme-night .admin-modules-hint {
   min-width: 122px;
 }
 
+button.ghost.theme-toggle,
+.sidebar-footer button.theme-toggle {
+  background: #16477e;
+  border: 2px solid #16477e;
+  color: #fff;
+  font-weight: 800;
+}
+
+button.ghost.theme-toggle:hover,
+.sidebar-footer button.theme-toggle:hover {
+  background: #0d325d;
+  border-color: #0d325d;
+  color: #fff;
+}
+
+button.ghost.theme-toggle:focus-visible,
+.sidebar-footer button.theme-toggle:focus-visible {
+  outline: 3px solid #f2ab27;
+  outline-offset: 2px;
+}
+
+body.theme-night button.ghost.theme-toggle,
+body.theme-night .sidebar-footer button.theme-toggle {
+  background: #ffdf79;
+  border-color: #ffdf79;
+  color: #17283f;
+}
+
+body.theme-night button.ghost.theme-toggle:hover,
+body.theme-night .sidebar-footer button.theme-toggle:hover {
+  background: #fff0b8;
+  border-color: #fff0b8;
+  color: #17283f;
+}
+
 @keyframes screen-enter {
   from {
     opacity: 0;
@@ -4750,7 +4789,7 @@ body.theme-night .turnera-card-actions {
   .brand-mark { width: 38px; height: 38px; border-radius: 12px; box-shadow: 0 5px 12px rgba(17, 45, 78, .2); }
   .brand-mark svg { width: 32px; height: 32px; }
   .brand-copy .slogan { display: block; overflow: hidden; font-size: 0.6rem; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
-  .brand-copy .professional, .build-badge { display: none; }
+  .brand-copy .professional { display: none; }
   .google-session-indicator { display: none; }
   .brand-copy h1 { font-size: 0.98rem; }
   .topbar-actions { position: static; width: auto; display: flex; justify-items: end; gap: 8px; }
