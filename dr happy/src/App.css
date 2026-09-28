@@ -4780,7 +4780,61 @@ body.theme-night .turnera-card-actions {
 }
 
 @media (min-width: 900px) {
-  .app-sidebar { inset: 88px auto 20px 20px; }
+  .app-sidebar {
+    inset: auto 50% 18px 50%;
+    width: min(900px, calc(100vw - 32px));
+    height: 78px;
+    max-height: 78px;
+    padding: 8px 14px;
+    flex-direction: row;
+    align-items: center;
+    border-radius: 22px;
+    background: rgba(18, 31, 52, 0.96);
+    border-color: rgba(144, 176, 226, 0.72);
+    box-shadow: 0 18px 42px rgba(4, 13, 27, 0.42);
+    overflow: hidden;
+    transform: translateX(-50%);
+  }
+  .app-sidebar.open { transform: translateX(-50%); }
+  .app-sidebar-header { display: none; }
+  .sidebar-sofia {
+    width: 58px;
+    min-width: 58px;
+    height: 58px;
+    margin: 0 10px 0 0;
+    padding: 6px;
+    justify-content: center;
+    border-radius: 14px;
+  }
+  .sidebar-sofia-copy { display: none; }
+  .sidebar-nav { display: flex; align-items: center; gap: 6px; padding: 0; flex: 1; min-width: 0; }
+  .sidebar-nav button,
+  .sidebar-toggle-row {
+    flex: 1 1 0;
+    min-width: 42px;
+    min-height: 54px;
+    padding: 7px 5px;
+    justify-content: center;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0;
+    color: #dbeafe;
+    border-radius: 12px;
+  }
+  .sidebar-nav button span { width: auto; font-size: 1.15rem; }
+  .sidebar-nav button small { display: none; }
+  .sidebar-toggle-row > span:first-child { flex-direction: column; gap: 1px; text-align: center; }
+  .sidebar-toggle-row b { font-size: 1.15rem; }
+  .sidebar-switch { display: none; }
+  .sidebar-footer { display: flex; align-items: center; gap: 6px; margin: 0; padding: 0; border: 0; }
+  .sidebar-footer button { width: 48px; min-width: 48px; min-height: 54px; padding: 7px 3px; flex-direction: column; justify-content: center; gap: 2px; font-size: 0; color: #dbeafe; text-align: center; }
+  .sidebar-footer button span { width: auto; font-size: 1.1rem; }
+  .sidebar-handle { display: none; }
+  .sidebar-scrim { display: none; }
+  .app-sidebar button:hover { transform: translateY(-8px) scale(1.35); z-index: 3; background: rgba(54, 92, 151, 0.9); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); }
+  .app-sidebar button { transform: scale(1); transform-origin: center bottom; transition: transform 180ms cubic-bezier(.2, .8, .2, 1), background 180ms ease, box-shadow 180ms ease; }
+  .app-sidebar button:hover + button { transform: translateY(-4px) scale(1.16); z-index: 2; }
+  .app-sidebar button:has(+ button:hover) { transform: translateY(-4px) scale(1.16); z-index: 2; }
 }
 
 @media (max-width: 720px) {

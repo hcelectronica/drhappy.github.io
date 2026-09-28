@@ -9252,7 +9252,7 @@ function App() {
             ×
           </button>
         </div>
-        <button type="button" className="sidebar-sofia" onClick={() => { setSofiaOpen(true); setSidebarOpen(false) }}>
+        <button type="button" className="sidebar-sofia" title="Abrir Sofía" onClick={() => { setSofiaOpen(true); setSidebarOpen(false) }}>
           <span aria-hidden="true">✨</span>
           <span className="sidebar-sofia-copy">
             <strong>Sofía</strong>
@@ -9261,47 +9261,47 @@ function App() {
         </button>
         <nav className="sidebar-nav">
           {isModuleEnabled('ambulance') ? (
-            <label className="sidebar-toggle-row ambulance-sidebar-item">
+            <label className="sidebar-toggle-row ambulance-sidebar-item" title="Modo Ambulancia">
               <span><b>🚑</b> Modo Ambulancia</span>
               <input type="checkbox" checked={workspaceLayer === 'ambulance'} onChange={(event) => event.target.checked ? handleOpenAmbulance() : handleBackToOverview()} />
               <span className="sidebar-switch" aria-hidden="true" />
             </label>
           ) : null}
-          <button type="button" className={workspaceLayer === 'overview' ? 'active' : ''} onClick={() => { handleBackToOverview(); setSidebarOpen(false) }}>
+          <button type="button" title="Inicio" className={workspaceLayer === 'overview' ? 'active' : ''} onClick={() => { handleBackToOverview(); setSidebarOpen(false) }}>
             <span>🏠</span> Inicio
           </button>
-          <button type="button" className={workspaceLayer === 'my-patients' ? 'active' : ''} onClick={() => { setWorkspaceLayer('my-patients'); setSidebarOpen(false) }}>
+          <button type="button" title="Mis pacientes" className={workspaceLayer === 'my-patients' ? 'active' : ''} onClick={() => { setWorkspaceLayer('my-patients'); setSidebarOpen(false) }}>
             <span>👥</span> Mis pacientes <small>{patients.length}</small>
           </button>
           {isModuleEnabled('appointments') ? (
-            <button type="button" className={workspaceLayer === 'appointments' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setSidebarOpen(false) }}>
+            <button type="button" title="Turnera" className={workspaceLayer === 'appointments' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setSidebarOpen(false) }}>
               <span>📅</span> Turnera
             </button>
           ) : null}
           {isModuleEnabled('tools') ? (
-            <button type="button" className={workspaceLayer === 'tools' ? 'active' : ''} onClick={() => { handleOpenTools(); setSidebarOpen(false) }}>
+            <button type="button" title="Herramientas" className={workspaceLayer === 'tools' ? 'active' : ''} onClick={() => { handleOpenTools(); setSidebarOpen(false) }}>
               <span>🧰</span> Herramientas {communityUnreadCount > 0 ? <small>{communityUnreadCount}</small> : null}
             </button>
           ) : null}
           {canUseTreatmentLedger ? (
-            <button type="button" className={workspaceLayer === 'appointments' && turneraViewMode === 'ledger' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setTurneraViewMode('ledger'); setSidebarOpen(false) }}>
+            <button type="button" title="Balance de pagos" className={workspaceLayer === 'appointments' && turneraViewMode === 'ledger' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setTurneraViewMode('ledger'); setSidebarOpen(false) }}>
               <span>💰</span> Balance de pagos
             </button>
           ) : null}
           {isAdminSession ? (
-            <button type="button" className={workspaceLayer === 'user-admin' ? 'active' : ''} onClick={() => { handleOpenUserAdmin(); setSidebarOpen(false) }}>
+            <button type="button" title="Administrar usuarios" className={workspaceLayer === 'user-admin' ? 'active' : ''} onClick={() => { handleOpenUserAdmin(); setSidebarOpen(false) }}>
               <span>⚙️</span> Administrar usuarios
             </button>
           ) : null}
         </nav>
         <div className="sidebar-footer">
-          <button type="button" onClick={() => { handleOpenProfile(); setSidebarOpen(false) }}>
+          <button type="button" title="Perfil y ajustes" onClick={() => { handleOpenProfile(); setSidebarOpen(false) }}>
             <span>👤</span> {googleIdentity ? 'Perfil' : 'Perfil y ajustes'}
           </button>
-          <button type="button" className="theme-toggle" onClick={() => { handleToggleThemeMode(); setSidebarOpen(false) }}>
+          <button type="button" className="theme-toggle" title={themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'} onClick={() => { handleToggleThemeMode(); setSidebarOpen(false) }}>
             <span>{themeMode === 'night' ? '☀️' : '🌙'}</span> {themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'}
           </button>
-          <button type="button" onClick={handleLogout}><span>🚪</span> Cerrar sesión</button>
+          <button type="button" title="Cerrar sesión" onClick={handleLogout}><span>🚪</span> Cerrar sesión</button>
         </div>
       </aside>
       {sidebarOpen ? <button type="button" className="sidebar-scrim" aria-label="Cerrar navegación" onClick={() => setSidebarOpen(false)} /> : null}
