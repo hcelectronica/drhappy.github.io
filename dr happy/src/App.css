@@ -4780,27 +4780,28 @@ body.theme-night .turnera-card-actions {
 }
 
 @media (min-width: 900px) {
+  .app { padding-bottom: 118px; }
   .app-sidebar {
     inset: auto 50% 18px 50%;
     width: min(900px, calc(100vw - 32px));
-    height: 78px;
-    max-height: 78px;
+    height: 68px;
+    max-height: 68px;
     padding: 8px 14px;
     flex-direction: row;
     align-items: center;
     border-radius: 22px;
-    background: rgba(18, 31, 52, 0.96);
+    background: rgba(18, 31, 52, 0.88);
     border-color: rgba(144, 176, 226, 0.72);
     box-shadow: 0 18px 42px rgba(4, 13, 27, 0.42);
-    overflow: hidden;
+    overflow: visible;
     transform: translateX(-50%);
   }
   .app-sidebar.open { transform: translateX(-50%); }
   .app-sidebar-header { display: none; }
   .sidebar-sofia {
-    width: 58px;
+    width: 52px;
     min-width: 58px;
-    height: 58px;
+    height: 50px;
     margin: 0 10px 0 0;
     padding: 6px;
     justify-content: center;
@@ -4812,7 +4813,7 @@ body.theme-night .turnera-card-actions {
   .sidebar-toggle-row {
     flex: 1 1 0;
     min-width: 42px;
-    min-height: 54px;
+    min-height: 48px;
     padding: 7px 5px;
     justify-content: center;
     flex-direction: column;
@@ -4821,14 +4822,38 @@ body.theme-night .turnera-card-actions {
     color: #dbeafe;
     border-radius: 12px;
   }
-  .sidebar-nav button span { width: auto; font-size: 1.15rem; }
+  .sidebar-nav button span { width: auto; font-size: 1.05rem; }
   .sidebar-nav button small { display: none; }
   .sidebar-toggle-row > span:first-child { flex-direction: column; gap: 1px; text-align: center; }
   .sidebar-toggle-row b { font-size: 1.15rem; }
   .sidebar-switch { display: none; }
   .sidebar-footer { display: flex; align-items: center; gap: 6px; margin: 0; padding: 0; border: 0; }
-  .sidebar-footer button { width: 48px; min-width: 48px; min-height: 54px; padding: 7px 3px; flex-direction: column; justify-content: center; gap: 2px; font-size: 0; color: #dbeafe; text-align: center; }
-  .sidebar-footer button span { width: auto; font-size: 1.1rem; }
+  .sidebar-footer button { width: 44px; min-width: 44px; min-height: 48px; padding: 6px 3px; flex-direction: column; justify-content: center; gap: 2px; font-size: 0; color: #dbeafe; text-align: center; }
+  .sidebar-footer button span { width: auto; font-size: 1.05rem; }
+  .app-sidebar button[title] { position: relative; }
+  .app-sidebar button[title]::after {
+    content: attr(title);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 9px);
+    z-index: 10;
+    padding: 8px 12px;
+    border: 1px solid #9fc0f5;
+    border-radius: 9px;
+    background: #10294a;
+    color: #fff;
+    font-size: 0.86rem;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) scale(.74) translateY(-3px);
+    transform-origin: bottom center;
+    transition: opacity 140ms ease;
+  }
+  .app-sidebar button[title]:hover::after,
+  .app-sidebar button[title]:focus-visible::after { opacity: 1; }
   .sidebar-handle { display: none; }
   .sidebar-scrim { display: none; }
   .app-sidebar button:hover { transform: translateY(-8px) scale(1.35); z-index: 3; background: rgba(54, 92, 151, 0.9); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); }
