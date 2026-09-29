@@ -2370,6 +2370,13 @@ function App() {
   )
   const [showInstallToast, setShowInstallToast] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
+  const [authErrorToast, setAuthErrorToast] = useState<string | null>(null)
+  useEffect(() => {
+    if (!authError) return
+    setAuthErrorToast(authError)
+    const timeoutId = window.setTimeout(() => setAuthErrorToast(null), 3200)
+    return () => window.clearTimeout(timeoutId)
+  }, [authError])
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showLoginPassword, setShowLoginPassword] = useState(false)
@@ -8710,7 +8717,6 @@ function App() {
                   {emailVerificationBusy ? 'Confirmando...' : 'Confirmar email'}
                 </button>
               </form>
-              {authError ? <p className="error" role="alert">{authError}</p> : null}
               <button type="button" className="ghost" onClick={() => void handleResendProfessionalEmailCode()} disabled={emailVerificationBusy}>
                 Reenviar código
               </button>
@@ -8762,7 +8768,6 @@ function App() {
                   </button>
                 </div>
               </label>
-              {authError ? <p className="error">{authError}</p> : null}
               {appError ? <p className="error">{appError}</p> : null}
               {appNotice ? <p className="notice">{appNotice}</p> : null}
               <button type="submit">Iniciar sesión</button>
@@ -8889,7 +8894,6 @@ function App() {
                   <button type="submit">Actualizar contraseña</button>
                 </form>
               )}
-              {authError ? <p className="error">{authError}</p> : null}
               {appError ? <p className="error">{appError}</p> : null}
               {appNotice ? <p className="notice">{appNotice}</p> : null}
               <button type="button" className="ghost" onClick={resetRecoveryForm}>
@@ -9049,7 +9053,6 @@ function App() {
                 </div>
                 <small>Mínimo 6 caracteres.</small>
               </label>
-                {authError ? <p className="error" role="alert">{authError}</p> : null}
                   <button type="submit">Guardar usuario</button>
                 </form>
               </div>
@@ -9057,6 +9060,7 @@ function App() {
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
+        {authErrorToast ? <div className="floating-toast floating-toast--error" role="alert" aria-live="assertive">{authErrorToast}</div> : null}
         {contactModalOpen ? (
           <div className="drhappy-modal-overlay" onClick={() => setContactModalOpen(false)}>
             <div

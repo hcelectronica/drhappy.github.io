@@ -1699,6 +1699,11 @@ button.ghost {
   text-transform: uppercase;
 }
 
+.floating-toast--error {
+  background: rgba(176, 0, 32, 0.96);
+  box-shadow: 0 20px 36px rgba(120, 0, 24, 0.3);
+}
+
 .access-note {
   margin: 0;
   padding: 10px 12px;
