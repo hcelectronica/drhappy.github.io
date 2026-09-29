@@ -49,6 +49,20 @@ export async function askSofia(params: {
   })
 
   if (error) {
+    const context = (error as { context?: Response }).context
+    if (context && typeof context.json === 'function') {
+      try {
+        const payload = await context.json() as { message?: unknown }
+        if (typeof payload.message === 'string' && payload.message.trim()) {
+          return { success: false, message: payload.message }
+        }
+        if (context.status) {
+          return { success: false, message: `Sofía devolvió un error HTTP ${context.status}.` }
+        }
+      } catch {
+        // Si la respuesta no contiene JSON, se conserva el mensaje de Supabase.
+      }
+    }
     return { success: false, message: error.message || 'No se pudo conectar con Sofía.' }
   }
 
