@@ -66,6 +66,11 @@ import {
   setProfessionalPassword,
 } from './authService'
 import type { AuthProfessionalPublic } from './authService'
+import {
+  registerWithEmailVerification,
+  verifyProfessionalEmail,
+  resendProfessionalEmailCode,
+} from './emailVerificationService'
 import { CLINICAL_PROTOCOLS } from './clinicalProtocols'
 import { CONSULT_PATHOLOGIES } from './consultPathologies'
 import AuthBackground from './AuthBackground'
@@ -404,6 +409,15 @@ interface RegisterDraft {
   networkMemberships: string[]
 }
 
+interface PendingEmailVerification {
+  professionalId: string
+  email: string
+  resumeToken: string
+  username: string
+  fullName: string
+  specialty: string
+}
+
 interface MedicationEntry {
   id: string
   brand: string
@@ -549,6 +563,8 @@ interface RemotePasswordRecoveryRow {
 const SESSION_USER_KEY = 'drhappy-active-user'
 const SESSION_USER_CACHE_KEY = 'drhappy-active-user-cache'
 const SESSION_TOKEN_KEY = 'drhappy-professional-session'
+const EMAIL_VERIFICATION_PENDING_KEY = 'drhappy-pending-email-verification'
+const EMAIL_VERIFICATION_ENABLED = import.meta.env.VITE_ENABLE_EMAIL_VERIFICATION === 'true'
 const CREATED_USERS_KEY = 'drhappy-created-users'
 const THEME_MODE_KEY = 'drhappy-theme-mode'
 const PATIENT_REGISTRY_KEY = 'drhappy-patient-registry'
@@ -2363,6 +2379,21 @@ function App() {
   })
   const [registerOpen, setRegisterOpen] = useState(false)
   const [registerDraft, setRegisterDraft] = useState<RegisterDraft>(emptyRegisterDraft)
+  const [pendingEmailVerification, setPendingEmailVerification] = useState<PendingEmailVerification | null>(() => {
+    if (!EMAIL_VERIFICATION_ENABLED) return null
+    try {
+      const stored = localStorage.getItem(EMAIL_VERIFICATION_PENDING_KEY)
+      return stored ? JSON.parse(stored) as PendingEmailVerification : null
+    } catch {
+      return null
+    }
+  })
+  const [showEmailVerification, setShowEmailVerification] = useState(() =>
+    EMAIL_VERIFICATION_ENABLED && Boolean(localStorage.getItem(EMAIL_VERIFICATION_PENDING_KEY)),
+  )
+  const [emailVerificationCode, setEmailVerificationCode] = useState('')
+  const [emailVerificationNotice, setEmailVerificationNotice] = useState<string | null>(null)
+  const [emailVerificationBusy, setEmailVerificationBusy] = useState(false)
   const [recoveryOpen, setRecoveryOpen] = useState(false)
   const [recoveryRequested, setRecoveryRequested] = useState(false)
   const [recoveryEmail, setRecoveryEmail] = useState('')
@@ -5668,6 +5699,10 @@ function App() {
         setAuthError(result.message || 'Usuario o contraseña inválidos o usuario inactivo.')
         return
       }
+      localStorage.removeItem(EMAIL_VERIFICATION_PENDING_KEY)
+      sessionStorage.removeItem(EMAIL_VERIFICATION_PENDING_KEY)
+      setPendingEmailVerification(null)
+      setShowEmailVerification(false)
       const user = mapAuthProfessionalPublic(result.professional)
       try {
         sessionGenerationRef.current += 1
@@ -5795,6 +5830,40 @@ function App() {
 
     let nextUser: SeedUser
     if (isSupabaseConfigured) {
+      if (EMAIL_VERIFICATION_ENABLED) {
+        const result = await registerWithEmailVerification({
+          username: draft.username,
+          password: draft.password,
+          fullName,
+          specialty: draft.specialty,
+          licenseNumber: draft.licenseNumber,
+          dni: draft.dni,
+          email: draft.email,
+          networkMemberships: draft.networkMemberships,
+        })
+        if (!result.success || !result.professionalId || !result.resumeToken) {
+          setAuthError(result.message || 'No se pudo iniciar la verificación del email.')
+          return
+        }
+        const pending: PendingEmailVerification = {
+          professionalId: result.professionalId,
+          email: result.email || draft.email,
+          resumeToken: result.resumeToken,
+          username: draft.username,
+          fullName,
+          specialty: draft.specialty,
+        }
+        localStorage.setItem(EMAIL_VERIFICATION_PENDING_KEY, JSON.stringify(pending))
+        setPendingEmailVerification(pending)
+        setEmailVerificationCode('')
+        setShowEmailVerification(true)
+        setEmailVerificationNotice(result.emailSent
+          ? `Enviamos un código a ${pending.email}. Tiene una vigencia de 15 minutos.`
+          : 'La cuenta quedó pendiente y el correo no pudo entregarse. Podés solicitar otro código en un minuto.')
+        setRegisterOpen(false)
+        setRegisterDraft(emptyRegisterDraft)
+        return
+      }
       const result = await registerProfessional({
         username: draft.username,
         password: draft.password,
@@ -5844,6 +5913,82 @@ function App() {
     setPassword('')
     setAppNotice('Usuario creado y correo de bienvenida enviado. Ya puedes iniciar sesión con el nuevo profesional.')
     showSavedFloatingNotice()
+  }
+
+  async function handleVerifyProfessionalEmail(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (!pendingEmailVerification) return
+    setAuthError(null)
+    setEmailVerificationNotice(null)
+    setEmailVerificationBusy(true)
+    try {
+      const result = await verifyProfessionalEmail(pendingEmailVerification.professionalId, emailVerificationCode)
+      if (!result.success || !result.professional || !result.sessionToken) {
+        setAuthError(result.message || 'No se pudo confirmar el email.')
+        return
+      }
+      const user = mapAuthProfessionalPublic(result.professional)
+      await persistWorkspaceRemote(user.id, profileFromSeed(user), [], [])
+      sessionGenerationRef.current += 1
+      setActiveUserId(null)
+      setProfile(null)
+      setPatients([])
+      setAvailablePatients([])
+      setAppointments([])
+      setTreatmentLedger([])
+      sessionStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
+      localStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
+      localStorage.setItem(SESSION_USER_KEY, user.id)
+      setSeedUsers((current) => current.some((entry) => entry.id === user.id)
+        ? current.map((entry) => entry.id === user.id ? user : entry)
+        : [...current, user])
+      await loadWorkspaceForUser(user)
+      setWorkspaceLayer('overview')
+      setSelectedPatientId(null)
+      localStorage.removeItem(EMAIL_VERIFICATION_PENDING_KEY)
+      setPendingEmailVerification(null)
+      setShowEmailVerification(false)
+      setEmailVerificationCode('')
+      setPassword('')
+      void sendWelcomeEmail({
+        to: pendingEmailVerification.email,
+        fullName: pendingEmailVerification.fullName,
+        username: pendingEmailVerification.username,
+        specialty: pendingEmailVerification.specialty,
+      })
+      setAppNotice('Email confirmado. Tu cuenta ya está lista.')
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'No se pudo completar la confirmación.')
+    } finally {
+      setEmailVerificationBusy(false)
+    }
+  }
+
+  async function handleResendProfessionalEmailCode(): Promise<void> {
+    if (!pendingEmailVerification || emailVerificationBusy) return
+    setAuthError(null)
+    setEmailVerificationNotice(null)
+    setEmailVerificationBusy(true)
+    try {
+      const result = await resendProfessionalEmailCode(
+        pendingEmailVerification.professionalId,
+        pendingEmailVerification.resumeToken,
+      )
+      if (!result.success) {
+        const waitMessage = result.retryAfterSeconds
+          ? ` Esperá ${result.retryAfterSeconds} segundos antes de volver a intentarlo.`
+          : ''
+        setAuthError(`${result.message || 'No se pudo reenviar el código.'}${waitMessage}`)
+        return
+      }
+      setEmailVerificationNotice(result.emailSent
+        ? `Enviamos un nuevo código a ${pendingEmailVerification.email}. El anterior dejó de ser válido.`
+        : 'No se pudo entregar el correo. Esperá un minuto antes de volver a intentar.')
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'No se pudo reenviar el código.')
+    } finally {
+      setEmailVerificationBusy(false)
+    }
   }
 
   async function handleToggleUserActive(userId: string): Promise<void> {
@@ -8505,7 +8650,46 @@ function App() {
               </p>
             </div>
           </div>
-          {!recoveryOpen ? (
+          {showEmailVerification && pendingEmailVerification ? (
+            <section className="recovery-form">
+              <h2>Confirmá tu email</h2>
+              <p className="notice">
+                {emailVerificationNotice || <>Ingresá el código enviado a <strong>{pendingEmailVerification.email}</strong>.</>}
+              </p>
+              <form className="grid" onSubmit={handleVerifyProfessionalEmail}>
+                <label>
+                  Código de 6 dígitos
+                  <input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    value={emailVerificationCode}
+                    onChange={(event) => setEmailVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    required
+                  />
+                </label>
+                <button type="submit" disabled={emailVerificationBusy || emailVerificationCode.length !== 6}>
+                  {emailVerificationBusy ? 'Confirmando...' : 'Confirmar email'}
+                </button>
+              </form>
+              {authError ? <p className="error" role="alert">{authError}</p> : null}
+              <button type="button" className="ghost" onClick={() => void handleResendProfessionalEmailCode()} disabled={emailVerificationBusy}>
+                Reenviar código
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setShowEmailVerification(false)
+                  setAuthError(null)
+                  setEmailVerificationNotice(null)
+                }}
+              >
+                Volver a iniciar sesión
+              </button>
+            </section>
+          ) : !recoveryOpen ? (
             <form onSubmit={handleLogin} className="grid">
               <label>
                 Usuario
@@ -8587,6 +8771,11 @@ function App() {
               >
                 {registerOpen ? 'Cancelar registro' : 'Crear usuario'}
               </button>
+              {pendingEmailVerification ? (
+                <button type="button" className="ghost" onClick={() => setShowEmailVerification(true)}>
+                  Continuar confirmación de email
+                </button>
+              ) : null}
               <button type="button" className="ghost theme-toggle" onClick={handleToggleThemeMode}>
                 {themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'}
               </button>

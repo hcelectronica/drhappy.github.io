@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import bcrypt from 'npm:bcryptjs@2.4.3'
 import { corsHeaders } from '../_shared/cors.ts'
-import { createProfessionalSession } from '../_shared/professionalSession.ts'
+import { createProfessionalSession, hasVerifiedGoogleEmail } from '../_shared/professionalSession.ts'
 
 // Esta función es la ÚNICA parte del sistema que puede leer o escribir el hash
 // de contraseña de un profesional. Usa la Service Role Key (nunca expuesta al
@@ -65,6 +65,7 @@ serve(async (request) => {
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   })
+  const emailVerificationEnabled = Deno.env.get('ENABLE_EMAIL_VERIFICATION')?.trim().toLowerCase() === 'true'
 
   let body: AuthRequestBody
   try {
@@ -76,6 +77,9 @@ serve(async (request) => {
   try {
     switch (body.action) {
       case 'register': {
+        if (emailVerificationEnabled) {
+          return jsonResponse(409, { success: false, code: 'EMAIL_VERIFICATION_REQUIRED', message: 'El registro requiere confirmar el email.' })
+        }
         const username = body.username?.trim().toLowerCase()
         const password = body.password
         const fullName = body.fullName?.trim()
@@ -161,7 +165,7 @@ serve(async (request) => {
 
         const { data, error } = await admin
           .from('professionals')
-          .select(`${PROFESSIONAL_PUBLIC_COLUMNS}, password_hash`)
+          .select(`${PROFESSIONAL_PUBLIC_COLUMNS}, password_hash${emailVerificationEnabled ? ', email_verification_required, email_verified_at' : ''}`)
           .or(`username.ilike.${username},email.ilike.${username}`)
           .maybeSingle()
 
@@ -175,6 +179,9 @@ serve(async (request) => {
         const passwordMatches = await bcrypt.compare(password, data.password_hash as string)
         if (!passwordMatches) {
           return jsonResponse(401, { success: false, message: 'Usuario o contraseña inválidos o usuario inactivo.' })
+        }
+        if (emailVerificationEnabled && data.email_verification_required === true && !data.email_verified_at) {
+          return jsonResponse(403, { success: false, code: 'EMAIL_NOT_VERIFIED', message: 'Confirmá el email antes de iniciar sesión.' })
         }
 
         const { password_hash: _omit, ...sanitized } = data as Record<string, unknown>
@@ -190,16 +197,33 @@ serve(async (request) => {
           return jsonResponse(401, { success: false, message: 'La sesión de Google no es válida.' })
         }
         const email = googleUser.user.email.trim().toLowerCase()
+        if (!hasVerifiedGoogleEmail(googleUser.user)) {
+          return jsonResponse(403, { success: false, code: 'GOOGLE_EMAIL_NOT_VERIFIED', message: 'Google no confirmó que este email esté verificado. Usá el registro con código por email.' })
+        }
         const metadata = googleUser.user.user_metadata && typeof googleUser.user.user_metadata === 'object'
           ? googleUser.user.user_metadata as Record<string, unknown>
           : {}
         const fullName = body.fullName?.trim() || (typeof metadata.full_name === 'string' ? metadata.full_name : email.split('@')[0])
-        const { data: existing, error: existingError } = await admin.from('professionals').select(PROFESSIONAL_PUBLIC_COLUMNS).ilike('email', email).maybeSingle()
+        const verificationColumns = emailVerificationEnabled ? ', email_verification_required, email_verified_at' : ''
+        const { data: existing, error: existingError } = await admin.from('professionals').select(`${PROFESSIONAL_PUBLIC_COLUMNS}${verificationColumns}`).ilike('email', email).maybeSingle()
         if (existingError) return jsonResponse(500, { success: false, message: `No se pudo buscar el email: ${existingError.message}` })
         if (existing) {
           if (existing.active === false) return jsonResponse(401, { success: false, message: 'El usuario está inactivo.' })
+          if (emailVerificationEnabled && !existing.email_verified_at) {
+            const { error: verificationError } = await admin.from('professionals')
+              .update({ email_verified_at: new Date().toISOString() })
+              .eq('id', existing.id)
+              .is('email_verified_at', null)
+            if (verificationError) return jsonResponse(500, { success: false, message: 'No se pudo registrar la confirmación del email.' })
+          }
+          const { data: publicProfessional, error: publicProfessionalError } = await admin
+            .from('professionals')
+            .select(PROFESSIONAL_PUBLIC_COLUMNS)
+            .eq('id', existing.id)
+            .single()
+          if (publicProfessionalError || !publicProfessional) return jsonResponse(500, { success: false, message: 'No se pudo cargar el perfil profesional.' })
           const sessionToken = await createProfessionalSession(admin, String(existing.id))
-          return jsonResponse(200, { success: true, professional: existing, sessionToken })
+          return jsonResponse(200, { success: true, professional: publicProfessional, sessionToken })
         }
         const baseUsername = email.split('@')[0].replace(/[^a-z0-9._-]/g, '').slice(0, 40) || 'profesional'
         let username = baseUsername
@@ -209,6 +233,9 @@ serve(async (request) => {
           username = `${baseUsername.slice(0, 40 - String(suffix).length - 1)}-${suffix}`
         }
         const password = crypto.randomUUID()
+        const verificationFields = emailVerificationEnabled
+          ? { email_verification_required: true, email_verified_at: new Date().toISOString() }
+          : {}
         const { data: inserted, error: insertError } = await admin.from('professionals').insert({
           username,
           password_hash: await bcrypt.hash(password, BCRYPT_ROUNDS),
@@ -219,6 +246,7 @@ serve(async (request) => {
           network_memberships_json: [],
           trial_started_at: new Date().toISOString(),
           subscription_status: 'trial',
+          ...verificationFields,
         }).select(PROFESSIONAL_PUBLIC_COLUMNS).single()
         if (insertError || !inserted) return jsonResponse(500, { success: false, message: insertError?.message || 'No se pudo crear el usuario de Google.' })
         const sessionToken = await createProfessionalSession(admin, String(inserted.id))

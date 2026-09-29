@@ -17,12 +17,16 @@ export interface EmailVerificationProfessional {
   subscription_expires_at: string | null
 }
 
-interface VerificationResult {
+export interface VerificationResult {
   success: boolean
   message?: string
   professional?: EmailVerificationProfessional
   sessionToken?: string
   email?: string
+  professionalId?: string
+  resumeToken?: string
+  emailSent?: boolean
+  retryAfterSeconds?: number
 }
 
 async function invokeVerification(body: Record<string, unknown>): Promise<VerificationResult> {
@@ -30,11 +34,31 @@ async function invokeVerification(body: Record<string, unknown>): Promise<Verifi
     return { success: false, message: 'Supabase no está conectado en este entorno.' }
   }
   const { data, error } = await supabase.functions.invoke('auth-email-verification', { body })
-  if (error) return { success: false, message: error.message || 'No se pudo validar el email.' }
+  if (error) {
+    const context = (error as { context?: Response }).context
+    if (context && typeof context.json === 'function') {
+      try {
+        const payload = await context.json() as Partial<VerificationResult>
+        return { ...payload, success: false, message: payload.message || error.message || 'No se pudo validar el email.' }
+      } catch {
+        // Si la respuesta no contiene JSON, se conserva el mensaje del cliente.
+      }
+    }
+    return { success: false, message: error.message || 'No se pudo validar el email.' }
+  }
   return data as VerificationResult
 }
 
-export function registerWithEmailVerification(params: Record<string, unknown>): Promise<VerificationResult> {
+export function registerWithEmailVerification(params: {
+  username: string
+  password: string
+  fullName: string
+  specialty: string
+  licenseNumber: string
+  dni?: string
+  email: string
+  networkMemberships: string[]
+}): Promise<VerificationResult> {
   return invokeVerification({ action: 'register', ...params })
 }
 
@@ -42,6 +66,6 @@ export function verifyProfessionalEmail(professionalId: string, code: string): P
   return invokeVerification({ action: 'verify', professionalId, code })
 }
 
-export function resendProfessionalEmailCode(professionalId: string): Promise<VerificationResult> {
-  return invokeVerification({ action: 'resend', professionalId })
+export function resendProfessionalEmailCode(professionalId: string, resumeToken: string): Promise<VerificationResult> {
+  return invokeVerification({ action: 'resend', professionalId, resumeToken })
 }
