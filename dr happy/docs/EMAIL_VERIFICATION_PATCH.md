@@ -29,11 +29,11 @@ Con los flags apagados, el frontend sigue usando el alta actual y `auth-professi
 
 
 Estado actual: las seis migraciones pendientes fueron aplicadas al proyecto Supabase `stzsobirxdivbgqxwkhc`; el pepper fue generado y guardado como secret; el flag backend esta activo; se desplegaron `auth-email-verification`, `auth-professional` y las funciones que comparten el guard de sesion. Ambas carpetas locales apuntan al mismo ref Supabase, por lo que backend y base son compartidos, no hay un proyecto Supabase de desarrollo separado. La app local corre en `http://127.0.0.1:5173/`; el cliente de produccion se publica desde `origin/main` y `.env.production` habilita el panel de codigo en el build.
-Diagnostico del primer envio real: Hostinger SMTP respondio `535 5.7.8 authentication failed`. El email de destino no es el problema; hay que actualizar el secret `SMTP_TURNOS_PASSWORD` con la contraseña vigente de la casilla remitente configurada en `SMTP_TURNOS_USER`. No guardar ni compartir esa contraseña en el repositorio o el chat. Hasta corregirla, los codigos no se entregan y la interfaz informa que el servidor de correo rechazo el envio.
+Diagnostico del primer envio real: Hostinger SMTP respondio `535 5.7.8 authentication failed`. El email de destino no es el problema. Configurar `SMTP_USER`, `SMTP_PASSWORD` y `SMTP_FROM_EMAIL` con una casilla vigente; no volver a usar `turnos@drhappy.com.ar`. No guardar ni compartir contraseñas en el repositorio o el chat. Hasta corregir esos secrets, los codigos no se entregan y la interfaz informa que el servidor de correo rechazo el envio.
 
 ## Pruebas pendientes
 
-1. Actualizar `SMTP_TURNOS_PASSWORD` en Supabase con la credencial vigente del remitente; repetir una prueba de entrega y confirmar el mensaje en la casilla.
+1. Configurar los secrets `SMTP_USER`, `SMTP_PASSWORD` y `SMTP_FROM_EMAIL` para una casilla activa; repetir una prueba de entrega y confirmar el mensaje en la casilla.
 2. Probar alta real, codigo incorrecto, quinto intento, expiracion, reenvio/cooldown/limite, email duplicado, cierre/reapertura del navegador y recuperacion tras fallo.
 3. Probar login Google con una cuenta real y confirmar que una identidad sin email verificado se rechaza.
 4. Probar login de cuentas existentes y verificar que el envio de bienvenida siga sin bloquear el alta.

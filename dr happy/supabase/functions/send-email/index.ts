@@ -276,10 +276,10 @@ serve(async (request) => {
 
   const smtpHost = Deno.env.get('SMTP_HOST')?.trim() || 'smtp.hostinger.com'
   const smtpPort = Number(Deno.env.get('SMTP_PORT')?.trim() || '465')
-  const smtpUser = Deno.env.get('SMTP_TURNOS_USER')?.trim() || Deno.env.get('SMTP_USER')?.trim() || 'turnos@drhappy.com.ar'
-  const smtpPass = Deno.env.get('SMTP_TURNOS_PASSWORD')?.trim() || Deno.env.get('SMTP_PASSWORD')?.trim() || Deno.env.get('HOSTINGER_MAIL_PASSWORD')?.trim() || ''
+  const smtpUser = Deno.env.get('SMTP_USER')?.trim() || Deno.env.get('SMTP_TURNOS_USER')?.trim() || ''
+  const smtpPass = Deno.env.get('SMTP_PASSWORD')?.trim() || Deno.env.get('SMTP_TURNOS_PASSWORD')?.trim() || Deno.env.get('HOSTINGER_MAIL_PASSWORD')?.trim() || ''
   const fromName = Deno.env.get('SMTP_FROM_NAME')?.trim() || 'Dr Happy'
-  const fromEmail = 'turnos@drhappy.com.ar'
+  const fromEmail = Deno.env.get('SMTP_FROM_EMAIL')?.trim() || smtpUser
 
   let payload: EmailPayload
   try {
@@ -294,13 +294,10 @@ serve(async (request) => {
     return jsonResponse(400, { message: 'Campos "to" y "subject" son requeridos.' })
   }
 
-  if (!smtpPass) {
+  if (!smtpUser || !smtpPass || !fromEmail) {
     return jsonResponse(500, {
       success: false,
-      message: 'Falta configurar la contraseña SMTP (secret SMTP_PASSWORD) en Supabase para turnos@drhappy.com.ar.',
-      hint: 'Por favor asigna la contraseña de la casilla de correo en Hostinger a SMTP_PASSWORD.',
-      configuredUser: smtpUser,
-      configuredHost: smtpHost,
+      message: 'Falta configurar SMTP_USER, SMTP_PASSWORD y SMTP_FROM_EMAIL en los secrets de Supabase.',
     })
   }
 
