@@ -19,6 +19,7 @@ export interface AuthProfessionalPublic {
 
 interface AuthActionResult {
   success: boolean
+  code?: string
   message?: string
   professional?: AuthProfessionalPublic
   sessionToken?: string
@@ -33,9 +34,13 @@ async function invokeAuthProfessional(body: Record<string, unknown>): Promise<Au
     const context = (error as { context?: Response }).context
     if (context && typeof context.json === 'function') {
       try {
-        const payload = (await context.json()) as { message?: unknown }
+        const payload = (await context.json()) as { code?: unknown; message?: unknown }
         if (typeof payload.message === 'string' && payload.message.trim()) {
-          return { success: false, message: payload.message }
+          return {
+            success: false,
+            code: typeof payload.code === 'string' ? payload.code : undefined,
+            message: payload.message,
+          }
         }
       } catch {
         // Si la respuesta no contiene JSON, se conserva el mensaje del cliente.

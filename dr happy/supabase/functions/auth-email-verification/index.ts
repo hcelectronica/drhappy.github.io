@@ -13,7 +13,7 @@ const RESUME_TOKEN_BYTES = 32
 const PROFESSIONAL_PUBLIC_COLUMNS = 'id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, enabled_modules_json, trial_started_at, subscription_status, subscription_expires_at'
 
 type RequestBody = {
-  action: 'register' | 'verify' | 'resend'
+  action: 'register' | 'verify' | 'resend' | 'resume'
   username?: string
   password?: string
   fullName?: string
@@ -57,17 +57,23 @@ async function hashSecret(scope: string, id: string, value: string): Promise<str
 }
 
 async function sendCode(supabaseUrl: string, serviceRoleKey: string, email: string, code: string): Promise<boolean> {
-  const response = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      to: email,
-      subject: 'Confirmá tu email para crear tu cuenta en Dr Happy',
-      type: 'custom',
-      html: `<p>Tu código de verificación de Dr Happy es:</p><div style="font-size:34px;font-weight:800;letter-spacing:6px;text-align:center;color:#1e3a8a;margin:24px 0;">${escapeHtml(code)}</div><p>Vence en ${CODE_TTL_MINUTES} minutos. Si no solicitaste esta cuenta, podés ignorar este mensaje.</p>`,
-    }),
-  })
-  return response.ok
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: email,
+        subject: 'Confirmá tu email para crear tu cuenta en Dr Happy',
+        type: 'custom',
+        html: `<p>Tu código de verificación de Dr Happy es:</p><div style="font-size:34px;font-weight:800;letter-spacing:6px;text-align:center;color:#1e3a8a;margin:24px 0;">${escapeHtml(code)}</div><p>Vence en ${CODE_TTL_MINUTES} minutos. Si no solicitaste esta cuenta, podés ignorar este mensaje.</p>`,
+      }),
+    })
+    if (!response.ok) return false
+    const result = await response.json().catch(() => null) as { success?: unknown } | null
+    return result?.success === true
+  } catch {
+    return false
+  }
 }
 
 function mapRpcError(error: { code?: string; message?: string }): string {
@@ -137,6 +143,59 @@ serve(async (request) => {
 
     const emailSent = await sendCode(supabaseUrl, serviceRoleKey, email, code).catch(() => false)
     return jsonResponse(200, { success: true, professionalId, email, resumeToken, emailSent })
+  }
+
+  if (body.action === 'resume') {
+    const username = body.username?.trim().toLowerCase()
+    const password = body.password
+    if (!username || !password || password.length > 1024) {
+      return jsonResponse(400, { success: false, message: 'Ingresá tu usuario y contraseña para recuperar el código.' })
+    }
+
+    const [{ data: byUsername, error: usernameError }, { data: byEmail, error: emailError }] = await Promise.all([
+      admin.from('professionals').select('id, username, email, password_hash, active, email_verification_required, email_verified_at').eq('username', username).maybeSingle(),
+      admin.from('professionals').select('id, username, email, password_hash, active, email_verification_required, email_verified_at').eq('email', username).maybeSingle(),
+    ])
+    if (usernameError || emailError) return jsonResponse(500, { success: false, message: 'No se pudo validar la cuenta.' })
+    const professional = byUsername || byEmail
+    if (!professional || professional.active === false || !professional.password_hash) {
+      return jsonResponse(401, { success: false, message: 'Usuario o contraseña incorrectos.' })
+    }
+    if (!(await bcrypt.compare(password, professional.password_hash))) {
+      return jsonResponse(401, { success: false, message: 'Usuario o contraseña incorrectos.' })
+    }
+    if (professional.email_verified_at || professional.email_verification_required !== true) {
+      return jsonResponse(409, { success: false, code: 'EMAIL_ALREADY_VERIFIED', message: 'La cuenta no tiene una confirmación pendiente. Iniciá sesión normalmente.' })
+    }
+
+    const challengeId = crypto.randomUUID()
+    const resumeToken = createResumeToken()
+    const code = createCode()
+    const { data: status, error } = await admin.rpc('recover_professional_email_verification_challenge', {
+      p_professional_id: professional.id,
+      p_resume_token_hash: await hashSecret('resume', professional.username, resumeToken),
+      p_challenge_id: challengeId,
+      p_code_hash: await hashSecret('code', challengeId, code),
+      p_expires_at: new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000).toISOString(),
+    })
+    if (error) return jsonResponse(500, { success: false, message: 'No se pudo recuperar el código.' })
+    if (typeof status === 'string' && status.startsWith('cooldown:')) {
+      return jsonResponse(429, { success: false, retryAfterSeconds: Number(status.slice(9)), message: 'Esperá antes de solicitar otro código.' })
+    }
+    if (status === 'limit') return jsonResponse(429, { success: false, message: 'Alcanzaste el límite de reenvíos. Intentá nuevamente dentro de 24 horas.' })
+    if (status === 'verified') return jsonResponse(409, { success: false, code: 'EMAIL_ALREADY_VERIFIED', message: 'El email ya fue confirmado. Iniciá sesión.' })
+    if (status !== 'ready') return jsonResponse(401, { success: false, message: 'No se pudo recuperar el código para esta cuenta.' })
+
+    const emailSent = await sendCode(supabaseUrl, serviceRoleKey, professional.email, code).catch(() => false)
+    return jsonResponse(200, {
+      success: true,
+      professionalId: professional.id,
+      email: professional.email,
+      resumeToken,
+      fullName: professional.full_name,
+      specialty: professional.specialty,
+      emailSent,
+    })
   }
 
   const professionalId = body.professionalId?.trim()

@@ -27,6 +27,8 @@ export interface VerificationResult {
   resumeToken?: string
   emailSent?: boolean
   retryAfterSeconds?: number
+  fullName?: string
+  specialty?: string
 }
 
 async function invokeVerification(body: Record<string, unknown>): Promise<VerificationResult> {
@@ -60,6 +62,10 @@ export function registerWithEmailVerification(params: {
   networkMemberships: string[]
 }): Promise<VerificationResult> {
   return invokeVerification({ action: 'register', ...params })
+}
+
+export function resumeProfessionalEmailVerification(username: string, password: string): Promise<VerificationResult> {
+  return invokeVerification({ action: 'resume', username, password })
 }
 
 export function verifyProfessionalEmail(professionalId: string, code: string): Promise<VerificationResult> {

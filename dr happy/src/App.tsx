@@ -68,6 +68,7 @@ import {
 import type { AuthProfessionalPublic } from './authService'
 import {
   registerWithEmailVerification,
+  resumeProfessionalEmailVerification,
   verifyProfessionalEmail,
   resendProfessionalEmailCode,
 } from './emailVerificationService'
@@ -5696,6 +5697,42 @@ function App() {
     if (isSupabaseConfigured) {
       const result = await loginProfessional({ username: username.trim().toLowerCase(), password })
       if (!result.success || !result.professional) {
+        if (EMAIL_VERIFICATION_ENABLED && result.code === 'EMAIL_NOT_VERIFIED') {
+          setEmailVerificationBusy(true)
+          let recovery
+          try {
+            recovery = await resumeProfessionalEmailVerification(username.trim().toLowerCase(), password)
+          } catch (error) {
+            setAuthError(error instanceof Error ? error.message : 'No se pudo recuperar el código.')
+            setEmailVerificationBusy(false)
+            return
+          }
+          setEmailVerificationBusy(false)
+          if (!recovery.success || !recovery.professionalId || !recovery.resumeToken) {
+            const waitMessage = recovery.retryAfterSeconds
+              ? ` Esperá ${recovery.retryAfterSeconds} segundos antes de volver a intentar.`
+              : ''
+            setAuthError(`${recovery.message || 'No se pudo recuperar el código.'}${waitMessage}`)
+            return
+          }
+          const pending: PendingEmailVerification = {
+            professionalId: recovery.professionalId,
+            email: recovery.email || username.trim().toLowerCase(),
+            resumeToken: recovery.resumeToken,
+            username: username.trim().toLowerCase(),
+            fullName: recovery.fullName || username.trim(),
+            specialty: recovery.specialty || '',
+          }
+          localStorage.setItem(EMAIL_VERIFICATION_PENDING_KEY, JSON.stringify(pending))
+          setPendingEmailVerification(pending)
+          setEmailVerificationCode('')
+          setShowEmailVerification(true)
+          setPassword('')
+          setEmailVerificationNotice(recovery.emailSent
+            ? `Enviamos un nuevo código a ${pending.email}. El anterior dejó de ser válido.`
+            : 'El servidor de correo no aceptó el envío. Tu cuenta sigue pendiente; no vuelvas a crearla. Podés intentar de nuevo cuando se restablezca el correo.')
+          return
+        }
         setAuthError(result.message || 'Usuario o contraseña inválidos o usuario inactivo.')
         return
       }
@@ -5859,7 +5896,7 @@ function App() {
         setShowEmailVerification(true)
         setEmailVerificationNotice(result.emailSent
           ? `Enviamos un código a ${pending.email}. Tiene una vigencia de 15 minutos.`
-          : 'La cuenta quedó pendiente y el correo no pudo entregarse. Podés solicitar otro código en un minuto.')
+          : 'El servidor de correo no aceptó el envío. Tu cuenta quedó pendiente; no la vuelvas a crear. Podés recuperar el código iniciando sesión cuando se restablezca el correo.')
         setRegisterOpen(false)
         setRegisterDraft(emptyRegisterDraft)
         return
@@ -5983,7 +6020,7 @@ function App() {
       }
       setEmailVerificationNotice(result.emailSent
         ? `Enviamos un nuevo código a ${pendingEmailVerification.email}. El anterior dejó de ser válido.`
-        : 'No se pudo entregar el correo. Esperá un minuto antes de volver a intentar.')
+        : 'El servidor de correo no aceptó el envío. La cuenta sigue pendiente; intentá nuevamente cuando se restablezca el correo.')
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'No se pudo reenviar el código.')
     } finally {
@@ -8767,6 +8804,7 @@ function App() {
                 onClick={() => {
                   setRegisterOpen((current) => !current)
                   setAuthError(null)
+                  setAppNotice(null)
                 }}
               >
                 {registerOpen ? 'Cancelar registro' : 'Crear usuario'}
@@ -8860,7 +8898,14 @@ function App() {
             </section>
           )}
           {registerOpen ? (
-            <div className="drhappy-modal-overlay" onClick={() => setRegisterOpen(false)}>
+            <div
+              className="drhappy-modal-overlay"
+              onClick={() => {
+                setRegisterOpen(false)
+                setAuthError(null)
+                setAppNotice(null)
+              }}
+            >
               <div
                 className="drhappy-modal-card register-modal-card"
                 onClick={(event) => event.stopPropagation()}
@@ -8870,7 +8915,16 @@ function App() {
               >
                 <div className="drhappy-modal-header">
                   <h2 id="register-modal-title">Nuevo profesional</h2>
-                  <button type="button" className="ghost compact" onClick={() => setRegisterOpen(false)} aria-label="Cerrar registro">×</button>
+                  <button
+                    type="button"
+                    className="ghost compact"
+                    onClick={() => {
+                      setRegisterOpen(false)
+                      setAuthError(null)
+                      setAppNotice(null)
+                    }}
+                    aria-label="Cerrar registro"
+                  >×</button>
                 </div>
                 <form className="grid register-form" onSubmit={handleCreateUser}>
               <label>
@@ -8995,6 +9049,7 @@ function App() {
                 </div>
                 <small>Mínimo 6 caracteres.</small>
               </label>
+                {authError ? <p className="error" role="alert">{authError}</p> : null}
                   <button type="submit">Guardar usuario</button>
                 </form>
               </div>
