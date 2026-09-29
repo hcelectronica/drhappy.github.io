@@ -22,6 +22,10 @@ export function loadWorkspaceData(): Promise<WorkspaceResponse> {
   return invokeWorkspace({ action: 'load' })
 }
 
-export function saveWorkspaceData(params: { profile: unknown; patients: unknown[]; appointments: unknown[]; treatmentLedger: unknown[] }): Promise<WorkspaceResponse> {
+export function saveWorkspaceData(params: { profile: unknown; patients: unknown[]; appointments: unknown[]; treatmentLedger?: unknown[] }): Promise<WorkspaceResponse> {
   return invokeWorkspace({ action: 'save', ...params })
+}
+
+export function saveTreatmentLedgerData(treatmentLedger: unknown[]): Promise<WorkspaceResponse> {
+  return invokeWorkspace({ action: 'save-ledger', treatmentLedger })
 }

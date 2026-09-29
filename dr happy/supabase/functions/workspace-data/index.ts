@@ -30,9 +30,32 @@ Deno.serve(async (request) => {
     const profile = body.profile && typeof body.profile === 'object' ? body.profile : {}
     const patients = Array.isArray(body.patients) ? body.patients : []
     const appointments = Array.isArray(body.appointments) ? body.appointments : []
-    const treatmentLedger = Array.isArray(body.treatmentLedger) ? body.treatmentLedger : []
-    const { error } = await admin.from('user_workspaces').upsert({ user_id: professionalId, profile_json: profile, patients_json: patients, appointments_json: appointments, treatment_ledger_json: treatmentLedger }, { onConflict: 'user_id' })
+    const workspaceUpdate: Record<string, unknown> = {
+      user_id: professionalId,
+      profile_json: profile,
+      patients_json: patients,
+      appointments_json: appointments,
+    }
+    if (Array.isArray(body.treatmentLedger)) workspaceUpdate.treatment_ledger_json = body.treatmentLedger
+    const { error } = await admin.from('user_workspaces').upsert(workspaceUpdate, { onConflict: 'user_id' })
     if (error) return jsonResponse(500, { success: false, message: error.message })
+    return jsonResponse(200, { success: true })
+  }
+  if (body.action === 'save-ledger') {
+    if (!Array.isArray(body.treatmentLedger)) {
+      return jsonResponse(400, { success: false, message: 'El balance enviado no es válido.' })
+    }
+    const { data: updatedWorkspace, error: updateError } = await admin.from('user_workspaces')
+      .update({ treatment_ledger_json: body.treatmentLedger })
+      .eq('user_id', professionalId)
+      .select('user_id')
+      .maybeSingle()
+    if (updateError) return jsonResponse(500, { success: false, message: updateError.message })
+    if (!updatedWorkspace) {
+      const { error: insertError } = await admin.from('user_workspaces')
+        .insert({ user_id: professionalId, treatment_ledger_json: body.treatmentLedger })
+      if (insertError) return jsonResponse(500, { success: false, message: insertError.message })
+    }
     return jsonResponse(200, { success: true })
   }
   return jsonResponse(400, { success: false, message: 'Acción no soportada.' })

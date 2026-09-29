@@ -42,7 +42,7 @@ import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBo
 import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
-import { loadWorkspaceData, saveWorkspaceData } from './workspaceService'
+import { loadWorkspaceData, saveWorkspaceData, saveTreatmentLedgerData } from './workspaceService'
 import { disconnectMercadoPago, getMercadoPagoConnectionStatus, startMercadoPagoConnection, verifyMercadoPagoConnection } from './mercadoPagoConnectService'
 import { communityRequest } from './communityService'
 import { parseClinicalSummary } from './clinicalSummaryParser'
@@ -3373,12 +3373,12 @@ function App() {
   }
 
   async function persistWorkspaceRemote(
-    userId: string,
+    _userId: string,
     nextProfile: ProfessionalProfile,
     nextPatients: PatientRecord[],
     nextAppointments: AppointmentRecord[],
-    nextLedger?: TreatmentLedgerEntry[],
   ): Promise<void> {
+    void _userId
     if (!isSupabaseConfigured || !supabase) {
       return
     }
@@ -3387,7 +3387,6 @@ function App() {
         profile: nextProfile,
         patients: nextPatients,
         appointments: nextAppointments,
-        treatmentLedger: nextLedger ?? readJsonStorage<TreatmentLedgerEntry[]>(treatmentLedgerStorageKey(userId), []),
       })
       if (!result.success) {
         console.warn('No se pudo guardar la base personal en la nube:', result.message)
@@ -3480,7 +3479,8 @@ function App() {
         // Primera sincronización: si la nube todavía no tiene el balance pero el
         // dispositivo sí, conservamos lo local y lo subimos en vez de borrarlo.
         if (remoteLedger.length === 0 && loadedLedger.length > 0) {
-          void persistWorkspaceRemote(user.id, loadedProfile, patientsList, loadedAppointments, loadedLedger)
+          const ledgerResult = await saveTreatmentLedgerData(loadedLedger)
+          if (!ledgerResult.success) console.warn('No se pudo inicializar el balance remoto:', ledgerResult.message)
         } else {
           loadedLedger = remoteLedger
         }
@@ -3490,8 +3490,11 @@ function App() {
           localProfile,
           localLoaded.patientsList,
           localAppointments,
-          loadedLedger,
         )
+        if (loadedLedger.length > 0) {
+          const ledgerResult = await saveTreatmentLedgerData(loadedLedger)
+          if (!ledgerResult.success) console.warn('No se pudo inicializar el balance remoto:', ledgerResult.message)
+        }
       }
     }
 
@@ -3512,7 +3515,7 @@ function App() {
     patientsList = ensurePatientsForAppointments(loadedAppointments, patientsList, user.id)
     if (patientsList.length > patientsBeforeAppointmentRepair) {
       availablePatientsList = sortPatientsByName(patientsList)
-      void persistWorkspaceRemote(user.id, loadedProfile, patientsList, loadedAppointments, loadedLedger)
+      void persistWorkspaceRemote(user.id, loadedProfile, patientsList, loadedAppointments)
     }
     localStorage.setItem(appointmentsStorageKey(user.id), JSON.stringify(loadedAppointments))
     localStorage.setItem(
@@ -5390,7 +5393,7 @@ function App() {
       setSelectedPatientId(null)
       setWorkspaceLayer('my-patients')
     }
-    if (profile) await persistWorkspaceRemote(activeUserId, profile, nextPatients, appointments, treatmentLedger)
+    if (profile) await persistWorkspaceRemote(activeUserId, profile, nextPatients, appointments)
     setAppNotice('Paciente eliminado correctamente.')
   }
 
@@ -6756,7 +6759,7 @@ function App() {
     }
     setProfile(nextProfile)
     localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
-    void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments, treatmentLedger)
+    void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments)
     setAppNotice(`Configuración guardada: ${normalizedLimit} turnos posibles por día.`)
   }
 
@@ -6769,7 +6772,7 @@ function App() {
     }
     setProfile(nextProfile)
     localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
-    void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments, treatmentLedger)
+    void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments)
   }
 
   function handleAppointmentAmountChange(value: string): void {
@@ -6845,13 +6848,20 @@ function App() {
 
   // ── Balance de pagos (odontología) ──────────────────────────────────────────
 
-  function persistTreatmentLedger(next: TreatmentLedgerEntry[]): void {
-    if (!activeUserId) return
+  async function persistTreatmentLedger(next: TreatmentLedgerEntry[]): Promise<boolean> {
+    if (!activeUserId) return false
     setTreatmentLedger(next)
     localStorage.setItem(treatmentLedgerStorageKey(activeUserId), JSON.stringify(next))
-    if (profile) {
-      void persistWorkspaceRemote(activeUserId, profile, patients, appointments, next)
+    if (isSupabaseConfigured) {
+      const result = await saveTreatmentLedgerData(next)
+      if (!result.success) {
+        setTreatmentLedger(treatmentLedger)
+        localStorage.setItem(treatmentLedgerStorageKey(activeUserId), JSON.stringify(treatmentLedger))
+        setAppError(`No se pudo guardar el balance en la nube: ${result.message || 'error desconocido'}`)
+        return false
+      }
     }
+    return true
   }
 
   function buildEmptyLedgerDraft(patient?: PatientRecord | null): TreatmentLedgerDraft {
@@ -6886,7 +6896,7 @@ function App() {
     setLedgerModalOpen(true)
   }
 
-  function handleSaveLedgerEntry(event: FormEvent<HTMLFormElement>): void {
+  async function handleSaveLedgerEntry(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!ledgerDraft || !activeUserId) return
 
@@ -6931,7 +6941,7 @@ function App() {
       ? treatmentLedger.map((e) => (e.id === record.id ? record : e))
       : [record, ...treatmentLedger]
 
-    persistTreatmentLedger(next)
+    if (!(await persistTreatmentLedger(next))) return
     setAppError(null)
     setLedgerModalOpen(false)
     setLedgerDraft(null)
@@ -6951,7 +6961,7 @@ function App() {
     setPaymentTarget({ entryId, amount: String(pending) })
   }
 
-  function handleConfirmLedgerPayment(): void {
+  async function handleConfirmLedgerPayment(): Promise<void> {
     if (!paymentTarget) return
     const entry = treatmentLedger.find((e) => e.id === paymentTarget.entryId)
     if (!entry) {
@@ -6970,26 +6980,28 @@ function App() {
       return
     }
 
-    persistTreatmentLedger(
+    const saved = await persistTreatmentLedger(
       treatmentLedger.map((e) =>
         e.id === paymentTarget.entryId
           ? { ...e, paidAmount: e.paidAmount + amount, updatedAt: new Date().toISOString() }
           : e,
       ),
     )
+    if (!saved) return
     setPaymentTarget(null)
     setAppError(null)
     setAppNotice(`Pago de ${formatMoney(amount)} registrado para ${entry.patientName}.`)
     showSavedFloatingNotice()
   }
 
-  function handleDeleteLedgerEntry(entryId: string): void {
+  async function handleDeleteLedgerEntry(entryId: string): Promise<void> {
     const entry = treatmentLedger.find((e) => e.id === entryId)
     if (!entry) return
     if (!window.confirm(`¿Eliminar el registro "${entry.intervention}" de ${entry.patientName}?`)) {
       return
     }
-    persistTreatmentLedger(treatmentLedger.filter((e) => e.id !== entryId))
+    const saved = await persistTreatmentLedger(treatmentLedger.filter((e) => e.id !== entryId))
+    if (!saved) return
     setAppNotice('Registro eliminado del balance.')
   }
 
