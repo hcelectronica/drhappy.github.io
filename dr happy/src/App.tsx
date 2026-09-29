@@ -544,6 +544,7 @@ interface RemoteWorkspaceRow {
   patients_json: unknown
   appointments_json: unknown
   treatment_ledger_json?: unknown
+  treatment_ledger_initialized?: boolean
 }
 
 interface RemoteCommunityMessageRow {
@@ -3476,9 +3477,10 @@ function App() {
               .map(normalizeTreatmentLedgerEntry)
               .filter((entry): entry is TreatmentLedgerEntry => Boolean(entry))
           : []
-        // Primera sincronización: si la nube todavía no tiene el balance pero el
-        // dispositivo sí, conservamos lo local y lo subimos en vez de borrarlo.
-        if (remoteLedger.length === 0 && loadedLedger.length > 0) {
+        const ledgerInitialized = workspace.treatment_ledger_initialized === true || remoteLedger.length > 0
+        // Solo importar el ledger local en la primera sincronización. Un balance
+        // remoto vacío pero ya inicializado representa una eliminación real.
+        if (!ledgerInitialized && remoteLedger.length === 0 && (loadedLedger.length > 0 || user.isAdmin)) {
           const ledgerResult = await saveTreatmentLedgerData(loadedLedger)
           if (!ledgerResult.success) console.warn('No se pudo inicializar el balance remoto:', ledgerResult.message)
         } else {
