@@ -19,7 +19,7 @@ body.theme-night {
 .auth-layout,
 .loading {
   padding: 20px;
-  font-family: Manrope, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: var(--font-ui);
 }
 
 /* Lengüeta lateral: reemplaza al antiguo botón hamburguesa. Queda siempre
@@ -697,6 +697,99 @@ body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
   justify-content: center;
 }
 
+.auth-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  gap: clamp(24px, 4vw, 58px);
+  align-items: start;
+  justify-content: stretch;
+  width: min(1480px, 100%);
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: clamp(24px, 4vw, 64px);
+  box-sizing: border-box;
+}
+
+.auth-promo { display: grid; gap: 26px; align-content: start; min-width: 0; padding: 28px 0 48px; color: #173451; animation: auth-promo-enter 520ms ease both; }
+.auth-promo-heading { display: grid; gap: 8px; max-width: 760px; }
+.auth-promo-heading h2 { max-width: 720px; margin: 0; color: #102b4d; font-size: 2.6rem; font-weight: 800; line-height: 1.08; }
+.auth-promo .app-tools-flyer { max-width: none; margin: 0; padding: 22px; border: 1px solid #b7c8da; border-radius: 18px; background: #f8fbff; box-shadow: 0 18px 42px rgba(25, 55, 88, 0.18); }
+.auth-promo .flyer-intro { margin-bottom: 16px; }
+.auth-promo .flyer-intro h2 { margin: 3px 0 5px; color: #102b4d; font-size: 1.55rem; font-weight: 800; }
+.auth-promo .flyer-intro p { color: #3f5872; font-size: 0.9rem; font-weight: 600; }
+.auth-promo-tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.auth-promo .flyer-tool.auth-promo-tool { min-height: 232px; align-content: start; gap: 9px; padding: 17px; border: 1px solid #b9c9da; border-radius: 14px; background: #fff; box-shadow: 0 7px 16px rgba(31, 57, 82, 0.11); color: #18334e; cursor: default; }
+.auth-promo .flyer-tool.auth-promo-tool:hover { transform: none; box-shadow: 0 7px 16px rgba(31, 57, 82, 0.11); }
+.auth-promo-tool strong { color: #173451; font-size: 1rem; font-weight: 800; line-height: 1.2; }
+.auth-promo-tool small { color: #405a73; font-size: 1rem; font-weight: 600; line-height: 1.5; }
+.auth-promo-tool-art { display: flex; flex-direction: column; justify-content: space-between; gap: 7px; min-height: 118px; padding: 14px 16px; overflow: hidden; border-radius: 10px; background: var(--promo-art-bg, #eaf4fa); color: var(--promo-art-ink, #18334e); }
+.auth-promo-tool-art > span { color: var(--promo-art-accent, #2563eb); font-size: 0.67rem; font-weight: 800; }
+.auth-promo-tool-art > strong { color: var(--promo-art-ink, #18334e); font-size: 1.25rem; font-weight: 800; line-height: 1.02; }
+.auth-promo-tool-art > small { color: var(--promo-art-ink, #405a73); font-size: 0.84rem; font-weight: 700; }
+.auth-promo-tool-art--emergency { --promo-art-bg: #e4f5eb; --promo-art-ink: #164a36; --promo-art-accent: #16805b; background-image: linear-gradient(110deg, transparent 65%, rgba(22, 128, 91, .1) 65%); }
+.auth-promo-tool-art--care { --promo-art-bg: #e7f1ff; --promo-art-ink: #183a68; --promo-art-accent: #2563eb; background-image: linear-gradient(110deg, transparent 65%, rgba(37, 99, 235, .1) 65%); }
+.auth-promo-tool-art--calendar { --promo-art-bg: #fff1d8; --promo-art-ink: #633e13; --promo-art-accent: #ae6100; background-image: linear-gradient(110deg, transparent 65%, rgba(174, 97, 0, .1) 65%); }
+.auth-promo-tool-art--patients { --promo-art-bg: #e0f5f6; --promo-art-ink: #14525b; --promo-art-accent: #087f91; background-image: linear-gradient(110deg, transparent 65%, rgba(8, 127, 145, .1) 65%); }
+.auth-promo-tool-art--protocols { --promo-art-bg: #f0e9fa; --promo-art-ink: #452d69; --promo-art-accent: #7044a5; background-image: linear-gradient(110deg, transparent 65%, rgba(112, 68, 165, .1) 65%); }
+.auth-promo-tool-art--ledger { --promo-art-bg: #ffebe8; --promo-art-ink: #6e302c; --promo-art-accent: #c2413a; background-image: linear-gradient(110deg, transparent 65%, rgba(194, 65, 58, .1) 65%); }
+.auth-promo-sofia { grid-column: 1 / -1; min-height: 0 !important; gap: 17px !important; padding: 22px !important; }
+.auth-promo-sofia-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.auth-promo-sofia-identity { display: flex; align-items: center; gap: 14px; }
+.auth-promo-sofia-identity > div { display: grid; gap: 4px; }
+.auth-promo-sofia-identity > div strong { color: #173451; font-size: 1.6rem; }
+.auth-promo-sofia-identity > div span { color: #405a73; font-size: 0.95rem; font-weight: 700; }
+.auth-promo .auth-promo-sofia-identity .sofia-avatar { width: 68px; height: 68px; flex-basis: 68px; }
+.auth-promo-claude-brand { display: grid; justify-items: end; gap: 5px; }
+.auth-promo-claude-brand > strong { color: #684838; font-size: 0.9rem; font-weight: 800; }
+.auth-promo-claude-logo { display: block; width: min(240px, 35vw); height: 120px; border: 1px solid #ded2bd; border-radius: 10px; background: #f2e8d7; object-fit: contain; }
+.auth-promo-sofia-lead { margin: 0; color: #334e68; font-size: 1rem; font-weight: 600; line-height: 1.5; }
+.auth-promo-sofia-features { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 22px; margin: 0; padding: 16px; border-radius: 12px; background: #f2f7fc; list-style: none; }
+.auth-promo-sofia-features li { display: grid; align-content: start; gap: 3px; padding-left: 15px; position: relative; }
+.auth-promo-sofia-features li::before { content: ''; position: absolute; top: 7px; left: 0; width: 7px; height: 7px; border-radius: 50%; background: #16805b; }
+.auth-promo-sofia-features li strong { color: #173451; font-size: 1rem; font-weight: 800; }
+.auth-promo-sofia-features li span { color: #405a73; font-size: 0.98rem; font-weight: 600; line-height: 1.5; }
+.auth-promo-mercado-logo { display: block; width: 98px; height: 98px; border-radius: 10px; box-shadow: 0 3px 10px rgba(32, 38, 79, 0.18); object-fit: cover; }
+.auth-pricing-flyer { display: grid; gap: 22px; padding: 30px 24px; border: 1px solid #b8cbe0; border-radius: 18px; background: #f7faff; box-shadow: 0 18px 42px rgba(28, 60, 98, 0.15); }
+.auth-pricing-heading { display: grid; justify-items: center; gap: 8px; text-align: center; }
+.auth-pricing-heading .auth-promo-eyebrow { color: #087f91; font-size: 0.75rem; }
+.auth-pricing-heading h3 { margin: 0; color: #102b4d; font-size: 2.25rem; font-weight: 800; line-height: 1.08; }
+.auth-pricing-heading p { margin: 0; color: #405a73; font-size: 1rem; font-weight: 600; }
+.auth-pricing-note { color: #536b87; font-size: 0.75rem; font-weight: 700; }
+.auth-pricing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.auth-plan { position: relative; display: grid; align-content: start; gap: 7px; min-width: 0; min-height: 166px; padding: 20px 16px; border: 1px solid #55b7dd; border-radius: 14px; background: #dff6ff; box-shadow: 0 9px 20px rgba(28, 86, 128, 0.13); text-align: center; }
+.auth-plan > span { color: #075c7a; font-size: 0.93rem; font-weight: 800; }
+.auth-plan strong { color: #064d70; font-size: 1.65rem; font-weight: 800; line-height: 1.08; }
+.auth-plan small { color: #315d70; font-size: 0.82rem; font-weight: 700; }
+.auth-plan em { justify-self: center; margin-top: 3px; padding: 5px 10px; border-radius: 999px; background: #fff; color: #075c7a; font-size: 0.7rem; font-style: normal; font-weight: 800; }
+.auth-plan--six-months { border-color: #e9955d; background: #fff0e2; }
+.auth-plan--six-months > span, .auth-plan--six-months strong, .auth-plan--six-months em { color: #91420b; }
+.auth-plan--six-months em { background: #ffe0c5; }
+.auth-plan--annual { border-color: #124fa5; background: #1454a4; box-shadow: 0 12px 28px rgba(20, 84, 164, 0.26); }
+.auth-plan--annual > span, .auth-plan--annual strong, .auth-plan--annual small { color: #fff; }
+.auth-plan--annual em { background: #fff; color: #124fa5; }
+@keyframes auth-promo-enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .auth-promo { animation: none; } }
+body.theme-night .auth-promo-heading h2 { color: #e7f0fc; }
+body.theme-night .auth-promo .app-tools-flyer { border-color: rgba(117, 147, 184, 0.7); background: #172941; }
+body.theme-night .auth-promo .flyer-intro h2 { color: #e7f0fc; }
+body.theme-night .auth-promo .flyer-intro p { color: #d0dceb; }
+body.theme-night .auth-promo .flyer-tool.auth-promo-tool { border-color: #637b96; background: #213852; color: #f2f6fc; box-shadow: 0 7px 16px rgba(0, 0, 0, 0.24); }
+body.theme-night .auth-promo-tool strong { color: #f2f6fc; }
+body.theme-night .auth-promo-tool small { color: #d0dceb; }
+body.theme-night .auth-promo-sofia-identity > div strong, body.theme-night .auth-promo-sofia-identity > div span, body.theme-night .auth-promo-sofia-lead, body.theme-night .auth-promo-sofia-features li strong, body.theme-night .auth-promo-sofia-features li span { color: #e2ebf7; }
+body.theme-night .auth-promo-sofia-features { background: #182c43; }
+body.theme-night .auth-promo-claude-brand > strong { color: #f0d8c8; }
+body.theme-night .auth-promo-tool-art { filter: brightness(.78); }
+body.theme-night .auth-pricing-flyer { border-color: #526c88; background: #172941; }
+body.theme-night .auth-pricing-heading h3 { color: #e7f0fc; }
+body.theme-night .auth-pricing-heading p, body.theme-night .auth-pricing-note { color: #c0cee0; }
+body.theme-night .auth-plan--monthly { border-color: #249ac2; background: #16435a; }
+body.theme-night .auth-plan--monthly > span, body.theme-night .auth-plan--monthly strong, body.theme-night .auth-plan--monthly small { color: #d4f4ff; }
+body.theme-night .auth-plan--six-months { border-color: #bd7040; background: #59351f; }
+body.theme-night .auth-plan--six-months > span, body.theme-night .auth-plan--six-months strong, body.theme-night .auth-plan--six-months small { color: #ffdfc7; }
+body.theme-night .auth-plan--annual { border-color: #3774bf; background: #17447f; }
+
 .auth-card {
   background: rgba(248, 251, 255, 0.9);
   border: 1px solid rgba(130, 153, 186, 0.55);
@@ -706,7 +799,9 @@ body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
   box-shadow:
     0 25px 55px rgba(44, 86, 145, 0.17),
     0 8px 20px rgba(44, 86, 145, 0.08);
-  position: relative;
+  position: sticky;
+  top: clamp(16px, calc((100svh - 720px) / 2), 64px);
+  align-self: start;
   overflow: hidden;
   backdrop-filter: blur(12px);
   z-index: 1;

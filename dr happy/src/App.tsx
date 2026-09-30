@@ -49,6 +49,8 @@ import { parseClinicalSummary } from './clinicalSummaryParser'
 import { loadProfessionals, loadOwnProfessional, updateOwnProfessionalProfile } from './professionalsService'
 import type { AssistantContentBlock, AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
+import claudeAnthropicLogo from './assets/claude.jpg'
+import mercadoPagoLogo from './assets/mercadopago.png'
 import { selfDeleteAccount } from './selfDeleteService'
 import {
   setProfessionalActive,
@@ -8685,6 +8687,124 @@ function App() {
       <main className="auth-layout">
         {splashVisible ? <SplashScreen leaving={splashLeaving} /> : null}
         <AuthBackground />
+        <aside className="auth-promo" aria-label="Conocé las herramientas y planes de Dr Happy">
+          <div className="auth-promo-heading">
+            <h2>La tecnología no te reemplaza, te potencia.</h2>
+          </div>
+
+          <section className="auth-tools-flyer app-tools-flyer" aria-labelledby="auth-tools-title">
+            <div className="flyer-intro">
+              <span className="auth-promo-eyebrow">UN ESPACIO DE TRABAJO, MUCHAS SOLUCIONES</span>
+              <h2 id="auth-tools-title">Todo lo que acompaña tu día</h2>
+              <p>Organizá la atención, la agenda y las herramientas que usás en el consultorio.</p>
+            </div>
+            <div className="flyer-grid auth-promo-tool-grid">
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--sofia auth-promo-sofia">
+                <div className="auth-promo-sofia-header">
+                  <div className="auth-promo-sofia-identity">
+                    <SofiaAvatar />
+                    <div>
+                      <strong>Agente Sofía</strong>
+                      <span>Tu secretaria clínica inteligente</span>
+                    </div>
+                  </div>
+                  <div className="auth-promo-claude-brand">
+                    <img className="auth-promo-claude-logo" src={claudeAnthropicLogo} alt="Claude by Anthropic" />
+                    <strong>Powered by Claude, de Anthropic</strong>
+                  </div>
+                </div>
+                <p className="auth-promo-sofia-lead">Una asistente para trabajar con tu agenda, tus pacientes y tus tareas clínicas desde Dr Happy.</p>
+                <ul className="auth-promo-sofia-features">
+                  <li><strong>Agenda y disponibilidad</strong><span>Consulta turnos, ocupación y espacios disponibles en tu agenda y turnera pública.</span></li>
+                  <li><strong>Pacientes e historias clínicas</strong><span>Busca fichas y revisa evoluciones por tema o período.</span></li>
+                  <li><strong>Gestión de turnos</strong><span>Agenda pacientes; reprograma o cancela turnos con validaciones y confirmación cuando corresponde.</span></li>
+                  <li><strong>Notificaciones y recordatorios</strong><span>Prepara confirmaciones, avisos y recordatorios de turnos o pagos para revisar antes del envío.</span></li>
+                  <li><strong>Borradores clínicos</strong><span>Resume entrevistas y prepara evoluciones estructuradas para que las revises; nunca las guarda automáticamente.</span></li>
+                  <li><strong>Lectura de archivos</strong><span>Interpreta PDF, DOCX, imágenes, TXT, CSV, MD y JSON.</span></li>
+                  <li><strong>Vademécum</strong><span>Busca medicamentos y devuelve información de referencia.</span></li>
+                  <li><strong>Balance de pagos</strong><span>Consulta saldos, registra pagos y prepara recordatorios de deuda.</span></li>
+                  <li><strong>Dictado por voz</strong><span>Dicta tus pedidos a Sofía desde el navegador.</span></li>
+                  <li><strong>Memoria de trabajo</strong><span>Puede recordar preferencias que autorices, sin guardar datos clínicos de pacientes.</span></li>
+                </ul>
+              </article>
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--green">
+                <div className="auth-promo-tool-art auth-promo-tool-art--emergency" aria-hidden="true">
+                  <span>TRASLADOS Y GUARDIA</span><strong>ATENCIÓN<br />EN MOVIMIENTO</strong><small>Asistencia clínica cuando cada minuto cuenta</small>
+                </div>
+                <strong>Modo ambulancia</strong>
+                <small>Información organizada para traslados y guardias.</small>
+              </article>
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--blue">
+                <div className="auth-promo-tool-art auth-promo-tool-art--care" aria-hidden="true">
+                  <span>CONSULTA</span><strong>ATENCIÓN<br />MÉDICA</strong><small>Historia clínica y seguimiento en contexto</small>
+                </div>
+                <strong>Atención médica</strong>
+                <small>Historias clínicas y consultas en un mismo espacio.</small>
+              </article>
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--amber">
+                <div className="auth-promo-tool-art auth-promo-tool-art--calendar" aria-hidden="true">
+                  <span>AGENDA INTELIGENTE</span><strong>MENOS AUSENCIAS.<br />MÁS CONSULTAS.</strong><small>Recordatorios automáticos de turnos</small>
+                </div>
+                <strong>Turnera</strong>
+                <small>Turnera inteligente con recordatorios de turnos para ayudar a reducir ausencias.</small>
+              </article>
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--cyan">
+                <div className="auth-promo-tool-art auth-promo-tool-art--patients" aria-hidden="true">
+                  <span>HISTORIA CLÍNICA</span><strong>DIGITAL</strong><small>Asesorada con Sofía IA</small>
+                </div>
+                <strong>Historia clínica digital</strong>
+                <small>Asesorada con Sofía IA para preparar y organizar tus evoluciones.</small>
+              </article>
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--violet">
+                <div className="auth-promo-tool-art auth-promo-tool-art--protocols" aria-hidden="true">
+                  <span>RECURSOS CLÍNICOS</span><strong>CRITERIO<br />A MANO</strong><small>Protocolos, guías y vademécum</small>
+                </div>
+                <strong>Protocolos y vademécum</strong>
+                <small>Recursos clínicos a mano durante la consulta.</small>
+              </article>
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--red">
+                <div className="auth-promo-tool-art auth-promo-tool-art--ledger" aria-hidden="true">
+                  <span>GESTIÓN SIMPLE</span><strong>COBROS<br />MÁS CLAROS</strong><small>Pagos, saldos y seguimiento</small>
+                </div>
+                <strong>Balance de pagos</strong>
+                <small>Un registro claro de cobros y saldos.</small>
+              </article>
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--mercadopago">
+                <img className="auth-promo-mercado-logo" src={mercadoPagoLogo} alt="Mercado Pago" />
+                <strong>Asociá tu cuenta</strong>
+                <small>Asociá tu cuenta, definí la seña o el valor de consulta y ayudá a reducir ausencias.</small>
+              </article>
+            </div>
+          </section>
+
+          <section className="auth-pricing-flyer" aria-labelledby="auth-pricing-title">
+            <div className="auth-pricing-heading">
+              <span className="auth-promo-eyebrow">PLANES PARA PROFESIONALES</span>
+              <h3 id="auth-pricing-title">Tu consultorio, un paso adelante.</h3>
+              <p>Elegí tu plan y dedicá más tiempo a la medicina.</p>
+              <span className="auth-pricing-note">Precios en pesos argentinos</span>
+            </div>
+            <div className="auth-pricing-grid">
+              <article className="auth-plan auth-plan--monthly">
+                <span>Mensual</span>
+                <strong>$15.000</strong>
+                <small>por mes</small>
+              </article>
+              <article className="auth-plan auth-plan--six-months">
+                <span>6 meses</span>
+                <strong>$78.000</strong>
+                <small>por el período</small>
+                <em>Ahorrás $12.000</em>
+              </article>
+              <article className="auth-plan auth-plan--annual">
+                <span>Anual</span>
+                <strong>$120.000</strong>
+                <small>por 12 meses</small>
+                <em>Ahorrás $60.000</em>
+              </article>
+            </div>
+          </section>
+        </aside>
         <section className={`auth-card ${splashVisible ? '' : 'auth-card--entering'}`}>
           <div className="brand-block">
             <span className="brand-mark" aria-hidden="true">
