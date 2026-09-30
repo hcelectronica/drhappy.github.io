@@ -714,6 +714,10 @@ body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
 .auth-promo { position: relative; z-index: 1; display: grid; gap: 26px; align-content: start; min-width: 0; padding: 28px 0 48px; color: #173451; animation: auth-promo-enter 520ms ease both; }
 .auth-promo-heading { display: grid; gap: 8px; max-width: 760px; }
 .auth-promo-heading h2 { max-width: 720px; margin: 0; color: #102b4d; font-size: 2.6rem; font-weight: 800; line-height: 1.08; }
+.auth-promo-trial-banner { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 3px 13px; max-width: 760px; padding: 15px 18px; border: 1px solid #9dcdbb; border-radius: 12px; background: linear-gradient(110deg, #e9f8f0, #fbfefc); box-shadow: 0 8px 20px rgba(22, 101, 73, 0.1); }
+.auth-promo-trial-banner > span { grid-row: span 2; padding: 7px 9px; border-radius: 7px; background: #176b5c; color: #fff; font-size: 0.64rem; font-weight: 800; }
+.auth-promo-trial-banner > strong { color: #164b3b; font-size: 1.05rem; font-weight: 800; }
+.auth-promo-trial-banner > small { color: #48675b; font-size: 0.82rem; font-weight: 600; }
 .auth-promo .app-tools-flyer { max-width: none; margin: 0; padding: 22px; border: 1px solid #b7c8da; border-radius: 18px; background: #f8fbff; box-shadow: 0 18px 42px rgba(25, 55, 88, 0.18); }
 .auth-promo .flyer-intro { margin-bottom: 16px; }
 .auth-promo .flyer-intro h2 { margin: 3px 0 5px; color: #102b4d; font-size: 1.55rem; font-weight: 800; }
@@ -744,12 +748,25 @@ body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
 .auth-promo-claude-brand > strong { color: #684838; font-size: 0.9rem; font-weight: 800; }
 .auth-promo-claude-logo { display: block; width: min(240px, 35vw); height: 120px; border: 1px solid #ded2bd; border-radius: 10px; background: #f2e8d7; object-fit: contain; }
 .auth-promo-sofia-lead { margin: 0; color: #334e68; font-size: 1rem; font-weight: 600; line-height: 1.5; }
-.auth-promo-sofia-features { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 22px; margin: 0; padding: 16px; border-radius: 12px; background: #f2f7fc; list-style: none; }
-.auth-promo-sofia-features li { display: grid; align-content: start; gap: 3px; padding-left: 15px; position: relative; }
-.auth-promo-sofia-features li::before { content: ''; position: absolute; top: 7px; left: 0; width: 7px; height: 7px; border-radius: 50%; background: #16805b; }
-.auth-promo-sofia-features li strong { color: #173451; font-size: 1rem; font-weight: 800; }
-.auth-promo-sofia-features li span { color: #405a73; font-size: 0.98rem; font-weight: 600; line-height: 1.5; }
+.auth-promo-sofia-features { display: block; min-height: 150px; margin: 0; padding: 20px 22px; border: 1px solid #d0deeb; border-left: 4px solid #16805b; border-radius: 14px; background: linear-gradient(135deg, #fff, #f0f6fb); box-shadow: 0 8px 20px rgba(35, 67, 105, 0.08); list-style: none; touch-action: pan-y; cursor: grab; user-select: none; }
+.auth-promo-sofia-features:active { cursor: grabbing; }
+.auth-promo-sofia-features li { display: grid; align-content: center; gap: 7px; min-height: 108px; position: relative; }
+.auth-promo-sofia-features li strong { color: #173451; font-size: 1.35rem; font-weight: 800; line-height: 1.2; }
+.auth-promo-sofia-features li span { color: #405a73; font-size: 1rem; font-weight: 600; line-height: 1.5; }
 .auth-promo-mercado-logo { display: block; width: 98px; height: 98px; border-radius: 10px; box-shadow: 0 3px 10px rgba(32, 38, 79, 0.18); object-fit: cover; }
+.auth-promo-sofia-controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; }
+.auth-promo-sofia-counter { display: flex; align-items: baseline; gap: 4px; min-width: 56px; }
+.auth-promo-sofia-counter strong { color: #173451; font-size: 1rem; font-variant-numeric: tabular-nums; font-weight: 800; }
+.auth-promo-sofia-counter small { color: #71859b; font-size: 0.72rem; font-weight: 700; }
+.auth-promo-sofia-progress { display: block; height: 4px; overflow: hidden; border-radius: 99px; background: #dbe5ee; }
+.auth-promo-sofia-progress > span { display: block; width: 100%; height: 100%; border-radius: inherit; background: #16805b; transform: scaleX(0); transform-origin: left center; animation: sofia-promo-progress 3s linear forwards; }
+.auth-promo-sofia-buttons { display: flex; gap: 7px; }
+.auth-promo-sofia-buttons button { display: grid; place-items: center; width: 40px; height: 40px; min-height: 40px; padding: 0; border: 0; border-radius: 50%; background: #e8f0f7; color: #24445f; font: inherit; font-size: 1.45rem; font-weight: 700; line-height: 1; cursor: pointer; transition: background 140ms ease, transform 140ms ease; }
+.auth-promo-sofia-buttons button:last-child { background: #176b5c; color: #fff; }
+.auth-promo-sofia-buttons button:hover { transform: translateY(-1px); background: #d8e5ef; }
+.auth-promo-sofia-buttons button:last-child:hover { background: #115748; }
+@keyframes sofia-promo-progress { to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .auth-promo-sofia-progress > span { animation: none; transform: scaleX(1); } }
 .auth-pricing-flyer { display: grid; gap: 22px; padding: 30px 24px; border: 1px solid #b8cbe0; border-radius: 18px; background: #f7faff; box-shadow: 0 18px 42px rgba(28, 60, 98, 0.15); }
 .auth-pricing-heading { display: grid; justify-items: center; gap: 8px; text-align: center; }
 .auth-pricing-heading .auth-promo-eyebrow { color: #087f91; font-size: 0.75rem; }
@@ -778,7 +795,15 @@ body.theme-night .auth-promo .flyer-tool.auth-promo-tool { border-color: #637b96
 body.theme-night .auth-promo-tool strong { color: #f2f6fc; }
 body.theme-night .auth-promo-tool small { color: #d0dceb; }
 body.theme-night .auth-promo-sofia-identity > div strong, body.theme-night .auth-promo-sofia-identity > div span, body.theme-night .auth-promo-sofia-lead, body.theme-night .auth-promo-sofia-features li strong, body.theme-night .auth-promo-sofia-features li span { color: #e2ebf7; }
-body.theme-night .auth-promo-sofia-features { background: #182c43; }
+body.theme-night .auth-promo-sofia-features { border-color: #526c88; border-left-color: #5db997; background: linear-gradient(135deg, #1c3048, #172941); }
+body.theme-night .auth-promo-sofia-counter strong { color: #e2ebf7; }
+body.theme-night .auth-promo-sofia-counter small { color: #a9bdd5; }
+body.theme-night .auth-promo-sofia-progress { background: #405571; }
+body.theme-night .auth-promo-sofia-buttons button { background: #344c67; color: #e8f1ff; }
+body.theme-night .auth-promo-sofia-buttons button:last-child { background: #176b5c; }
+body.theme-night .auth-promo-trial-banner { border-color: #466f66; background: #193c34; }
+body.theme-night .auth-promo-trial-banner > strong { color: #ddf4e9; }
+body.theme-night .auth-promo-trial-banner > small { color: #b6d5c9; }
 body.theme-night .auth-promo-claude-brand > strong { color: #f0d8c8; }
 body.theme-night .auth-promo-tool-art { filter: brightness(.78); }
 body.theme-night .auth-pricing-flyer { border-color: #526c88; background: #172941; }
@@ -5033,6 +5058,37 @@ body.theme-night .turnera-card-actions {
 
 @media (max-width: 420px) {
   .flyer-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 540px) {
+  .auth-layout { width: 100%; padding-right: 16px; padding-left: 16px; }
+  .auth-promo { width: 100%; min-width: 0; padding-top: 18px; }
+  .auth-promo .app-tools-flyer, .auth-pricing-flyer { width: 100%; min-width: 0; padding: 16px; }
+  .auth-promo-tool-grid { grid-template-columns: minmax(0, 1fr); }
+  .auth-promo .auth-promo-sofia { padding: 16px !important; }
+  .auth-promo-sofia-header { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+  .auth-promo .auth-promo-sofia-identity .sofia-avatar { width: 52px; height: 52px; flex-basis: 52px; }
+  .auth-promo-sofia-identity { gap: 9px; }
+  .auth-promo-sofia-identity > div strong { font-size: 1.25rem; }
+  .auth-promo-claude-brand { justify-items: start; }
+  .auth-promo-claude-logo { width: min(160px, 42vw); height: 80px; }
+  .auth-promo-claude-brand > strong { max-width: 160px; font-size: 0.72rem; text-align: left; }
+  .auth-promo-sofia-features { min-height: 142px; padding: 16px; }
+  .auth-promo-sofia-features li { min-height: 108px; }
+  .auth-promo-sofia-features li strong { font-size: 1.18rem; }
+  .auth-promo-sofia-controls { gap: 8px; }
+  .auth-promo-sofia-buttons { gap: 5px; }
+  .auth-promo-sofia-buttons button { width: 36px; height: 36px; min-height: 36px; }
+  .auth-promo-trial-banner { gap: 3px 9px; padding: 12px; }
+  .auth-promo-trial-banner > strong { font-size: 0.95rem; }
+  .auth-promo-trial-banner > small { font-size: 0.75rem; }
+  .auth-pricing-flyer { padding: 20px 16px; }
+  .auth-pricing-heading h3 { font-size: 1.8rem; }
+  .auth-pricing-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .auth-plan { grid-template-columns: minmax(0, 1fr) auto; align-items: center; min-height: 82px; gap: 5px 12px; padding: 16px; text-align: left; }
+  .auth-plan > span, .auth-plan small { grid-column: 1; }
+  .auth-plan strong { grid-column: 2; grid-row: 1 / span 2; font-size: 1.45rem; text-align: right; white-space: nowrap; }
+  .auth-plan em { grid-column: 1 / -1; justify-self: start; margin-top: 4px; }
 }
 
 /* Debe ir al final: las media queries anteriores resetean el padding de .app

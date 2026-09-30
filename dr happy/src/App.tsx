@@ -2345,6 +2345,19 @@ function extractPatientSuggestionsFromText(text: string): {
   }
 }
 
+const SOFIA_PROMO_FEATURES = [
+  { title: 'Agenda y disponibilidad', description: 'Consulta turnos, ocupación y espacios disponibles en tu agenda y turnera pública.' },
+  { title: 'Pacientes e historias clínicas', description: 'Busca fichas y revisa evoluciones por tema o período.' },
+  { title: 'Gestión de turnos', description: 'Agenda pacientes; reprograma o cancela turnos con validaciones y confirmación cuando corresponde.' },
+  { title: 'Notificaciones y recordatorios', description: 'Prepara confirmaciones, avisos y recordatorios de turnos o pagos para revisar antes del envío.' },
+  { title: 'Borradores clínicos', description: 'Resume entrevistas y prepara evoluciones estructuradas para que las revises; nunca las guarda automáticamente.' },
+  { title: 'Archivos y estudios', description: 'Mostrale a Sofía un archivo para analizarlo juntos: un laboratorio o un estudio por imagen.' },
+  { title: 'Vademécum', description: 'Busca medicamentos y devuelve información de referencia.' },
+  { title: 'Balance de pagos', description: 'Consulta saldos, registra pagos y prepara recordatorios de deuda.' },
+  { title: 'Dictado por voz', description: 'Dicta tus pedidos a Sofía desde el navegador.' },
+  { title: 'Memoria de trabajo', description: 'Puede recordar preferencias que autorices, sin guardar datos clínicos de pacientes.' },
+]
+
 function App() {
   const [seedUsers, setSeedUsers] = useState<SeedUser[]>([])
   const [loadingUsers, setLoadingUsers] = useState(true)
@@ -2353,6 +2366,8 @@ function App() {
   const [floatingNotice, setFloatingNotice] = useState<string | null>(null)
   const [splashVisible, setSplashVisible] = useState(true)
   const [splashLeaving, setSplashLeaving] = useState(false)
+  const [sofiaFeatureIndex, setSofiaFeatureIndex] = useState(0)
+  const sofiaFeatureDragStartRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (loadingUsers) {
@@ -2819,6 +2834,13 @@ function App() {
     () => seedUsers.find((user) => user.id === activeUserId) ?? null,
     [seedUsers, activeUserId],
   )
+  useEffect(() => {
+    if (activeUser && profile) return
+    const intervalId = window.setInterval(() => {
+      setSofiaFeatureIndex((current) => (current + 1) % SOFIA_PROMO_FEATURES.length)
+    }, 3000)
+    return () => window.clearInterval(intervalId)
+  }, [activeUser, profile])
   const isAdminSession = isAdminUser(activeUser)
   // Acceso a la Turnera Premium (calendario de ocupación + estadísticas): solo suscripción activa,
   // no incluye usuarios en período de prueba (trial) ni vencidos.
@@ -8691,6 +8713,11 @@ function App() {
           <div className="auth-promo-heading">
             <h2>La tecnología no te reemplaza, te potencia.</h2>
           </div>
+          <div className="auth-promo-trial-banner">
+            <span>PRUEBA GRATIS</span>
+            <strong>Probá Dr Happy gratis por 7 días</strong>
+            <small>Conocé las herramientas que pueden acompañar tu práctica.</small>
+          </div>
 
           <section className="auth-tools-flyer app-tools-flyer" aria-labelledby="auth-tools-title">
             <div className="flyer-intro">
@@ -8714,18 +8741,39 @@ function App() {
                   </div>
                 </div>
                 <p className="auth-promo-sofia-lead">Una asistente para trabajar con tu agenda, tus pacientes y tus tareas clínicas desde Dr Happy.</p>
-                <ul className="auth-promo-sofia-features">
-                  <li><strong>Agenda y disponibilidad</strong><span>Consulta turnos, ocupación y espacios disponibles en tu agenda y turnera pública.</span></li>
-                  <li><strong>Pacientes e historias clínicas</strong><span>Busca fichas y revisa evoluciones por tema o período.</span></li>
-                  <li><strong>Gestión de turnos</strong><span>Agenda pacientes; reprograma o cancela turnos con validaciones y confirmación cuando corresponde.</span></li>
-                  <li><strong>Notificaciones y recordatorios</strong><span>Prepara confirmaciones, avisos y recordatorios de turnos o pagos para revisar antes del envío.</span></li>
-                  <li><strong>Borradores clínicos</strong><span>Resume entrevistas y prepara evoluciones estructuradas para que las revises; nunca las guarda automáticamente.</span></li>
-                  <li><strong>Lectura de archivos</strong><span>Interpreta PDF, DOCX, imágenes, TXT, CSV, MD y JSON.</span></li>
-                  <li><strong>Vademécum</strong><span>Busca medicamentos y devuelve información de referencia.</span></li>
-                  <li><strong>Balance de pagos</strong><span>Consulta saldos, registra pagos y prepara recordatorios de deuda.</span></li>
-                  <li><strong>Dictado por voz</strong><span>Dicta tus pedidos a Sofía desde el navegador.</span></li>
-                  <li><strong>Memoria de trabajo</strong><span>Puede recordar preferencias que autorices, sin guardar datos clínicos de pacientes.</span></li>
+                <ul
+                  className="auth-promo-sofia-features"
+                  aria-roledescription="carrusel"
+                  aria-label="Funciones de Sofía"
+                  onPointerDown={(event) => {
+                    if (event.pointerType === 'mouse' && event.button !== 0) return
+                    sofiaFeatureDragStartRef.current = event.clientX
+                    event.currentTarget.setPointerCapture(event.pointerId)
+                  }}
+                  onPointerUp={(event) => {
+                    const dragStart = sofiaFeatureDragStartRef.current
+                    sofiaFeatureDragStartRef.current = null
+                    if (dragStart === null || Math.abs(event.clientX - dragStart) < 40) return
+                    setSofiaFeatureIndex((current) => (current + (event.clientX < dragStart ? 1 : -1) + SOFIA_PROMO_FEATURES.length) % SOFIA_PROMO_FEATURES.length)
+                  }}
+                  onPointerCancel={() => { sofiaFeatureDragStartRef.current = null }}
+                >
+                  <li>
+                    <strong>{SOFIA_PROMO_FEATURES[sofiaFeatureIndex].title}</strong>
+                    <span>{SOFIA_PROMO_FEATURES[sofiaFeatureIndex].description}</span>
+                  </li>
                 </ul>
+                <div className="auth-promo-sofia-controls">
+                  <span className="auth-promo-sofia-counter" aria-live="polite">
+                    <strong>{String(sofiaFeatureIndex + 1).padStart(2, '0')}</strong>
+                    <small>/ {String(SOFIA_PROMO_FEATURES.length).padStart(2, '0')}</small>
+                  </span>
+                  <span className="auth-promo-sofia-progress" aria-hidden="true"><span key={sofiaFeatureIndex} /></span>
+                  <div className="auth-promo-sofia-buttons">
+                    <button type="button" aria-label="Función anterior de Sofía" onClick={() => setSofiaFeatureIndex((current) => (current - 1 + SOFIA_PROMO_FEATURES.length) % SOFIA_PROMO_FEATURES.length)}>‹</button>
+                    <button type="button" aria-label="Función siguiente de Sofía" onClick={() => setSofiaFeatureIndex((current) => (current + 1) % SOFIA_PROMO_FEATURES.length)}>›</button>
+                  </div>
+                </div>
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--green">
                 <div className="auth-promo-tool-art auth-promo-tool-art--emergency" aria-hidden="true">
