@@ -99,6 +99,10 @@
   opacity: 0.34;
 }
 
+@media (max-width: 720px) {
+  .auth-bg-scene { width: min(920px, 100%); }
+}
+
 .scene-floor {
   fill: rgba(30, 58, 138, 0.18);
 }
