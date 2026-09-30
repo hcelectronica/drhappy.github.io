@@ -711,7 +711,7 @@ body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
   box-sizing: border-box;
 }
 
-.auth-promo { display: grid; gap: 26px; align-content: start; min-width: 0; padding: 28px 0 48px; color: #173451; animation: auth-promo-enter 520ms ease both; }
+.auth-promo { position: relative; z-index: 1; display: grid; gap: 26px; align-content: start; min-width: 0; padding: 28px 0 48px; color: #173451; animation: auth-promo-enter 520ms ease both; }
 .auth-promo-heading { display: grid; gap: 8px; max-width: 760px; }
 .auth-promo-heading h2 { max-width: 720px; margin: 0; color: #102b4d; font-size: 2.6rem; font-weight: 800; line-height: 1.08; }
 .auth-promo .app-tools-flyer { max-width: none; margin: 0; padding: 22px; border: 1px solid #b7c8da; border-radius: 18px; background: #f8fbff; box-shadow: 0 18px 42px rgba(25, 55, 88, 0.18); }
@@ -3583,6 +3583,26 @@ body.theme-night .appt-patient-search > label {
   .auth-layout,
   .loading {
     padding: 10px;
+  }
+
+  .auth-layout {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    align-items: start;
+    gap: 18px;
+    padding: 18px 14px 32px;
+  }
+
+  .auth-card {
+    position: static;
+    order: 0;
+    justify-self: center;
+    margin: 0;
+  }
+
+  .auth-promo {
+    order: 1;
+    width: min(760px, 100%);
   }
 
   .topbar {
