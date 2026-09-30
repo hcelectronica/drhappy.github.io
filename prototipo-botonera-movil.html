@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dr Happy · Botonera en móvil</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 26px 16px 40px;
+    font-family: Manrope, 'Segoe UI', Tahoma, sans-serif;
+    color: #2c3f5e;
+    background:
+      radial-gradient(900px 460px at 10% -6%, rgba(126,163,239,.22), transparent 60%),
+      radial-gradient(760px 420px at 96% 6%, rgba(129,209,201,.18), transparent 62%),
+      #e9eef7;
+    min-height: 100vh;
+  }
+  header { max-width: 1180px; margin: 0 auto 22px; text-align: center; }
+  header h1 { margin: 0 0 6px; font-size: 1.18rem; letter-spacing: -.02em; }
+  header p { margin: 0; color: #7d90b2; font-size: .8rem; }
+  .devices {
+    display: flex; flex-wrap: wrap; gap: 34px;
+    align-items: flex-start; justify-content: center;
+    max-width: 1180px; margin: 0 auto;
+  }
+  .device { display: grid; gap: 10px; justify-items: center; }
+  .device-label { color: #7d90b2; font-size: .7rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+  .device-size { color: #9fb0cb; font-size: .66rem; font-weight: 700; }
+  .phone {
+    position: relative; padding: 13px 11px 15px;
+    border-radius: 42px; background: linear-gradient(160deg, #2b3448, #161d2c);
+    box-shadow: 0 30px 60px rgba(30,45,75,.34), 0 0 0 2px rgba(255,255,255,.06) inset;
+  }
+  .phone::before {
+    content: ''; position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+    width: 96px; height: 22px; border-radius: 999px; background: #10141f; z-index: 3;
+  }
+  .phone iframe {
+    display: block; border: 0; border-radius: 31px; background: #eef2f9;
+  }
+  .phone.small iframe { width: 360px; height: 720px; }
+  .phone.large iframe { width: 414px; height: 830px; }
+  .note {
+    max-width: 640px; margin: 30px auto 0; padding: 14px 16px;
+    border: 1px solid rgba(197,209,231,.8); border-radius: 16px;
+    background: rgba(255,255,255,.85); color: #5b6f92; font-size: .78rem; line-height: 1.6;
+    box-shadow: 0 10px 24px rgba(88,105,140,.1);
+  }
+  .note b { color: #2c3f5e; }
+  @media (max-width: 900px) {
+    .phone.small iframe { width: min(340px, 86vw); height: 690px; }
+    .phone.large iframe { width: min(340px, 86vw); height: 690px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Dr Happy · Botonera de inicio en móvil</h1>
+    <p>Misma maqueta, renderizada dentro de pantallas de teléfono reales. Se puede scrollear y tocar.</p>
+  </header>
+
+  <div class="devices">
+    <div class="device">
+      <span class="device-label">Teléfono estándar</span>
+      <div class="phone small"><iframe src="/prototipo-botonera.html" title="Vista móvil 360"></iframe></div>
+      <span class="device-size">360 × 720 px</span>
+    </div>
+    <div class="device">
+      <span class="device-label">Teléfono grande</span>
+      <div class="phone large"><iframe src="/prototipo-botonera.html" title="Vista móvil 414"></iframe></div>
+      <span class="device-size">414 × 830 px</span>
+    </div>
+  </div>
+
+  <p class="note">
+    En móvil la botonera pasa sola a <b>2 columnas</b>, <b>Modo Ambulancia</b> ocupa el ancho completo,
+    el encabezado se apila y <b>Sofía</b> queda siempre como primera acción visible sin scrollear.
+    El flyer destacado pasa a una sola columna, debajo de los accesos rápidos.
+  </p>
+</body>
+</html>

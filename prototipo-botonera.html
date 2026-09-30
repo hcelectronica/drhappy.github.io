@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dr Happy · Prototipo botonera de inicio</title>
+<style>
+  :root {
+    --bg: #eef2f9;
+    --panel: rgba(255,255,255,.92);
+    --ink: #2c3f5e;
+    --ink-soft: #7d90b2;
+    --line: rgba(197,209,231,.75);
+    --accent: #4d7ad4;
+    --shadow-soft: 0 10px 24px rgba(88,105,140,.10), 0 28px 60px rgba(70,88,125,.14);
+  }
+  body.night {
+    --bg: #0e1626;
+    --panel: rgba(22,34,56,.94);
+    --ink: #dbe7fb;
+    --ink-soft: #9db2d6;
+    --line: rgba(96,116,152,.45);
+    --accent: #7ba3ef;
+    --shadow-soft: 0 10px 24px rgba(3,10,22,.4), 0 28px 60px rgba(3,10,22,.5);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 18px;
+    font-family: Manrope, 'Segoe UI', Tahoma, sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(1100px 520px at 12% -10%, rgba(126,163,239,.20), transparent 60%),
+      radial-gradient(900px 480px at 96% 8%, rgba(129,209,201,.18), transparent 62%),
+      var(--bg);
+    min-height: 100vh;
+    transition: background 300ms ease, color 300ms ease;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; }
+
+  /* ── Encabezado ───────────────────────────────────────────── */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 12px 16px; margin-bottom: 14px;
+    border: 1px solid var(--line); border-radius: 20px;
+    background: var(--panel); box-shadow: var(--shadow-soft);
+    backdrop-filter: blur(14px);
+  }
+  .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+  .brand-mark {
+    width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center;
+    background: linear-gradient(140deg, #4d7ad4, #2f57a8); color: #fff; font-size: 1.25rem;
+    box-shadow: 0 8px 18px rgba(61,95,169,.35);
+  }
+  .brand h1 { margin: 0; font-size: 1.05rem; letter-spacing: -.02em; }
+  .brand small { color: var(--ink-soft); font-size: .7rem; font-weight: 600; }
+  .topbar-right { display: flex; align-items: center; gap: 9px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px;
+    background: transparent; color: var(--ink); font: inherit; font-size: .72rem; font-weight: 700;
+    cursor: pointer; transition: background 160ms ease, transform 160ms ease;
+  }
+  .chip:hover { background: rgba(129,160,220,.14); transform: translateY(-1px); }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+    background: #dbe8ff; color: #2f57a8; font-weight: 800; font-size: .82rem;
+    border: 1px solid var(--line); box-shadow: 0 0 0 4px rgba(129,160,220,.16);
+  }
+
+  /* ── Sofía destacada ──────────────────────────────────────── */
+  .sofia-bar {
+    display: flex; align-items: center; gap: 13px; width: 100%;
+    padding: 13px 16px; margin-bottom: 14px;
+    border: 1px solid rgba(169,190,229,.6); border-radius: 18px;
+    background: linear-gradient(135deg, #eef3ff 0%, #e6edfd 60%, #e9f3f1 100%);
+    color: #35507d; text-align: left; font: inherit; cursor: pointer;
+    box-shadow: 0 8px 20px rgba(94,122,175,.16);
+    animation: rise 460ms cubic-bezier(.22,1,.36,1) both;
+    transition: transform 180ms ease, box-shadow 180ms ease;
+  }
+  body.night .sofia-bar {
+    background: linear-gradient(135deg, rgba(40,62,103,.92), rgba(28,45,77,.92));
+    color: #dbe7fb; border-color: rgba(96,126,182,.55);
+  }
+  .sofia-bar:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(94,122,175,.24); }
+  .sofia-orb {
+    width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+    background: radial-gradient(circle at 32% 30%, #ffffff, #cfe0ff 55%, #9fc0f5);
+    color: #2f57a8; font-size: 1.1rem; flex: 0 0 40px;
+    box-shadow: 0 0 0 4px rgba(126,163,239,.18);
+    animation: pulse 2.6s ease-in-out infinite;
+  }
+  .sofia-copy { display: grid; gap: 1px; min-width: 0; }
+  .sofia-copy strong { font-size: .92rem; }
+  .sofia-copy small { color: var(--ink-soft); font-size: .72rem; font-weight: 600; }
+  .sofia-go { margin-left: auto; font-size: .72rem; font-weight: 800; color: var(--accent); white-space: nowrap; }
+
+  /* ── Botonera smart ───────────────────────────────────────── */
+  .section-kicker {
+    display: block; margin: 4px 2px 9px;
+    color: var(--ink-soft); font-size: .62rem; font-weight: 800;
+    letter-spacing: .16em; text-transform: uppercase;
+  }
+  .botonera {
+    display: grid; gap: 10px; margin-bottom: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(146px, 1fr));
+  }
+  .smart-btn {
+    position: relative; overflow: hidden;
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 12px; min-height: 58px;
+    border: 1px solid var(--line); border-radius: 15px;
+    background: var(--panel); color: var(--ink);
+    font: inherit; text-align: left; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(88,105,140,.08);
+    transition: transform 180ms cubic-bezier(.22,1,.36,1), box-shadow 180ms ease, border-color 180ms ease;
+    animation: rise 460ms cubic-bezier(.22,1,.36,1) both;
+  }
+  .smart-btn::after {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(160px 80px at var(--mx,50%) var(--my,50%), color-mix(in srgb, var(--tone) 22%, transparent), transparent 70%);
+    opacity: 0; transition: opacity 220ms ease; pointer-events: none;
+  }
+  .smart-btn:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--tone) 55%, var(--line)); box-shadow: 0 12px 26px color-mix(in srgb, var(--tone) 22%, transparent); }
+  .smart-btn:hover::after { opacity: 1; }
+  .smart-btn:active { transform: translateY(-1px) scale(.985); }
+  .smart-btn.active { border-color: var(--tone); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tone) 45%, transparent) inset, 0 10px 22px color-mix(in srgb, var(--tone) 20%, transparent); }
+  .smart-ico {
+    flex: 0 0 34px; width: 34px; height: 34px; border-radius: 11px;
+    display: grid; place-items: center; font-size: 1.05rem;
+    background: color-mix(in srgb, var(--tone) 14%, transparent);
+    color: var(--tone);
+    transition: transform 220ms cubic-bezier(.22,1,.36,1);
+  }
+  .smart-btn:hover .smart-ico { transform: scale(1.1) rotate(-4deg); }
+  .smart-txt { display: grid; gap: 1px; min-width: 0; }
+  .smart-txt strong { font-size: .8rem; font-weight: 700; letter-spacing: -.01em; }
+  .smart-txt small { color: var(--ink-soft); font-size: .66rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge {
+    position: absolute; top: 8px; right: 9px;
+    min-width: 19px; padding: 1px 6px; border-radius: 999px;
+    background: var(--tone); color: #fff; font-size: .62rem; font-weight: 800; text-align: center;
+    box-shadow: 0 3px 8px color-mix(in srgb, var(--tone) 40%, transparent);
+    animation: pop 500ms cubic-bezier(.22,1,.36,1) both;
+  }
+  .smart-btn.wide { grid-column: span 2; }
+  .smart-btn.ambulance { background: linear-gradient(135deg, rgba(236,255,245,.95), rgba(224,248,237,.95)); }
+  body.night .smart-btn.ambulance { background: linear-gradient(135deg, rgba(20,60,45,.6), rgba(16,48,37,.6)); }
+
+  /* ── Flyer ────────────────────────────────────────────────── */
+  .flyer {
+    position: relative; overflow: hidden;
+    padding: clamp(18px, 4vw, 34px); border: 1px solid var(--line); border-radius: 22px;
+    background: var(--panel); box-shadow: var(--shadow-soft);
+  }
+  .flyer-inner {
+    display: grid; grid-template-columns: minmax(0,1fr) minmax(240px,.85fr); gap: 24px; align-items: center;
+    width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+    animation: rise 420ms ease both;
+  }
+  .flyer-copy { display: grid; gap: 9px; }
+  .flyer-copy h2 { margin: 0; font-size: clamp(1.3rem, 3vw, 2rem); line-height: 1.08; letter-spacing: -.02em; }
+  .flyer-copy p { margin: 0; color: var(--ink-soft); font-size: .88rem; line-height: 1.55; }
+  .flyer-cta { color: var(--tone); font-size: .74rem; font-weight: 800; }
+  .flyer-visual {
+    min-height: 168px; padding: 14px; border-radius: 16px;
+    border: 1px solid color-mix(in srgb, var(--tone) 28%, var(--line));
+    background: linear-gradient(145deg, color-mix(in srgb, var(--tone) 12%, var(--panel)), var(--panel));
+    box-shadow: 0 16px 30px color-mix(in srgb, var(--tone) 16%, transparent);
+    display: grid; gap: 9px; align-content: start;
+    font-size: .76rem; color: var(--ink-soft);
+  }
+  .flyer-visual b { color: var(--ink); font-size: .82rem; }
+  .flyer-dots { display: flex; gap: 6px; justify-content: center; margin-top: 16px; }
+  .flyer-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); cursor: pointer; transition: all 240ms ease; }
+  .flyer-dots i.on { width: 20px; border-radius: 5px; background: var(--tone); }
+
+  .hint {
+    margin: 16px 2px 0; color: var(--ink-soft); font-size: .72rem; text-align: center;
+  }
+  .toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px);
+    padding: 11px 18px; border-radius: 14px; background: rgba(28,44,74,.94); color: #fff;
+    font-size: .8rem; font-weight: 700; opacity: 0; pointer-events: none;
+    transition: opacity 220ms ease, transform 220ms ease; z-index: 50;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pop { from { opacity: 0; transform: scale(.5); } to { opacity: 1; transform: scale(1); } }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 4px rgba(126,163,239,.18); } 50% { box-shadow: 0 0 0 8px rgba(126,163,239,.10); } }
+  @media (max-width: 720px) {
+    body { padding: 10px; }
+    .flyer-inner { grid-template-columns: 1fr; gap: 16px; }
+    .botonera { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+    .smart-btn.wide { grid-column: span 2; }
+    .topbar { flex-direction: column; align-items: stretch; }
+    .topbar-right { justify-content: space-between; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">✚</span>
+      <div>
+        <h1>Dr Happy 😊</h1>
+        <small>Basta de papeleo, hagamos medicina.</small>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="chip" id="themeBtn">◐ Modo nocturno</button>
+      <button class="chip">↪ Salir</button>
+      <span class="avatar">AM</span>
+    </div>
+  </header>
+
+  <button class="sofia-bar" data-go="Sofía">
+    <span class="sofia-orb">✦</span>
+    <span class="sofia-copy">
+      <strong>Sofía</strong>
+      <small>Tu secretaria clínica · agendá, cobrá y avisá por voz</small>
+    </span>
+    <span class="sofia-go">Hablar →</span>
+  </button>
+
+  <span class="section-kicker">Accesos rápidos</span>
+  <div class="botonera" id="botonera"></div>
+
+  <span class="section-kicker">Destacado</span>
+  <section class="flyer">
+    <div id="flyerSlot"></div>
+    <div class="flyer-dots" id="dots"></div>
+  </section>
+
+  <p class="hint">Prototipo visual · sin barra lateral: todo se resuelve desde la botonera de inicio.</p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const BOTONES = [
+    { id: 'ambulance', ico: '🚑', label: 'Modo Ambulancia', sub: 'Traslados y guardia', tone: '#15945f', wide: true, cls: 'ambulance' },
+    { id: 'attention', ico: '♙', label: 'Atención médica', sub: 'Buscar y atender', tone: '#2563eb' },
+    { id: 'appointments', ico: '◷', label: 'Turnera', sub: 'Agenda y cupos', tone: '#d97706', badge: '4' },
+    { id: 'patients', ico: '👥', label: 'Mis pacientes', sub: '19 fichas', tone: '#0891b2' },
+    { id: 'tools', ico: '✦', label: 'Herramientas', sub: 'Protocolos y vademécum', tone: '#7c3aed' },
+    { id: 'community', ico: '🤝', label: 'Comunidad', sub: 'Interconsultas', tone: '#0d9488', badge: '2' },
+    { id: 'ledger', ico: '◈', label: 'Balance de pagos', sub: 'Deudas y cobros', tone: '#dc2626' },
+    { id: 'news', ico: '◫', label: 'Noticias médicas', sub: 'Actualidad clínica', tone: '#475569' },
+    { id: 'profile', ico: '◉', label: 'Perfil y ajustes', sub: 'Firma y datos', tone: '#4f46e5' },
+    { id: 'admin', ico: '⚙', label: 'Administrar', sub: 'Usuarios y planes', tone: '#64748b' },
+  ]
+
+  const SLIDES = [
+    { id: 'ambulance', tone: '#15945f', title: '🚑 Modo Ambulancia', text: 'Gestioná traslados, guardias y atención prehospitalaria con protocolos listos para usar.', rows: ['🚑 Atención prioritaria', 'Paciente en traslado', 'Protocolo · Ubicación · Destino', '✓ Registro guardado'] },
+    { id: 'appointments', tone: '#d97706', title: '◷ Turnera médica', text: 'Organizá tus días, definí cupos y ofrecé turnos libres con horarios segmentados.', rows: ['Agenda semanal', '09:00 · García, María', '10:30 · López, Juan', '12:00 · Turno libre'] },
+    { id: 'tools', tone: '#7c3aed', title: '✦ Herramientas clínicas', text: 'Protocolos, vademécum, patologías y comunidad profesional en un mismo espacio.', rows: ['Herramientas clínicas', '✦ Protocolos', '▣ Vademécum', '🤝 Comunidad'] },
+    { id: 'ledger', tone: '#dc2626', title: '◈ Balance de pagos', text: 'Registrá tratamientos, pagos y saldos para saber qué está cobrado y qué falta cobrar.', rows: ['Balance de pagos', '✓ Sin deuda · 12', '! Pendientes · 3', 'Total adeudado · $125.000'] },
+  ]
+
+  const botonera = document.getElementById('botonera')
+  BOTONES.forEach((b, i) => {
+    const el = document.createElement('button')
+    el.className = 'smart-btn' + (b.wide ? ' wide' : '') + (b.cls ? ' ' + b.cls : '')
+    el.style.setProperty('--tone', b.tone)
+    el.style.animationDelay = (i * 45) + 'ms'
+    el.innerHTML =
+      (b.badge ? '<span class="badge">' + b.badge + '</span>' : '') +
+      '<span class="smart-ico">' + b.ico + '</span>' +
+      '<span class="smart-txt"><strong>' + b.label + '</strong><small>' + b.sub + '</small></span>'
+    el.addEventListener('mousemove', (e) => {
+      const r = el.getBoundingClientRect()
+      el.style.setProperty('--mx', (e.clientX - r.left) + 'px')
+      el.style.setProperty('--my', (e.clientY - r.top) + 'px')
+    })
+    el.addEventListener('click', () => {
+      document.querySelectorAll('.smart-btn').forEach((n) => n.classList.remove('active'))
+      el.classList.add('active')
+      toast('Abriría: ' + b.label)
+    })
+    botonera.appendChild(el)
+  })
+
+  const slot = document.getElementById('flyerSlot')
+  const dots = document.getElementById('dots')
+  let idx = 0
+  let timer = null
+
+  function render() {
+    const s = SLIDES[idx]
+    slot.style.setProperty('--tone', s.tone)
+    slot.innerHTML =
+      '<button class="flyer-inner" style="--tone:' + s.tone + '">' +
+        '<span class="flyer-copy">' +
+          '<h2>' + s.title + '</h2>' +
+          '<p>' + s.text + '</p>' +
+          '<span class="flyer-cta">Tocá para abrir →</span>' +
+        '</span>' +
+        '<span class="flyer-visual"><b>' + s.rows[0] + '</b>' + s.rows.slice(1).map((r) => '<span>' + r + '</span>').join('') + '</span>' +
+      '</button>'
+    slot.querySelector('.flyer-inner').addEventListener('click', () => toast('Abriría: ' + s.title.replace(/^\S+\s/, '')))
+    dots.innerHTML = SLIDES.map((x, i) => '<i class="' + (i === idx ? 'on' : '') + '" style="--tone:' + s.tone + '" data-i="' + i + '"></i>').join('')
+    dots.querySelectorAll('i').forEach((d) => d.addEventListener('click', () => { idx = +d.dataset.i; render(); restart() }))
+  }
+  function next() { idx = (idx + 1) % SLIDES.length; render() }
+  function restart() { clearInterval(timer); timer = setInterval(next, 6000) }
+
+  const toastEl = document.getElementById('toast')
+  let toastTimer = null
+  function toast(msg) {
+    toastEl.textContent = msg
+    toastEl.classList.add('show')
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1600)
+  }
+
+  document.querySelector('.sofia-bar').addEventListener('click', () => toast('Abriría: Sofía'))
+  document.getElementById('themeBtn').addEventListener('click', (e) => {
+    document.body.classList.toggle('night')
+    e.target.textContent = document.body.classList.contains('night') ? '☀ Modo claro' : '◐ Modo nocturno'
+  })
+
+  render()
+  restart()
+</script>
+</body>
+</html>

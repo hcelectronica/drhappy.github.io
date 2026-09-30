@@ -117,11 +117,6 @@
           <strong id="rangeLabel"></strong>
           <button type="button" class="ghost" id="nextBtn">Más fechas</button>
         </div>
-        <div class="filters">
-          <button type="button" class="chip active" data-filter="all">Todos</button>
-          <button type="button" class="chip" data-filter="coverage">Obra social / sin pago</button>
-          <button type="button" class="chip" data-filter="private">Particular / con pago</button>
-        </div>
       </div>
 
       <div class="layout">
@@ -140,8 +135,8 @@
           <input id="patientDni" inputmode="numeric" />
           <label for="patientPhone">WhatsApp</label>
           <input id="patientPhone" type="tel" autocomplete="tel" />
-          <label for="patientEmail">Email</label>
-          <input id="patientEmail" type="email" autocomplete="email" />
+          <label for="patientEmail">Email *</label>
+          <input id="patientEmail" type="email" autocomplete="email" required />
           <button type="button" id="confirmBtn" style="width:100%; margin-top:16px" disabled>Confirmar turno</button>
           <div id="message"></div>
         </aside>
@@ -155,9 +150,9 @@
     var FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/public-booking';
     var params = new URLSearchParams(window.location.search);
     var slug = params.get('p') || (window.location.hash || '').replace(/^#\/?/, '') || '';
-    var fixedModality = params.get('m') === 'private' || params.get('m') === 'coverage' ? params.get('m') : null;
+    var fixedModality = null;
     var cursor = todayISO().slice(0, 7) + '-01';
-    var filter = fixedModality || 'all';
+    var filter = 'all';
     var agenda = null;
     var selected = null;
 
@@ -254,11 +249,23 @@
       var msg = el('message'); msg.className = 'msg'; msg.textContent = '';
       if (!selected) { msg.className = 'msg err'; msg.textContent = 'Elegí un horario.'; return; }
       if (!patientName || !patientDni) { msg.className = 'msg err'; msg.textContent = 'Completá nombre y DNI.'; return; }
+      var patientEmail = el('patientEmail').value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) { msg.className = 'msg err'; msg.textContent = 'Ingresá un email válido para continuar con el pago.'; return; }
       el('confirmBtn').disabled = true;
       el('confirmBtn').textContent = 'Confirmando...';
-      callFunction({ action: 'book-public-slot', slug: slug, modality: fixedModality, slotDate: selected.date, slotTime: selected.time, blockId: selected.blockId, patientName: patientName, patientDni: patientDni, patientPhone: el('patientPhone').value.trim(), patientEmail: el('patientEmail').value.trim() }).then(function (result) {
+      callFunction({ action: 'book-public-slot', slug: slug, modality: fixedModality, slotDate: selected.date, slotTime: selected.time, blockId: selected.blockId, patientName: patientName, patientDni: patientDni, patientPhone: el('patientPhone').value.trim(), patientEmail: patientEmail }).then(function (result) {
         if (!result.data.success) {
           msg.className = 'msg err'; msg.textContent = result.data.message || 'No pudimos reservar el turno.'; el('confirmBtn').disabled = false; el('confirmBtn').textContent = 'Confirmar turno'; loadAgenda(); return;
+        }
+        if (result.data.paymentUrl) {
+          var paymentUrl = String(result.data.paymentUrl).trim();
+          if (!/^https:\/\//i.test(paymentUrl)) {
+            msg.className = 'msg err'; msg.textContent = 'Mercado Pago devolvió un enlace inválido. Revisá tu email para continuar el pago.'; el('confirmBtn').disabled = false; el('confirmBtn').textContent = 'Confirmar turno'; return;
+          }
+          msg.className = 'msg ok';
+          msg.innerHTML = 'Redirigiendo a Mercado Pago para confirmar tu reserva... <a href="' + paymentUrl.replace(/"/g, '&quot;') + '" target="_self" rel="noopener">Abrir Mercado Pago</a>';
+          window.location.replace(paymentUrl);
+          return;
         }
         msg.className = 'msg ok';
         msg.textContent = 'Turno confirmado para el ' + formatDate(result.data.appointment.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' a las ' + result.data.appointment.time + ' hs.' + (result.data.emailSent ? ' Te enviamos la confirmación por email.' : ' Revisá los datos del turno en pantalla.') + (result.data.appointment.amountToCharge ? ' Recordá completar el pago indicado por el profesional.' : '');
