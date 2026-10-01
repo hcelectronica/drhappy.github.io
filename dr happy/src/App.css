@@ -4380,6 +4380,10 @@ body.theme-night .turnera-calendar-day-sources .src-manual { color: #cbd5e1; }
 .public-turnera-section[open] > summary::after { transform: rotate(180deg); }
 .public-turnera-section > summary small { margin-left: auto; color: #64748b; font-size: 0.74rem; font-weight: 700; }
 .public-turnera-body { display: grid; gap: 10px; padding: 0 14px 14px; }
+.capacity-scope-note { display: inline-block; margin: 6px 0 4px; padding: 6px 12px; border-radius: 10px; background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; font-size: 1rem; font-weight: 800; }
+.turnera-description { margin: 0; color: #1e293b; font-size: 0.9rem; font-weight: 700; line-height: 1.45; }
+body.theme-night .capacity-scope-note { background: #3a2412; border-color: #c2410c; color: #fdba74; }
+body.theme-night .turnera-description { color: #e2e8f0; }
 .public-turnera-body .flow-hint { margin: 0; }
 .public-turnera-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .public-turnera-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

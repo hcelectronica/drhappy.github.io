@@ -11600,7 +11600,8 @@ function App() {
             <div>
               <span className="section-kicker">Control de agenda</span>
               <h3 style={{ margin: 0 }}>Horario del consultorio</h3>
-              <p className="flow-hint">Horario para los turnos que agendás vos. Cada turnera de abajo tiene su propio horario, duración y cupo.</p>
+              <p className="capacity-scope-note">Turnos otorgados por vos o sobreturnos</p>
+              <p className="turnera-description">Las turneras para pacientes (particular y gratuita) tienen su propio horario, duración y cupo más abajo.</p>
             </div>
             <div className="capacity-controls">
               <label>
@@ -11670,7 +11671,7 @@ function App() {
                     <small>{published ? `Publicada · hasta ${publicBookingQuotas[modality] || capacity} turnos por día` : 'Sin publicar'}</small>
                   </summary>
                   <div className="public-turnera-body">
-                    <p className="flow-hint">
+                    <p className="turnera-description">
                       {isPrivate
                         ? 'El paciente reserva y paga por Mercado Pago. El turno se confirma al aprobarse el pago.'
                         : 'El paciente reserva sin pagar. El turno queda confirmado al instante.'}
@@ -11757,7 +11758,7 @@ function App() {
                         </>
                       ) : null}
                     </div>
-                    <small className="flow-hint">Si los horarios de las dos turneras se superponen, un horario reservado en una ya no aparece en la otra.</small>
+                    <small className="turnera-description">Si los horarios de las dos turneras se superponen, un horario reservado en una ya no aparece en la otra.</small>
                     <div className="public-turnera-actions">
                       <button type="button" className="screen-action primary" disabled={publicBookingSaving} onClick={() => void handleGenerateFixedBookingLink(modality)}>
                         <span aria-hidden="true">💾</span> {publicBookingSaving ? 'Guardando...' : published ? 'Guardar cambios y compartir link' : 'Publicar y generar link'}
