@@ -1615,6 +1615,17 @@ function ensurePatientsForAppointments(appointmentList: AppointmentRecord[], pat
   return sortPatientsByName(nextPatients)
 }
 
+function splitDraftPatientName(value: string): { apellido: string; nombre: string } {
+  const [apellido = '', ...rest] = value.split(',')
+  return { apellido, nombre: rest.join(',').replace(/^ /, '') }
+}
+
+function joinDraftPatientName(apellido: string, nombre: string): string {
+  const cleanApellido = apellido.replace(/,/g, '')
+  const cleanNombre = nombre.replace(/,/g, '')
+  return cleanNombre ? `${cleanApellido}, ${cleanNombre}` : cleanApellido
+}
+
 function normalizeSearchText(value: string): string {
   return value
     .normalize('NFD')
@@ -7100,7 +7111,9 @@ function App() {
   async function handleSaveAppointment(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!activeUserId) return
-    if (!appointmentDraft.patientName.trim() || !appointmentDraft.scheduledDate || !appointmentDraft.scheduledTime) {
+    const draftNameParts = splitDraftPatientName(appointmentDraft.patientName)
+    const cleanPatientName = joinDraftPatientName(draftNameParts.apellido.trim(), draftNameParts.nombre.trim())
+    if (!cleanPatientName || !appointmentDraft.scheduledDate || !appointmentDraft.scheduledTime) {
       setAppError('Completa el nombre del paciente, fecha y hora del turno.')
       return
     }
@@ -7162,7 +7175,7 @@ function App() {
       let finalPatientId = appointmentDraft.patientId
 
       if (!finalPatientId) {
-        const typedName = normalizeSearchText(appointmentDraft.patientName)
+        const typedName = normalizeSearchText(cleanPatientName)
         const typedDni = appointmentDraft.patientDni.trim()
         // Solo reutilizamos una ficha existente ante una coincidencia inequívoca
         // (DNI exacto, o nombre completo idéntico). Una coincidencia parcial
@@ -7180,7 +7193,7 @@ function App() {
           finalPatientId = crypto.randomUUID()
           // "Apellido, Nombre" se separa en sus campos reales para que la ficha
           // quede bien formada y sea buscable después.
-          const rawName = appointmentDraft.patientName.trim()
+          const rawName = cleanPatientName
           const [rawApellido, ...restName] = rawName.split(',')
           const newPatient: PatientRecord = {
             id: finalPatientId,
@@ -7213,7 +7226,7 @@ function App() {
       const nextRecord: AppointmentRecord = {
         id: appointmentDraft.id || crypto.randomUUID(),
         patientId: finalPatientId,
-        patientName: appointmentDraft.patientName.trim(),
+        patientName: cleanPatientName,
         patientEmail: appointmentDraft.patientEmail.trim(),
         patientDni: appointmentDraft.patientDni.trim(),
         scheduledDate: appointmentDraft.scheduledDate,
@@ -7255,7 +7268,7 @@ function App() {
         const profSpecialty = currentProf?.specialty || (activeUser ? activeUser.specialty : 'Medicina General')
         void sendAppointmentEmail({
           to: appointmentDraft.patientEmail.trim(),
-          patientName: appointmentDraft.patientName.trim(),
+          patientName: cleanPatientName,
           professionalName: profName,
           specialty: profSpecialty,
           date: appointmentDraft.scheduledDate,
@@ -13976,26 +13989,49 @@ function App() {
 
             <form onSubmit={(e) => void handleSaveAppointment(e)} className="turnera-modal-form">
               <div className="turnera-form-group">
-                <label>
-                  Paciente (Apellido y Nombre) *
-                  <div className="patient-autocomplete">
-                    <input
-                      type="text"
-                      required
-                      autoComplete="off"
-                      placeholder="Escribí apellido, nombre o DNI para buscar"
-                      value={appointmentDraft.patientName}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        // Al reescribir el nombre se desvincula la ficha elegida,
-                        // para no asociar el turno a un paciente equivocado.
-                        setAppointmentDraft((prev) => ({ ...prev, patientName: value, patientId: '' }))
-                        setAppointmentPatientQuery(value)
-                        setAppointmentSuggestionsOpen(true)
-                      }}
-                      onFocus={() => setAppointmentSuggestionsOpen(true)}
-                      onBlur={() => window.setTimeout(() => setAppointmentSuggestionsOpen(false), 150)}
-                    />
+                <div className="patient-autocomplete">
+                  <div className="turnera-form-row">
+                    <label style={{ flex: 1 }}>
+                      Apellido *
+                      <input
+                        type="text"
+                        required
+                        autoComplete="off"
+                        placeholder="Escribí el apellido o DNI para buscar"
+                        value={splitDraftPatientName(appointmentDraft.patientName).apellido}
+                        onChange={(e) => {
+                          const apellido = e.target.value
+                          const { nombre } = splitDraftPatientName(appointmentDraft.patientName)
+                          // Al reescribir el nombre se desvincula la ficha elegida,
+                          // para no asociar el turno a un paciente equivocado.
+                          setAppointmentDraft((prev) => ({ ...prev, patientName: joinDraftPatientName(apellido, nombre), patientId: '' }))
+                          setAppointmentPatientQuery(`${apellido} ${nombre}`.trim())
+                          setAppointmentSuggestionsOpen(true)
+                        }}
+                        onFocus={() => setAppointmentSuggestionsOpen(true)}
+                        onBlur={() => window.setTimeout(() => setAppointmentSuggestionsOpen(false), 150)}
+                      />
+                    </label>
+                    <label style={{ flex: 1 }}>
+                      Nombre *
+                      <input
+                        type="text"
+                        required
+                        autoComplete="off"
+                        placeholder="Nombre del paciente"
+                        value={splitDraftPatientName(appointmentDraft.patientName).nombre}
+                        onChange={(e) => {
+                          const nombre = e.target.value
+                          const { apellido } = splitDraftPatientName(appointmentDraft.patientName)
+                          setAppointmentDraft((prev) => ({ ...prev, patientName: joinDraftPatientName(apellido, nombre), patientId: '' }))
+                          setAppointmentPatientQuery(`${apellido} ${nombre}`.trim())
+                          setAppointmentSuggestionsOpen(true)
+                        }}
+                        onFocus={() => setAppointmentSuggestionsOpen(true)}
+                        onBlur={() => window.setTimeout(() => setAppointmentSuggestionsOpen(false), 150)}
+                      />
+                    </label>
+                  </div>
                     {appointmentSuggestionsOpen && appointmentPatientSuggestions.length > 0 ? (
                       <ul className="patient-autocomplete-list">
                         {appointmentPatientSuggestions.map((patient) => (
@@ -14019,17 +14055,16 @@ function App() {
                         ))}
                       </ul>
                     ) : null}
-                  </div>
-                  {appointmentDraft.patientId ? (
-                    <span className="patient-linked-hint">
-                      ✅ Vinculado a la ficha existente — el turno quedará en su historia clínica
-                    </span>
-                  ) : appointmentPatientQuery.trim().length >= 2 && appointmentPatientSuggestions.length === 0 ? (
-                    <span className="field-hint">
-                      No hay pacientes con ese dato. Se creará una ficha nueva al guardar.
-                    </span>
-                  ) : null}
-                </label>
+                </div>
+                {appointmentDraft.patientId ? (
+                  <span className="patient-linked-hint">
+                    ✅ Vinculado a la ficha existente — el turno quedará en su historia clínica
+                  </span>
+                ) : appointmentPatientQuery.trim().length >= 2 && appointmentPatientSuggestions.length === 0 ? (
+                  <span className="field-hint">
+                    No hay pacientes con ese dato. Se creará una ficha nueva al guardar.
+                  </span>
+                ) : null}
               </div>
 
               <div className="turnera-form-row">
