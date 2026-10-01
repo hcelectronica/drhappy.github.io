@@ -5185,6 +5185,24 @@ body.theme-night .turnera-card-actions {
   .auth-plan > span, .auth-plan small { grid-column: 1; }
   .auth-plan strong { grid-column: 2; grid-row: 1 / span 2; font-size: 1.45rem; text-align: right; white-space: nowrap; }
   .auth-plan em { grid-column: 1 / -1; justify-self: start; margin-top: 4px; }
+  .auth-card { padding: 16px 16px 14px; border-radius: 18px; }
+  .auth-card .brand-block { gap: 10px; margin-bottom: 10px; }
+  .auth-card .brand-mark { width: 40px; height: 40px; border-radius: 12px; box-shadow: 0 5px 12px rgba(17, 45, 78, 0.2); }
+  .auth-card .brand-mark svg { width: 34px; height: 34px; }
+  .auth-card .brand-copy h1 { font-size: 1.2rem; }
+  .auth-card .slogan { font-size: 0.82rem; }
+  .auth-card-subtitle { display: none; }
+  .auth-login-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .auth-login-form > * { grid-column: 1 / -1; }
+  .auth-login-form > .auth-register-btn,
+  .auth-login-form > .theme-toggle { grid-column: auto; }
+  .auth-login-form label { gap: 4px; font-size: 13px; }
+  .auth-login-form input { min-height: 42px; padding: 8px 12px; font-size: 16px; }
+  .auth-login-form > button { min-height: 40px; padding: 8px 12px !important; font-size: 0.9rem !important; }
+  .auth-login-form > .text-button { min-height: 0; padding: 2px !important; font-size: 0.82rem !important; }
+  .auth-login-form > .ghost { box-shadow: none; }
+  .auth-login-extra { margin-top: 4px !important; padding-top: 8px !important; gap: 6px !important; }
+  .auth-login-extra button { padding: 5px 8px !important; font-size: 0.76rem !important; }
 }
 
 /* Debe ir al final: las media queries anteriores resetean el padding de .app

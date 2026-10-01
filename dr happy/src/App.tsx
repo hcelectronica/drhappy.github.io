@@ -8901,7 +8901,7 @@ function App() {
             <div className="brand-copy">
               <h1>Dr Happy 😊</h1>
               <p className="slogan">Basta de Papeleo, Hagamos medicina.</p>
-              <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280', fontWeight: 500 }}>
+              <p className="auth-card-subtitle" style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280', fontWeight: 500 }}>
                 Herramientas para profesionales de la salud e instituciones
               </p>
             </div>
@@ -8945,7 +8945,7 @@ function App() {
               </button>
             </section>
           ) : !recoveryOpen ? (
-            <form onSubmit={handleLogin} className="grid">
+            <form onSubmit={handleLogin} className="grid auth-login-form">
               <label>
                 Usuario
                 <input
@@ -9017,7 +9017,7 @@ function App() {
               </button>
               <button
                 type="button"
-                className="ghost"
+                className="ghost auth-register-btn"
                 onClick={() => {
                   setRegisterOpen((current) => !current)
                   setAuthError(null)
@@ -9034,7 +9034,7 @@ function App() {
               <button type="button" className="ghost theme-toggle" onClick={handleToggleThemeMode}>
                 {themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'}
               </button>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(130, 153, 186, 0.3)' }}>
+              <div className="auth-login-extra" style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(130, 153, 186, 0.3)' }}>
                 <button
                   type="button"
                   className="ghost"
