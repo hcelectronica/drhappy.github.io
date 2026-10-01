@@ -13,6 +13,7 @@ interface EmailPayload {
     filename: string
     content: string
     contentType?: string
+    encoding?: 'base64'
   }>
 }
 
@@ -328,6 +329,7 @@ serve(async (request) => {
         filename: attachment.filename,
         content: attachment.content,
         contentType: attachment.contentType || 'application/octet-stream',
+        ...(attachment.encoding === 'base64' ? { encoding: 'base64' } : {}),
       })),
     })
 

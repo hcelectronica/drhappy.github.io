@@ -11,6 +11,7 @@ export interface SendEmailOptions {
     filename: string
     content: string
     contentType?: string
+    encoding?: 'base64'
   }>
 }
 

@@ -14,6 +14,9 @@ import { isSupabaseConfigured, supabase } from './supabaseClient'
 import { getHolidayName } from './argentineHolidays'
 import { SupportContactForm } from './SupportContactForm'
 import { AdminSupportInbox } from './AdminSupportInbox'
+import { SignaturePad } from './SignaturePad'
+import { blobToBase64, buildCertificatePdf, certificateFileName, certificateSignedContent, formatCertificateDate } from './medicalCertificate'
+import type { CertificateEntry } from './medicalCertificate'
 import {
   getNotificationPermission,
   getPushSubscriptionsCount,
@@ -275,6 +278,8 @@ interface ProfessionalProfile {
   matriculaPhoto?: StoredFile
   signatureImage?: StoredFile
   signatureText: string
+  // Encabezado de los certificados (nombre del consultorio o de fantasía).
+  certificateLetterhead?: string
   communitySeenMessageIds?: string[]
   // Link de cobro propio del profesional (Mercado Pago, alias, o cualquier medio).
   // Dr Happy solo lo muestra al paciente: el pago es directo al profesional.
@@ -308,6 +313,8 @@ interface ConsultationEntry {
   signatureSeal?: import('./signatureSeal').SignatureSeal
   // Turno que originó esta evolución, para no duplicarla si se vuelve a atender.
   appointmentId?: string
+  // Certificado médico que generó esta entrada de la historia clínica.
+  certificateId?: string
 }
 
 /** Un medicamento dentro de una receta. El nombre genérico es obligatorio (Ley 25.649). */
@@ -359,6 +366,7 @@ interface PatientRecord {
   documents: StoredFile[]
   consultations: ConsultationEntry[]
   prescriptions?: PrescriptionEntry[]
+  certificates?: CertificateEntry[]
   createdAt: string
   updatedAt: string
 }
@@ -1262,6 +1270,7 @@ function normalizeRemoteProfile(raw: unknown, fallback: ProfessionalProfile): Pr
     appointmentAmountConcept: candidate.appointmentAmountConcept === 'consulta' ? 'consulta' : 'sena',
     matriculaPhoto: normalizeStoredFile(candidate.matriculaPhoto) ?? undefined,
     signatureImage: normalizeStoredFile(candidate.signatureImage) ?? undefined,
+    certificateLetterhead: typeof candidate.certificateLetterhead === 'string' ? candidate.certificateLetterhead : undefined,
     communitySeenMessageIds: normalizeStringList(candidate.communitySeenMessageIds),
   }
 }
@@ -1315,6 +1324,7 @@ function normalizeRemotePatient(raw: unknown, ownerUserId: string): PatientRecor
         }))
       : [],
     prescriptions: Array.isArray(candidate.prescriptions) ? (candidate.prescriptions as PrescriptionEntry[]) : [],
+    certificates: Array.isArray(candidate.certificates) ? (candidate.certificates as CertificateEntry[]) : [],
     createdAt:
       typeof candidate.createdAt === 'string' ? candidate.createdAt : new Date().toISOString(),
     updatedAt:
@@ -2586,6 +2596,13 @@ function App() {
   const [selectedMedicationId, setSelectedMedicationId] = useState<string | null>(null)
 
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false)
+  const [certificatePatientId, setCertificatePatientId] = useState<string | null>(null)
+  const [certificateDraft, setCertificateDraft] = useState({ date: '', diagnostico: '', body: '' })
+  const [certificateDiagnosisOpen, setCertificateDiagnosisOpen] = useState(false)
+  const [certificateSaving, setCertificateSaving] = useState(false)
+  const [certificateIssued, setCertificateIssued] = useState<{ entry: CertificateEntry; pdf: Blob; reopened: boolean } | null>(null)
+  const [certificateEmail, setCertificateEmail] = useState('')
+  const [certificateSending, setCertificateSending] = useState(false)
   const [prescriptionDiagnostico, setPrescriptionDiagnostico] = useState('')
   const [prescriptionItems, setPrescriptionItems] = useState<PrescriptionItem[]>([])
   const [prescriptionMedQuery, setPrescriptionMedQuery] = useState('')
@@ -5016,6 +5033,14 @@ function App() {
     }
     return visiblePatients.slice(0, 6)
   }, [patientSearchQuery, visiblePatients])
+
+  const certificateDiagnosisSuggestions = useMemo(() => {
+    const query = normalizeSearchText(certificateDraft.diagnostico)
+    if (query.length < 2) return []
+    return diagnosisCatalog
+      .filter((entry) => normalizeSearchText(entry).includes(query) && normalizeSearchText(entry) !== query)
+      .slice(0, 8)
+  }, [certificateDraft.diagnostico, diagnosisCatalog])
 
   /* Últimos pacientes con consulta registrada, para retomar la atención sin buscar. */
   const recentlyAttendedPatients = useMemo(() => {
@@ -8562,6 +8587,236 @@ function App() {
     printWindow.focus()
     printWindow.print()
     setAppNotice('Documento preparado para guardar o imprimir en PDF.')
+  }
+
+  // ── Certificado médico ──────────────────────────────────────────────────────
+
+  const certificatePatient = certificatePatientId ? patients.find((patient) => patient.id === certificatePatientId) ?? null : null
+
+  function buildCertificateTemplate(patient: PatientRecord, diagnostico: string): string {
+    const name = `${patient.nombre} ${patient.apellido}`.trim()
+    return `En el día de la fecha fue atendido/a ${name}${patient.dni ? `, DNI ${patient.dni}` : ''}, por presentar cuadro de ${diagnostico || '...'}.\nSe indica reposo por 48 horas a partir de la fecha.`
+  }
+
+  function handleOpenCertificateModal(patient: PatientRecord): void {
+    setCertificatePatientId(patient.id)
+    setCertificateDraft({ date: todayLocalISO(), diagnostico: '', body: buildCertificateTemplate(patient, '') })
+    setCertificateIssued(null)
+    setCertificateEmail(patient.email || '')
+    setCertificateDiagnosisOpen(false)
+  }
+
+  function closeCertificateModal(): void {
+    if (certificateSaving || certificateSending) return
+    setCertificatePatientId(null)
+    setCertificateIssued(null)
+  }
+
+  function handleCertificateDiagnosisChange(value: string): void {
+    setCertificateDraft((current) => ({
+      ...current,
+      diagnostico: value,
+      body: current.body.replace(/por presentar cuadro de [^.\n]*\./i, `por presentar cuadro de ${value.trim() || '...'}.`),
+    }))
+  }
+
+  function applyCertificateRest(label: string): void {
+    setCertificateDraft((current) => {
+      const sentence = `Se indica reposo por ${label} a partir de la fecha.`
+      const pattern = /Se indica reposo por [^.\n]*\./i
+      return { ...current, body: pattern.test(current.body) ? current.body.replace(pattern, sentence) : `${current.body.trim()}\n${sentence}` }
+    })
+  }
+
+  async function handleIssueCertificate(): Promise<void> {
+    if (!certificatePatient || !profile || !activeUserId) return
+    const signatureImageDataUrl = profile.signatureImage?.dataUrl
+    if (!signatureImageDataUrl) {
+      setAppError('Dibujá tu firma en Perfil y ajustes antes de emitir certificados.')
+      return
+    }
+    if (!profile.fullName.trim() || !profile.licenseNumber.trim()) {
+      setAppError('Completá tu nombre y matrícula en Perfil y ajustes antes de emitir certificados.')
+      return
+    }
+    const diagnostico = certificateDraft.diagnostico.trim()
+    const body = certificateDraft.body.trim()
+    if (!diagnostico) {
+      setAppError('Indicá el diagnóstico del certificado.')
+      return
+    }
+    if (!body || body.includes('...')) {
+      setAppError('Completá el texto del certificado (R/p).')
+      return
+    }
+    setCertificateSaving(true)
+    setAppError(null)
+    try {
+      const issuedAt = new Date().toISOString()
+      const base = {
+        certificateDate: certificateDraft.date || todayLocalISO(),
+        letterhead: profile.certificateLetterhead?.trim() || 'Consultorio médico',
+        diagnostico,
+        body,
+        patient: {
+          fullName: `${certificatePatient.nombre} ${certificatePatient.apellido}`.trim(),
+          dni: certificatePatient.dni,
+          birthDate: certificatePatient.birthDate,
+          obraSocial: certificatePatient.obraSocial,
+          plan: certificatePatient.plan,
+          numeroAfiliado: certificatePatient.numeroAfiliado,
+        },
+      }
+      const signatureSeal = await buildSignatureSeal({
+        contentToSign: certificateSignedContent(base),
+        signerUserId: activeUserId,
+        signerFullName: profile.fullName,
+        signerLicense: profile.licenseNumber,
+        signerDni: activeUser?.dni,
+      })
+      const entry: CertificateEntry = {
+        id: crypto.randomUUID(),
+        issuedAt,
+        ...base,
+        professional: {
+          fullName: profile.fullName,
+          licenseNumber: profile.licenseNumber,
+          specialty: profile.specialty,
+          signatureImageDataUrl,
+        },
+        signatureSeal,
+      }
+      const pdf = await buildCertificatePdf(entry)
+      const historyEntry: ConsultationEntry = {
+        id: crypto.randomUUID(),
+        date: issuedAt,
+        motivoConsulta: 'Certificado emitido',
+        diagnostico,
+        detalleAtencion: body,
+        pensamientoMedico: '',
+        impresionDiagnostica: diagnostico,
+        professionalSignature: {
+          fullName: profile.fullName,
+          licenseNumber: profile.licenseNumber,
+          signatureText: profile.signatureText,
+          signatureImageDataUrl,
+        },
+        signatureSeal,
+        certificateId: entry.id,
+      }
+      persistPatient({
+        ...certificatePatient,
+        certificates: [entry, ...(certificatePatient.certificates ?? [])],
+        consultations: [historyEntry, ...certificatePatient.consultations],
+        updatedAt: issuedAt,
+      })
+      if (!diagnosisCatalog.some((item) => normalizeSearchText(item) === normalizeSearchText(diagnostico))) {
+        persistCustomDiagnosis(diagnostico)
+      }
+      setCertificateIssued({ entry, pdf, reopened: false })
+      showSavedFloatingNotice('Certificado emitido')
+    } catch (error) {
+      setAppError(`No se pudo emitir el certificado: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setCertificateSaving(false)
+    }
+  }
+
+  async function handleViewIssuedCertificate(patient: PatientRecord, entry: CertificateEntry): Promise<void> {
+    try {
+      const pdf = await buildCertificatePdf(entry)
+      setCertificatePatientId(patient.id)
+      setCertificateEmail(patient.email || '')
+      setCertificateIssued({ entry, pdf, reopened: true })
+    } catch (error) {
+      setAppError(`No se pudo abrir el certificado: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  function handleOpenCertificatePdf(pdf: Blob): void {
+    const url = URL.createObjectURL(pdf)
+    window.open(url, '_blank', 'noopener')
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
+  function downloadCertificatePdf(entry: CertificateEntry, pdf: Blob): void {
+    const url = URL.createObjectURL(pdf)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = certificateFileName(entry)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  }
+
+  async function handleShareCertificate(entry: CertificateEntry, pdf: Blob): Promise<void> {
+    const file = new File([pdf], certificateFileName(entry), { type: 'application/pdf' })
+    const text = `Certificado médico de ${entry.patient.fullName} · ${formatCertificateDate(entry.certificateDate)}`
+    if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'Certificado médico', text })
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          downloadCertificatePdf(entry, pdf)
+        }
+      }
+      return
+    }
+    downloadCertificatePdf(entry, pdf)
+    setAppNotice('Este navegador no permite compartir archivos directamente: descargamos el PDF para que lo adjuntes en WhatsApp o la aplicación que prefieras.')
+  }
+
+  async function handleEmailCertificate(entry: CertificateEntry, pdf: Blob): Promise<void> {
+    const to = certificateEmail.trim()
+    if (!isValidEmail(to)) {
+      setAppError('Ingresá un email válido para enviar el certificado.')
+      return
+    }
+    setCertificateSending(true)
+    setAppError(null)
+    try {
+      const content = await blobToBase64(pdf)
+      const firstName = escapeHtml(entry.patient.fullName.split(' ')[0] || '')
+      const result = await sendEmail({
+        to,
+        subject: `Certificado médico · ${entry.letterhead}`,
+        type: 'custom',
+        text: `Te enviamos adjunto el certificado médico emitido el ${formatCertificateDate(entry.certificateDate)} por ${entry.professional.fullName} (Matrícula ${entry.professional.licenseNumber}).`,
+        templateData: {
+          message: `<p>Hola ${firstName},</p><p>Te enviamos adjunto el certificado médico emitido el <strong>${escapeHtml(formatCertificateDate(entry.certificateDate))}</strong> por <strong>${escapeHtml(entry.professional.fullName)}</strong> (Matrícula ${escapeHtml(entry.professional.licenseNumber)}).</p><p>El documento incluye un código QR de validación con su firma electrónica.</p><p>Saludos cordiales,<br/>${escapeHtml(entry.letterhead)}</p>`,
+        },
+        attachments: [{ filename: certificateFileName(entry), content, contentType: 'application/pdf', encoding: 'base64' }],
+      })
+      if (!result.success) {
+        setAppError(result.message || 'No se pudo enviar el certificado por email.')
+        return
+      }
+      setAppNotice(`Certificado enviado a ${to}.`)
+      showSavedFloatingNotice('Certificado enviado')
+    } catch (error) {
+      setAppError(`No se pudo enviar el certificado: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setCertificateSending(false)
+    }
+  }
+
+  async function handleSaveSignature(dataUrl: string): Promise<void> {
+    if (!profile) return
+    const nextProfile: ProfessionalProfile = {
+      ...profile,
+      signatureImage: {
+        id: crypto.randomUUID(),
+        name: 'firma.png',
+        type: 'image/png',
+        size: Math.round((dataUrl.length * 3) / 4),
+        dataUrl,
+        uploadedAt: new Date().toISOString(),
+      },
+    }
+    setProfile(nextProfile)
+    persistProfile(nextProfile)
+    showSavedFloatingNotice('Firma guardada')
   }
 
   function handleOpenPrescriptionModal(): void {
@@ -12515,6 +12770,7 @@ function App() {
                         <button type="button" onClick={() => handleSelectPatient(patient.id)}>Abrir ficha</button>
                         <button type="button" className="ghost" onClick={() => handleNewAppointmentModal(patient)}>Agendar</button>
                         <button type="button" className="ghost" onClick={() => handleEvolvePatient(patient.id)}>Evolucionar</button>
+                        <button type="button" className="ghost certificate-action" onClick={() => handleOpenCertificateModal(patient)}>📄 Certificado</button>
                         {patient.ownerUserId === activeUserId ? (
                           <button type="button" className="patient-delete-action" onClick={() => void handleDeletePatient(patient.id)}>Eliminar</button>
                         ) : null}
@@ -12750,6 +13006,24 @@ function App() {
                     </button>
                   ) : null}
                 </div>
+                {selectedPatient?.certificates?.length ? (
+                  <section className="patient-form-block certificate-history-block">
+                    <h4 className="block-title">📄 Certificados emitidos</h4>
+                    <ul className="certificate-history-list">
+                      {selectedPatient.certificates.map((entry) => (
+                        <li key={entry.id}>
+                          <div>
+                            <strong>{formatCertificateDate(entry.certificateDate)}</strong>
+                            <span>{entry.diagnostico}</span>
+                          </div>
+                          <button type="button" className="ghost compact" onClick={() => void handleViewIssuedCertificate(selectedPatient, entry)}>
+                            Ver copia
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
                 {isAdminSession && selectedPatient?.prescriptions?.length ? (
                   <section className="patient-form-block">
                     <h4 className="block-title">🧾 Recetas emitidas</h4>
@@ -13055,6 +13329,14 @@ function App() {
                       >
                         Imprimir esta atención
                       </button>
+                      {entry.certificateId && selectedPatient ? (() => {
+                        const certificate = selectedPatient.certificates?.find((item) => item.id === entry.certificateId)
+                        return certificate ? (
+                          <button type="button" className="ghost consultation-print-button" onClick={() => void handleViewIssuedCertificate(selectedPatient, certificate)}>
+                            📄 Ver certificado
+                          </button>
+                        ) : null
+                      })() : null}
                       {entry.professionalSignature.signatureImageDataUrl ? (
                         <img
                           src={entry.professionalSignature.signatureImageDataUrl}
@@ -13072,7 +13354,7 @@ function App() {
       ) : null}
 
       {workspaceLayer === 'profile' ? (
-        <div className="screen-stage">
+        <div className="screen-stage profile-stage">
           <section className="panel layer-header">
             <h2>Perfil profesional</h2>
             <button type="button" className="ghost" onClick={handleBackToOverview}>
@@ -13132,6 +13414,29 @@ function App() {
                   Email
                   <input name="email" value={profile.email} onChange={handleProfileFieldChange} />
                 </label>
+                <section className="profile-signature-card" aria-labelledby="profile-signature-title">
+                  <div className="profile-signature-head">
+                    <span className="section-kicker">Certificados</span>
+                    <h3 id="profile-signature-title">Membrete y firma</h3>
+                    <p>Se usan en los certificados que emitís desde Mis pacientes.</p>
+                  </div>
+                  <label>
+                    Membrete del certificado
+                    <input
+                      name="certificateLetterhead"
+                      value={profile.certificateLetterhead ?? ''}
+                      onChange={handleProfileFieldChange}
+                      maxLength={80}
+                      placeholder="Ej: Consultorio Médico, Policonsultorio San Martín"
+                    />
+                    <span className="field-hint">Encabeza cada certificado. Guardalo con “Guardar perfil”.</span>
+                  </label>
+                  <div className="profile-signature-field">
+                    <span>Firma a mano alzada</span>
+                    <SignaturePad value={profile.signatureImage?.dataUrl} onSave={handleSaveSignature} />
+                    <span className="field-hint">Firmá con el mouse, el dedo o un lápiz. Una vez guardada queda bloqueada hasta que toques “Editar firma”.</span>
+                  </div>
+                </section>
                 <section className="mercadopago-connect-card" aria-labelledby="mercadopago-connect-title">
                   <div className="mercadopago-connect-copy">
                     <span className="section-kicker">Cobros para tu consultorio</span>
@@ -14997,6 +15302,155 @@ function App() {
               </div>
             ) : null}
             </></div>) : null}
+          </div>
+        </div>
+      ) : null}
+      {certificatePatient && profile ? (
+        <div className="drhappy-modal-overlay" onClick={closeCertificateModal}>
+          <div className="drhappy-modal-card certificate-modal-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="certificate-title">
+            <div className="drhappy-modal-header">
+              <h3 id="certificate-title" style={{ margin: 0, fontSize: '1.2rem' }}>
+                📄 {certificateIssued ? (certificateIssued.reopened ? 'Certificado médico' : 'Certificado listo') : 'Emitir certificado médico'}
+              </h3>
+              <button type="button" className="drhappy-modal-close-btn" onClick={closeCertificateModal} aria-label="Cerrar">✕</button>
+            </div>
+            <div className="drhappy-modal-body">
+              {!certificateIssued ? (
+                <div className="certificate-sheet">
+                  <div className="certificate-sheet-letterhead">
+                    <div>
+                      <strong>{profile.certificateLetterhead?.trim() || 'Consultorio médico'}</strong>
+                      <span>{[profile.fullName, profile.specialty, profile.licenseNumber ? `Matrícula ${profile.licenseNumber}` : ''].filter(Boolean).join(' · ')}</span>
+                    </div>
+                    <button type="button" className="ghost compact" onClick={() => { closeCertificateModal(); handleOpenProfile() }}>Editar membrete</button>
+                  </div>
+                  <p className="certificate-sheet-title">CERTIFICADO MÉDICO</p>
+                  <dl className="certificate-patient-card">
+                    <div><dt>Paciente</dt><dd>{`${certificatePatient.nombre} ${certificatePatient.apellido}`.trim()}</dd></div>
+                    <div><dt>DNI</dt><dd>{certificatePatient.dni || 'No informado'}</dd></div>
+                    <div><dt>Fecha de nacimiento</dt><dd>{certificatePatient.birthDate ? formatCertificateDate(certificatePatient.birthDate) : 'No informada'}</dd></div>
+                    <div>
+                      <dt>Obra social</dt>
+                      <dd>
+                        {certificatePatient.obraSocial
+                          ? [certificatePatient.obraSocial, certificatePatient.plan, certificatePatient.numeroAfiliado ? `N° ${certificatePatient.numeroAfiliado}` : ''].filter(Boolean).join(' · ')
+                          : 'Particular'}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="certificate-field">
+                    <label htmlFor="certificate-diagnosis">Diagnóstico <small>CIE-10 o texto libre</small></label>
+                    <div className="certificate-diagnosis">
+                      <input
+                        id="certificate-diagnosis"
+                        value={certificateDraft.diagnostico}
+                        autoComplete="off"
+                        placeholder="Escribí para buscar en CIE-10 o dejá tu propio texto"
+                        onChange={(event) => { handleCertificateDiagnosisChange(event.target.value); setCertificateDiagnosisOpen(true) }}
+                        onFocus={() => setCertificateDiagnosisOpen(true)}
+                        onBlur={() => window.setTimeout(() => setCertificateDiagnosisOpen(false), 150)}
+                      />
+                      {certificateDiagnosisOpen && certificateDiagnosisSuggestions.length > 0 ? (
+                        <ul className="certificate-diagnosis-list">
+                          {certificateDiagnosisSuggestions.map((diagnosis) => (
+                            <li key={diagnosis}>
+                              <button
+                                type="button"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => { handleCertificateDiagnosisChange(diagnosis); setCertificateDiagnosisOpen(false) }}
+                              >
+                                {diagnosis}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="certificate-field">
+                    <div className="certificate-rp-head">
+                      <label htmlFor="certificate-body" className="certificate-rp">R/p</label>
+                      <div className="certificate-rest-chips" aria-label="Días de reposo">
+                        <span>Reposo:</span>
+                        {['24 horas', '48 horas', '72 horas', '5 días', '7 días'].map((label) => (
+                          <button key={label} type="button" onClick={() => applyCertificateRest(label)}>{label}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <textarea
+                      id="certificate-body"
+                      rows={6}
+                      maxLength={1200}
+                      value={certificateDraft.body}
+                      onChange={(event) => setCertificateDraft((current) => ({ ...current, body: event.target.value }))}
+                    />
+                  </div>
+                  <div className="certificate-sheet-footer">
+                    <label className="certificate-date">
+                      Fecha
+                      <input type="date" value={certificateDraft.date} onChange={(event) => setCertificateDraft((current) => ({ ...current, date: event.target.value }))} />
+                    </label>
+                    <div className="certificate-signature">
+                      {profile.signatureImage?.dataUrl ? (
+                        <img src={profile.signatureImage.dataUrl} alt="Tu firma" />
+                      ) : (
+                        <div className="certificate-signature-missing">
+                          <span>Todavía no dibujaste tu firma</span>
+                          <button type="button" className="compact" onClick={() => { closeCertificateModal(); handleOpenProfile() }}>✍️ Dibujar mi firma</button>
+                        </div>
+                      )}
+                      <span className="certificate-signature-line" aria-hidden="true" />
+                      <strong>{profile.fullName || 'Tu nombre'}</strong>
+                      <small>Matrícula N° {profile.licenseNumber || '—'}</small>
+                    </div>
+                  </div>
+                  <p className="certificate-seal-note">🔏 Se firma electrónicamente (SHA-256) e incluye un código QR de validación. Quedará guardado en la historia clínica.</p>
+                </div>
+              ) : (
+                <div className="certificate-success">
+                  <div className="certificate-success-icon" aria-hidden="true">✓</div>
+                  <h4>{certificateIssued.reopened ? `Certificado del ${formatCertificateDate(certificateIssued.entry.certificateDate)}` : 'Certificado emitido y guardado'}</h4>
+                  <p className="certificate-success-patient">{certificateIssued.entry.patient.fullName} · {certificateIssued.entry.diagnostico}</p>
+                  <p className="certificate-success-hint">
+                    {certificateIssued.reopened ? 'Copia fiel del certificado guardado en la historia clínica.' : 'Quedó adjunto a la historia clínica del paciente como "Certificado emitido".'}
+                  </p>
+                  <button type="button" className="ghost certificate-preview-button" onClick={() => handleOpenCertificatePdf(certificateIssued.pdf)}>👁 Ver PDF</button>
+                  <div className="certificate-share-grid">
+                    <div className="certificate-share-card">
+                      <strong>✉️ Enviar por mail</strong>
+                      <input
+                        type="email"
+                        value={certificateEmail}
+                        placeholder="email@paciente.com"
+                        onChange={(event) => setCertificateEmail(event.target.value)}
+                      />
+                      <button type="button" disabled={certificateSending} onClick={() => void handleEmailCertificate(certificateIssued.entry, certificateIssued.pdf)}>
+                        {certificateSending ? 'Enviando...' : 'Enviar por mail'}
+                      </button>
+                    </div>
+                    <div className="certificate-share-card">
+                      <strong>📲 Compartir por otro método</strong>
+                      <small>WhatsApp, Telegram, Drive u otra aplicación.</small>
+                      <button type="button" className="certificate-share-button" onClick={() => void handleShareCertificate(certificateIssued.entry, certificateIssued.pdf)}>
+                        Compartir
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="drhappy-modal-footer certificate-modal-footer">
+              {!certificateIssued ? (
+                <>
+                  <button type="button" className="ghost" onClick={closeCertificateModal} disabled={certificateSaving}>Cancelar</button>
+                  <button type="button" onClick={() => void handleIssueCertificate()} disabled={certificateSaving || !profile.signatureImage?.dataUrl}>
+                    {certificateSaving ? 'Emitiendo...' : '✓ Emitir certificado'}
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="ghost" onClick={closeCertificateModal} disabled={certificateSending}>Cerrar</button>
+              )}
+            </div>
           </div>
         </div>
       ) : null}
