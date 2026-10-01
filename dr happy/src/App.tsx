@@ -12841,9 +12841,9 @@ function App() {
                   </div>
                 </section>
               )}
-              <form className="grid" onSubmit={handleSaveConsultation}>
-                <label>
-                  Motivo de consulta (última atención)
+              <form className="evolution-form" onSubmit={handleSaveConsultation}>
+                <label className="evolution-field evolution-field--wide">
+                  Motivo de consulta
                   <input
                     name="motivoConsulta"
                     value={consultationDraft.motivoConsulta}
@@ -12881,54 +12881,107 @@ function App() {
                     </div>
                   ) : null}
                 </label>
-                <label>
-                  Enfermedad actual (EA)
+                <label className="evolution-field evolution-field--wide">
+                  Enfermedad actual
                   <textarea name="enfermedadActual" value={consultationDraft.enfermedadActual} onChange={handleConsultationDraftChange} placeholder="Relato cronológico de la novedad de hoy..." />
                 </label>
-                <label>
-                  Examen físico
-                  <textarea name="examenFisico" value={consultationDraft.examenFisico} onChange={handleConsultationDraftChange} placeholder="Signos vitales y hallazgos de hoy; dejá constancia si no se realizó." />
+                <label className="evolution-field">
+                  Signos y síntomas
+                  <textarea name="examenFisico" value={consultationDraft.examenFisico} onChange={handleConsultationDraftChange} placeholder="Signos vitales, síntomas referidos y hallazgos del examen." />
                 </label>
-                <label>
-                  Impresión diagnóstica
-                  <textarea name="impresionDiagnostica" value={consultationDraft.impresionDiagnostica} onChange={handleConsultationDraftChange} placeholder="Impresión o diferenciales para revisar, sin automatismos." />
+                <label className="evolution-field">
+                  Diagnóstico
+                  <textarea name="impresionDiagnostica" value={consultationDraft.impresionDiagnostica} onChange={handleConsultationDraftChange} placeholder="Diagnóstico o diferenciales a revisar." />
                 </label>
-                <label>
-                  Plan de manejo
-                  <textarea name="planManejo" value={consultationDraft.planManejo} onChange={handleConsultationDraftChange} placeholder="Estudios, conducta, pautas de alarma y control." />
+                <label className="evolution-field evolution-field--wide">
+                  Tratamiento
+                  <textarea name="planManejo" value={consultationDraft.planManejo} onChange={handleConsultationDraftChange} placeholder="Indicaciones, estudios solicitados, pautas de alarma y control." />
                 </label>
-                <label>
-                  Resumen de atención
-                  <div className="dictation-actions">
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => {
-                        void startDictationForConsultationField('detalleAtencion')
-                      }}
-                      disabled={!dictationAvailable || dictating}
-                    >
-                      🎙 Iniciar micrófono
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={stopDictation}
-                      disabled={!dictationAvailable || !dictating}
-                    >
-                      Detener
-                    </button>
-                  </div>
+                <label className="evolution-field evolution-field--wide">
+                  <span className="evolution-field-head">
+                    Pensamiento médico
+                    <span className="dictation-actions">
+                      <button
+                        type="button"
+                        className="ghost compact"
+                        onClick={() => {
+                          void startDictationForConsultationField('pensamientoMedico')
+                        }}
+                        disabled={!dictationAvailable || dictating}
+                      >
+                        🎙 Dictar
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost compact"
+                        onClick={stopDictation}
+                        disabled={!dictationAvailable || !dictating}
+                      >
+                        Detener
+                      </button>
+                    </span>
+                  </span>
                   <textarea
-                    name="detalleAtencion"
-                    value={consultationDraft.detalleAtencion}
+                    name="pensamientoMedico"
+                    value={consultationDraft.pensamientoMedico}
                     onChange={handleConsultationDraftChange}
+                    placeholder="Reflexión profesional sobre el caso."
                   />
-                  {dictationAvailable ? (
-                    <small>Tip: permite el micrófono cuando el navegador lo solicite.</small>
+                  {dictating && dictationField === 'pensamientoMedico' ? (
+                    <small>Dictando en este recuadro...</small>
                   ) : null}
-                  <div className="clinical-document-upload">
-                    <label htmlFor="sofia-clinical-document" className="file-picker-button compact">📄 Mostrar archivo a Sofía</label>
+                </label>
+
+                <section className="evolution-sofia-panel">
+                  <header>
+                    <span className="sofia-face" aria-hidden="true" style={{ width: 34, height: 34 }} />
+                    <div>
+                      <strong>Asistencia de Sofía</strong>
+                      <small>Dictá o pegá el interrogatorio y Sofía arma un borrador de la evolución. Nada se guarda solo.</small>
+                    </div>
+                  </header>
+                  <label className="evolution-field">
+                    <span className="evolution-field-head">
+                      Interrogatorio
+                      <span className="dictation-actions">
+                        <button
+                          type="button"
+                          className="ghost compact"
+                          onClick={() => {
+                            void startDictationForConsultationField('detalleAtencion')
+                          }}
+                          disabled={!dictationAvailable || dictating}
+                        >
+                          🎙 Dictar
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost compact"
+                          onClick={stopDictation}
+                          disabled={!dictationAvailable || !dictating}
+                        >
+                          Detener
+                        </button>
+                      </span>
+                    </span>
+                    <textarea
+                      name="detalleAtencion"
+                      value={consultationDraft.detalleAtencion}
+                      onChange={handleConsultationDraftChange}
+                      placeholder="Relato del paciente, dictado de la consulta o notas libres."
+                    />
+                    {dictating && dictationField === 'detalleAtencion' ? (
+                      <small>Dictando en este recuadro...</small>
+                    ) : null}
+                    {!dictationAvailable ? (
+                      <small>Tu navegador no soporta transcripción por voz nativa.</small>
+                    ) : null}
+                  </label>
+                  <div className="evolution-sofia-actions">
+                    <label htmlFor="sofia-clinical-document" className="evolution-sofia-button">
+                      <span className="sofia-face" aria-hidden="true" style={{ width: 24, height: 24 }} />
+                      Mostrar archivo a Sofía
+                    </label>
                     <input
                       id="sofia-clinical-document"
                       className="file-input-hidden"
@@ -12936,51 +12989,20 @@ function App() {
                       accept=".pdf,.docx,.txt,.csv,.md,.json,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/json"
                       onChange={(event) => { void handleSofiaClinicalDocumentUpload(event) }}
                     />
-                    <small>Lee PDF, DOCX e imágenes, lo agrega al borrador y permite resumirlo en la evolución.</small>
-                  </div>
-                  {dictating && dictationField === 'detalleAtencion' ? (
-                    <small>Dictando en este recuadro...</small>
-                  ) : null}
-                  {!dictationAvailable ? (
-                    <small>Tu navegador no soporta transcripción por voz nativa.</small>
-                  ) : null}
-                  <button type="button" className="ghost clinical-ai-summary-button" onClick={() => { void summarizeClinicalInterview() }} disabled={clinicalSummaryBusy || !consultationDraft.detalleAtencion.trim()}>
-                    {clinicalSummaryBusy ? 'Sofía está preparando el borrador...' : '✦ Resumir interrogatorio con Sofía'}
-                  </button>
-                  <small>El borrador no se guarda solo. Revisalo y corregilo antes de guardar la evolución.</small>
-                </label>
-                <label>
-                  Pensamiento médico (reflexión profesional)
-                  <div className="dictation-actions">
                     <button
                       type="button"
-                      className="ghost"
-                      onClick={() => {
-                        void startDictationForConsultationField('pensamientoMedico')
-                      }}
-                      disabled={!dictationAvailable || dictating}
+                      className="evolution-sofia-button primary"
+                      onClick={() => { void summarizeClinicalInterview() }}
+                      disabled={clinicalSummaryBusy || !consultationDraft.detalleAtencion.trim()}
                     >
-                      🎙 Iniciar micrófono
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={stopDictation}
-                      disabled={!dictationAvailable || !dictating}
-                    >
-                      Detener
+                      <span className="sofia-face" aria-hidden="true" style={{ width: 24, height: 24 }} />
+                      {clinicalSummaryBusy ? 'Sofía está valorando...' : 'Valorar interrogatorio con Sofía'}
                     </button>
                   </div>
-                  <textarea
-                    name="pensamientoMedico"
-                    value={consultationDraft.pensamientoMedico}
-                    onChange={handleConsultationDraftChange}
-                  />
-                  {dictating && dictationField === 'pensamientoMedico' ? (
-                    <small>Dictando en este recuadro...</small>
-                  ) : null}
-                </label>
-                <button type="submit">Guardar actualización</button>
+                  <small>Laboratorios, estudios o imágenes (PDF, DOCX o foto). Revisá el borrador antes de guardar la evolución.</small>
+                </section>
+
+                <button type="submit" className="evolution-save-button">Guardar evolución</button>
               </form>
               <ul className="consultation-list">
                 {selectedPatient?.consultations.map((entry) => (
@@ -12991,9 +13013,9 @@ function App() {
                     </header>
                     {entry.diagnostico ? <p><strong>Diagnóstico:</strong> {entry.diagnostico}</p> : null}
                     {entry.enfermedadActual ? <p><strong>Enfermedad actual:</strong> {entry.enfermedadActual}</p> : <p>{entry.detalleAtencion}</p>}
-                    {entry.examenFisico ? <p><strong>Examen físico:</strong> {entry.examenFisico}</p> : null}
-                    {entry.impresionDiagnostica ? <p><strong>Impresión diagnóstica:</strong> {entry.impresionDiagnostica}</p> : null}
-                    {entry.planManejo ? <p><strong>Plan de manejo:</strong> {entry.planManejo}</p> : null}
+                    {entry.examenFisico ? <p><strong>Signos y síntomas:</strong> {entry.examenFisico}</p> : null}
+                    {entry.impresionDiagnostica ? <p><strong>Diagnóstico:</strong> {entry.impresionDiagnostica}</p> : null}
+                    {entry.planManejo ? <p><strong>Tratamiento:</strong> {entry.planManejo}</p> : null}
                     <p>
                       <strong>Pensamiento médico:</strong> {entry.pensamientoMedico}
                     </p>

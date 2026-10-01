@@ -4382,6 +4382,34 @@ body.theme-night .turnera-calendar-day-sources .src-manual { color: #cbd5e1; }
 .public-turnera-section[open] > summary::after { transform: rotate(180deg); }
 .public-turnera-section > summary small { margin-left: auto; color: #64748b; font-size: 0.74rem; font-weight: 700; }
 .public-turnera-body { display: grid; gap: 10px; padding: 0 14px 14px; }
+.evolution-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; max-width: 1100px; }
+.evolution-field { display: grid; gap: 6px; align-content: start; font-weight: 700; }
+.evolution-field--wide, .evolution-sofia-panel, .evolution-save-button { grid-column: 1 / -1; }
+.evolution-field textarea { min-height: 96px; resize: vertical; }
+.evolution-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.evolution-field-head .dictation-actions { display: flex; gap: 6px; margin: 0; }
+.evolution-field-head .dictation-actions button { min-height: 30px; padding: 4px 10px; font-size: 0.76rem; box-shadow: none; }
+.evolution-sofia-panel { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid #bfdbfe; border-radius: 16px; background: linear-gradient(135deg, #f0f7ff, #f5fbff); }
+.evolution-sofia-panel > header { display: flex; align-items: center; gap: 10px; }
+.evolution-sofia-panel > header div { display: grid; gap: 2px; }
+.evolution-sofia-panel > header strong { color: #1e3a8a; }
+.evolution-sofia-panel > header small { color: #334155; font-weight: 600; }
+.evolution-sofia-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.evolution-sofia-button { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 8px 16px; border: 1px solid #93c5fd; border-radius: 12px; background: #ffffff; color: #1d4ed8; font-weight: 800; cursor: pointer; box-shadow: none; }
+.evolution-sofia-button.primary { border-color: #1d4ed8; background: #1d4ed8; color: #ffffff; }
+.evolution-sofia-button:disabled { opacity: 0.55; cursor: not-allowed; }
+.evolution-sofia-button .sofia-face { flex: 0 0 auto; border: 2px solid #ffffff; }
+.evolution-save-button { justify-self: start; min-width: 220px; }
+body.theme-night .evolution-sofia-panel { border-color: #1e3a8a; background: linear-gradient(135deg, #10203a, #0f1c30); }
+body.theme-night .evolution-sofia-panel > header strong { color: #bfdbfe; }
+body.theme-night .evolution-sofia-panel > header small { color: #cbd5e1; }
+body.theme-night .evolution-sofia-button { background: #132c4d; border-color: #3b82f6; color: #dbeafe; }
+body.theme-night .evolution-sofia-button.primary { background: #2563eb; color: #ffffff; }
+@media (max-width: 720px) {
+  .evolution-form { grid-template-columns: minmax(0, 1fr); }
+  .evolution-sofia-button { flex: 1 1 100%; justify-content: center; }
+  .evolution-save-button { justify-self: stretch; }
+}
 .capacity-scope-note { display: inline-block; margin: 6px 0 4px; padding: 6px 12px; border-radius: 10px; background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; font-size: 1rem; font-weight: 800; }
 .turnera-description { margin: 0; color: #1e293b; font-size: 0.9rem; font-weight: 700; line-height: 1.45; }
 body.theme-night .capacity-scope-note { background: #3a2412; border-color: #c2410c; color: #fdba74; }
