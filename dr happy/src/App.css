@@ -4466,7 +4466,8 @@ body.theme-night .turnera-calendar-day-sources .src-manual { color: #cbd5e1; }
 .layer-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .invite-header-button { border-color: #99d5c9; color: #0f766e; }
 .invite-new-badge { justify-self: start; padding: 2px 8px; border-radius: 999px; background: #ccfbf1; color: #0f766e; font-size: 0.7rem; font-weight: 800; }
-.invite-modal-card { width: min(640px, 100%); max-width: 640px; }
+.invite-modal-card { width: min(640px, 100%); max-width: 640px; min-width: 0; }
+.invite-modal-card .drhappy-modal-body { min-width: 0; overflow-x: hidden; }
 .invite-hero { position: relative; display: grid; gap: 8px; padding: 18px 20px; overflow: hidden; border-radius: 18px; background: linear-gradient(135deg, #0f766e 0%, #1d4ed8 100%); color: #ffffff; }
 .invite-hero h4 { margin: 0; font-family: var(--font-display); font-size: 1.15rem; }
 .invite-hero p { margin: 0; color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; line-height: 1.5; }
@@ -4477,10 +4478,10 @@ body.theme-night .turnera-calendar-day-sources .src-manual { color: #cbd5e1; }
 .invite-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 26px; color: #475569; font-weight: 700; }
 .invite-spinner { width: 22px; height: 22px; border: 3px solid #d9e5f0; border-top-color: #0f766e; border-radius: 50%; animation: invite-spin 0.8s linear infinite; }
 @keyframes invite-spin { to { transform: rotate(360deg); } }
-.invite-content { display: grid; gap: 14px; margin-top: 14px; }
-.invite-link-box { display: grid; gap: 6px; }
+.invite-content { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+.invite-link-box { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .invite-link-label { color: #0f766e; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
-.invite-link-row { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; border: 1.5px solid #cfe0f2; border-radius: 14px; background: #f8fbff; }
+.invite-link-row { display: flex; align-items: center; min-width: 0; gap: 8px; padding: 6px 6px 6px 14px; border: 1.5px solid #cfe0f2; border-radius: 14px; background: #f8fbff; }
 .invite-link-row code { flex: 1; min-width: 0; overflow: hidden; color: #0f2944; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.86rem; text-overflow: ellipsis; white-space: nowrap; }
 .invite-link-row button { min-height: 38px; padding: 6px 16px; box-shadow: none; }
 .invite-link-row button.invite-copied { background: #16a34a; border-color: #16a34a; }
@@ -4490,7 +4491,7 @@ body.theme-night .turnera-calendar-day-sources .src-manual { color: #cbd5e1; }
 .invite-share-button.email { background: #1d4ed8; color: #ffffff; }
 .invite-share-button.other { background: #ffffff; border-color: #cbd5e1; color: #0f172a; }
 .invite-share-button:hover { filter: brightness(1.06); transform: translateY(-1px); }
-.invite-qr-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 16px; padding: 14px; border: 1px solid #d6e4f0; border-radius: 18px; background: #ffffff; }
+.invite-qr-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; min-width: 0; gap: 16px; padding: 14px; border: 1px solid #d6e4f0; border-radius: 18px; background: #ffffff; }
 .invite-qr-card img { width: 150px; height: 150px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 14px; background: #ffffff; }
 .invite-qr-card div { display: grid; gap: 6px; }
 .invite-qr-card strong { color: #0f2944; font-size: 1rem; }
