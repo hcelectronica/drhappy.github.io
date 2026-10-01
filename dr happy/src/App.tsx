@@ -15,7 +15,8 @@ import { getHolidayName } from './argentineHolidays'
 import { SupportContactForm } from './SupportContactForm'
 import { AdminSupportInbox } from './AdminSupportInbox'
 import { SignaturePad } from './SignaturePad'
-import { blobToBase64, buildCertificatePdf, certificateFileName, certificateSignedContent, formatCertificateDate } from './medicalCertificate'
+import { blobToBase64, buildCertificatePdf, buildQrDataUrl, certificateFileName, certificateSignedContent, formatCertificateDate } from './medicalCertificate'
+import { acknowledgePatientInviteSubmissions, buildPatientInviteUrl, getPatientInviteLink, pullPatientInviteSubmissions } from './patientInviteService'
 import type { CertificateEntry } from './medicalCertificate'
 import {
   getNotificationPermission,
@@ -367,6 +368,9 @@ interface PatientRecord {
   consultations: ConsultationEntry[]
   prescriptions?: PrescriptionEntry[]
   certificates?: CertificateEntry[]
+  telefono?: string
+  // Fecha en que el paciente se registró solo con el link de invitación.
+  registeredViaInviteAt?: string
   createdAt: string
   updatedAt: string
 }
@@ -376,6 +380,7 @@ interface PatientDraft {
   apellido: string
   dni: string
   email: string
+  telefono: string
   obraSocial: string
   numeroAfiliado: string
   plan: string
@@ -622,6 +627,7 @@ const emptyPatientDraft: PatientDraft = {
   ultimaInternacion: '',
   cirugiasPrevias: '',
   direccion: '',
+  telefono: '',
   documents: [],
 }
 
@@ -1325,6 +1331,8 @@ function normalizeRemotePatient(raw: unknown, ownerUserId: string): PatientRecor
       : [],
     prescriptions: Array.isArray(candidate.prescriptions) ? (candidate.prescriptions as PrescriptionEntry[]) : [],
     certificates: Array.isArray(candidate.certificates) ? (candidate.certificates as CertificateEntry[]) : [],
+    telefono: typeof candidate.telefono === 'string' ? candidate.telefono : '',
+    registeredViaInviteAt: typeof candidate.registeredViaInviteAt === 'string' ? candidate.registeredViaInviteAt : undefined,
     createdAt:
       typeof candidate.createdAt === 'string' ? candidate.createdAt : new Date().toISOString(),
     updatedAt:
@@ -1453,6 +1461,7 @@ function patientToDraft(patient: PatientRecord): PatientDraft {
     apellido: patient.apellido,
     dni: patient.dni,
     email: patient.email,
+    telefono: patient.telefono ?? '',
     obraSocial: patient.obraSocial,
     numeroAfiliado: patient.numeroAfiliado,
     plan: patient.plan,
@@ -2604,6 +2613,12 @@ function App() {
   const [certificateEmail, setCertificateEmail] = useState('')
   const [certificateSending, setCertificateSending] = useState(false)
   const [certificateError, setCertificateError] = useState<string | null>(null)
+  const [inviteModalOpen, setInviteModalOpen] = useState(false)
+  const [inviteToken, setInviteToken] = useState<string | null>(null)
+  const [inviteBusy, setInviteBusy] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteCopied, setInviteCopied] = useState(false)
+  const inviteSyncBusyRef = useRef(false)
   const [prescriptionDiagnostico, setPrescriptionDiagnostico] = useState('')
   const [prescriptionItems, setPrescriptionItems] = useState<PrescriptionItem[]>([])
   const [prescriptionMedQuery, setPrescriptionMedQuery] = useState('')
@@ -7585,6 +7600,13 @@ function App() {
       : current)
   }
 
+  /* Pacientes registrados con el link de invitación: se incorporan al entrar y al navegar. */
+  useEffect(() => {
+    if (!activeUserId || !profile) return
+    void syncInvitedPatients()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeUserId, Boolean(profile), workspaceLayer])
+
   /* El checklist de Inicio necesita saber si la turnera pública ya está publicada. */
   useEffect(() => {
     if (!activeUserId) return
@@ -8828,6 +8850,140 @@ function App() {
     showSavedFloatingNotice('Firma guardada')
   }
 
+  // ── Invitar paciente ────────────────────────────────────────────────────────
+
+  async function loadInviteLink(regenerate = false): Promise<void> {
+    setInviteBusy(true)
+    setInviteError(null)
+    try {
+      const result = await getPatientInviteLink(regenerate)
+      if (!result.success || !result.token) {
+        setInviteError(result.message || 'No se pudo generar el link de invitación.')
+        return
+      }
+      setInviteToken(result.token)
+      setInviteCopied(false)
+    } finally {
+      setInviteBusy(false)
+    }
+  }
+
+  function handleOpenInvitePatient(): void {
+    stopDictation()
+    setSidebarOpen(false)
+    setInviteModalOpen(true)
+    setInviteCopied(false)
+    if (!inviteToken) void loadInviteLink()
+  }
+
+  async function handleRegenerateInviteLink(): Promise<void> {
+    if (!window.confirm('¿Generar un link nuevo? El link anterior dejará de funcionar.')) return
+    await loadInviteLink(true)
+  }
+
+  function inviteShareMessage(url: string): string {
+    const name = profile?.fullName?.trim()
+    return `Hola! ${name ? `Soy ${name}. ` : ''}Te comparto este link para que completes tus datos y quedes registrado/a como paciente: ${url}`
+  }
+
+  async function handleCopyInviteLink(url: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(url)
+      setInviteCopied(true)
+      window.setTimeout(() => setInviteCopied(false), 2500)
+    } catch {
+      setInviteError('No se pudo copiar automáticamente. Seleccioná el link y copialo.')
+    }
+  }
+
+  async function handleShareInviteLink(url: string): Promise<void> {
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: 'Registro de paciente', text: inviteShareMessage(url), url })
+        return
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+      }
+    }
+    await handleCopyInviteLink(url)
+  }
+
+  // Incorpora a la base los pacientes que se registraron con el link, sin pisar fichas existentes.
+  async function syncInvitedPatients(): Promise<void> {
+    if (!activeUserId || !profile || !isSupabaseConfigured || inviteSyncBusyRef.current) return
+    inviteSyncBusyRef.current = true
+    try {
+      const result = await pullPatientInviteSubmissions()
+      const submissions = result.success ? result.submissions ?? [] : []
+      if (!submissions.length) return
+      const now = new Date().toISOString()
+      const working = [...patients]
+      const changed = new Map<string, PatientRecord>()
+      let created = 0
+      for (const submission of submissions) {
+        const dni = submission.dni.replace(/\D/g, '')
+        const index = dni ? working.findIndex((patient) => patient.dni.replace(/\D/g, '') === dni) : -1
+        if (index >= 0) {
+          const current = working[index]
+          const birthDate = current.birthDate || submission.birth_date || ''
+          const updated: PatientRecord = {
+            ...current,
+            email: current.email || submission.email || '',
+            telefono: current.telefono || submission.phone || '',
+            obraSocial: current.obraSocial || submission.obra_social || '',
+            numeroAfiliado: current.numeroAfiliado || submission.numero_afiliado || '',
+            birthDate,
+            edad: calculateAge(birthDate),
+            updatedAt: now,
+          }
+          working[index] = updated
+          changed.set(updated.id, updated)
+        } else {
+          const birthDate = submission.birth_date || ''
+          const record: PatientRecord = {
+            id: crypto.randomUUID(),
+            ownerUserId: activeUserId,
+            nombre: submission.nombre,
+            apellido: submission.apellido,
+            dni,
+            email: submission.email || '',
+            telefono: submission.phone || '',
+            obraSocial: submission.obra_social || '',
+            numeroAfiliado: submission.numero_afiliado || '',
+            plan: '',
+            birthDate,
+            edad: calculateAge(birthDate),
+            diagnosticoPrincipal: '',
+            patologiasConocidas: '',
+            patologiasCronicas: '',
+            ultimaInternacion: '',
+            cirugiasPrevias: '',
+            direccion: '',
+            documents: [],
+            consultations: [],
+            registeredViaInviteAt: submission.created_at,
+            createdAt: now,
+            updatedAt: now,
+          }
+          working.push(record)
+          changed.set(record.id, record)
+          created += 1
+        }
+      }
+      persistPatientsBatch(Array.from(changed.values()))
+      const saved = await saveWorkspaceData({ profile, patients: sortPatientsByName(working), appointments })
+      if (!saved.success) return
+      await acknowledgePatientInviteSubmissions(submissions.map((submission) => submission.id))
+      const message = created > 0
+        ? `🎉 ${created} paciente${created === 1 ? '' : 's'} se registr${created === 1 ? 'ó' : 'aron'} con tu link de invitación.`
+        : 'Se actualizaron datos de pacientes que usaron tu link de invitación.'
+      setAppNotice(message)
+      showSavedFloatingNotice(created > 0 ? `${created} paciente${created === 1 ? '' : 's'} nuevo${created === 1 ? '' : 's'}` : 'Pacientes actualizados')
+    } finally {
+      inviteSyncBusyRef.current = false
+    }
+  }
+
   function handleOpenPrescriptionModal(): void {
     if (!selectedPatient) {
       setAppError('Selecciona un paciente para emitir una receta.')
@@ -9862,6 +10018,10 @@ function App() {
       key: 'patients', icon: '👥', label: 'Mis pacientes', hint: `${patients.length} fichas`, tone: '#0891b2',
       onClick: () => { stopDictation(); setCommunityOpen(false); setWorkspaceLayer('my-patients'); setAppError(null) },
     },
+    {
+      key: 'invite', icon: '📨', label: 'Invitar paciente', hint: 'Link de registro', tone: '#0f766e',
+      onClick: handleOpenInvitePatient,
+    },
     isModuleEnabled('tools') ? {
       key: 'tools', icon: '💊', label: normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') ? 'Vademécum' : 'Herramientas', hint: normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') ? 'Consulta farmacológica' : 'Protocolos y vademécum', tone: '#7c3aed',
       onClick: handleOpenTools,
@@ -10089,6 +10249,9 @@ function App() {
           </button>
           <button type="button" title="Mis pacientes" className={workspaceLayer === 'my-patients' ? 'active' : ''} onClick={() => { setWorkspaceLayer('my-patients'); setSidebarOpen(false) }}>
             <span>👥</span> Mis pacientes <small>{patients.length}</small>
+          </button>
+          <button type="button" title="Invitar paciente" className={inviteModalOpen ? 'active' : ''} onClick={handleOpenInvitePatient}>
+            <span>📨</span> Invitar paciente
           </button>
           {isModuleEnabled('appointments') ? (
             <button type="button" title="Turnera" className={workspaceLayer === 'appointments' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setSidebarOpen(false) }}>
@@ -12745,7 +12908,10 @@ function App() {
               <h2>Mis pacientes</h2>
               <p className="flow-hint">Acceso directo a tus fichas, independientemente de la agenda.</p>
             </div>
-            <button type="button" onClick={handleNewPatient}>+ Nuevo paciente</button>
+            <div className="layer-header-actions">
+              <button type="button" className="ghost invite-header-button" onClick={handleOpenInvitePatient}>📨 Invitar paciente</button>
+              <button type="button" onClick={handleNewPatient}>+ Nuevo paciente</button>
+            </div>
           </section>
           <section className="panel patient-directory-panel">
             <label className="directory-search">
@@ -12770,6 +12936,9 @@ function App() {
                       <div className="patient-directory-avatar">{(patient.apellido || patient.nombre || '?').slice(0, 1).toUpperCase()}</div>
                       <div className="patient-directory-info">
                         <strong>{patient.apellido}, {patient.nombre || 'Sin nombre'}</strong>
+                        {patient.registeredViaInviteAt && Date.now() - Date.parse(patient.registeredViaInviteAt) < 7 * 24 * 60 * 60 * 1000 ? (
+                          <span className="invite-new-badge">📨 Nuevo por invitación</span>
+                        ) : null}
                         <span>DNI {patient.dni || 'Sin dato'}</span>
                         <small className={lastConsultation ? 'patient-last-visit' : undefined}>
                           {lastConsultation ? `Última atención: ${formatShortDate(lastConsultation.date)}` : 'Sin consultas registradas'}
@@ -12935,6 +13104,10 @@ function App() {
                       <label>
                         Correo electrónico
                         <input type="email" name="email" value={patientDraft.email} onChange={handlePatientDraftChange} />
+                      </label>
+                      <label>
+                        Teléfono / WhatsApp
+                        <input type="tel" name="telefono" value={patientDraft.telefono} onChange={handlePatientDraftChange} />
                       </label>
                     </div>
                   </section>
@@ -15314,6 +15487,79 @@ function App() {
           </div>
         </div>
       ) : null}
+      {inviteModalOpen ? (() => {
+        const inviteUrl = inviteToken ? buildPatientInviteUrl(inviteToken) : ''
+        const inviteQr = inviteUrl ? buildQrDataUrl(inviteUrl, 360) : ''
+        return (
+          <div className="drhappy-modal-overlay" onClick={() => setInviteModalOpen(false)}>
+            <div className="drhappy-modal-card invite-modal-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="invite-title">
+              <div className="drhappy-modal-header">
+                <h3 id="invite-title" style={{ margin: 0, fontSize: '1.2rem' }}>📨 Invitar paciente</h3>
+                <button type="button" className="drhappy-modal-close-btn" onClick={() => setInviteModalOpen(false)} aria-label="Cerrar">✕</button>
+              </div>
+              <div className="drhappy-modal-body">
+                <section className="invite-hero">
+                  <h4>Sumá pacientes a tu base sin cargar datos a mano</h4>
+                  <p>Compartí tu link personal: el paciente completa sus datos y aparece solo en <strong>Mis pacientes</strong>, listo para darle turnos o emitirle certificados.</p>
+                  <ol className="invite-steps">
+                    <li><span>1</span>Compartís el link</li>
+                    <li><span>2</span>El paciente completa sus datos</li>
+                    <li><span>3</span>Queda en Mis pacientes</li>
+                  </ol>
+                </section>
+                {inviteBusy && !inviteUrl ? (
+                  <div className="invite-loading"><span className="invite-spinner" aria-hidden="true" />Generando tu link personal...</div>
+                ) : null}
+                {inviteError ? <p className="certificate-error" role="alert">{inviteError}</p> : null}
+                {inviteUrl ? (
+                  <div className="invite-content">
+                    <div className="invite-link-box">
+                      <span className="invite-link-label">Tu link de invitación</span>
+                      <div className="invite-link-row">
+                        <code>{inviteUrl}</code>
+                        <button type="button" className={inviteCopied ? 'invite-copied' : ''} onClick={() => void handleCopyInviteLink(inviteUrl)}>
+                          {inviteCopied ? '✓ Copiado' : 'Copiar'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="invite-share-actions">
+                      <a
+                        className="invite-share-button whatsapp"
+                        href={`https://wa.me/?text=${encodeURIComponent(inviteShareMessage(inviteUrl))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        💬 Enviar por WhatsApp
+                      </a>
+                      <a
+                        className="invite-share-button email"
+                        href={`mailto:?subject=${encodeURIComponent('Registro de paciente')}&body=${encodeURIComponent(inviteShareMessage(inviteUrl))}`}
+                      >
+                        ✉️ Enviar por mail
+                      </a>
+                      <button type="button" className="invite-share-button other" onClick={() => void handleShareInviteLink(inviteUrl)}>
+                        📲 Otra aplicación
+                      </button>
+                    </div>
+                    <div className="invite-qr-card">
+                      {inviteQr ? <img src={inviteQr} alt="Código QR del link de invitación" /> : null}
+                      <div>
+                        <strong>En el consultorio</strong>
+                        <p>Mostrá este código: el paciente lo escanea con la cámara del celular y se registra en un minuto.</p>
+                        <small>Los datos llegan solos a Mis pacientes. Si el DNI ya existe, solo se completan los datos que falten.</small>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="drhappy-modal-footer certificate-modal-footer">
+                <button type="button" className="ghost compact" disabled={inviteBusy} onClick={() => void handleRegenerateInviteLink()}>↻ Generar link nuevo</button>
+                <button type="button" className="ghost" onClick={() => setInviteModalOpen(false)}>Cerrar</button>
+              </div>
+            </div>
+          </div>
+        )
+      })() : null}
       {certificatePatient && profile ? (
         <div className="drhappy-modal-overlay" onClick={closeCertificateModal}>
           <div className="drhappy-modal-card certificate-modal-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="certificate-title">

@@ -97,6 +97,16 @@ function drawQrCode(ctx: CanvasRenderingContext2D, text: string, x: number, y: n
   }
 }
 
+export function buildQrDataUrl(text: string, size = 360): string {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return ''
+  drawQrCode(ctx, text, 0, 0, size)
+  return canvas.toDataURL('image/png')
+}
+
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const lines: string[] = []
   for (const paragraph of text.split(/\r?\n/)) {
