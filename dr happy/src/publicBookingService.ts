@@ -114,8 +114,8 @@ export function buildPublicBookingUrl(token: string): string {
 
 export function buildFixedPublicBookingUrl(slug: string, modality?: 'coverage' | 'private'): string {
   const base = `${window.location.origin}${window.location.pathname.replace(/index\.html$/, '')}`
-  const modalityQuery = modality ? `&m=${modality}` : ''
-  return `${base}turnera/?p=${encodeURIComponent(slug)}${modalityQuery}`
+  const modalityQuery = modality ? `?m=${modality}` : ''
+  return `${base}turnera/${encodeURIComponent(slug)}${modalityQuery}`
 }
 
 export function buildWhatsAppShareUrl(link: string, professionalName?: string): string {
