@@ -815,7 +815,15 @@ body.theme-night .auth-promo-trial-banner { border-color: #466f66; background: #
 body.theme-night .auth-promo-trial-banner > strong { color: #ddf4e9; }
 body.theme-night .auth-promo-trial-banner > small { color: #b6d5c9; }
 body.theme-night .auth-promo-claude-brand > strong { color: #f0d8c8; }
-body.theme-night .auth-promo-tool-art { filter: brightness(.78); }
+body.theme-night .auth-promo-tool-art { --promo-art-ink: #eef4fc; }
+body.theme-night .auth-promo-tool-art--emergency { --promo-art-bg: #173d33; --promo-art-accent: #6ee7b7; }
+body.theme-night .auth-promo-tool-art--care { --promo-art-bg: #1b3358; --promo-art-accent: #93c5fd; }
+body.theme-night .auth-promo-tool-art--calendar { --promo-art-bg: #43311a; --promo-art-accent: #fcd34d; }
+body.theme-night .auth-promo-tool-art--patients { --promo-art-bg: #143f47; --promo-art-accent: #67e8f9; }
+body.theme-night .auth-promo-tool-art--protocols { --promo-art-bg: #33284f; --promo-art-accent: #c4b5fd; }
+body.theme-night .auth-promo-tool-art--ledger { --promo-art-bg: #472424; --promo-art-accent: #fca5a5; }
+body.theme-night .auth-promo-eyebrow { color: #86d6b4; }
+body.theme-night .auth-pricing-heading .auth-promo-eyebrow { color: #67e8f9; }
 body.theme-night .auth-pricing-flyer { border-color: #526c88; background: #172941; }
 body.theme-night .auth-pricing-heading h3 { color: #e7f0fc; }
 body.theme-night .auth-pricing-heading p, body.theme-night .auth-pricing-note { color: #c0cee0; }
