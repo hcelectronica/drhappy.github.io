@@ -4374,6 +4374,8 @@ body.theme-night .turnera-calendar-day-sources .src-manual { color: #cbd5e1; }
 .public-turnera-section { margin-top: 12px; border: 1px solid #cfdcec; border-radius: 14px; background: #ffffff; overflow: hidden; }
 .public-turnera-section.is-private { border-left: 4px solid #2563eb; }
 .public-turnera-section.is-free { border-left: 4px solid #059669; }
+.public-turnera-section.is-manual { border-left: 4px solid #ea580c; }
+.public-turnera-location { grid-column: 1 / -1; }
 .public-turnera-section > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; cursor: pointer; font-weight: 800; list-style: none; }
 .public-turnera-section > summary::-webkit-details-marker { display: none; }
 .public-turnera-section > summary::after { content: '▾'; color: #64748b; transition: transform 0.18s ease; }

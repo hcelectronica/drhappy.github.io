@@ -482,6 +482,7 @@ interface PublicTurneraDraft {
   startTime: string
   endTime: string
   durationMinutes: number
+  location: string
 }
 
 interface AppointmentDraft {
@@ -7332,6 +7333,7 @@ function App() {
       startTime: appointmentStartTime,
       endTime: appointmentEndTime,
       durationMinutes: appointmentDurationMinutes,
+      location: publicBookingSettings?.location || '',
     }
   }
 
@@ -7378,6 +7380,7 @@ function App() {
       durationMinutes: draft.durationMinutes,
       slotCount: capacity,
       dailyQuota: requestedQuota,
+      location: draft.location.trim(),
       reason: existing?.reason || 'Consulta médica',
       amountToCharge: modality === 'private' && Number(appointmentAmountToCharge) > 0 ? Number(appointmentAmountToCharge) : undefined,
       amountConcept: modality === 'private' ? appointmentAmountConcept : undefined,
@@ -7516,6 +7519,7 @@ function App() {
           startTime: block.startTime,
           endTime: block.endTime,
           durationMinutes: block.durationMinutes,
+          location: block.location || result.settings!.location || '',
         })
         setPublicTurneraDrafts({
           ...(privateBlock ? { private: toDraft(privateBlock) } : {}),
@@ -11599,10 +11603,16 @@ function App() {
           {turneraViewMode === 'capacity' ? <section className="panel appointment-capacity-panel">
             <div>
               <span className="section-kicker">Control de agenda</span>
-              <h3 style={{ margin: 0 }}>Horario del consultorio</h3>
-              <p className="capacity-scope-note">Turnos otorgados por vos o sobreturnos</p>
-              <p className="turnera-description">Las turneras para pacientes (particular y gratuita) tienen su propio horario, duración y cupo más abajo.</p>
+              <h3 style={{ margin: 0 }}>Formas de otorgar turnos</h3>
             </div>
+            <details className="public-turnera-section is-manual">
+              <summary>
+                <span>🗓️ Horario del consultorio</span>
+                <small>Turnos otorgados por vos o sobreturnos</small>
+              </summary>
+              <div className="public-turnera-body">
+            <p className="capacity-scope-note">Turnos otorgados por vos o sobreturnos</p>
+            <p className="turnera-description">Las turneras para pacientes (particular y gratuita) tienen su propio horario, duración y cupo.</p>
             <div className="capacity-controls">
               <label>
                 Desde
@@ -11658,6 +11668,8 @@ function App() {
               </div>
             </div>
             <div className="capacity-status">{appointmentDaysLabel || 'Elegí al menos un día'} · Configuración guardada automáticamente al cambiar los campos.</div>
+              </div>
+            </details>
             {(['private', 'coverage'] as const).map((modality) => {
               const isPrivate = modality === 'private'
               const draft = getTurneraDraft(modality)
@@ -11730,6 +11742,16 @@ function App() {
                       </div>
                     </div>
                     <div className="public-turnera-fields">
+                      <label className="public-turnera-location">
+                        Lugar de atención
+                        <input
+                          type="text"
+                          maxLength={160}
+                          placeholder="Ej: Consultorio médico, Av. Siempre Viva 742"
+                          value={draft.location}
+                          onChange={(event) => updateTurneraDraft(modality, { location: event.target.value })}
+                        />
+                      </label>
                       <label>
                         Cupo diario (máx. {capacity})
                         <input
