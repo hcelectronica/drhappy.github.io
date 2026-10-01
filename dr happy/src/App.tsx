@@ -2603,6 +2603,7 @@ function App() {
   const [certificateIssued, setCertificateIssued] = useState<{ entry: CertificateEntry; pdf: Blob; reopened: boolean } | null>(null)
   const [certificateEmail, setCertificateEmail] = useState('')
   const [certificateSending, setCertificateSending] = useState(false)
+  const [certificateError, setCertificateError] = useState<string | null>(null)
   const [prescriptionDiagnostico, setPrescriptionDiagnostico] = useState('')
   const [prescriptionItems, setPrescriptionItems] = useState<PrescriptionItem[]>([])
   const [prescriptionMedQuery, setPrescriptionMedQuery] = useState('')
@@ -8593,9 +8594,11 @@ function App() {
 
   const certificatePatient = certificatePatientId ? patients.find((patient) => patient.id === certificatePatientId) ?? null : null
 
+  const CERTIFICATE_DIAGNOSIS_PLACEHOLDER = '(diagnóstico)'
+
   function buildCertificateTemplate(patient: PatientRecord, diagnostico: string): string {
     const name = `${patient.nombre} ${patient.apellido}`.trim()
-    return `En el día de la fecha fue atendido/a ${name}${patient.dni ? `, DNI ${patient.dni}` : ''}, por presentar cuadro de ${diagnostico || '...'}.\nSe indica reposo por 48 horas a partir de la fecha.`
+    return `En el día de la fecha fue atendido/a ${name}${patient.dni ? `, DNI ${patient.dni}` : ''}, por presentar cuadro de ${diagnostico || CERTIFICATE_DIAGNOSIS_PLACEHOLDER}.\nSe indica reposo por 48 horas a partir de la fecha.`
   }
 
   function handleOpenCertificateModal(patient: PatientRecord): void {
@@ -8604,20 +8607,24 @@ function App() {
     setCertificateIssued(null)
     setCertificateEmail(patient.email || '')
     setCertificateDiagnosisOpen(false)
+    setCertificateError(null)
   }
 
   function closeCertificateModal(): void {
     if (certificateSaving || certificateSending) return
     setCertificatePatientId(null)
     setCertificateIssued(null)
+    setCertificateError(null)
   }
 
   function handleCertificateDiagnosisChange(value: string): void {
-    setCertificateDraft((current) => ({
-      ...current,
-      diagnostico: value,
-      body: current.body.replace(/por presentar cuadro de [^.\n]*\./i, `por presentar cuadro de ${value.trim() || '...'}.`),
-    }))
+    setCertificateError(null)
+    setCertificateDraft((current) => {
+      // Reemplazo literal del diagnóstico anterior: los códigos CIE-10 llevan puntos y rompen un patrón por expresión regular.
+      const previous = `cuadro de ${current.diagnostico.trim() || CERTIFICATE_DIAGNOSIS_PLACEHOLDER}.`
+      const next = `cuadro de ${value.trim() || CERTIFICATE_DIAGNOSIS_PLACEHOLDER}.`
+      return { ...current, diagnostico: value, body: current.body.includes(previous) ? current.body.replace(previous, next) : current.body }
+    })
   }
 
   function applyCertificateRest(label: string): void {
@@ -8632,25 +8639,25 @@ function App() {
     if (!certificatePatient || !profile || !activeUserId) return
     const signatureImageDataUrl = profile.signatureImage?.dataUrl
     if (!signatureImageDataUrl) {
-      setAppError('Dibujá tu firma en Perfil y ajustes antes de emitir certificados.')
+      setCertificateError('Dibujá tu firma en Perfil y ajustes antes de emitir certificados.')
       return
     }
     if (!profile.fullName.trim() || !profile.licenseNumber.trim()) {
-      setAppError('Completá tu nombre y matrícula en Perfil y ajustes antes de emitir certificados.')
+      setCertificateError('Completá tu nombre y matrícula en Perfil y ajustes antes de emitir certificados.')
       return
     }
     const diagnostico = certificateDraft.diagnostico.trim()
     const body = certificateDraft.body.trim()
     if (!diagnostico) {
-      setAppError('Indicá el diagnóstico del certificado.')
+      setCertificateError('Indicá el diagnóstico del certificado.')
       return
     }
-    if (!body || body.includes('...')) {
-      setAppError('Completá el texto del certificado (R/p).')
+    if (!body || body.includes(CERTIFICATE_DIAGNOSIS_PLACEHOLDER)) {
+      setCertificateError('Completá el texto del certificado (R/p).')
       return
     }
     setCertificateSaving(true)
-    setAppError(null)
+    setCertificateError(null)
     try {
       const issuedAt = new Date().toISOString()
       const base = {
@@ -8717,6 +8724,7 @@ function App() {
       showSavedFloatingNotice('Certificado emitido')
     } catch (error) {
       setAppError(`No se pudo emitir el certificado: ${error instanceof Error ? error.message : String(error)}`)
+      setCertificateError(`No se pudo emitir el certificado: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setCertificateSaving(false)
     }
@@ -8770,11 +8778,11 @@ function App() {
   async function handleEmailCertificate(entry: CertificateEntry, pdf: Blob): Promise<void> {
     const to = certificateEmail.trim()
     if (!isValidEmail(to)) {
-      setAppError('Ingresá un email válido para enviar el certificado.')
+      setCertificateError('Ingresá un email válido para enviar el certificado.')
       return
     }
     setCertificateSending(true)
-    setAppError(null)
+    setCertificateError(null)
     try {
       const content = await blobToBase64(pdf)
       const firstName = escapeHtml(entry.patient.fullName.split(' ')[0] || '')
@@ -8789,13 +8797,14 @@ function App() {
         attachments: [{ filename: certificateFileName(entry), content, contentType: 'application/pdf', encoding: 'base64' }],
       })
       if (!result.success) {
-        setAppError(result.message || 'No se pudo enviar el certificado por email.')
+        setCertificateError(result.message || 'No se pudo enviar el certificado por email.')
         return
       }
+      setCertificateError(null)
       setAppNotice(`Certificado enviado a ${to}.`)
-      showSavedFloatingNotice('Certificado enviado')
+      showSavedFloatingNotice(`Certificado enviado a ${to}`)
     } catch (error) {
-      setAppError(`No se pudo enviar el certificado: ${error instanceof Error ? error.message : String(error)}`)
+      setCertificateError(`No se pudo enviar el certificado: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setCertificateSending(false)
     }
@@ -15324,7 +15333,6 @@ function App() {
                     </div>
                     <button type="button" className="ghost compact" onClick={() => { closeCertificateModal(); handleOpenProfile() }}>Editar membrete</button>
                   </div>
-                  <p className="certificate-sheet-title">CERTIFICADO MÉDICO</p>
                   <dl className="certificate-patient-card">
                     <div><dt>Paciente</dt><dd>{`${certificatePatient.nombre} ${certificatePatient.apellido}`.trim()}</dd></div>
                     <div><dt>DNI</dt><dd>{certificatePatient.dni || 'No informado'}</dd></div>
@@ -15440,10 +15448,11 @@ function App() {
               )}
             </div>
             <div className="drhappy-modal-footer certificate-modal-footer">
+              {certificateError ? <p className="certificate-error" role="alert">{certificateError}</p> : null}
               {!certificateIssued ? (
                 <>
                   <button type="button" className="ghost" onClick={closeCertificateModal} disabled={certificateSaving}>Cancelar</button>
-                  <button type="button" onClick={() => void handleIssueCertificate()} disabled={certificateSaving || !profile.signatureImage?.dataUrl}>
+                  <button type="button" onClick={() => void handleIssueCertificate()} disabled={certificateSaving}>
                     {certificateSaving ? 'Emitiendo...' : '✓ Emitir certificado'}
                   </button>
                 </>

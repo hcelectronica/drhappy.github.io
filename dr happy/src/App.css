@@ -4445,7 +4445,8 @@ body.theme-night .turnera-calendar-day-sources .src-manual { color: #cbd5e1; }
 .certificate-signature small { color: #475569; font-weight: 600; }
 .certificate-signature-missing { display: grid; gap: 6px; justify-items: center; padding: 10px; border: 1px dashed #f59e0b; border-radius: 12px; background: #fffbeb; color: #92400e; font-size: 0.82rem; font-weight: 700; }
 .certificate-seal-note { margin: 0; padding: 10px 12px; border-radius: 12px; background: #f0fdf4; color: #166534; font-size: 0.8rem; font-weight: 700; }
-.certificate-modal-footer { display: flex; justify-content: flex-end; gap: 10px; }
+.certificate-modal-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
+.certificate-error { flex-basis: 100%; margin: 0; padding: 10px 12px; border: 1px solid #fecaca; border-radius: 12px; background: #fef2f2; color: #b91c1c; font-size: 0.86rem; font-weight: 700; }
 
 .certificate-success { display: grid; justify-items: center; gap: 10px; padding: 8px 4px; text-align: center; }
 .certificate-success-icon { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: linear-gradient(135deg, #10b981, #0f766e); color: #ffffff; font-size: 2.2rem; font-weight: 800; box-shadow: 0 12px 26px -10px rgba(15, 118, 110, 0.7); animation: certificate-pop 0.45s ease-out both; }

@@ -202,19 +202,8 @@ export async function renderCertificateCanvas(entry: CertificateEntry): Promise<
   ctx.fillStyle = '#e2e8f0'
   ctx.fillRect(MARGIN, 258, CONTENT_WIDTH, 3)
 
-  // Título.
-  ctx.textAlign = 'center'
-  ctx.font = `800 54px ${DISPLAY_FONT}`
-  ctx.fillStyle = ACCENT
-  setLetterSpacing(ctx, '10px')
-  ctx.fillText('CERTIFICADO MÉDICO', PAGE_WIDTH / 2, 372)
-  setLetterSpacing(ctx, '0px')
-  ctx.fillStyle = ACCENT_BLUE
-  ctx.fillRect(PAGE_WIDTH / 2 - 70, 400, 140, 6)
-  ctx.textAlign = 'left'
-
   // Ficha del paciente.
-  const cardY = 450
+  const cardY = 320
   const cardHeight = 250
   roundedRect(ctx, MARGIN, cardY, CONTENT_WIDTH, cardHeight, 24)
   ctx.fillStyle = '#f3f8fc'
