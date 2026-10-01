@@ -1584,7 +1584,8 @@ function linkAppointmentsToPatients(appointmentList: AppointmentRecord[], patien
   return appointmentList.map((appointment) => {
     const linked = patientList.find((patient) => {
       if (appointment.patientId && patient.id === appointment.patientId) return true
-      if (appointment.patientDni && patient.dni && appointment.patientDni === patient.dni) return true
+      const appointmentDni = (appointment.patientDni || '').replace(/\D/g, '')
+      if (appointmentDni && appointmentDni === (patient.dni || '').replace(/\D/g, '')) return true
       return normalizeSearchText(`${patient.apellido}, ${patient.nombre}`) === normalizeSearchText(appointment.patientName)
     })
     if (!linked) return appointment

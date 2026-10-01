@@ -60,11 +60,11 @@ Deno.serve(async (request) => {
     const appointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json : []
     const existingAppointment = appointments.find((item: Record<string, unknown>) => item.id === reservation.appointment_id) as Record<string, unknown> | undefined
     const normalizedEmail = String(reservation.patient_email || '').trim().toLowerCase()
-    const normalizedDni = String(reservation.patient_dni || '').trim()
+    const normalizedDni = String(reservation.patient_dni || '').replace(/\D/g, '')
     const normalizedName = String(reservation.patient_name || '').trim().toLowerCase()
     const existingPatient = patients.find((patient) => {
       const patientEmail = String(patient.email || '').trim().toLowerCase()
-      const patientDni = String(patient.dni || '').trim()
+      const patientDni = String(patient.dni || '').replace(/\D/g, '')
       const patientName = `${String(patient.apellido || '')}, ${String(patient.nombre || '')}`.trim().toLowerCase()
       return Boolean(normalizedDni && patientDni === normalizedDni) ||
         Boolean(normalizedEmail && patientEmail === normalizedEmail) ||

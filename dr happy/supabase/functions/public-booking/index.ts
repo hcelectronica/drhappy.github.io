@@ -612,7 +612,7 @@ serve(async (request) => {
         const slotTime = body.slotTime?.trim() ?? ''
         const blockId = body.blockId?.trim() ?? ''
         const patientName = body.patientName?.trim() ?? ''
-        const patientDni = body.patientDni?.trim() ?? ''
+        const patientDni = (body.patientDni ?? '').replace(/\D/g, '')
         const patientEmail = body.patientEmail?.trim() ?? ''
         const patientPhone = body.patientPhone?.trim() ?? ''
 
@@ -869,7 +869,7 @@ serve(async (request) => {
         const token = body.token?.trim()
         const slotTime = body.slotTime?.trim()
         const patientName = body.patientName?.trim()
-        const patientDni = body.patientDni?.trim()
+        const patientDni = (body.patientDni ?? '').replace(/\D/g, '')
         const patientEmail = body.patientEmail?.trim() ?? ''
         const patientPhone = body.patientPhone?.trim() ?? ''
 

@@ -130,8 +130,10 @@
           <p class="empty" id="selectedText">Elegí un horario disponible.</p>
           <div id="selectedBox" class="selected-box" style="display:none"></div>
           <div id="slotChoices" class="slot-choices"></div>
-          <label for="patientName">Nombre y apellido *</label>
-          <input id="patientName" autocomplete="name" />
+          <label for="patientLastName">Apellido *</label>
+          <input id="patientLastName" autocomplete="family-name" />
+          <label for="patientFirstName">Nombre *</label>
+          <input id="patientFirstName" autocomplete="given-name" />
           <label for="patientDni">DNI *</label>
           <input id="patientDni" inputmode="numeric" />
           <label for="patientPhone">WhatsApp</label>
@@ -247,11 +249,13 @@
     el('nextBtn').addEventListener('click', function () { var d = new Date(Number(cursor.slice(0, 4)), Number(cursor.slice(5, 7)), 1); cursor = d.toISOString().slice(0, 10); loadAgenda(); });
     el('closeBooking').addEventListener('click', function () { el('bookingPanel').hidden = true; });
     el('confirmBtn').addEventListener('click', function () {
-      var patientName = el('patientName').value.trim();
-      var patientDni = el('patientDni').value.trim();
+      var lastName = el('patientLastName').value.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+      var firstName = el('patientFirstName').value.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+      var patientName = lastName && firstName ? lastName + ', ' + firstName : '';
+      var patientDni = el('patientDni').value.replace(/\D/g, '');
       var msg = el('message'); msg.className = 'msg'; msg.textContent = '';
       if (!selected) { msg.className = 'msg err'; msg.textContent = 'Elegí un horario.'; return; }
-      if (!patientName || !patientDni) { msg.className = 'msg err'; msg.textContent = 'Completá nombre y DNI.'; return; }
+      if (!patientName || !patientDni) { msg.className = 'msg err'; msg.textContent = 'Completá apellido, nombre y DNI.'; return; }
       var patientEmail = el('patientEmail').value.trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) { msg.className = 'msg err'; msg.textContent = 'Ingresá un email válido para continuar con el pago.'; return; }
       el('confirmBtn').disabled = true;
