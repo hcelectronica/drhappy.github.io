@@ -1628,23 +1628,6 @@ function linkAppointmentsToPatients(appointmentList: AppointmentRecord[], patien
   })
 }
 
-function ensurePatientsForAppointments(appointmentList: AppointmentRecord[], patientList: PatientRecord[], ownerUserId: string): PatientRecord[] {
-  const nextPatients = [...patientList]
-  for (const appointment of appointmentList) {
-    if (nextPatients.some((patient) => patient.id === appointment.patientId)) continue
-    const nameParts = appointment.patientName.split(',')
-    nextPatients.push({
-      id: appointment.patientId || crypto.randomUUID(), ownerUserId,
-      nombre: nameParts.slice(1).join(',').trim(), apellido: nameParts[0]?.trim() || appointment.patientName,
-      dni: appointment.patientDni || '', email: appointment.patientEmail || '', obraSocial: '', numeroAfiliado: '', plan: '',
-      birthDate: '', edad: 0, diagnosticoPrincipal: appointment.reason || '', patologiasConocidas: '', patologiasCronicas: '',
-      ultimaInternacion: '', cirugiasPrevias: '', direccion: '', documents: [], consultations: [],
-      createdAt: appointment.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(),
-    })
-  }
-  return sortPatientsByName(nextPatients)
-}
-
 function splitDraftPatientName(value: string): { apellido: string; nombre: string } {
   const [apellido = '', ...rest] = value.split(',')
   return { apellido, nombre: rest.join(',').replace(/^ /, '') }
@@ -2476,6 +2459,7 @@ function App() {
   const [recoveryDemoCode, setRecoveryDemoCode] = useState<string | null>(null)
   const [activeUserId, setActiveUserId] = useState<string | null>(null)
   const sessionGenerationRef = useRef(0)
+  const workspaceSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
   const [googleIdentity, setGoogleIdentity] = useState<{
     email: string
     avatarUrl?: string
@@ -2483,6 +2467,7 @@ function App() {
   } | null>(null)
   const [profile, setProfile] = useState<ProfessionalProfile | null>(null)
   const [patients, setPatients] = useState<PatientRecord[]>([])
+  const [patientDeletingId, setPatientDeletingId] = useState<string | null>(null)
   const [availablePatients, setAvailablePatients] = useState<PatientRecord[]>([])
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
   const [appointmentSearchQuery, setAppointmentSearchQuery] = useState('')
@@ -3467,26 +3452,32 @@ function App() {
   }
 
   async function persistWorkspaceRemote(
-    _userId: string,
+    userId: string,
     nextProfile: ProfessionalProfile,
     nextPatients: PatientRecord[],
     nextAppointments: AppointmentRecord[],
-  ): Promise<void> {
-    void _userId
+  ): Promise<boolean> {
     if (!isSupabaseConfigured || !supabase) {
-      return
+      return true
     }
-    try {
+    const save = workspaceSaveQueueRef.current.then(async () => {
+      if (localStorage.getItem(SESSION_USER_KEY) !== userId) {
+        throw new Error('La sesión cambió antes de guardar los datos.')
+      }
       const result = await saveWorkspaceData({
         profile: nextProfile,
         patients: nextPatients,
         appointments: nextAppointments,
       })
-      if (!result.success) {
-        console.warn('No se pudo guardar la base personal en la nube:', result.message)
-      }
+      if (!result.success) throw new Error(result.message || 'No se pudo guardar la base personal en la nube.')
+    })
+    workspaceSaveQueueRef.current = save.catch(() => {})
+    try {
+      await save
+      return true
     } catch (err) {
       console.warn('Fallo de conexión al sincronizar workspace en la nube:', err)
+      return false
     }
   }
 
@@ -3606,12 +3597,6 @@ function App() {
     localStorage.setItem(profileStorageKey(user.id), JSON.stringify(loadedProfile))
     if (sessionGeneration !== sessionGenerationRef.current) return
     loadedAppointments = linkAppointmentsToPatients(loadedAppointments, patientsList)
-    const patientsBeforeAppointmentRepair = patientsList.length
-    patientsList = ensurePatientsForAppointments(loadedAppointments, patientsList, user.id)
-    if (patientsList.length > patientsBeforeAppointmentRepair) {
-      availablePatientsList = sortPatientsByName(patientsList)
-      void persistWorkspaceRemote(user.id, loadedProfile, patientsList, loadedAppointments)
-    }
     localStorage.setItem(appointmentsStorageKey(user.id), JSON.stringify(loadedAppointments))
     localStorage.setItem(
       patientIndexStorageKey(user.id),
@@ -5492,27 +5477,51 @@ function App() {
   }
 
   async function handleDeletePatient(patientId: string): Promise<void> {
-    if (!activeUserId) return
+    if (!activeUserId || patientDeletingId) return
     const target = patients.find((patient) => patient.id === patientId)
     if (!target || target.ownerUserId !== activeUserId) {
       setAppError('Solo podés eliminar pacientes creados por tu cuenta.')
       return
     }
-    if (!window.confirm(`¿Eliminar definitivamente la ficha de ${target.nombre} ${target.apellido}?`)) return
-    const nextPatients = patients.filter((patient) => patient.id !== patientId)
-    const ownerIndex = readJsonStorage<string[]>(patientIndexStorageKey(activeUserId), []).filter((id) => id !== patientId)
-    const registry = readJsonStorage<string[]>(PATIENT_REGISTRY_KEY, []).filter((id) => id !== patientId)
-    localStorage.setItem(patientIndexStorageKey(activeUserId), JSON.stringify(ownerIndex))
-    localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(registry))
-    localStorage.removeItem(patientGlobalStorageKey(patientId))
-    setPatients(nextPatients)
-    setAvailablePatients((current) => current.filter((patient) => patient.id !== patientId))
-    if (selectedPatientId === patientId) {
-      setSelectedPatientId(null)
-      setWorkspaceLayer('my-patients')
+    const pendingAppointment = appointments.find((appointment) =>
+      appointment.status !== 'cancelled' && appointment.status !== 'attended' &&
+      (appointment.patientId === patientId ||
+        (!appointment.patientId && target.dni && appointment.patientDni === target.dni)) &&
+      new Date(`${appointment.scheduledDate}T${appointment.scheduledTime}:00`).getTime() >= Date.now(),
+    )
+    if (pendingAppointment) {
+      setAppError(`Este paciente tiene un turno pendiente el ${formatShortDate(pendingAppointment.scheduledDate)} a las ${pendingAppointment.scheduledTime}. Cancelá ese turno antes de eliminar la ficha.`)
+      return
     }
-    if (profile) await persistWorkspaceRemote(activeUserId, profile, nextPatients, appointments)
-    setAppNotice('Paciente eliminado correctamente.')
+    if (!window.confirm(`¿Eliminar definitivamente la ficha de ${target.nombre} ${target.apellido}?`)) return
+    const workspaceProfile = profile ?? (activeUser ? profileFromSeed(activeUser) : null)
+    if (!workspaceProfile) {
+      setAppError('No se pudo validar el perfil para eliminar la ficha.')
+      return
+    }
+    setPatientDeletingId(patientId)
+    try {
+      const nextPatients = patients.filter((patient) => patient.id !== patientId)
+      if (!await persistWorkspaceRemote(activeUserId, workspaceProfile, nextPatients, appointments)) {
+        setAppError('No se pudo guardar la eliminación en la nube. La ficha sigue disponible; intentá nuevamente.')
+        return
+      }
+      const ownerIndex = readJsonStorage<string[]>(patientIndexStorageKey(activeUserId), []).filter((id) => id !== patientId)
+      const registry = readJsonStorage<string[]>(PATIENT_REGISTRY_KEY, []).filter((id) => id !== patientId)
+      localStorage.setItem(patientIndexStorageKey(activeUserId), JSON.stringify(ownerIndex))
+      localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(registry))
+      localStorage.removeItem(patientGlobalStorageKey(patientId))
+      setPatients(nextPatients)
+      setAvailablePatients((current) => current.filter((patient) => patient.id !== patientId))
+      if (selectedPatientId === patientId) {
+        setSelectedPatientId(null)
+        setWorkspaceLayer('my-patients')
+      }
+      setAppError(null)
+      setAppNotice('Paciente eliminado correctamente.')
+    } finally {
+      setPatientDeletingId(null)
+    }
   }
 
   function persistPatientConsultation(patientId: string, entry: ConsultationEntry): void {
@@ -7365,12 +7374,14 @@ function App() {
       return
     }
     const nextAppointments = appointments.filter((a) => a.id !== appointmentId)
+    const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
+    if (!currentProf || !await persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)) {
+      setAppError('No se pudo guardar la cancelación del turno. Intentá nuevamente antes de eliminar la ficha.')
+      return
+    }
     setAppointments(nextAppointments)
     localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
-    const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
-    if (currentProf) {
-      void persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)
-    }
+    setAppError(null)
     showSavedFloatingNotice('Turno cancelado')
   }
 
@@ -9005,8 +9016,7 @@ function App() {
         }
       }
       persistPatientsBatch(Array.from(changed.values()))
-      const saved = await saveWorkspaceData({ profile, patients: sortPatientsByName(working), appointments })
-      if (!saved.success) return
+      if (!await persistWorkspaceRemote(activeUserId, profile, sortPatientsByName(working), appointments)) return
       await acknowledgePatientInviteSubmissions(submissions.map((submission) => submission.id))
       const message = created > 0
         ? `🎉 ${created} paciente${created === 1 ? '' : 's'} se registr${created === 1 ? 'ó' : 'aron'} con tu link de invitación.`
@@ -12998,7 +13008,7 @@ function App() {
                         <button type="button" className="ghost" onClick={() => handleEvolvePatient(patient.id)}>Evolucionar</button>
                         <button type="button" className="ghost certificate-action" onClick={() => handleOpenCertificateModal(patient)}>📄 Certificado / orden</button>
                         {patient.ownerUserId === activeUserId ? (
-                          <button type="button" className="patient-delete-action" onClick={() => void handleDeletePatient(patient.id)}>Eliminar</button>
+                          <button type="button" className="patient-delete-action" disabled={patientDeletingId !== null} onClick={() => void handleDeletePatient(patient.id)}>{patientDeletingId === patient.id ? 'Eliminando...' : 'Eliminar'}</button>
                         ) : null}
                       </div>
                     </article>
