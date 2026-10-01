@@ -12,6 +12,8 @@ import JsBarcode from 'jsbarcode'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
 import { getHolidayName } from './argentineHolidays'
+import { SupportContactForm } from './SupportContactForm'
+import { AdminSupportInbox } from './AdminSupportInbox'
 import {
   getNotificationPermission,
   getPushSubscriptionsCount,
@@ -2568,7 +2570,7 @@ function App() {
   const [prescriptionSaving, setPrescriptionSaving] = useState(false)
 
   const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult' | 'community'>('protocols')
-  const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo'>('usuarios')
+  const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo' | 'mensajes'>('usuarios')
   const [adminUserQuery, setAdminUserQuery] = useState('')
   const [adminExpandedUserId, setAdminExpandedUserId] = useState<string | null>(null)
   const [premiumPrompt, setPremiumPrompt] = useState<{ icon: string; title: string; pitch: string; bullets: string[] } | null>(null)
@@ -9297,8 +9299,10 @@ function App() {
               </div>
               <div className="drhappy-modal-body">
                 <p style={{ margin: '0 0 16px', color: '#475569', fontSize: '0.92rem', lineHeight: 1.5 }}>
-                  Para recibir soporte, escribinos a soporte@drhappy.com.ar.
+                  Dejanos tu mensaje y te respondemos por email.
                 </p>
+                <SupportContactForm />
+                <p className="support-contact-alt">O escribinos directamente:</p>
                 <div className="drhappy-contact-options">
                   <a
                     href="mailto:soporte@drhappy.com.ar"
@@ -10038,7 +10042,12 @@ function App() {
               <button type="button" className={`screen-action${adminSection === 'correo' ? ' active' : ''}`} onClick={() => setAdminSection('correo')}>
                 <span aria-hidden="true">📧</span> Correo
               </button>
+              <button type="button" className={`screen-action${adminSection === 'mensajes' ? ' active' : ''}`} onClick={() => setAdminSection('mensajes')}>
+                <span aria-hidden="true">💬</span> Mensajes
+              </button>
             </nav>
+
+            {adminSection === 'mensajes' ? <AdminSupportInbox /> : null}
 
             {/* Métricas de uso por usuario — solo conteos y fechas, sin datos clínicos */}
             {adminSection === 'actividad' ? (
@@ -14926,8 +14935,10 @@ function App() {
             </div>
             <div className="drhappy-modal-body">
               <p style={{ margin: '0 0 16px', color: '#475569', fontSize: '0.92rem', lineHeight: 1.5 }}>
-                Para recibir soporte, escribinos a soporte@drhappy.com.ar.
+                Dejanos tu mensaje y te respondemos por email.
               </p>
+              <SupportContactForm defaultName={profile?.fullName ?? ''} defaultEmail={profile?.email ?? ''} />
+              <p className="support-contact-alt">O escribinos directamente:</p>
               <div className="drhappy-contact-options">
                 <a
                   href="mailto:soporte@drhappy.com.ar"
