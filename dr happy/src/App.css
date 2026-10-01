@@ -4452,6 +4452,28 @@ body.theme-night .turnera-calendar-day-sources .src-manual { color: #cbd5e1; }
 .certificate-modal-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
 .certificate-error { flex-basis: 100%; margin: 0; padding: 10px 12px; border: 1px solid #fecaca; border-radius: 12px; background: #fef2f2; color: #b91c1c; font-size: 0.86rem; font-weight: 700; }
 
+.certificate-document-type { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.certificate-document-type button { min-width: 0; padding: 10px; border: 1px solid #a9bed3; border-radius: 10px; background: #f5f8fc; color: #173451; font-weight: 700; box-shadow: none; }
+.certificate-document-type button.selected { border-color: #0f766e; background: #e5f6ef; color: #065f46; }
+.certificate-study-field { min-width: 0; }
+.certificate-field #study-search { width: 100%; min-width: 0; }
+.study-suggestions, .study-selected { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.study-suggestions { max-height: 185px; overflow-y: auto; }
+.study-suggestions button { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; width: 100%; padding: 8px 10px; border: 1px solid #d6e4f0; border-radius: 8px; background: #f8fbff; color: #173451; text-align: left; overflow-wrap: anywhere; box-shadow: none; }
+.study-selected li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 8px 10px; border: 1px solid #a9d5c9; border-radius: 8px; }
+.study-selected li span { min-width: 0; overflow-wrap: anywhere; }
+.study-selected small { display: block; color: #0f766e; }
+.study-order-preview { display: grid; gap: 7px; min-width: 0; padding: 14px; border: 1px solid #b7d8c9; border-radius: 12px; background: #f0fdf7; color: #173451; overflow-wrap: anywhere; }
+.study-order-preview > strong { color: #0f766e; }
+.study-order-preview ul { margin: 0; padding-left: 22px; }
+.study-order-preview > small { color: #475569; }
+body.theme-night .certificate-document-type button, body.theme-night .study-suggestions button { border-color: #526c88; background: #172941; color: #e2ebf7; }
+body.theme-night .certificate-document-type button.selected, body.theme-night .study-selected li { border-color: #5db997; background: #173e32; color: #e2ebf7; }
+body.theme-night .study-selected small { color: #86d6b4; }
+body.theme-night .study-order-preview { border-color: #5db997; background: #173e32; color: #e2ebf7; }
+body.theme-night .study-order-preview > strong { color: #86d6b4; }
+body.theme-night .study-order-preview > small { color: #cbd5e1; }
+
 .certificate-success { display: grid; justify-items: center; gap: 10px; padding: 8px 4px; text-align: center; }
 .certificate-success-icon { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: linear-gradient(135deg, #10b981, #0f766e); color: #ffffff; font-size: 2.2rem; font-weight: 800; box-shadow: 0 12px 26px -10px rgba(15, 118, 110, 0.7); animation: certificate-pop 0.45s ease-out both; }
 .certificate-success h4 { margin: 4px 0 0; color: #0f2944; font-size: 1.25rem; }

@@ -1,7 +1,10 @@
 import { BarcodeFormat, EncodeHintType, QRCodeWriter } from '@zxing/library'
 import type { SignatureSeal } from './signatureSeal'
+import type { OrderedStudy } from './studyCatalog'
 
 export interface CertificateEntry {
+  documentType?: 'study-order'
+  studies?: OrderedStudy[]
   id: string
   issuedAt: string
   certificateDate: string
@@ -50,12 +53,12 @@ export function formatCertificateDate(isoDate: string): string {
 
 export function certificateFileName(entry: CertificateEntry): string {
   const name = stripAccents(entry.patient.fullName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-  return `certificado-${name || 'paciente'}-${entry.certificateDate}.pdf`
+  return `${entry.documentType === 'study-order' ? 'orden-estudios' : 'certificado'}-${name || 'paciente'}-${entry.certificateDate}.pdf`
 }
 
-export function certificateSignedContent(entry: Pick<CertificateEntry, 'certificateDate' | 'letterhead' | 'diagnostico' | 'body' | 'patient'>): Record<string, unknown> {
-  return {
-    type: 'certificado-medico',
+export function certificateSignedContent(entry: Pick<CertificateEntry, 'documentType' | 'studies' | 'certificateDate' | 'letterhead' | 'diagnostico' | 'body' | 'patient'>): Record<string, unknown> {
+  const content: Record<string, unknown> = {
+    type: entry.documentType === 'study-order' ? 'orden-estudios' : 'certificado-medico',
     certificateDate: entry.certificateDate,
     letterhead: entry.letterhead,
     diagnostico: entry.diagnostico,
@@ -63,11 +66,13 @@ export function certificateSignedContent(entry: Pick<CertificateEntry, 'certific
     patientDni: entry.patient.dni,
     patientName: entry.patient.fullName,
   }
+  if (entry.documentType === 'study-order') content.studies = entry.studies
+  return content
 }
 
 function buildValidationText(entry: CertificateEntry): string {
   return stripAccents([
-    'DR HAPPY - CERTIFICADO MEDICO',
+    entry.documentType === 'study-order' ? 'DR HAPPY - ORDEN DE ESTUDIOS' : 'DR HAPPY - CERTIFICADO MEDICO',
     `ID: ${entry.id}`,
     `Fecha: ${entry.certificateDate}`,
     `Paciente: ${entry.patient.fullName} - DNI ${entry.patient.dni || 'S/D'}`,
@@ -180,7 +185,7 @@ export async function renderCertificateCanvas(entry: CertificateEntry): Promise<
   canvas.width = PAGE_WIDTH
   canvas.height = PAGE_HEIGHT
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('El navegador no permite generar el certificado.')
+  if (!ctx) throw new Error('El navegador no permite generar el documento.')
   ctx.textBaseline = 'alphabetic'
 
   ctx.fillStyle = '#ffffff'
@@ -211,6 +216,7 @@ export async function renderCertificateCanvas(entry: CertificateEntry): Promise<
 
   ctx.fillStyle = '#e2e8f0'
   ctx.fillRect(MARGIN, 258, CONTENT_WIDTH, 3)
+  if (entry.documentType === 'study-order') drawLabel(ctx, 'Orden de estudios complementarios', MARGIN, 300, ACCENT)
 
   // Ficha del paciente.
   const cardY = 320
@@ -246,11 +252,14 @@ export async function renderCertificateCanvas(entry: CertificateEntry): Promise<
 
   // Diagnóstico.
   let cursorY = cardY + cardHeight + 90
-  drawLabel(ctx, 'Diagnóstico', MARGIN, cursorY, ACCENT)
+  drawLabel(ctx, entry.documentType === 'study-order' ? 'Indicación clínica' : 'Diagnóstico', MARGIN, cursorY, ACCENT)
   ctx.font = `700 34px ${BODY_FONT}`
   ctx.fillStyle = INK
-  const diagnosisLines = wrapText(ctx, entry.diagnostico, CONTENT_WIDTH).slice(0, 2)
-  for (const line of diagnosisLines) {
+  const diagnosisLines = wrapText(ctx, entry.diagnostico, CONTENT_WIDTH)
+  if (entry.documentType === 'study-order' && (diagnosisLines.length > 2 || diagnosisLines.some((line) => ctx.measureText(line).width > CONTENT_WIDTH))) {
+    throw new Error('La indicación clínica no cabe en el PDF. Resumila antes de emitir la orden.')
+  }
+  for (const line of diagnosisLines.slice(0, 2)) {
     cursorY += 48
     ctx.fillText(line, MARGIN, cursorY)
   }
@@ -259,7 +268,7 @@ export async function renderCertificateCanvas(entry: CertificateEntry): Promise<
   cursorY += 100
   ctx.font = `italic 700 56px Georgia, "Times New Roman", serif`
   ctx.fillStyle = ACCENT_BLUE
-  ctx.fillText('R/p', MARGIN, cursorY)
+  ctx.fillText(entry.documentType === 'study-order' ? 'Estudios solicitados' : 'R/p', MARGIN, cursorY)
   cursorY += 30
 
   const bodyBottom = 1660
@@ -271,6 +280,9 @@ export async function renderCertificateCanvas(entry: CertificateEntry): Promise<
     lineHeight = Math.round(bodySize * 1.6)
     bodyLines = wrapText(ctx, entry.body, CONTENT_WIDTH - 40)
     if (cursorY + bodyLines.length * lineHeight <= bodyBottom) break
+  }
+  if (entry.documentType === 'study-order' && (cursorY + bodyLines.length * lineHeight > bodyBottom || bodyLines.some((line) => ctx.measureText(line).width > CONTENT_WIDTH - 40))) {
+    throw new Error('Los estudios y observaciones no caben en una página. Acortá el texto o emití otra orden.')
   }
   ctx.fillStyle = '#1e293b'
   for (const line of bodyLines) {
@@ -406,7 +418,7 @@ function buildPdfFromJpeg(jpeg: Uint8Array, width: number, height: number, title
 export async function buildCertificatePdf(entry: CertificateEntry): Promise<Blob> {
   const canvas = await renderCertificateCanvas(entry)
   const jpegBase64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1] ?? ''
-  return buildPdfFromJpeg(base64ToBytes(jpegBase64), canvas.width, canvas.height, `Certificado medico - ${entry.patient.fullName}`)
+  return buildPdfFromJpeg(base64ToBytes(jpegBase64), canvas.width, canvas.height, `${entry.documentType === 'study-order' ? 'Orden de estudios' : 'Certificado medico'} - ${entry.patient.fullName}`)
 }
 
 export function blobToBase64(blob: Blob): Promise<string> {

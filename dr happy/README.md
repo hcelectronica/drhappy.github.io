@@ -8,6 +8,12 @@ Web app base en React + TypeScript para:
 - Importación masiva de padrón desde Excel.
 - Comunidad médica con mensajería privada asíncrona.
 
+## Documentos clínicos
+
+Desde la ficha del paciente, **Emitir certificado** permite elegir entre un certificado médico y una orden de estudios complementarios. En la orden se busca entre estudios frecuentes codificados o se agrega uno en texto libre; el profesional debe indicar el motivo clínico, puede añadir observaciones y revisar el borrador antes de emitir. Si el contenido no cabe en el PDF, se informa el error antes de guardar la orden. Ambos documentos se guardan en la historia clínica con firma, PDF y QR; las órdenes se identifican como tales en el historial, la descarga y el envío.
+
+La selección de `src/studyCatalog.ts` contiene procedimientos activos cuyos códigos y términos preferidos en español se verificaron en [Snowstorm Test del Ministerio de Salud](https://snowstorm-test.msal.gob.ar/swagger-ui.html) (rama MAIN). **No es el catálogo completo ni una certificación de pertenencia a la Extensión Argentina de SNOMED CT**. El texto libre no se codifica. Para incorporar una edición argentina completa se requiere acceso a su distribución/licencia o un servidor de terminología configurado para esa edición.
+
 ## Ejecutar
 
 ```bash
