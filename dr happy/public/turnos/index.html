@@ -153,7 +153,8 @@
     var FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/public-booking';
     var params = new URLSearchParams(window.location.search);
     var slug = params.get('p') || (window.location.hash || '').replace(/^#\/?/, '') || '';
-    var fixedModality = null;
+    var modalityParam = (params.get('m') || '').toLowerCase();
+    var fixedModality = modalityParam === 'gratis' || modalityParam === 'coverage' ? 'coverage' : modalityParam === 'private' ? 'private' : null;
     var cursor = todayISO().slice(0, 7) + '-01';
     var filter = 'all';
     var agenda = null;
@@ -234,9 +235,7 @@
       el('bookingPanel').hidden = false;
     }
 
-    if (fixedModality) {
-      document.querySelectorAll('.chip').forEach(function (button) { button.style.display = 'none'; });
-    }
+    document.querySelectorAll('.chip').forEach(function (button) { button.style.display = 'none'; });
     document.querySelectorAll('.chip').forEach(function (button) {
       button.addEventListener('click', function () {
         filter = button.getAttribute('data-filter');
@@ -257,7 +256,7 @@
       if (!selected) { msg.className = 'msg err'; msg.textContent = 'Elegí un horario.'; return; }
       if (!patientName || !patientDni) { msg.className = 'msg err'; msg.textContent = 'Completá apellido, nombre y DNI.'; return; }
       var patientEmail = el('patientEmail').value.trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) { msg.className = 'msg err'; msg.textContent = 'Ingresá un email válido para continuar con el pago.'; return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) { msg.className = 'msg err'; msg.textContent = 'Ingresá un email válido para continuar.'; return; }
       el('confirmBtn').disabled = true;
       el('confirmBtn').textContent = 'Confirmando...';
       callFunction({ action: 'book-public-slot', slug: slug, modality: fixedModality, slotDate: selected.date, slotTime: selected.time, blockId: selected.blockId, patientName: patientName, patientDni: patientDni, patientPhone: el('patientPhone').value.trim(), patientEmail: patientEmail }).then(function (result) {

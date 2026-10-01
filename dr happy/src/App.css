@@ -4354,6 +4354,38 @@ body.theme-night .turnera-premium-locked h3 {
   font-weight: 700;
 }
 
+.turnera-calendar-day-sources { display: flex; flex-wrap: wrap; gap: 2px 4px; margin-bottom: 5px; font-size: 0.6rem; font-weight: 800; line-height: 1.2; }
+.turnera-calendar-day-sources i { font-style: normal; white-space: nowrap; }
+.turnera-calendar-day-sources .src-private { color: #1d4ed8; }
+.turnera-calendar-day-sources .src-free { color: #047857; }
+.turnera-calendar-day-sources .src-manual { color: #475569; }
+.turnera-calendar-day-list { flex-basis: 100%; display: grid; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+.turnera-calendar-day-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 7px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.75); font-size: 0.84rem; }
+.turnera-calendar-day-list li span { flex: 1; min-width: 120px; }
+.source-badge { padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-style: normal; font-weight: 700; white-space: nowrap; }
+.source-badge.source-private { background: #dbeafe; color: #1d4ed8; }
+.source-badge.source-coverage { background: #d1fae5; color: #047857; }
+.source-badge.source-manual { background: #e2e8f0; color: #475569; }
+body.theme-night .turnera-calendar-day-list li { background: rgba(15, 28, 48, 0.75); }
+body.theme-night .turnera-calendar-day-sources .src-private { color: #93c5fd; }
+body.theme-night .turnera-calendar-day-sources .src-free { color: #6ee7b7; }
+body.theme-night .turnera-calendar-day-sources .src-manual { color: #cbd5e1; }
+
+.public-turnera-section { margin-top: 12px; border: 1px solid #cfdcec; border-radius: 14px; background: #ffffff; overflow: hidden; }
+.public-turnera-section.is-private { border-left: 4px solid #2563eb; }
+.public-turnera-section.is-free { border-left: 4px solid #059669; }
+.public-turnera-section > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; cursor: pointer; font-weight: 800; list-style: none; }
+.public-turnera-section > summary::-webkit-details-marker { display: none; }
+.public-turnera-section > summary::after { content: '▾'; color: #64748b; transition: transform 0.18s ease; }
+.public-turnera-section[open] > summary::after { transform: rotate(180deg); }
+.public-turnera-section > summary small { margin-left: auto; color: #64748b; font-size: 0.74rem; font-weight: 700; }
+.public-turnera-body { display: grid; gap: 10px; padding: 0 14px 14px; }
+.public-turnera-body .flow-hint { margin: 0; }
+.public-turnera-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.public-turnera-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+body.theme-night .public-turnera-section { border-color: rgba(130, 153, 186, 0.35); background: #0f1c30; }
+body.theme-night .public-turnera-section > summary small { color: #a8bad0; }
+
 .turnera-bar-chart {
   display: flex;
   align-items: flex-end;

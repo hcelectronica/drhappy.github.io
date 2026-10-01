@@ -1,5 +1,6 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
   # Link fijo de la turnera: /turnera/nombre-profesional -> página pública de turnos.
+  RewriteRule ^turnera/([a-z0-9-]+)/gratis/?$ /turnos/?p=$1&m=gratis [R=302,L,QSA]
   RewriteRule ^turnera/([a-z0-9-]+)/?$ /turnos/?p=$1 [R=302,L,QSA]
 </IfModule>
