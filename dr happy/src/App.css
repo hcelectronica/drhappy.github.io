@@ -5403,7 +5403,9 @@ body.theme-night .turnera-card-actions {
   .layer-header { align-items: flex-start; flex-direction: column; }
   .layer-header > * { width: 100%; }
   .patient-directory-grid { grid-template-columns: 1fr; }
-  .patient-directory-actions button { flex: 1; }
+  .patient-directory-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; }
+  .patient-directory-actions button { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+  .patient-directory-actions .patient-delete-action { grid-column: 1 / -1; margin-left: 0; }
   .flyer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .flyer-tool { min-height: 128px; padding: 13px; }
   .flyer-slide { grid-template-columns: 1fr; gap: 18px; min-height: 480px; }
