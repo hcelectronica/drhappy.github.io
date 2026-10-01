@@ -9339,6 +9339,20 @@ function App() {
                 <strong>Historia clínica digital</strong>
                 <small>Asesorada con Sofía IA para preparar y organizar tus evoluciones.</small>
               </article>
+              <article className="flyer-tool auth-promo-tool">
+                <div className="auth-promo-tool-art auth-promo-tool-art--certificates" aria-hidden="true">
+                  <span>DOCUMENTOS CLÍNICOS</span><strong>CERTIFICADOS<br />EN MINUTOS</strong><small>Con tu firma y código QR</small>
+                </div>
+                <strong>Emití certificados médicos</strong>
+                <small>Prepará, firmá y compartí certificados desde la ficha del paciente.</small>
+              </article>
+              <article className="flyer-tool auth-promo-tool">
+                <div className="auth-promo-tool-art auth-promo-tool-art--invite" aria-hidden="true">
+                  <span>TUS PACIENTES, MÁS CERCA</span><strong>INVITÁ.<br />ELLOS SE REGISTRAN.</strong><small>Por link o código QR</small>
+                </div>
+                <strong>Invitá pacientes</strong>
+                <small>Compartí tu link personal y sumalos a Mis pacientes sin cargar sus datos a mano.</small>
+              </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--violet">
                 <div className="auth-promo-tool-art auth-promo-tool-art--protocols" aria-hidden="true">
                   <span>RECURSOS CLÍNICOS</span><strong>CRITERIO<br />A MANO</strong><small>Protocolos, guías y vademécum</small>

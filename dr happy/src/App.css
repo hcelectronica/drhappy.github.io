@@ -745,6 +745,8 @@ body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
 .auth-promo-tool-art--care { --promo-art-bg: #e7f1ff; --promo-art-ink: #183a68; --promo-art-accent: #2563eb; background-image: linear-gradient(110deg, transparent 65%, rgba(37, 99, 235, .1) 65%); }
 .auth-promo-tool-art--calendar { --promo-art-bg: #fff1d8; --promo-art-ink: #633e13; --promo-art-accent: #ae6100; background-image: linear-gradient(110deg, transparent 65%, rgba(174, 97, 0, .1) 65%); }
 .auth-promo-tool-art--patients { --promo-art-bg: #e0f5f6; --promo-art-ink: #14525b; --promo-art-accent: #087f91; background-image: linear-gradient(110deg, transparent 65%, rgba(8, 127, 145, .1) 65%); }
+.auth-promo-tool-art--certificates { --promo-art-bg: #e9edff; --promo-art-ink: #293b78; --promo-art-accent: #4659b5; background-image: linear-gradient(110deg, transparent 65%, rgba(70, 89, 181, .1) 65%); }
+.auth-promo-tool-art--invite { --promo-art-bg: #e7f8ef; --promo-art-ink: #17553d; --promo-art-accent: #16805b; background-image: linear-gradient(110deg, transparent 65%, rgba(22, 128, 91, .1) 65%); }
 .auth-promo-tool-art--protocols { --promo-art-bg: #f0e9fa; --promo-art-ink: #452d69; --promo-art-accent: #7044a5; background-image: linear-gradient(110deg, transparent 65%, rgba(112, 68, 165, .1) 65%); }
 .auth-promo-tool-art--ledger { --promo-art-bg: #ffebe8; --promo-art-ink: #6e302c; --promo-art-accent: #c2413a; background-image: linear-gradient(110deg, transparent 65%, rgba(194, 65, 58, .1) 65%); }
 .auth-promo-sofia { grid-column: 1 / -1; min-height: 0 !important; gap: 17px !important; padding: 22px !important; }
@@ -820,6 +822,8 @@ body.theme-night .auth-promo-tool-art--emergency { --promo-art-bg: #173d33; --pr
 body.theme-night .auth-promo-tool-art--care { --promo-art-bg: #1b3358; --promo-art-accent: #93c5fd; }
 body.theme-night .auth-promo-tool-art--calendar { --promo-art-bg: #43311a; --promo-art-accent: #fcd34d; }
 body.theme-night .auth-promo-tool-art--patients { --promo-art-bg: #143f47; --promo-art-accent: #67e8f9; }
+body.theme-night .auth-promo-tool-art--certificates { --promo-art-bg: #252f57; --promo-art-accent: #a5b4fc; }
+body.theme-night .auth-promo-tool-art--invite { --promo-art-bg: #173e32; --promo-art-accent: #6ee7b7; }
 body.theme-night .auth-promo-tool-art--protocols { --promo-art-bg: #33284f; --promo-art-accent: #c4b5fd; }
 body.theme-night .auth-promo-tool-art--ledger { --promo-art-bg: #472424; --promo-art-accent: #fca5a5; }
 body.theme-night .auth-promo-eyebrow { color: #86d6b4; }
