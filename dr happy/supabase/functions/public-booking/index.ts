@@ -4,6 +4,8 @@ import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { getHolidayName } from '../_shared/argentineHolidays.ts'
 
+type AdminClient = ReturnType<typeof createClient>
+
 // Función NUEVA e independiente de la Turnera existente.
 // Permite a un profesional generar un enlace público de "turnos libres"
 // (con cupo y rango horario que él mismo regula) para compartir por
@@ -134,6 +136,31 @@ function normalizeSlug(value: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60)
+}
+
+// Links generados por versiones anteriores: nombre + sufijo aleatorio (ej. alan-moodie-muc7bhne-3a3a28).
+const LEGACY_SLUG_SUFFIX = /-[a-z0-9]{6,10}-[a-f0-9]{6}$/
+
+async function resolveFixedSlug(admin: AdminClient, professionalId: string, currentSlug: string, professionalName: string): Promise<string> {
+  if (currentSlug && !LEGACY_SLUG_SUFFIX.test(currentSlug)) return currentSlug
+  const base = normalizeSlug(currentSlug.replace(LEGACY_SLUG_SUFFIX, '')) || normalizeSlug(professionalName) || currentSlug
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    const candidate = attempt === 1 ? base : `${base}-${attempt}`
+    const { data } = await admin
+      .from('public_booking_profiles')
+      .select('professional_id')
+      .eq('slug', candidate)
+      .maybeSingle()
+    if (!data || data.professional_id === professionalId) return candidate
+  }
+  return currentSlug
+}
+
+async function findProfileBySlug(admin: AdminClient, slug: string) {
+  const columns = 'professional_id, slug, enabled, professional_name, location, reason, horizon_days, availability_blocks'
+  const exact = await admin.from('public_booking_profiles').select(columns).eq('slug', slug).maybeSingle()
+  if (exact.error || exact.data || !LEGACY_SLUG_SUFFIX.test(slug)) return exact
+  return await admin.from('public_booking_profiles').select(columns).eq('slug', slug.replace(LEGACY_SLUG_SUFFIX, '')).maybeSingle()
 }
 
 function todayISO(): string {
@@ -449,7 +476,7 @@ serve(async (request) => {
         const professionalId = await resolveProfessionalId(request, admin)
         if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
         settings.professionalId = professionalId
-
+        settings.slug = await resolveFixedSlug(admin, professionalId, settings.slug, settings.professionalName)
         const { data: saved, error } = await admin
           .from('public_booking_profiles')
           .upsert({
@@ -485,11 +512,7 @@ serve(async (request) => {
           return jsonResponse(400, { success: false, message: 'Falta el link público del profesional.' })
         }
 
-        const { data: settings, error } = await admin
-          .from('public_booking_profiles')
-          .select('professional_id, slug, enabled, professional_name, location, reason, horizon_days, availability_blocks')
-          .eq('slug', slug)
-          .maybeSingle()
+        const { data: settings, error } = await findProfileBySlug(admin, slug)
         if (error) {
           return jsonResponse(500, { success: false, message: error.message })
         }
@@ -597,11 +620,7 @@ serve(async (request) => {
           return jsonResponse(400, { success: false, message: 'Completa nombre, DNI y horario para reservar.' })
         }
 
-        const { data: settings, error } = await admin
-          .from('public_booking_profiles')
-          .select('professional_id, slug, enabled, professional_name, location, reason, horizon_days, availability_blocks')
-          .eq('slug', slug)
-          .maybeSingle()
+        const { data: settings, error } = await findProfileBySlug(admin, slug)
         if (error) {
           return jsonResponse(500, { success: false, message: error.message })
         }
