@@ -593,8 +593,18 @@ body.theme-night .plan-chip.danger .plan-chip-copy strong { color: #fca5a5; }
 .patient-directory-info { min-width: 0; display: grid; gap: 3px; }
 .patient-directory-info strong { overflow: hidden; color: #183759; font-size: 0.82rem; text-overflow: ellipsis; white-space: nowrap; }
 .patient-directory-info span, .patient-directory-info small { color: #7187a2; font-size: 0.68rem; }
-.patient-directory-actions { grid-column: 1 / -1; display: flex; gap: 6px; }
+.patient-directory-actions { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; }
 .patient-directory-actions button { min-height: 32px; padding: 6px 10px; border-radius: 9px; font-size: 0.72rem; }
+.patient-directory-actions .patient-delete-action { margin-left: auto; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; box-shadow: none; }
+.patient-directory-actions .patient-delete-action:hover { background: #dc2626; color: #ffffff; border-color: #dc2626; }
+.patient-last-visit { color: #2563eb; font-weight: 700; }
+.suggestion-last-visit { margin-left: auto; font-style: normal; font-size: 0.74rem; font-weight: 700; color: #2563eb; white-space: nowrap; }
+.recent-patients { display: grid; gap: 8px; margin-top: 6px; }
+.onboarding-head-actions { display: flex; align-items: center; gap: 8px; }
+.onboarding-dismiss { min-height: 0; padding: 5px 10px; border-radius: 999px; background: transparent; border: 1px solid rgba(100, 116, 139, 0.35); color: #64748b; font-size: 0.72rem; font-weight: 700; box-shadow: none; }
+.onboarding-dismiss:hover { background: rgba(100, 116, 139, 0.1); color: #334155; }
+body.theme-night .patient-directory-actions .patient-delete-action { background: rgba(220, 38, 38, 0.15); color: #fca5a5; border-color: rgba(220, 38, 38, 0.4); }
+body.theme-night .onboarding-dismiss { color: #cbd5e1; border-color: rgba(203, 213, 225, 0.3); }
 .directory-empty { display: grid; gap: 5px; padding: 28px 12px; text-align: center; color: #7187a2; }
 .directory-empty strong { color: #36516f; }
 .app-tools-flyer { max-width: 980px; margin: 22px auto; padding: clamp(22px, 5vw, 48px); border: 1px solid rgba(126, 153, 191, .42); border-radius: 24px; background: linear-gradient(145deg, rgba(249,252,255,.98), rgba(232,241,255,.9)); box-shadow: 0 22px 60px rgba(26, 59, 104, .13); overflow: hidden; }
@@ -745,7 +755,7 @@ body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
 .auth-promo-sofia-identity > div span { color: #405a73; font-size: 0.95rem; font-weight: 700; }
 .auth-promo .auth-promo-sofia-identity .sofia-avatar { width: 68px; height: 68px; flex-basis: 68px; }
 .auth-promo-claude-brand { display: grid; justify-items: end; gap: 5px; }
-.auth-promo-claude-brand > strong { color: #684838; font-size: 0.9rem; font-weight: 800; }
+.auth-promo-claude-brand > strong { color: #684838; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 .auth-promo-claude-logo { display: block; width: min(240px, 35vw); height: 120px; border: 1px solid #ded2bd; border-radius: 10px; background: #f2e8d7; object-fit: contain; }
 .auth-promo-sofia-lead { margin: 0; color: #334e68; font-size: 1rem; font-weight: 600; line-height: 1.5; }
 .auth-promo-sofia-features { display: block; min-height: 150px; margin: 0; padding: 20px 22px; border: 1px solid #d0deeb; border-left: 4px solid #16805b; border-radius: 14px; background: linear-gradient(135deg, #fff, #f0f6fb); box-shadow: 0 8px 20px rgba(35, 67, 105, 0.08); list-style: none; touch-action: pan-y; cursor: grab; user-select: none; }
@@ -4089,30 +4099,53 @@ body.theme-night .turnera-premium-locked h3 {
 }
 
 .turnera-calendar-cell {
+  position: relative;
   aspect-ratio: 1 / 1;
   min-height: 46px;
-  border-radius: 10px;
-  border: 1px solid var(--border-color, #e2e8f0);
-  background: var(--surface-bg, #ffffff);
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: linear-gradient(160deg, #ffffff 0%, #f8fafc 100%);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 2px;
+  padding: 7px 8px;
   cursor: pointer;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
   color: var(--text-primary, #0f172a);
+}
+
+/* Barra inferior que indica el nivel de ocupación del día. */
+.turnera-calendar-cell::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 5px;
+  height: 3px;
+  border-radius: 999px;
+  background: transparent;
+  transition: background 0.16s ease;
 }
 
 .turnera-calendar-cell:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: 0 10px 22px -10px rgba(37, 99, 235, 0.45);
 }
 
 .turnera-calendar-cell.empty {
   background: transparent;
   border: none;
+  box-shadow: none;
   cursor: default;
+}
+
+.turnera-calendar-cell.empty::after {
+  display: none;
 }
 
 .turnera-calendar-cell.empty:hover {
@@ -4121,50 +4154,95 @@ body.theme-night .turnera-premium-locked h3 {
 }
 
 .turnera-calendar-day-number {
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
 }
 
 .turnera-calendar-day-count {
-  font-size: 0.72rem;
-  font-weight: 700;
-  padding: 1px 6px;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 0 5px;
   border-radius: 999px;
-  background: rgba(37, 99, 235, 0.15);
-  color: #1d4ed8;
+  background: #1d4ed8;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(29, 78, 216, 0.35);
 }
 
 .turnera-calendar-day-breakdown {
   color: #475569;
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.1;
   white-space: nowrap;
+  margin-bottom: 5px;
+}
+
+.turnera-calendar-day-holiday {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #c2410c;
+  margin-bottom: 5px;
 }
 
 .turnera-calendar-cell.is-today {
-  border: 2px solid #2563eb;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+}
+
+.turnera-calendar-cell.is-today .turnera-calendar-day-number {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
 }
 
 .turnera-calendar-cell.is-selected {
   outline: 2px solid #16a34a;
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
-.turnera-calendar-cell.occupancy-none {
-  background: var(--surface-bg, #ffffff);
-}
-
-.turnera-calendar-cell.occupancy-low {
-  background: rgba(59, 130, 246, 0.12);
+.turnera-calendar-cell.occupancy-low::after {
+  background: #3b82f6;
 }
 
 .turnera-calendar-cell.occupancy-mid {
-  background: rgba(245, 158, 11, 0.18);
+  background: linear-gradient(160deg, #ffffff 0%, #fffbeb 100%);
+}
+
+.turnera-calendar-cell.occupancy-mid::after {
+  background: #f59e0b;
 }
 
 .turnera-calendar-cell.occupancy-high {
-  background: rgba(220, 38, 38, 0.18);
+  background: linear-gradient(160deg, #ffffff 0%, #fef2f2 100%);
+}
+
+.turnera-calendar-cell.occupancy-high::after {
+  background: #dc2626;
+}
+
+.turnera-calendar-cell.is-holiday {
+  border-color: #fdba74;
+  background: repeating-linear-gradient(135deg, #fff7ed, #fff7ed 6px, #ffedd5 6px, #ffedd5 12px);
+}
+
+.turnera-calendar-cell.is-holiday::after {
+  background: #f97316;
 }
 
 .turnera-calendar-legend {
@@ -4199,6 +4277,18 @@ body.theme-night .turnera-premium-locked h3 {
 
 .turnera-calendar-legend .occupancy-high {
   background: #dc2626;
+}
+
+.turnera-calendar-legend .occupancy-holiday {
+  background: #f97316;
+}
+
+.holiday-warning {
+  display: block;
+  margin-top: 4px;
+  color: #c2410c;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .turnera-calendar-day-detail {
@@ -4371,25 +4461,31 @@ body.theme-night .turnera-bar-chart-col small {
 }
 
 body.theme-night .turnera-calendar-cell {
-  background: #0f1c30;
-  border-color: rgba(130, 153, 186, 0.25);
+  background: linear-gradient(160deg, #13233b 0%, #0f1c30 100%);
+  border-color: rgba(130, 153, 186, 0.22);
   color: #e2e8f0;
 }
 
-body.theme-night .turnera-calendar-cell.occupancy-none {
-  background: #0f1c30;
-}
-
+body.theme-night .turnera-calendar-cell.occupancy-none,
 body.theme-night .turnera-calendar-cell.occupancy-low {
-  background: rgba(59, 130, 246, 0.28);
+  background: linear-gradient(160deg, #13233b 0%, #0f1c30 100%);
 }
 
 body.theme-night .turnera-calendar-cell.occupancy-mid {
-  background: rgba(245, 158, 11, 0.3);
+  background: linear-gradient(160deg, #13233b 0%, rgba(245, 158, 11, 0.18) 100%);
 }
 
 body.theme-night .turnera-calendar-cell.occupancy-high {
-  background: rgba(220, 38, 38, 0.32);
+  background: linear-gradient(160deg, #13233b 0%, rgba(220, 38, 38, 0.22) 100%);
+}
+
+body.theme-night .turnera-calendar-cell.is-holiday {
+  border-color: rgba(249, 115, 22, 0.5);
+  background: repeating-linear-gradient(135deg, #2a1a10, #2a1a10 6px, #33200f 6px, #33200f 12px);
+}
+
+body.theme-night .turnera-calendar-day-holiday {
+  color: #fdba74;
 }
 
 body.theme-night .turnera-calendar-day-count {

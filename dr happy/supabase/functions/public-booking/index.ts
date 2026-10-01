@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
+import { getHolidayName } from '../_shared/argentineHolidays.ts'
 
 // Función NUEVA e independiente de la Turnera existente.
 // Permite a un profesional generar un enlace público de "turnos libres"
@@ -539,12 +540,13 @@ serve(async (request) => {
             .map((reservation) => `${reservation.slot_date}|${reservation.slot_time}`),
         )
 
-        const days: Array<{ date: string; slots: Array<Record<string, unknown>> }> = []
+        const days: Array<{ date: string; slots: Array<Record<string, unknown>>; holiday?: string }> = []
         for (let offset = 0; offset < requestedDays; offset += 1) {
           const date = addDays(startDate, offset)
           if (date > maxDate) break
           const weekday = dateDay(date)
-          const slots = blocks.flatMap((block) => {
+          const holiday = getHolidayName(date)
+          const slots = holiday ? [] : blocks.flatMap((block) => {
             if (!block.days.includes(weekday)) return []
             return buildBlockSlotTimes(block).map((time) => {
               const key = `${date}|${time}`
@@ -565,7 +567,7 @@ serve(async (request) => {
               }
             })
           }).sort((left, right) => String(left.time).localeCompare(String(right.time)))
-          days.push({ date, slots })
+          days.push(holiday ? { date, slots, holiday } : { date, slots })
         }
 
         return jsonResponse(200, {
@@ -614,6 +616,10 @@ serve(async (request) => {
           .lt('created_at', pendingReservationCutoff())
         if (slotDate < todayISO() || slotDate > addDays(todayISO(), 59)) {
           return jsonResponse(409, { success: false, message: 'La fecha elegida está fuera del rango habilitado.' })
+        }
+        const slotHoliday = getHolidayName(slotDate)
+        if (slotHoliday) {
+          return jsonResponse(409, { success: false, message: `Ese día es feriado nacional (${slotHoliday}). Elegí otra fecha.` })
         }
 
         const block = (Array.isArray(settings.availability_blocks) ? settings.availability_blocks : [])

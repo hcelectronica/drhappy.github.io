@@ -55,6 +55,7 @@
     .month-day.day-free { background: #ecfdf5; border-color: #86efac; color: #166534; cursor: pointer; }
     .month-day.day-busy { background: #fef2f2; border-color: #fca5a5; color: #991b1b; cursor: pointer; }
     .month-day.day-closed { background: #f8fafc; color: #94a3b8; }
+    .month-day.day-holiday { background: repeating-linear-gradient(135deg, #fff7ed, #fff7ed 6px, #ffedd5 6px, #ffedd5 12px); border-color: #fdba74; color: #9a3412; cursor: not-allowed; }
     .month-day.empty { border: 0; background: transparent; }
     .first-available { grid-column: 1 / -1; padding: 14px 16px; border: 0; border-radius: 12px; background: #166534; color: white; font-size: .95rem; font-weight: 800; cursor: pointer; }
     .first-available:disabled { background: #cbd5e1; cursor: not-allowed; }
@@ -203,9 +204,11 @@
         var date = monthDate.getFullYear() + '-' + String(monthDate.getMonth() + 1).padStart(2, '0') + '-' + String(dayNumber).padStart(2, '0');
         var day = daysByDate[date]; var slots = day ? (day.slots || []).filter(function (slot) { return filter === 'all' || slot.modality === filter; }) : [];
         var available = slots.filter(function (slot) { return slot.available; });
-        var cell = document.createElement('button'); cell.type = 'button'; cell.className = 'month-day ' + (available.length ? 'day-free' : slots.length ? 'day-busy' : 'day-closed');
-        cell.innerHTML = '<strong>' + dayNumber + '</strong><span>' + (available.length ? available.length + ' libres' : slots.length ? 'Ocupado' : 'Sin agenda') + '</span>';
-        cell.disabled = !available.length;
+        var holiday = day && day.holiday ? day.holiday : '';
+        var cell = document.createElement('button'); cell.type = 'button'; cell.className = 'month-day ' + (holiday ? 'day-holiday' : available.length ? 'day-free' : slots.length ? 'day-busy' : 'day-closed');
+        cell.innerHTML = '<strong>' + dayNumber + '</strong><span>' + (holiday ? 'Feriado' : available.length ? available.length + ' libres' : slots.length ? 'Ocupado' : 'Sin agenda') + '</span>';
+        if (holiday) { cell.title = 'Feriado nacional: ' + holiday; }
+        cell.disabled = Boolean(holiday) || !available.length;
         cell.addEventListener('click', function (chosenDate, chosenSlots) { return function () { var first = chosenSlots.filter(function (slot) { return slot.available; })[0]; if (first) { selected = Object.assign({ date: chosenDate }, first); renderSelection(); } }; }(date, slots));
         calendar.appendChild(cell);
       }

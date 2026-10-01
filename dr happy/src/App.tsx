@@ -11,6 +11,7 @@ import mammoth from 'mammoth'
 import JsBarcode from 'jsbarcode'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
+import { getHolidayName } from './argentineHolidays'
 import {
   getNotificationPermission,
   getPushSubscriptionsCount,
@@ -571,6 +572,7 @@ const EMAIL_VERIFICATION_PENDING_KEY = 'drhappy-pending-email-verification'
 const EMAIL_VERIFICATION_ENABLED = import.meta.env.VITE_ENABLE_EMAIL_VERIFICATION === 'true'
 const CREATED_USERS_KEY = 'drhappy-created-users'
 const THEME_MODE_KEY = 'drhappy-theme-mode'
+const ONBOARDING_DISMISSED_KEY = 'drhappy-onboarding-dismissed'
 const PATIENT_REGISTRY_KEY = 'drhappy-patient-registry'
 const PASSWORD_OVERRIDES_KEY = 'drhappy-password-overrides'
 const PASSWORD_RECOVERY_KEY = 'drhappy-password-recovery'
@@ -2403,6 +2405,9 @@ function App() {
     const stored = localStorage.getItem(THEME_MODE_KEY)
     return stored === 'night' ? 'night' : 'light'
   })
+  const [onboardingDismissed, setOnboardingDismissed] = useState(
+    () => localStorage.getItem(ONBOARDING_DISMISSED_KEY) === '1',
+  )
   const [registerOpen, setRegisterOpen] = useState(false)
   const [registerDraft, setRegisterDraft] = useState<RegisterDraft>(emptyRegisterDraft)
   const [pendingEmailVerification, setPendingEmailVerification] = useState<PendingEmailVerification | null>(() => {
@@ -3235,9 +3240,9 @@ function App() {
     const daysInMonth = new Date(year, month + 1, 0).getDate()
     const todayStr = new Date().toISOString().slice(0, 10)
 
-    const cells: Array<{ dateStr: string | null; day: number | null; count: number; coverage: number; private: number; isToday: boolean } > = []
+    const cells: Array<{ dateStr: string | null; day: number | null; count: number; coverage: number; private: number; isToday: boolean; holiday: string | null } > = []
     for (let i = 0; i < firstWeekday; i++) {
-      cells.push({ dateStr: null, day: null, count: 0, coverage: 0, private: 0, isToday: false })
+      cells.push({ dateStr: null, day: null, count: 0, coverage: 0, private: 0, isToday: false, holiday: null })
     }
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
@@ -3249,10 +3254,11 @@ function App() {
         coverage: modalityCounts.coverage,
         private: modalityCounts.private,
         isToday: dateStr === todayStr,
+        holiday: getHolidayName(dateStr),
       })
     }
     while (cells.length % 7 !== 0) {
-      cells.push({ dateStr: null, day: null, count: 0, coverage: 0, private: 0, isToday: false })
+      cells.push({ dateStr: null, day: null, count: 0, coverage: 0, private: 0, isToday: false, holiday: null })
     }
 
     const weeks: typeof cells[] = []
@@ -4987,6 +4993,21 @@ function App() {
     return visiblePatients.slice(0, 6)
   }, [patientSearchQuery, visiblePatients])
 
+  /* Últimos pacientes con consulta registrada, para retomar la atención sin buscar. */
+  const recentlyAttendedPatients = useMemo(() => {
+    return patients
+      .map((patient) => ({
+        patient,
+        lastVisit: patient.consultations.reduce(
+          (latest, entry) => Math.max(latest, Date.parse(entry.date) || 0),
+          0,
+        ),
+      }))
+      .filter((entry) => entry.lastVisit > 0)
+      .sort((left, right) => right.lastVisit - left.lastVisit)
+      .slice(0, 6)
+  }, [patients])
+
   const myPatients = useMemo(() => {
     const query = normalizeSearchText(myPatientsQuery)
     const filtered = patients.filter((patient) => {
@@ -6670,6 +6691,15 @@ function App() {
     setCommunityOpen(false)
     setSelectedPatientId(patientId)
     setWorkspaceLayer('patient-record')
+    setAppError(null)
+  }
+
+  /* Atajo del listado: abre la evolución del paciente sin pasar por la ficha. */
+  function handleEvolvePatient(patientId: string): void {
+    stopDictation()
+    setCommunityOpen(false)
+    setSelectedPatientId(patientId)
+    setWorkspaceLayer('clinical')
     setAppError(null)
   }
 
@@ -8736,8 +8766,8 @@ function App() {
                     </div>
                   </div>
                   <div className="auth-promo-claude-brand">
+                    <strong>Powered by</strong>
                     <img className="auth-promo-claude-logo" src={claudeAnthropicLogo} alt="Claude by Anthropic" />
-                    <strong>Powered by Claude, de Anthropic</strong>
                   </div>
                 </div>
                 <p className="auth-promo-sofia-lead">Una asistente para trabajar con tu agenda, tus pacientes y tus tareas clínicas desde Dr Happy.</p>
@@ -9447,6 +9477,11 @@ function App() {
     },
   ]
   const onboardingDone = onboardingSteps.filter((step) => step.done).length
+
+  function handleDismissOnboarding(): void {
+    localStorage.setItem(ONBOARDING_DISMISSED_KEY, '1')
+    setOnboardingDismissed(true)
+  }
 
   /* En móvil la navegación se resuelve con esta botonera de Inicio en lugar de la barra lateral. */
   const homeQuickActions: Array<{
@@ -11229,14 +11264,24 @@ function App() {
 
       {workspaceLayer === 'overview' ? (
         <div className="screen-stage">
-          {onboardingDone < onboardingSteps.length ? (
+          {onboardingDone < onboardingSteps.length && !onboardingDismissed ? (
             <section className="onboarding-card" aria-label="Primeros pasos">
               <div className="onboarding-head">
                 <div>
                   <span className="section-kicker">Primeros pasos</span>
                   <strong>Dejá tu consultorio listo en {onboardingSteps.length} pasos</strong>
                 </div>
-                <span className="onboarding-count">{onboardingDone}/{onboardingSteps.length}</span>
+                <div className="onboarding-head-actions">
+                  <span className="onboarding-count">{onboardingDone}/{onboardingSteps.length}</span>
+                  <button
+                    type="button"
+                    className="onboarding-dismiss"
+                    onClick={handleDismissOnboarding}
+                    title="Ocultar esta guía"
+                  >
+                    En otro momento
+                  </button>
+                </div>
               </div>
               <div className="onboarding-bar" aria-hidden="true">
                 <span style={{ width: `${(onboardingDone / onboardingSteps.length) * 100}%` }} />
@@ -11473,7 +11518,7 @@ function App() {
                 Desde
                 <span className="time-select-pair">
                   <select value={splitAppointmentTime(appointmentStartTime).hour} onChange={(event) => saveAppointmentCapacity(appointmentDays, joinAppointmentTime(event.target.value, splitAppointmentTime(appointmentStartTime).period), appointmentEndTime, appointmentDurationMinutes)}>
-                    {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}</option>)}
+                    {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}:00</option>)}
                   </select>
                   <select value={splitAppointmentTime(appointmentStartTime).period} onChange={(event) => saveAppointmentCapacity(appointmentDays, joinAppointmentTime(splitAppointmentTime(appointmentStartTime).hour, event.target.value as 'AM' | 'PM'), appointmentEndTime, appointmentDurationMinutes)}>
                     {APPOINTMENT_PERIOD_OPTIONS.map((period) => <option key={period} value={period}>{period}</option>)}
@@ -11484,7 +11529,7 @@ function App() {
                 Hasta
                 <span className="time-select-pair">
                   <select value={splitAppointmentTime(appointmentEndTime).hour} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, joinAppointmentTime(event.target.value, splitAppointmentTime(appointmentEndTime).period), appointmentDurationMinutes)}>
-                    {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}</option>)}
+                    {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}:00</option>)}
                   </select>
                   <select value={splitAppointmentTime(appointmentEndTime).period} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, joinAppointmentTime(splitAppointmentTime(appointmentEndTime).hour, event.target.value as 'AM' | 'PM'), appointmentDurationMinutes)}>
                     {APPOINTMENT_PERIOD_OPTIONS.map((period) => <option key={period} value={period}>{period}</option>)}
@@ -11739,12 +11784,17 @@ function App() {
                       <button
                         type="button"
                         key={cell.dateStr}
-                        className={`turnera-calendar-cell occupancy-${occupancyLevel} ${cell.isToday ? 'is-today' : ''} ${selectedCalendarDay === cell.dateStr ? 'is-selected' : ''}`}
+                        title={cell.holiday ? `Feriado nacional: ${cell.holiday}` : undefined}
+                        className={`turnera-calendar-cell occupancy-${occupancyLevel} ${cell.holiday ? 'is-holiday' : ''} ${cell.isToday ? 'is-today' : ''} ${selectedCalendarDay === cell.dateStr ? 'is-selected' : ''}`}
                         onClick={() => setSelectedCalendarDay(cell.dateStr)}
                       >
                         <span className="turnera-calendar-day-number">{cell.day}</span>
                         {cell.count > 0 ? <span className="turnera-calendar-day-count">{cell.count}</span> : null}
-                        {cell.count > 0 ? <span className="turnera-calendar-day-breakdown">{cell.count} turno{cell.count === 1 ? '' : 's'}</span> : null}
+                        {cell.holiday ? (
+                          <span className="turnera-calendar-day-holiday">Feriado</span>
+                        ) : cell.count > 0 ? (
+                          <span className="turnera-calendar-day-breakdown">{cell.count} turno{cell.count === 1 ? '' : 's'}</span>
+                        ) : null}
                       </button>
                     )
                   })
@@ -11756,13 +11806,16 @@ function App() {
                 <span><i className="dot occupancy-low" /> 1-2 turnos</span>
                 <span><i className="dot occupancy-mid" /> 3-5 turnos</span>
                 <span><i className="dot occupancy-high" /> 6+ turnos</span>
+                <span><i className="dot occupancy-holiday" /> Feriado nacional</span>
               </div>
 
               {selectedCalendarDay ? (
                 <div className="turnera-calendar-day-detail">
                   <strong>
                     {formatShortDate(selectedCalendarDay)}: {appointmentCountByDate.get(selectedCalendarDay) ?? 0} paciente(s) agendado(s)
-                    <small className="turnera-calendar-day-breakdown-detail">Ocupación de la agenda</small>
+                    <small className="turnera-calendar-day-breakdown-detail">
+                      {getHolidayName(selectedCalendarDay) ?? 'Ocupación de la agenda'}
+                    </small>
                   </strong>
                   <button
                     type="button"
@@ -12116,21 +12169,48 @@ function App() {
                   <small>{visiblePatients.length} coincidencias cercanas</small>
                   {patientSearchSuggestions.length > 0 ? (
                     <ul className="search-suggestions">
-                      {patientSearchSuggestions.map((patient) => (
-                        <li key={patient.id}>
-                          <button type="button" onClick={() => handleSelectPatient(patient.id)}>
-                            <strong>
-                              {patient.apellido}, {patient.nombre || '(sin nombre)'}
-                            </strong>
-                            <span>DNI {patient.dni}</span>
-                          </button>
-                        </li>
-                      ))}
+                      {patientSearchSuggestions.map((patient) => {
+                        const lastVisit = [...patient.consultations].sort(
+                          (left, right) => Date.parse(right.date) - Date.parse(left.date),
+                        )[0]
+                        return (
+                          <li key={patient.id}>
+                            <button type="button" onClick={() => handleSelectPatient(patient.id)}>
+                              <strong>
+                                {patient.apellido}, {patient.nombre || '(sin nombre)'}
+                              </strong>
+                              <span>DNI {patient.dni}</span>
+                              <em className="suggestion-last-visit">
+                                {lastVisit ? `Última atención: ${formatShortDate(lastVisit.date)}` : 'Sin atenciones'}
+                              </em>
+                            </button>
+                          </li>
+                        )
+                      })}
                     </ul>
                   ) : (
                     <p className="search-empty">No hay coincidencias cercanas.</p>
                   )}
                 </>
+              ) : recentlyAttendedPatients.length > 0 ? (
+                <div className="recent-patients">
+                  <span className="section-kicker">Últimos pacientes atendidos</span>
+                  <ul className="search-suggestions">
+                    {recentlyAttendedPatients.map(({ patient, lastVisit }) => (
+                      <li key={patient.id}>
+                        <button type="button" onClick={() => handleSelectPatient(patient.id)}>
+                          <strong>
+                            {patient.apellido}, {patient.nombre || '(sin nombre)'}
+                          </strong>
+                          <span>DNI {patient.dni || 'Sin dato'}</span>
+                          <em className="suggestion-last-visit">
+                            {formatShortDate(new Date(lastVisit).toISOString().slice(0, 10))}
+                          </em>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : (
                 <p className="search-empty">Escribe para empezar a buscar pacientes.</p>
               )}
@@ -12187,14 +12267,17 @@ function App() {
                       <div className="patient-directory-info">
                         <strong>{patient.apellido}, {patient.nombre || 'Sin nombre'}</strong>
                         <span>DNI {patient.dni || 'Sin dato'}</span>
-                        <small>{lastConsultation ? `Última consulta: ${formatShortDate(lastConsultation.date)}` : 'Sin consultas registradas'}</small>
+                        <small className={lastConsultation ? 'patient-last-visit' : undefined}>
+                          {lastConsultation ? `Última atención: ${formatShortDate(lastConsultation.date)}` : 'Sin consultas registradas'}
+                        </small>
                       </div>
                       <div className="patient-directory-actions">
                         <button type="button" onClick={() => handleSelectPatient(patient.id)}>Abrir ficha</button>
-                        {patient.ownerUserId === activeUserId ? (
-                          <button type="button" className="ghost danger" onClick={() => void handleDeletePatient(patient.id)}>Eliminar</button>
-                        ) : null}
                         <button type="button" className="ghost" onClick={() => handleNewAppointmentModal(patient)}>Agendar</button>
+                        <button type="button" className="ghost" onClick={() => handleEvolvePatient(patient.id)}>Evolucionar</button>
+                        {patient.ownerUserId === activeUserId ? (
+                          <button type="button" className="patient-delete-action" onClick={() => void handleDeletePatient(patient.id)}>Eliminar</button>
+                        ) : null}
                       </div>
                     </article>
                   )
@@ -13977,6 +14060,11 @@ function App() {
                     value={appointmentDraft.scheduledDate}
                     onChange={(e) => setAppointmentDraft((prev) => ({ ...prev, scheduledDate: e.target.value }))}
                   />
+                  {getHolidayName(appointmentDraft.scheduledDate) ? (
+                    <small className="holiday-warning">
+                      Feriado nacional: {getHolidayName(appointmentDraft.scheduledDate)}
+                    </small>
+                  ) : null}
                 </label>
                 <label style={{ flex: 1 }}>
                   Hora *
