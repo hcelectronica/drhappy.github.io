@@ -477,6 +477,13 @@ interface AppointmentRecord {
   publicBookingModality?: 'coverage' | 'private'
 }
 
+interface PublicTurneraDraft {
+  days: number[]
+  startTime: string
+  endTime: string
+  durationMinutes: number
+}
+
 interface AppointmentDraft {
   id?: string
   patientId: string
@@ -2516,6 +2523,7 @@ function App() {
   const [publicBookingLoading, setPublicBookingLoading] = useState(false)
   const [publicBookingSaving, setPublicBookingSaving] = useState(false)
   const [publicBookingQuotas, setPublicBookingQuotas] = useState<Record<'private' | 'coverage', string>>({ private: '', coverage: '' })
+  const [publicTurneraDrafts, setPublicTurneraDrafts] = useState<Partial<Record<'private' | 'coverage', PublicTurneraDraft>>>({})
   const [publicBookingError, setPublicBookingError] = useState<string | null>(null)
   const [publicBookingNotice, setPublicBookingNotice] = useState<string | null>(null)
   const [mercadoPagoConnected, setMercadoPagoConnected] = useState(false)
@@ -7318,6 +7326,19 @@ function App() {
     showSavedFloatingNotice('Turno cancelado')
   }
 
+  function getTurneraDraft(modality: 'private' | 'coverage'): PublicTurneraDraft {
+    return publicTurneraDrafts[modality] ?? {
+      days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
+      startTime: appointmentStartTime,
+      endTime: appointmentEndTime,
+      durationMinutes: appointmentDurationMinutes,
+    }
+  }
+
+  function updateTurneraDraft(modality: 'private' | 'coverage', patch: Partial<PublicTurneraDraft>): void {
+    setPublicTurneraDrafts((current) => ({ ...current, [modality]: { ...getTurneraDraft(modality), ...patch } }))
+  }
+
   async function handleGenerateFixedBookingLink(modality: 'private' | 'coverage'): Promise<void> {
     if (!activeUserId) return
     const current = publicBookingSettings || buildDefaultPublicBookingSettings()
@@ -7330,18 +7351,20 @@ function App() {
       setAppError('Cargá el monto de la consulta antes de publicar la turnera particular.')
       return
     }
-    const capacity = calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)
+    const draft = getTurneraDraft(modality)
+    if (!draft.days.length) {
+      setAppError('Elegí al menos un día de atención para esta turnera.')
+      return
+    }
+    const capacity = calculateDailyCapacity(draft.startTime, draft.endTime, draft.durationMinutes)
+    if (capacity < 1) {
+      setAppError('Con ese horario y esa duración no entra ningún turno. Revisá el rango.')
+      return
+    }
     const requestedQuota = Math.round(Number(publicBookingQuotas[modality]) || capacity)
     if (requestedQuota < 1 || requestedQuota > capacity) {
       setAppError(`El cupo diario debe ser entre 1 y ${capacity} turnos.`)
       return
-    }
-    const sharedSchedule = {
-      days: appointmentDays,
-      startTime: appointmentStartTime,
-      endTime: appointmentEndTime,
-      durationMinutes: appointmentDurationMinutes,
-      slotCount: capacity,
     }
     const existing = current.blocks.find((entry) => entry.modality === modality)
     const block: PublicBookingAvailabilityBlock = {
@@ -7349,15 +7372,18 @@ function App() {
       id: existing?.id || crypto.randomUUID(),
       label: modality === 'private' ? 'Turno particular' : 'Turno sin cargo',
       modality,
-      ...sharedSchedule,
+      days: draft.days,
+      startTime: draft.startTime,
+      endTime: draft.endTime,
+      durationMinutes: draft.durationMinutes,
+      slotCount: capacity,
       dailyQuota: requestedQuota,
       reason: existing?.reason || 'Consulta médica',
       amountToCharge: modality === 'private' && Number(appointmentAmountToCharge) > 0 ? Number(appointmentAmountToCharge) : undefined,
       amountConcept: modality === 'private' ? appointmentAmountConcept : undefined,
     }
-    // La otra turnera sigue el mismo horario para que ambas sean coherentes con la agenda.
     const other = current.blocks.find((entry) => entry.modality !== modality)
-    const blocks = [block, ...(other ? [{ ...other, ...sharedSchedule, dailyQuota: Math.min(other.dailyQuota ?? capacity, capacity) }] : [])]
+    const blocks = [block, ...(other ? [other] : [])]
       .sort((left, right) => (left.modality === 'private' ? 0 : 1) - (right.modality === 'private' ? 0 : 1))
     const professionalName = profile?.fullName || activeUser?.fullName || current.professionalName || 'profesional'
     const baseSlug = buildDefaultPublicBookingSlug(professionalName, activeUserId)
@@ -7484,6 +7510,16 @@ function App() {
         setPublicBookingQuotas({
           private: privateBlock ? String(privateBlock.dailyQuota ?? privateBlock.slotCount) : '',
           coverage: freeBlock ? String(freeBlock.dailyQuota ?? freeBlock.slotCount) : '',
+        })
+        const toDraft = (block: PublicBookingAvailabilityBlock): PublicTurneraDraft => ({
+          days: block.days,
+          startTime: block.startTime,
+          endTime: block.endTime,
+          durationMinutes: block.durationMinutes,
+        })
+        setPublicTurneraDrafts({
+          ...(privateBlock ? { private: toDraft(privateBlock) } : {}),
+          ...(freeBlock ? { coverage: toDraft(freeBlock) } : {}),
         })
         setAppointmentAmountToCharge(privateBlock?.amountToCharge ? String(privateBlock.amountToCharge) : '')
         setAppointmentAmountConcept(privateBlock?.amountConcept === 'consulta' ? 'consulta' : 'sena')
@@ -11563,8 +11599,8 @@ function App() {
           {turneraViewMode === 'capacity' ? <section className="panel appointment-capacity-panel">
             <div>
               <span className="section-kicker">Control de agenda</span>
-              <h3 style={{ margin: 0 }}>Cupos de atención</h3>
-              <p className="flow-hint">Definí tu horario y la duración de cada turno. Dr Happy calcula automáticamente cuántos entran.</p>
+              <h3 style={{ margin: 0 }}>Horario del consultorio</h3>
+              <p className="flow-hint">Horario para los turnos que agendás vos. Cada turnera de abajo tiene su propio horario, duración y cupo.</p>
             </div>
             <div className="capacity-controls">
               <label>
@@ -11623,7 +11659,8 @@ function App() {
             <div className="capacity-status">{appointmentDaysLabel || 'Elegí al menos un día'} · Configuración guardada automáticamente al cambiar los campos.</div>
             {(['private', 'coverage'] as const).map((modality) => {
               const isPrivate = modality === 'private'
-              const capacity = calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes)
+              const draft = getTurneraDraft(modality)
+              const capacity = calculateDailyCapacity(draft.startTime, draft.endTime, draft.durationMinutes)
               const published = Boolean(publicBookingSettings?.enabled && publicBookingSettings.blocks.some((block) => block.modality === modality))
               const link = published && publicBookingSettings ? buildFixedPublicBookingUrl(publicBookingSettings.slug, modality) : null
               return (
@@ -11638,9 +11675,62 @@ function App() {
                         ? 'El paciente reserva y paga por Mercado Pago. El turno se confirma al aprobarse el pago.'
                         : 'El paciente reserva sin pagar. El turno queda confirmado al instante.'}
                     </p>
+                    <div className="capacity-controls">
+                      <label>
+                        Desde
+                        <span className="time-select-pair">
+                          <select value={splitAppointmentTime(draft.startTime).hour} onChange={(event) => updateTurneraDraft(modality, { startTime: joinAppointmentTime(event.target.value, splitAppointmentTime(draft.startTime).period) })}>
+                            {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}:00</option>)}
+                          </select>
+                          <select value={splitAppointmentTime(draft.startTime).period} onChange={(event) => updateTurneraDraft(modality, { startTime: joinAppointmentTime(splitAppointmentTime(draft.startTime).hour, event.target.value as 'AM' | 'PM') })}>
+                            {APPOINTMENT_PERIOD_OPTIONS.map((period) => <option key={period} value={period}>{period}</option>)}
+                          </select>
+                        </span>
+                      </label>
+                      <label>
+                        Hasta
+                        <span className="time-select-pair">
+                          <select value={splitAppointmentTime(draft.endTime).hour} onChange={(event) => updateTurneraDraft(modality, { endTime: joinAppointmentTime(event.target.value, splitAppointmentTime(draft.endTime).period) })}>
+                            {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}:00</option>)}
+                          </select>
+                          <select value={splitAppointmentTime(draft.endTime).period} onChange={(event) => updateTurneraDraft(modality, { endTime: joinAppointmentTime(splitAppointmentTime(draft.endTime).hour, event.target.value as 'AM' | 'PM') })}>
+                            {APPOINTMENT_PERIOD_OPTIONS.map((period) => <option key={period} value={period}>{period}</option>)}
+                          </select>
+                        </span>
+                      </label>
+                      <label>
+                        Duración del turno
+                        <select value={draft.durationMinutes} onChange={(event) => updateTurneraDraft(modality, { durationMinutes: Number(event.target.value) })}>
+                          {[15, 20, 30, 45, 60, 90].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutos</option>)}
+                        </select>
+                      </label>
+                      <div className="capacity-calculated">
+                        <strong>{capacity}</strong>
+                        <span>turnos posibles por día</span>
+                      </div>
+                      <div className="capacity-days">
+                        <span>Días de atención</span>
+                        <div>
+                          {WEEK_DAYS.map((day) => (
+                            <label key={day.value} className="capacity-day-option">
+                              <input
+                                type="checkbox"
+                                checked={draft.days.includes(day.value)}
+                                onChange={() => updateTurneraDraft(modality, {
+                                  days: draft.days.includes(day.value)
+                                    ? draft.days.filter((value) => value !== day.value)
+                                    : [...draft.days, day.value].sort((left, right) => left - right),
+                                })}
+                              />
+                              <span>{day.label.slice(0, 3)}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                     <div className="public-turnera-fields">
                       <label>
-                        Cupo diario
+                        Cupo diario (máx. {capacity})
                         <input
                           type="number"
                           min="1"
@@ -11667,7 +11757,7 @@ function App() {
                         </>
                       ) : null}
                     </div>
-                    <small className="flow-hint">Comparte el horario de arriba: un horario reservado en una turnera ya no aparece en la otra.</small>
+                    <small className="flow-hint">Si los horarios de las dos turneras se superponen, un horario reservado en una ya no aparece en la otra.</small>
                     <div className="public-turnera-actions">
                       <button type="button" className="screen-action primary" disabled={publicBookingSaving} onClick={() => void handleGenerateFixedBookingLink(modality)}>
                         <span aria-hidden="true">💾</span> {publicBookingSaving ? 'Guardando...' : published ? 'Guardar cambios y compartir link' : 'Publicar y generar link'}

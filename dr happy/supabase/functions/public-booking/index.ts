@@ -95,6 +95,7 @@ interface AppointmentLike {
   scheduledDate?: string
   scheduledTime?: string
   status?: string
+  durationMinutes?: number
   publicBookingModality?: 'coverage' | 'private'
 }
 
@@ -245,6 +246,45 @@ function pickBlock(blocks: PublicBookingBlock[], modality?: 'coverage' | 'privat
 
 function requestedModality(value: unknown): 'coverage' | 'private' | undefined {
   return value === 'coverage' ? 'coverage' : value === 'private' ? 'private' : undefined
+}
+
+function timeToMinutes(value: string): number {
+  const [hours, minutes] = value.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+// Intervalos ocupados por fecha (turnos y reservas de ambas turneras), para que no se superpongan horarios con distinta duración.
+async function loadBusyIntervals(admin: AdminClient, professionalId: string, appointments: AppointmentLike[], blocks: PublicBookingBlock[], startDate: string, endDate: string): Promise<Map<string, Array<[number, number]>>> {
+  const busy = new Map<string, Array<[number, number]>>()
+  const add = (date: string | undefined, time: string | undefined, duration: number) => {
+    if (!date || !time || !/^\d{2}:\d{2}$/.test(time)) return
+    const start = timeToMinutes(time)
+    const list = busy.get(date) ?? []
+    list.push([start, start + Math.max(5, duration)])
+    busy.set(date, list)
+  }
+  for (const appointment of appointments) {
+    if (appointment.status === 'cancelled') continue
+    add(appointment.scheduledDate, appointment.scheduledTime, Number(appointment.durationMinutes) || 30)
+  }
+  const { data: reservations } = await admin
+    .from('public_booking_reservations')
+    .select('slot_date, slot_time, status, block_id')
+    .eq('professional_id', professionalId)
+    .gte('slot_date', startDate)
+    .lte('slot_date', endDate)
+  for (const reservation of reservations ?? []) {
+    if (reservation.status === 'cancelled') continue
+    const duration = blocks.find((block) => block.id === reservation.block_id)?.durationMinutes ?? 30
+    add(reservation.slot_date, reservation.slot_time, duration)
+  }
+  return busy
+}
+
+function overlapsBusy(busy: Map<string, Array<[number, number]>>, date: string, time: string, duration: number): boolean {
+  const start = timeToMinutes(time)
+  const end = start + duration
+  return (busy.get(date) ?? []).some(([busyStart, busyEnd]) => start < busyEnd && busyStart < end)
 }
 
 // Turnos ya tomados por cada turnera, por fecha, para controlar el cupo diario.
@@ -573,7 +613,8 @@ serve(async (request) => {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
 
-        const agendaBlock = pickBlock(normalizeBlocks(settings.availability_blocks), requestedModality(body.modality))
+        const allAgendaBlocks = normalizeBlocks(settings.availability_blocks)
+        const agendaBlock = pickBlock(allAgendaBlocks, requestedModality(body.modality))
         if (!agendaBlock) {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
@@ -596,23 +637,7 @@ serve(async (request) => {
           .eq('status', 'pending_payment')
           .lt('created_at', pendingReservationCutoff())
         const currentAppointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json as AppointmentLike[] : []
-        const bookedAppointments = new Set(
-          currentAppointments
-            .filter((appointment) => appointment.status !== 'cancelled' && appointment.scheduledDate && appointment.scheduledTime)
-            .map((appointment) => `${appointment.scheduledDate}|${appointment.scheduledTime}`),
-        )
-
-        const { data: reservations } = await admin
-          .from('public_booking_reservations')
-          .select('slot_date, slot_time, status')
-          .eq('professional_id', settings.professional_id)
-          .gte('slot_date', startDate)
-          .lte('slot_date', endDate)
-        const bookedReservations = new Set(
-          (reservations ?? [])
-            .filter((reservation) => reservation.status !== 'cancelled')
-            .map((reservation) => `${reservation.slot_date}|${reservation.slot_time}`),
-        )
+        const busyIntervals = await loadBusyIntervals(admin, settings.professional_id, currentAppointments, allAgendaBlocks, startDate, endDate)
         const modalityUsage = await loadModalityUsage(admin, settings.professional_id, currentAppointments, startDate, endDate)
 
         const days: Array<{ date: string; slots: Array<Record<string, unknown>>; holiday?: string }> = []
@@ -625,13 +650,12 @@ serve(async (request) => {
             if (!block.days.includes(weekday)) return []
             const quotaReached = (modalityUsage.get(`${block.modality}|${date}`)?.size ?? 0) >= (block.dailyQuota ?? block.slotCount)
             return buildBlockSlotTimes(block).map((time) => {
-              const key = `${date}|${time}`
               const amount = block.modality === 'private' ? block.amountToCharge ?? null : null
               return {
                 id: `${block.id}-${date}-${time}`,
                 blockId: block.id,
                 time,
-                available: !quotaReached && !bookedAppointments.has(key) && !bookedReservations.has(key),
+                available: !quotaReached && !overlapsBusy(busyIntervals, date, time, block.durationMinutes),
                 label: block.label,
                 modality: block.modality,
                 durationMinutes: block.durationMinutes,
@@ -715,10 +739,8 @@ serve(async (request) => {
           .eq('user_id', settings.professional_id)
           .maybeSingle()
         const currentAppointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json : []
-        const alreadyBooked = currentAppointments.some((appointment: AppointmentLike) =>
-          appointment.status !== 'cancelled' && appointment.scheduledDate === slotDate && appointment.scheduledTime === slotTime,
-        )
-        if (alreadyBooked) {
+        const busyForDay = await loadBusyIntervals(admin, settings.professional_id, currentAppointments as AppointmentLike[], normalizeBlocks(settings.availability_blocks), slotDate, slotDate)
+        if (overlapsBusy(busyForDay, slotDate, slotTime, block.durationMinutes)) {
           return jsonResponse(409, { success: false, message: 'Ese horario ya fue reservado. Elegí otro disponible.' })
         }
         const usageForDay = await loadModalityUsage(admin, settings.professional_id, currentAppointments as AppointmentLike[], slotDate, slotDate)
