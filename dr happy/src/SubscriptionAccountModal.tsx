@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { loadSubscriptionAccount, SUBSCRIPTION_BENEFITS } from './subscriptionAccountService'
+import { loadSubscriptionAccount } from './subscriptionAccountService'
+import { SubscriptionBenefits } from './SubscriptionBenefits'
 import type { SubscriptionAccount, SubscriptionPlan } from './subscriptionAccountService'
 
 const PLAN_LABELS = { monthly: '30 días', semiannual: '6 meses (180 días)', annual: '1 año (365 días)' }
@@ -66,8 +67,7 @@ export function SubscriptionAccountModal({ onClose, onSubscribe, busy }: {
           {account.usage.used >= account.usage.limit * 0.8 ? <p className="notice">{account.usage.used >= account.usage.limit ? 'Cupo agotado. Las demás herramientas siguen disponibles.' : 'Consumiste al menos el 80% de tu cupo.'}</p> : null}
           <p>Tokens de entrada: {account.usage.inputTokens.toLocaleString('es-AR')} · Salida: {account.usage.outputTokens.toLocaleString('es-AR')} · Total: {account.usage.totalTokens.toLocaleString('es-AR')}</p>
           <p>{account.usage.resetsAt ? `El cupo se renueva el ${dateLabel(account.usage.resetsAt)} (hora de Argentina). Renovar la suscripción no reinicia el cupo.` : 'Durante la prueba gratuita se incluyen 3 consultas en total.'}</p>
-          <h3>Todos los planes pagos incluyen</h3>
-          <ul>{SUBSCRIPTION_BENEFITS.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>
+          <SubscriptionBenefits />
           <h3>Renovar o extender</h3>
           <p>El período que compres se suma al tiempo disponible. No perdés días ni datos.</p>
           <div className="subscription-account-plans">{PLANS.map((option) => (

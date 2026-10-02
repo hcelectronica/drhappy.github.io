@@ -12,7 +12,8 @@ import JsBarcode from 'jsbarcode'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
 import { SubscriptionAccountModal } from './SubscriptionAccountModal'
-import { loadSubscriptionAccount, SUBSCRIPTION_BENEFITS } from './subscriptionAccountService'
+import { loadSubscriptionAccount } from './subscriptionAccountService'
+import { SubscriptionBenefits } from './SubscriptionBenefits'
 import { getHolidayName } from './argentineHolidays'
 import { SupportContactForm } from './SupportContactForm'
 import { AdminSupportInbox } from './AdminSupportInbox'
@@ -9534,21 +9535,21 @@ function App() {
                 <span>Mensual</span>
                 <strong>$15.000</strong>
                 <small>por mes</small>
-                <ul className="auth-plan-benefits">{SUBSCRIPTION_BENEFITS.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>
+                <SubscriptionBenefits />
               </article>
               <article className="auth-plan auth-plan--six-months">
                 <span>6 meses</span>
                 <strong>$78.000</strong>
                 <small>por el período</small>
                 <em>Ahorrás $12.000</em>
-                <ul className="auth-plan-benefits">{SUBSCRIPTION_BENEFITS.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>
+                <SubscriptionBenefits />
               </article>
               <article className="auth-plan auth-plan--annual">
                 <span>Anual</span>
                 <strong>$120.000</strong>
                 <small>por 12 meses</small>
                 <em>Ahorrás $60.000</em>
-                <ul className="auth-plan-benefits">{SUBSCRIPTION_BENEFITS.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>
+                <SubscriptionBenefits />
               </article>
             </div>
           </section>
@@ -10070,7 +10071,7 @@ function App() {
                 <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: 12 }}>
                   {option.description}
                 </div>
-                <ul className="auth-plan-benefits">{SUBSCRIPTION_BENEFITS.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>
+                <SubscriptionBenefits />
                 <button
                   type="button"
                   style={{
