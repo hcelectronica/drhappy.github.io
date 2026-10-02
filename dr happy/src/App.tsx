@@ -11,6 +11,8 @@ import mammoth from 'mammoth'
 import JsBarcode from 'jsbarcode'
 import './App.css'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
+import { SubscriptionAccountModal } from './SubscriptionAccountModal'
+import { loadSubscriptionAccount, SUBSCRIPTION_BENEFITS } from './subscriptionAccountService'
 import { getHolidayName } from './argentineHolidays'
 import { SupportContactForm } from './SupportContactForm'
 import { AdminSupportInbox } from './AdminSupportInbox'
@@ -2694,6 +2696,7 @@ function App() {
   const [ambulanceSelectedPatientId, setAmbulanceSelectedPatientId] = useState<string | null>(null)
   const [ambulanceNewPatient, setAmbulanceNewPatient] = useState<{ nombre: string; apellido: string; dni: string } | null>(null)
   const [previewTrialExpired, setPreviewTrialExpired] = useState(false)
+  const [subscriptionAccountOpen, setSubscriptionAccountOpen] = useState(false)
   const [subscriptionCheckoutLoading, setSubscriptionCheckoutLoading] = useState<SubscriptionPlan | null>(null)
   const [adminBusyUserId, setAdminBusyUserId] = useState<string | null>(null)
   const [passwordChangeDraft, setPasswordChangeDraft] = useState({
@@ -4823,6 +4826,8 @@ function App() {
     const verifySubscriptionActivation = async (): Promise<void> => {
       const maxAttempts = 6
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const account = paymentId ? await loadSubscriptionAccount() : null
+        const paymentApplied = !paymentId || account?.payments.some((payment) => payment.payment_id === paymentId)
         const refreshedUser = await fetchRemoteProfessionalById(activeUserId)
         if (cancelled) {
           return
@@ -4836,7 +4841,7 @@ function App() {
             return current.map((user) => (user.id === refreshedUser.id ? refreshedUser : user))
           })
 
-          if (refreshedUser.subscriptionStatus === 'active') {
+          if (refreshedUser.subscriptionStatus === 'active' && paymentApplied) {
             await loadWorkspaceForUser(refreshedUser)
             if (cancelled) {
               return
@@ -4870,12 +4875,13 @@ function App() {
         }
 
         const refreshedUser = await fetchRemoteProfessionalById(activeUserId)
+        const account = await loadSubscriptionAccount()
         if (cancelled) {
           return
         }
         if (refreshedUser) {
           setSeedUsers((current) => current.map((user) => (user.id === refreshedUser.id ? refreshedUser : user)))
-          if (refreshedUser.subscriptionStatus === 'active') {
+          if (refreshedUser.subscriptionStatus === 'active' && account.payments.some((payment) => payment.payment_id === paymentId)) {
             await loadWorkspaceForUser(refreshedUser)
             if (cancelled) {
               return
@@ -9528,18 +9534,21 @@ function App() {
                 <span>Mensual</span>
                 <strong>$15.000</strong>
                 <small>por mes</small>
+                <ul className="auth-plan-benefits">{SUBSCRIPTION_BENEFITS.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>
               </article>
               <article className="auth-plan auth-plan--six-months">
                 <span>6 meses</span>
                 <strong>$78.000</strong>
                 <small>por el período</small>
                 <em>Ahorrás $12.000</em>
+                <ul className="auth-plan-benefits">{SUBSCRIPTION_BENEFITS.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>
               </article>
               <article className="auth-plan auth-plan--annual">
                 <span>Anual</span>
                 <strong>$120.000</strong>
                 <small>por 12 meses</small>
                 <em>Ahorrás $60.000</em>
+                <ul className="auth-plan-benefits">{SUBSCRIPTION_BENEFITS.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>
               </article>
             </div>
           </section>
@@ -10011,7 +10020,7 @@ function App() {
             {isPlanPreview
               ? <>Elegí entre <strong>30 días</strong>, <strong>6 meses</strong> o <strong>1 año</strong> de acceso completo.</>
               : expiredBySubscription
-              ? <>Ya pasaron los <strong>30 días</strong> de tu suscripción actual.</>
+              ? <>Terminó el período de tu suscripción actual.</>
               : <>Los <strong>7 días</strong> de prueba gratuita de <strong>Dr Happy 😊</strong> terminaron. Tus datos siguen guardados.</>
             }
           </p>
@@ -10061,6 +10070,7 @@ function App() {
                 <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: 12 }}>
                   {option.description}
                 </div>
+                <ul className="auth-plan-benefits">{SUBSCRIPTION_BENEFITS.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul>
                 <button
                   type="button"
                   style={{
@@ -10088,6 +10098,12 @@ function App() {
               </div>
             ))}
           </div>
+          <button type="button" className="ghost" onClick={() => setSubscriptionAccountOpen(true)}>Mi suscripción y consumo</button>
+          {subscriptionAccountOpen ? (
+            <SubscriptionAccountModal onClose={() => setSubscriptionAccountOpen(false)}
+              onSubscribe={(plan) => { void handleStartSubscriptionCheckout(plan) }}
+              busy={subscriptionCheckoutLoading} />
+          ) : null}
 
           <p style={{ fontSize: '0.8rem', color: '#888', marginBottom: 20 }}>
             ¿Ya realizaste el pago? Puede demorar unos minutos en activarse.<br />
@@ -10189,6 +10205,10 @@ function App() {
       key: 'profile', icon: '👤', label: 'Perfil', hint: 'Firma y ajustes', tone: '#4f46e5',
       onClick: handleOpenProfile,
     },
+    {
+      key: 'subscription', icon: '📅', label: 'Mi suscripción', hint: 'Plan y consumo de Sofía', tone: '#0f766e',
+      onClick: () => setSubscriptionAccountOpen(true),
+    },
     isAdminSession ? {
       key: 'admin', icon: '⚙️', label: 'Administrar', hint: 'Usuarios y planes', tone: '#64748b',
       onClick: handleOpenUserAdmin,
@@ -10287,19 +10307,17 @@ function App() {
           ) : null}
           {trialInfo?.status === 'active' && Number.isFinite(trialInfo.daysLeft) && (
             <span className={`subscription-status plan-chip${trialInfo.daysLeft <= 7 ? ' warn' : ' ok'}`}>
-              <span className="plan-chip-copy">
+              <button type="button" className="plan-chip-copy subscription-account-trigger" onClick={() => setSubscriptionAccountOpen(true)}>
                 <strong>{trialInfo.daysLeft <= 0 ? 'Suscripción vencida' : 'Suscripción activa'}</strong>
                 <small>
                   {trialInfo.daysLeft <= 0
                     ? 'Renovala para seguir usando la app'
                     : `Quedan ${trialInfo.daysLeft} día${trialInfo.daysLeft === 1 ? '' : 's'}`}
                 </small>
-              </span>
-              {trialInfo.daysLeft <= 7 && (
-                <button type="button" className="plan-chip-cta" onClick={() => setPreviewTrialExpired(true)}>
-                  Renovar
-                </button>
-              )}
+              </button>
+              <button type="button" className="plan-chip-cta" onClick={() => setSubscriptionAccountOpen(true)}>
+                Mi plan
+              </button>
             </span>
           )}
           {trialInfo?.status === 'trial' && (
@@ -10430,6 +10448,9 @@ function App() {
           ) : null}
         </nav>
         <div className="sidebar-footer">
+          <button type="button" title="Mi suscripción" onClick={() => { setSubscriptionAccountOpen(true); setSidebarOpen(false) }}>
+            <span>📅</span> Mi suscripción
+          </button>
           <button type="button" title="Perfil y ajustes" onClick={() => { handleOpenProfile(); setSidebarOpen(false) }}>
             <span>👤</span> {googleIdentity ? 'Perfil' : 'Perfil y ajustes'}
           </button>
@@ -15992,6 +16013,13 @@ function App() {
             </div>
           </div>
         </div>
+      ) : null}
+      {subscriptionAccountOpen ? (
+        <SubscriptionAccountModal
+          onClose={() => setSubscriptionAccountOpen(false)}
+          onSubscribe={(plan) => { void handleStartSubscriptionCheckout(plan) }}
+          busy={subscriptionCheckoutLoading}
+        />
       ) : null}
       {sofiaOpen ? (
         <div className="drhappy-modal-overlay" onClick={() => setSofiaOpen(false)}>

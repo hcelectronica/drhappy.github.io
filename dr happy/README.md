@@ -20,6 +20,16 @@ Los horarios de consultorio (turnos manuales), la turnera gratuita y la turnera 
 
 Un turno gratuito no crea una ficha clínica hasta que el profesional lo atiende. «Atender» permite completar la ficha antes de la fecha del turno. Las fichas y los turnos se vinculan únicamente por DNI o por un ID de ficha ya vinculado y coherente con el DNI; compartir nombre, email o teléfono no identifica a un paciente. Si se cancela el selector nativo de compartir, no se abre WhatsApp automáticamente.
 
+## Suscripciones, Sofía y recordatorios
+
+Todos los planes pagos habilitan las mismas herramientas: 30 días ($15.000), 180 días ($78.000) o 365 días ($120.000). «Suscripción activa» abre «Mi suscripción» con el último período comprado, vencimiento, consumo de Sofía e historial de pagos. Una nueva compra suma días al vencimiento vigente; un pago de Mercado Pago se aplica una sola vez. Las activaciones administrativas anteriores pueden no tener una compra identificada.
+
+Sofía incluye 100 consultas por mes calendario de Argentina en cualquier plan pago y 3 consultas en total durante la prueba de 7 días. Comprar más tiempo no reinicia el cupo. Una pregunta con varias llamadas internas cuenta como una consulta; confirmar una acción pendiente no consume otra pregunta. Las solicitudes concurrentes reservan cupo en la base antes de invocar la IA. Los fallos sin tokens registrados liberan la reserva; las solicitudes que ya consumieron tokens cuentan y conservan su consumo. Los tokens de entrada/salida se muestran como información, no como un límite adicional.
+
+Los recordatorios automáticos se ejecutan una vez por día a las 22:00 de Argentina (01:00 UTC), para los turnos del día siguiente. No se envían recordatorios de 24 ni de 2 horas. Se excluyen cancelados, atendidos, pendientes de confirmación y reservas creadas después del corte. Los envíos se registran fuera de la agenda; un envío con resultado incierto no se reintenta automáticamente para evitar duplicados y requiere revisión. Un correo aceptado por SMTP no garantiza su llegada a la bandeja de entrada.
+
+Aplicar `20261003010000_subscription_account_and_nightly_reminders.sql` y desplegar `subscription-account`, `mercadopago-webhook`, `ai-assistant` y `send-appointment-reminders`. La migración reemplaza la tarea de cinco minutos por el envío nocturno. El webhook debe aceptar notificaciones sin JWT de Mercado Pago; valida cada pago consultando al proveedor. Los precios del checkout siguen configurados en los secrets `MP_*_PRICE_ARS`.
+
 ## Ejecutar
 
 ```bash

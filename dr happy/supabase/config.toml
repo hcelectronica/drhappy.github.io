@@ -5,3 +5,12 @@ verify_jwt = false
 
 [functions.mercadopago-patient-webhook]
 verify_jwt = false
+
+[functions.mercadopago-webhook]
+verify_jwt = false
+
+[functions.subscription-account]
+verify_jwt = false
+
+[functions.send-appointment-reminders]
+verify_jwt = false

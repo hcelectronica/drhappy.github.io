@@ -1139,27 +1139,9 @@ Deno.serve(async (request) => {
   }
   const trialStartedAt = typeof professional.trial_started_at === 'string' ? new Date(professional.trial_started_at) : null
   const trialStart = trialStartedAt && !Number.isNaN(trialStartedAt.getTime()) ? trialStartedAt.toISOString() : null
-  const usageSince = professional.subscription_status === 'active'
-    ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
-    : trialStart
-  let usageQuery = admin
-    .from('ai_usage_events')
-    .select('id', { count: 'exact', head: true })
-    .eq('professional_id', professionalId)
-  if (usageSince) usageQuery = usageQuery.gte('created_at', usageSince)
-  const { count: monthlyUsage } = await usageQuery
-  const usageLimit = professional.is_admin ? 5000 : professional.subscription_status === 'active' ? 500 : 3
-  if (!professional.is_admin && (monthlyUsage || 0) >= usageLimit) {
-    const limitDescription = professional.subscription_status === 'active' ? 'mensual' : 'de prueba'
-    if (professional.subscription_status !== 'active') {
-      return jsonResponse(429, {
-        success: false,
-        message: 'Tus 3 preguntas gratuitas de Sofía ya terminaron. Activá una suscripción para seguir usando a la asistente.',
-        monthlyUsage,
-        monthlyLimit: usageLimit,
-      })
-    }
-    return jsonResponse(429, { success: false, message: `Alcanzaste el límite ${limitDescription} de Sofía (${usageLimit} consultas).`, monthlyUsage, monthlyLimit: usageLimit })
+  if (!professional.is_admin && professional.subscription_status !== 'active'
+    && trialStart && now.getTime() >= new Date(trialStart).getTime() + 7 * 86400000) {
+    return jsonResponse(402, { success: false, message: 'Los 7 días de prueba terminaron. Activá una suscripción para usar Sofía.' })
   }
 
   if (payload.confirmation?.action && payload.confirmation.input && typeof payload.confirmation.input === 'object') {
@@ -1179,6 +1161,19 @@ Deno.serve(async (request) => {
   const messages = cleanMessages(payload.messages)
   if (!messages.length || messages[messages.length - 1].role !== 'user') {
     return jsonResponse(400, { success: false, message: 'Sofía necesita una pregunta.' })
+  }
+  const { data: claim, error: claimError } = await admin.rpc('claim_sofia_consultation', {
+    p_professional_id: professionalId, p_model: model,
+  })
+  if (claimError) return jsonResponse(500, { success: false, message: `No se pudo verificar tu cupo de Sofía: ${claimError.message}` })
+  if (!claim?.allowed) {
+    return jsonResponse(claim?.reason === 'expired' ? 402 : 429, {
+      success: false,
+      message: claim?.reason === 'expired' ? 'Tu acceso a Sofía venció.'
+        : professional.subscription_status === 'active'
+          ? 'Alcanzaste las 100 consultas mensuales de Sofía. Las demás herramientas siguen disponibles.'
+          : 'Tus 3 preguntas gratuitas de Sofía terminaron. Activá una suscripción para continuar.',
+    })
   }
 
   const professionalName = typeof payload.professionalName === 'string' ? payload.professionalName.trim() : 'profesional'
@@ -1213,6 +1208,7 @@ Deno.serve(async (request) => {
   let pendingConfirmation: { action: string; proposal: Record<string, unknown> } | undefined
   let inputTokens = 0
   let outputTokens = 0
+  try {
   for (let iteration = 0; iteration < 10; iteration += 1) {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -1306,17 +1302,17 @@ Deno.serve(async (request) => {
   }
   if (!reply) return jsonResponse(502, { success: false, message: 'Sofía recibió una respuesta vacía.' })
 
-  const totalTokens = inputTokens + outputTokens
-  const estimatedCostUsd = (inputTokens * 3 + outputTokens * 15) / 1_000_000
-  await admin.from('ai_usage_events').insert({
-    professional_id: professionalId,
-    model,
-    input_tokens: inputTokens,
-    output_tokens: outputTokens,
-    total_tokens: totalTokens,
-    estimated_cost_usd: estimatedCostUsd,
-    request_type: 'chat',
-  })
-
   return jsonResponse(200, { success: true, reply, pendingConfirmation })
+  } finally {
+    const { error: usageError } = await admin.from('ai_usage_events').update({
+      input_tokens: inputTokens, output_tokens: outputTokens,
+      total_tokens: inputTokens + outputTokens,
+      estimated_cost_usd: (inputTokens * 3 + outputTokens * 15) / 1_000_000,
+    }).eq('id', claim.eventId)
+    if (usageError) console.error('[ai-assistant] No se pudo actualizar el consumo', usageError.message)
+    if (inputTokens === 0 && outputTokens === 0) {
+      const { error: releaseError } = await admin.from('ai_usage_events').delete().eq('id', claim.eventId)
+      if (releaseError) console.error('[ai-assistant] No se pudo liberar una consulta fallida', releaseError.message)
+    }
+  }
 })

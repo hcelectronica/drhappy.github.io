@@ -6,13 +6,13 @@ type PaymentDetails = {
   status?: string
   external_reference?: string
   date_approved?: string
+  transaction_amount?: number
+  currency_id?: string
   metadata?: {
     user_id?: string
     plan?: 'monthly' | 'semiannual' | 'annual'
   }
 }
-
-const DAY_IN_MS = 86400000
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
@@ -22,14 +22,6 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
       'Content-Type': 'application/json',
     },
   })
-}
-
-function addBillingPeriod(baseIso: string, plan: 'monthly' | 'semiannual' | 'annual'): string {
-  const base = new Date(baseIso)
-  const result = new Date(base)
-  const durationDays = plan === 'annual' ? 365 : plan === 'semiannual' ? 180 : 30
-  result.setTime(base.getTime() + durationDays * DAY_IN_MS)
-  return result.toISOString()
 }
 
 serve(async (request) => {
@@ -96,51 +88,27 @@ serve(async (request) => {
     return jsonResponse(400, { message: 'El pago aprobado no trae user_id ni external_reference.' })
   }
 
-  const plan =
-    paymentJson.metadata?.plan === 'annual'
-      ? 'annual'
-      : paymentJson.metadata?.plan === 'semiannual'
-        ? 'semiannual'
-        : 'monthly'
+  const plan = paymentJson.metadata?.plan
+  if (!plan || !['monthly', 'semiannual', 'annual'].includes(plan)
+    || paymentJson.currency_id !== 'ARS' || !paymentJson.transaction_amount || paymentJson.transaction_amount <= 0) {
+    return jsonResponse(400, { message: 'El pago no contiene un plan o importe válido en pesos argentinos.' })
+  }
   const approvedAt = paymentJson.date_approved || new Date().toISOString()
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey)
-  const { data: professional, error: professionalError } = await adminClient
-    .from('professionals')
-    .select('id, subscription_expires_at')
-    .eq('id', userId)
-    .maybeSingle()
-
-  if (professionalError) {
-    return jsonResponse(500, { message: `No se pudo leer el profesional: ${professionalError.message}` })
-  }
-  if (!professional) {
-    return jsonResponse(404, { message: 'No existe el profesional asociado al pago.' })
-  }
-
-  const currentExpiration =
-    typeof professional.subscription_expires_at === 'string' &&
-    new Date(professional.subscription_expires_at).getTime() > Date.now()
-      ? professional.subscription_expires_at
-      : approvedAt
-  const nextExpiration = addBillingPeriod(currentExpiration, plan)
-
-  const { error: updateError } = await adminClient
-    .from('professionals')
-    .update({
-      subscription_status: 'active',
-      subscription_expires_at: nextExpiration,
-    })
-    .eq('id', userId)
-
-  if (updateError) {
-    return jsonResponse(500, { message: `No se pudo activar la suscripción: ${updateError.message}` })
+  const { data: applied, error } = await adminClient.rpc('apply_subscription_payment', {
+    p_professional_id: userId, p_payment_id: paymentId, p_plan: plan,
+    p_amount: paymentJson.transaction_amount, p_approved_at: approvedAt,
+  })
+  if (error) {
+    return jsonResponse(500, { message: `No se pudo aplicar el pago: ${error.message}` })
   }
 
   return jsonResponse(200, {
     received: true,
     userId,
     plan,
-    subscriptionExpiresAt: nextExpiration,
+    subscriptionExpiresAt: applied.expiresAt,
+    applied: applied.applied,
   })
 })
