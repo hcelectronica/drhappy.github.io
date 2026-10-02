@@ -48,31 +48,24 @@ Deno.serve(async (request) => {
   const payment = await paymentResponse.json().catch(() => null)
   if (!paymentResponse.ok || !payment) return jsonResponse(502, { success: false, message: 'No se pudo validar el pago.' })
   const externalReference = String(payment.external_reference || '').trim()
-  const { data: reservation } = await admin.from('public_booking_reservations').select('id, appointment_id, professional_id, patient_name, patient_dni, patient_email, patient_phone, slot_date, slot_time, amount_to_charge, amount_concept, modality, payment_status').eq('professional_id', account.professional_id).eq('appointment_id', externalReference).maybeSingle()
+  const { data: reservation } = await admin.from('public_booking_reservations').select('id, appointment_id, professional_id, patient_name, patient_dni, patient_email, patient_phone, slot_date, slot_time, amount_to_charge, amount_concept, modality, payment_status, status').eq('professional_id', account.professional_id).eq('appointment_id', externalReference).maybeSingle()
   if (!reservation) return jsonResponse(200, { success: true, ignored: true })
+  if (reservation.status === 'cancelled') return jsonResponse(200, { success: true, ignored: true })
 
   const paymentStatus = String(payment.status || 'pending')
   const approved = paymentStatus === 'approved'
-  await admin.from('public_booking_reservations').update({ payment_status: paymentStatus, status: approved ? 'confirmed' : 'pending_payment' }).eq('id', reservation.id)
+  if (!approved) {
+    const { error } = await admin.from('public_booking_reservations')
+      .update({ payment_status: paymentStatus, status: 'pending_payment' })
+      .eq('id', reservation.id).neq('status', 'cancelled').neq('payment_status', 'approved')
+    if (error) return jsonResponse(500, { success: false, message: 'No se pudo actualizar el estado del pago.' })
+  }
   if (approved && reservation.appointment_id) {
-    const { data: workspace } = await admin.from('user_workspaces').select('patients_json, appointments_json, treatment_ledger_json').eq('user_id', reservation.professional_id).maybeSingle()
-    const patients = Array.isArray(workspace?.patients_json) ? workspace.patients_json as Array<Record<string, unknown>> : []
-    const appointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json : []
-    const existingAppointment = appointments.find((item: Record<string, unknown>) => item.id === reservation.appointment_id) as Record<string, unknown> | undefined
-    const normalizedEmail = String(reservation.patient_email || '').trim().toLowerCase()
     const normalizedDni = String(reservation.patient_dni || '').replace(/\D/g, '')
-    const normalizedName = String(reservation.patient_name || '').trim().toLowerCase()
-    const existingPatient = patients.find((patient) => {
-      const patientEmail = String(patient.email || '').trim().toLowerCase()
-      const patientDni = String(patient.dni || '').replace(/\D/g, '')
-      const patientName = `${String(patient.apellido || '')}, ${String(patient.nombre || '')}`.trim().toLowerCase()
-      return Boolean(normalizedDni && patientDni === normalizedDni) ||
-        Boolean(normalizedEmail && patientEmail === normalizedEmail) ||
-        Boolean(normalizedName && patientName === normalizedName)
-    })
-    const patientId = String(existingPatient?.id || crypto.randomUUID())
+    if (!normalizedDni) return jsonResponse(400, { success: false, message: 'La reserva no tiene DNI válido.' })
+    const patientId = crypto.randomUUID()
     const nameParts = String(reservation.patient_name || '').split(',')
-    const patientRecord = existingPatient || {
+    const patientRecord = {
       id: patientId, ownerUserId: reservation.professional_id,
       nombre: nameParts.slice(1).join(',').trim(), apellido: nameParts[0]?.trim() || String(reservation.patient_name || '').trim(),
       dni: normalizedDni, email: String(reservation.patient_email || '').trim(), obraSocial: '', numeroAfiliado: '', plan: '',
@@ -80,9 +73,7 @@ Deno.serve(async (request) => {
       ultimaInternacion: '', cirugiasPrevias: '', direccion: '', documents: [], consultations: [],
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     }
-    const updatedPatient = { ...patientRecord, email: String(patientRecord.email || reservation.patient_email || '').trim(), dni: String(patientRecord.dni || reservation.patient_dni || '').trim(), updatedAt: new Date().toISOString() }
-    const nextPatients = existingPatient ? patients.map((patient) => patient.id === patientId ? updatedPatient : patient) : [...patients, updatedPatient]
-    const confirmedAppointment = existingAppointment ?? {
+    const confirmedAppointment = {
       id: reservation.appointment_id,
       patientId,
       patientName: reservation.patient_name,
@@ -101,16 +92,12 @@ Deno.serve(async (request) => {
       publicBookingModality: reservation.modality,
       amountToCharge: Number(reservation.amount_to_charge || payment.transaction_amount || 0),
       amountConcept: reservation.amount_concept || 'consulta',
+      status: 'confirmed',
+      paymentStatus: 'approved',
+      paymentId,
     }
-    const updated = existingAppointment
-      ? appointments.map((appointment: Record<string, unknown>) => appointment.id === reservation.appointment_id ? { ...appointment, patientId, patientEmail: String(reservation.patient_email || appointment.patientEmail || ''), status: 'confirmed', paymentStatus: 'approved', paymentId } : appointment)
-      : [...appointments, { ...confirmedAppointment, status: 'confirmed', paymentStatus: 'approved', paymentId }]
-    const targetAppointment = existingAppointment ? { ...existingAppointment, patientId, patientEmail: String(reservation.patient_email || existingAppointment.patientEmail || '') } : confirmedAppointment
-    const ledger = Array.isArray(workspace?.treatment_ledger_json) ? workspace.treatment_ledger_json : []
     const ledgerId = `mercadopago-${paymentId}`
-    const nextLedger = ledger.some((entry: Record<string, unknown>) => entry.id === ledgerId)
-      ? ledger
-      : [...ledger, {
+    const ledgerEntry = {
           id: ledgerId,
           patientId,
           patientName: reservation.patient_name,
@@ -121,11 +108,19 @@ Deno.serve(async (request) => {
           notes: 'Pago aprobado por Mercado Pago.',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-        }]
+        }
+    const { data: confirmed, error: confirmError } = await admin.rpc('confirm_paid_public_booking', {
+      p_professional_id: reservation.professional_id,
+      p_appointment_id: reservation.appointment_id,
+      p_patient: patientRecord,
+      p_appointment: confirmedAppointment,
+      p_ledger: ledgerEntry,
+    })
+    if (confirmError) return jsonResponse(500, { success: false, message: `No se pudo confirmar el turno pagado: ${confirmError.message}` })
+    if (!confirmed) return jsonResponse(200, { success: true, ignored: true, paymentStatus })
     let emailConfirmationSentAt: string | undefined
     if (reservation.patient_email && reservation.payment_status !== 'approved') {
       const { data: professional } = await admin.from('professionals').select('full_name, specialty').eq('id', reservation.professional_id).maybeSingle()
-      const appointment = targetAppointment
       const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' },
@@ -139,8 +134,8 @@ Deno.serve(async (request) => {
             specialty: professional?.specialty || 'Consulta médica',
             date: reservation.slot_date,
             time: reservation.slot_time,
-            location: appointment?.location || 'Consultorio médico',
-            notes: appointment?.notes || 'Pago aprobado por Mercado Pago.',
+            location: confirmedAppointment.location,
+            notes: confirmedAppointment.notes,
             amountToCharge: reservation.amount_to_charge,
             amountConcept: reservation.amount_concept || 'sena',
           },
@@ -148,10 +143,14 @@ Deno.serve(async (request) => {
       })
       if (emailResponse.ok) emailConfirmationSentAt = new Date().toISOString()
     }
-    const appointmentsWithEmailStatus = emailConfirmationSentAt
-      ? updated.map((appointment: Record<string, unknown>) => appointment.id === reservation.appointment_id ? { ...appointment, emailConfirmationSentAt } : appointment)
-      : updated
-    await admin.from('user_workspaces').upsert({ user_id: reservation.professional_id, patients_json: nextPatients, appointments_json: appointmentsWithEmailStatus, treatment_ledger_json: nextLedger }, { onConflict: 'user_id' })
+    if (emailConfirmationSentAt) {
+      const { error } = await admin.rpc('mark_public_booking_email_sent', {
+        p_professional_id: reservation.professional_id,
+        p_appointment_id: reservation.appointment_id,
+        p_sent_at: emailConfirmationSentAt,
+      })
+      if (error) return jsonResponse(500, { success: false, message: `No se pudo registrar el envío del email: ${error.message}` })
+    }
   }
   return jsonResponse(200, { success: true, paymentStatus })
 })

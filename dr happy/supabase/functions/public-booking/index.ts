@@ -33,6 +33,7 @@ interface RequestBody {
     | 'book-slot'
     | 'list-links'
     | 'cancel-link'
+    | 'cancel-appointment'
     | 'get-public-settings'
     | 'save-public-settings'
     | 'get-public-agenda'
@@ -53,6 +54,7 @@ interface RequestBody {
   patientEmail?: string
   patientPhone?: string
   linkId?: string
+  appointmentId?: string
   appointmentDays?: number[]
   dailyPatientLimit?: number
   settings?: PublicBookingSettingsPayload
@@ -410,6 +412,19 @@ serve(async (request) => {
 
   try {
     switch (body.action) {
+      case 'cancel-appointment': {
+        const professionalId = await resolveProfessionalId(request, admin)
+        const appointmentId = body.appointmentId?.trim()
+        if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
+        if (!appointmentId) return jsonResponse(400, { success: false, message: 'Falta el turno a cancelar.' })
+        const { data: cancelled, error } = await admin.rpc('cancel_public_booking_appointment', {
+          p_professional_id: professionalId,
+          p_appointment_id: appointmentId,
+        })
+        if (error) return jsonResponse(500, { success: false, message: `No se pudo cancelar el turno: ${error.message}` })
+        if (!cancelled) return jsonResponse(404, { success: false, message: 'El turno ya no está en tu agenda. Actualizá la pantalla.' })
+        return jsonResponse(200, { success: true })
+      }
       case 'create-link': {
         const professionalId = await resolveProfessionalId(request, admin)
         const slotDate = body.slotDate?.trim()

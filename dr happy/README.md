@@ -14,6 +14,12 @@ Desde la ficha del paciente, **Emitir certificado** permite elegir entre un cert
 
 La selección de `src/studyCatalog.ts` contiene procedimientos activos cuyos códigos y términos preferidos en español se verificaron en [Snowstorm Test del Ministerio de Salud](https://snowstorm-test.msal.gob.ar/swagger-ui.html) (rama MAIN). **No es el catálogo completo ni una certificación de pertenencia a la Extensión Argentina de SNOMED CT**. El texto libre no se codifica. Para incorporar una edición argentina completa se requiere acceso a su distribución/licencia o un servidor de terminología configurado para esa edición.
 
+## Turneras y pacientes
+
+Los horarios de consultorio (turnos manuales), la turnera gratuita y la turnera particular se configuran por separado; ninguna impone un límite horario a las otras. El cupo de una reserva pública se libera al cancelar el turno desde la agenda, incluso para los enlaces de turnos antiguos. La cancelación y la confirmación tardía de pagos se coordinan en la base de datos mediante `20261002010000_cancel_public_booking_appointment.sql`; aplicar esa migración antes de desplegar `public-booking` y `mercadopago-patient-webhook`.
+
+Un turno gratuito no crea una ficha clínica hasta que el profesional lo atiende. «Atender» permite completar la ficha antes de la fecha del turno. Las fichas y los turnos se vinculan únicamente por DNI o por un ID de ficha ya vinculado y coherente con el DNI; compartir nombre, email o teléfono no identifica a un paciente. Si se cancela el selector nativo de compartir, no se abre WhatsApp automáticamente.
+
 ## Ejecutar
 
 ```bash

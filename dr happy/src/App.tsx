@@ -41,6 +41,7 @@ import {
   createPublicBookingLink,
   listPublicBookingLinks,
   cancelPublicBookingLink,
+  cancelPublicBookingAppointment,
   getPublicBookingSettings,
   savePublicBookingSettings,
   buildPublicBookingUrl,
@@ -473,6 +474,7 @@ interface AppointmentRecord {
   patientId: string
   patientName: string
   patientEmail: string
+  patientPhone?: string
   patientDni?: string
   scheduledDate: string
   scheduledTime: string
@@ -601,7 +603,6 @@ function restoreProfessionalSessionToken(): string | null {
   }
   return token
 }
-
 const EMAIL_VERIFICATION_PENDING_KEY = 'drhappy-pending-email-verification'
 const EMAIL_VERIFICATION_ENABLED = import.meta.env.VITE_ENABLE_EMAIL_VERIFICATION === 'true'
 const CREATED_USERS_KEY = 'drhappy-created-users'
@@ -1620,13 +1621,18 @@ function normalizeAppointmentRecord(appointment: AppointmentRecord): Appointment
 
 function linkAppointmentsToPatients(appointmentList: AppointmentRecord[], patientList: PatientRecord[]): AppointmentRecord[] {
   return appointmentList.map((appointment) => {
+    const appointmentDni = (appointment.patientDni || '').replace(/\D/g, '')
     const linked = patientList.find((patient) => {
-      if (appointment.patientId && patient.id === appointment.patientId) return true
-      const appointmentDni = (appointment.patientDni || '').replace(/\D/g, '')
-      if (appointmentDni && appointmentDni === (patient.dni || '').replace(/\D/g, '')) return true
-      return normalizeSearchText(`${patient.apellido}, ${patient.nombre}`) === normalizeSearchText(appointment.patientName)
+      if (appointment.patientId && patient.id === appointment.patientId) {
+        return !appointmentDni || appointmentDni === (patient.dni || '').replace(/\D/g, '')
+      }
+      return Boolean(appointmentDni && appointmentDni === (patient.dni || '').replace(/\D/g, ''))
     })
-    if (!linked) return appointment
+    if (!linked) {
+      return appointmentDni && appointment.patientId && patientList.some((patient) => patient.id === appointment.patientId)
+        ? { ...appointment, patientId: '' }
+        : appointment
+    }
     return {
       ...appointment,
       patientId: linked.id,
@@ -2476,6 +2482,7 @@ function App() {
   } | null>(null)
   const [profile, setProfile] = useState<ProfessionalProfile | null>(null)
   const [patients, setPatients] = useState<PatientRecord[]>([])
+  const [pendingAttentionAppointmentId, setPendingAttentionAppointmentId] = useState<string | null>(null)
   const [patientDeletingId, setPatientDeletingId] = useState<string | null>(null)
   const [availablePatients, setAvailablePatients] = useState<PatientRecord[]>([])
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
@@ -5105,14 +5112,14 @@ function App() {
 
   useEffect(() => {
     if (!selectedPatient) {
-      setPatientDraft(emptyPatientDraft)
+      if (!pendingAttentionAppointmentId) setPatientDraft(emptyPatientDraft)
       setPatientFormUnlocked(true)
       return
     }
     const nextDraft = patientToDraft(selectedPatient)
     setPatientDraft(nextDraft)
     setPatientFormUnlocked(false)
-  }, [selectedPatient])
+  }, [selectedPatient, pendingAttentionAppointmentId])
 
   useEffect(() => {
     if (!profile) return
@@ -6789,6 +6796,7 @@ function App() {
   function handleSelectPatient(patientId: string): void {
     stopDictation()
     setCommunityOpen(false)
+    setPendingAttentionAppointmentId(null)
     setSelectedPatientId(patientId)
     setWorkspaceLayer('patient-record')
     setAppError(null)
@@ -6798,6 +6806,7 @@ function App() {
   function handleEvolvePatient(patientId: string): void {
     stopDictation()
     setCommunityOpen(false)
+    setPendingAttentionAppointmentId(null)
     setSelectedPatientId(patientId)
     setWorkspaceLayer('clinical')
     setAppError(null)
@@ -6810,6 +6819,7 @@ function App() {
     }
     stopDictation()
     setCommunityOpen(false)
+    setPendingAttentionAppointmentId(null)
     setWorkspaceLayer('patient-search')
     setSelectedPatientId(null)
     setPatientSearchQuery('')
@@ -7262,18 +7272,10 @@ function App() {
       let finalPatientId = appointmentDraft.patientId
 
       if (!finalPatientId) {
-        const typedName = normalizeSearchText(cleanPatientName)
-        const typedDni = appointmentDraft.patientDni.trim()
-        // Solo reutilizamos una ficha existente ante una coincidencia inequívoca
-        // (DNI exacto, o nombre completo idéntico). Una coincidencia parcial
-        // podría asociar el turno al paciente equivocado.
-        const existing = patients.find((p) => {
-          if (typedDni && p.dni && p.dni === typedDni) {
-            return true
-          }
-          const fullName = normalizeSearchText(`${p.apellido}${p.nombre ? `, ${p.nombre}` : ''}`)
-          return Boolean(typedName) && fullName === typedName
-        })
+        const typedDni = appointmentDraft.patientDni.replace(/\D/g, '')
+        const existing = typedDni
+          ? patients.find((p) => p.dni.replace(/\D/g, '') === typedDni)
+          : undefined
         if (existing) {
           finalPatientId = existing.id
         } else {
@@ -7395,7 +7397,18 @@ function App() {
     }
     const nextAppointments = appointments.filter((a) => a.id !== appointmentId)
     const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
-    if (!currentProf || !await persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)) {
+    if (!currentProf) {
+      setAppError('No se pudo validar el perfil para cancelar el turno.')
+      return
+    }
+    if (isSupabaseConfigured) {
+      await workspaceSaveQueueRef.current
+      const result = await cancelPublicBookingAppointment(appointmentId)
+      if (!result.success) {
+        setAppError(result.message || 'No se pudo cancelar el turno. Intentá nuevamente.')
+        return
+      }
+    } else if (!await persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)) {
       setAppError('No se pudo guardar la cancelación del turno. Intentá nuevamente antes de eliminar la ficha.')
       return
     }
@@ -7480,11 +7493,15 @@ function App() {
     const url = buildFixedPublicBookingUrl(result.settings.slug, modality)
     setAppNotice(modality === 'private' ? 'Turnera particular publicada. Link fijo generado.' : 'Turnera gratuita publicada. Link fijo generado.')
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-      await navigator.share({ title: `Turnera de ${profile?.fullName || activeUser?.fullName || 'Dr Happy'}`, text: 'Elegí tu turno disponible:', url }).catch(() => {
-        window.open(buildWhatsAppShareUrl(url, profile?.fullName || activeUser?.fullName), '_blank', 'noopener,noreferrer')
-      })
+      try {
+        await navigator.share({ title: `Turnera de ${profile?.fullName || activeUser?.fullName || 'Dr Happy'}`, text: 'Elegí tu turno disponible:', url })
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setAppError(`No se pudo compartir el link: ${error instanceof Error ? error.message : String(error)}. Podés copiarlo desde esta pantalla.`)
+        }
+      }
     } else {
-      window.open(buildWhatsAppShareUrl(url, profile?.fullName || activeUser?.fullName), '_blank', 'noopener,noreferrer')
+      setAppNotice('Turnera publicada. Copiá el link desde esta pantalla para compartirlo.')
     }
   }
 
@@ -7849,10 +7866,49 @@ function App() {
    * paciente, igual que las atenciones del modo ambulancia. Luego abre la ficha
    * para que el profesional complete la evolución.
    */
+  function buildAppointmentConsultation(record: AppointmentRecord): ConsultationEntry {
+    return {
+      id: crypto.randomUUID(),
+      date: new Date().toISOString(),
+      motivoConsulta: `[TURNO] ${record.reason || 'Consulta médica'}`,
+      diagnostico: record.reason || 'Consulta médica',
+      detalleAtencion: [
+        `Turno del ${formatShortDate(record.scheduledDate)} a las ${record.scheduledTime} hs`,
+        record.location ? `Lugar: ${record.location}` : '',
+        record.notes ? `Notas del turno: ${record.notes}` : '',
+      ].filter(Boolean).join('\n'),
+      pensamientoMedico: '',
+      professionalSignature: {
+        fullName: profile?.fullName ?? '',
+        licenseNumber: profile?.licenseNumber ?? '',
+        signatureText: profile?.signatureText ?? '',
+        signatureImageDataUrl: profile?.signatureImage?.dataUrl,
+      },
+      appointmentId: record.id,
+    }
+  }
+
   function handleStartConsultationFromAppointment(record: AppointmentRecord): void {
-    const patient = patients.find((p) => p.id === record.patientId)
+    const dni = (record.patientDni || '').replace(/\D/g, '')
+    const patient = patients.find((candidate) =>
+      (candidate.id === record.patientId && (!dni || candidate.dni.replace(/\D/g, '') === dni)) ||
+      Boolean(dni && candidate.dni.replace(/\D/g, '') === dni),
+    )
     if (!patient) {
-      setAppError('No se encontró la ficha del paciente de este turno.')
+      const { apellido, nombre } = splitDraftPatientName(record.patientName)
+      setPendingAttentionAppointmentId(record.id)
+      setSelectedPatientId(null)
+      setPatientDraft({
+        ...emptyPatientDraft,
+        nombre: nombre.trim(),
+        apellido: apellido.trim(),
+        dni,
+        email: record.patientEmail || '',
+        telefono: record.patientPhone || '',
+      })
+      setWorkspaceLayer('patient-record')
+      setAppNotice('Completá y guardá la ficha para iniciar la atención de este turno.')
+      setAppError(null)
       return
     }
 
@@ -7860,36 +7916,26 @@ function App() {
       (entry) => isAppointmentConsultation(entry) && entry.appointmentId === record.id,
     )
 
-    if (!alreadyRegistered) {
-      const entry: ConsultationEntry = {
-        id: crypto.randomUUID(),
-        date: new Date().toISOString(),
-        motivoConsulta: `[TURNO] ${record.reason || 'Consulta médica'}`,
-        diagnostico: record.reason || 'Consulta médica',
-        detalleAtencion: [
-          `Turno del ${formatShortDate(record.scheduledDate)} a las ${record.scheduledTime} hs`,
-          record.location ? `Lugar: ${record.location}` : '',
-          record.notes ? `Notas del turno: ${record.notes}` : '',
-        ]
-          .filter(Boolean)
-          .join('\n'),
-        pensamientoMedico: '',
-        professionalSignature: {
-          fullName: profile?.fullName ?? '',
-          licenseNumber: profile?.licenseNumber ?? '',
-          signatureText: profile?.signatureText ?? '',
-          signatureImageDataUrl: profile?.signatureImage?.dataUrl,
-        },
-        appointmentId: record.id,
+    const updatedPatient = alreadyRegistered ? patient : {
+      ...patient,
+      consultations: [buildAppointmentConsultation(record), ...patient.consultations],
+      updatedAt: new Date().toISOString(),
+    }
+    if (!alreadyRegistered) persistPatient(updatedPatient)
+    if (record.status !== 'attended' || record.patientId !== patient.id) {
+      const nextAppointments = appointments.map((item) => item.id === record.id
+        ? { ...item, patientId: patient.id, status: 'attended' as const }
+        : item)
+      setAppointments(nextAppointments)
+      if (activeUserId) {
+        localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
+        const currentProfile = profile ?? (activeUser ? profileFromSeed(activeUser) : null)
+        if (currentProfile) void persistWorkspaceRemote(activeUserId, currentProfile,
+          patients.map((item) => item.id === patient.id ? updatedPatient : item), nextAppointments)
       }
-      persistPatientConsultation(patient.id, entry)
     }
 
-    if (record.status !== 'attended') {
-      void markAppointmentAsAttended(record.id)
-    }
-
-    handleSelectPatient(record.patientId)
+    handleSelectPatient(patient.id)
     setConsultationDraft((curr) => ({
       ...curr,
       motivoConsulta: record.reason || curr.motivoConsulta,
@@ -7899,20 +7945,6 @@ function App() {
         ? `Este turno ya figura en la historia clínica de ${patient.apellido}.`
         : `Turno registrado como evolución en la historia clínica de ${patient.apellido}.`,
     )
-  }
-
-  /** Deja el turno marcado como atendido, sin tocar el resto de sus datos. */
-  async function markAppointmentAsAttended(appointmentId: string): Promise<void> {
-    if (!activeUserId) return
-    const nextAppointments = appointments.map((a) =>
-      a.id === appointmentId ? { ...a, status: 'attended' as const } : a,
-    )
-    setAppointments(nextAppointments)
-    localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
-    const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
-    if (currentProf) {
-      void persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)
-    }
   }
 
   async function handleCommunityFileInput(event: ChangeEvent<HTMLInputElement>): Promise<void> {
@@ -8214,11 +8246,35 @@ function App() {
       setAppError('Apellido y DNI son obligatorios para guardar el paciente.')
       return
     }
+    const normalizedDraftDni = patientDraft.dni.replace(/\D/g, '')
+    if (!normalizedDraftDni) {
+      setAppError('Ingresá un DNI válido para guardar la ficha.')
+      return
+    }
+    const duplicate = patients.find((patient) =>
+      patient.id !== existing?.id &&
+      patient.dni.replace(/\D/g, '') === normalizedDraftDni,
+    )
+    if (duplicate) {
+      setAppError('Ya existe una ficha con ese DNI. Abrila desde Mis pacientes para evitar duplicados.')
+      return
+    }
+    if (pendingAttentionAppointmentId && !appointments.some((appointment) => appointment.id === pendingAttentionAppointmentId)) {
+      setAppError('El turno ya no está disponible. Volvé a abrirlo desde la agenda.')
+      return
+    }
     setAppError(null)
 
     const now = new Date().toISOString()
+    const attentionAppointment = pendingAttentionAppointmentId
+      ? appointments.find((appointment) => appointment.id === pendingAttentionAppointmentId)
+      : null
+    const appointmentPatientId = attentionAppointment?.patientId
+    const newPatientId = appointmentPatientId && !patients.some((patient) => patient.id === appointmentPatientId)
+      ? appointmentPatientId
+      : crypto.randomUUID()
     const record: PatientRecord = {
-      id: existing?.id ?? crypto.randomUUID(),
+      id: existing?.id ?? newPatientId,
       ownerUserId: existing?.ownerUserId ?? activeUserId,
       ...patientDraft,
       numeroAfiliado: patientDraft.numeroAfiliado.trim(),
@@ -8229,10 +8285,30 @@ function App() {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }
-    persistPatient(record)
+    if (pendingAttentionAppointmentId) {
+      const appointment = attentionAppointment
+      if (appointment) {
+        const entry = buildAppointmentConsultation(appointment)
+        const attendedPatient = { ...record, consultations: [entry, ...record.consultations] }
+        persistPatient(attendedPatient)
+        const nextAppointments = appointments.map((item) => item.id === appointment.id
+          ? { ...item, patientId: record.id, status: 'attended' as const }
+          : item)
+        setAppointments(nextAppointments)
+        localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
+        const currentProfile = profile ?? (activeUser ? profileFromSeed(activeUser) : null)
+        if (currentProfile) void persistWorkspaceRemote(activeUserId, currentProfile, sortPatientsByName([...patients, attendedPatient]), nextAppointments)
+        setWorkspaceLayer('clinical')
+        setConsultationDraft((current) => ({ ...current, motivoConsulta: appointment.reason || current.motivoConsulta }))
+      } else {
+        setAppError('El turno ya no está disponible. Volvé a abrirlo desde la agenda.')
+        return
+      }
+      setPendingAttentionAppointmentId(null)
+    } else persistPatient(record)
     setSelectedPatientId(record.id)
     setPatientFormUnlocked(false)
-    setWorkspaceLayer('patient-record')
+    if (!pendingAttentionAppointmentId) setWorkspaceLayer('patient-record')
     setAppNotice('Ficha del paciente guardada.')
     showSavedFloatingNotice()
   }
@@ -8242,6 +8318,7 @@ function App() {
     setCommunityOpen(false)
     setWorkspaceLayer('patient-record')
     setSelectedPatientId(null)
+    setPendingAttentionAppointmentId(null)
     setPatientDraft(emptyPatientDraft)
     setPatientFormUnlocked(true)
     setConsultationDraft(emptyConsultationDraft)
@@ -14882,7 +14959,11 @@ function App() {
                     placeholder="Ej: 32456789"
                     value={appointmentDraft.patientDni}
                     onChange={(e) =>
-                      setAppointmentDraft((prev) => ({ ...prev, patientDni: e.target.value.replace(/\D/g, '') }))
+                      setAppointmentDraft((prev) => {
+                        const patientDni = e.target.value.replace(/\D/g, '')
+                        const linked = patients.find((patient) => patient.id === prev.patientId)
+                        return { ...prev, patientDni, patientId: linked && linked.dni.replace(/\D/g, '') === patientDni ? prev.patientId : '' }
+                      })
                     }
                   />
                 </label>

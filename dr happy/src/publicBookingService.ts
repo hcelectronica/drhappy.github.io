@@ -96,6 +96,10 @@ export async function cancelPublicBookingLink(params: {
   return invokePublicBooking({ action: 'cancel-link', ...params })
 }
 
+export async function cancelPublicBookingAppointment(appointmentId: string): Promise<ActionResult> {
+  return invokePublicBooking({ action: 'cancel-appointment', appointmentId })
+}
+
 export async function getPublicBookingSettings(
   professionalId: string,
 ): Promise<ActionResult & { settings?: PublicBookingSettings }> {
