@@ -10,7 +10,7 @@ const ICON_PATHS: Record<string, string> = {
   sofia: 'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z M19 2v4 M17 4h4',
 }
 
-export function SubscriptionBenefits() {
+export function SubscriptionBenefits({ promotional = false }: { promotional?: boolean }) {
   return (
     <div className="subscription-benefits">
       <div className="subscription-benefits-heading">
@@ -30,7 +30,7 @@ export function SubscriptionBenefits() {
             </span>
             <div className="subscription-benefit-copy">
               <strong>{benefit.title}</strong>
-              <p>{benefit.description}</p>
+              {!promotional || benefit.id === 'calendar' || benefit.id === 'payments' ? <p>{benefit.description}</p> : null}
             </div>
           </li>
         ))}

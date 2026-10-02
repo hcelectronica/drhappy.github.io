@@ -9535,21 +9535,21 @@ function App() {
                 <span>Mensual</span>
                 <strong>$15.000</strong>
                 <small>por mes</small>
-                <SubscriptionBenefits />
+                <SubscriptionBenefits promotional />
               </article>
               <article className="auth-plan auth-plan--six-months">
                 <span>6 meses</span>
                 <strong>$78.000</strong>
                 <small>por el período</small>
                 <em>Ahorrás $12.000</em>
-                <SubscriptionBenefits />
+                <SubscriptionBenefits promotional />
               </article>
               <article className="auth-plan auth-plan--annual">
                 <span>Anual</span>
                 <strong>$120.000</strong>
                 <small>por 12 meses</small>
                 <em>Ahorrás $60.000</em>
-                <SubscriptionBenefits />
+                <SubscriptionBenefits promotional />
               </article>
             </div>
           </section>

@@ -2,11 +2,11 @@ import { supabase } from './supabaseClient'
 
 export type SubscriptionPlan = 'monthly' | 'semiannual' | 'annual'
 export const SUBSCRIPTION_BENEFITS = [
-  { id: 'patients', title: 'Pacientes sin límite', description: 'Historia clínica en un solo lugar.' },
+  { id: 'patients', title: 'Sin límite de pacientes', description: 'Historia clínica en un solo lugar.' },
   { id: 'documents', title: 'Certificados y órdenes', description: 'Documentación médica y pedidos de estudios.' },
-  { id: 'invite', title: 'Invitá a tus pacientes', description: 'Link de registro para completar sus datos.' },
+  { id: 'invite', title: 'Invitá a tus pacientes con 1 link', description: 'Link de registro para completar sus datos.' },
   { id: 'calendar', title: 'Tres turneras incluidas', description: 'Manual, gratuita y particular.' },
-  { id: 'payments', title: 'Cobros más claros', description: 'Balance de pagos y conexión con Mercado Pago.' },
+  { id: 'payments', title: 'Finanzas', description: 'Balance de pagos y conexión con Mercado Pago.' },
   { id: 'reminders', title: 'Recordatorios por email', description: 'A las 22:00 de Argentina, para los turnos del día siguiente.' },
   { id: 'sofia', title: 'Sofía, tu asistente IA', description: '100 consultas con IA mensuales.' },
 ]
