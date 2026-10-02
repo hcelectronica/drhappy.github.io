@@ -18,8 +18,7 @@ export interface TrialInfo {
 }
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000
-const TRIAL_DAYS = 14
-const TRIAL_PATIENTS = 15
+const TRIAL_DAYS = 7
 
 export function calculateTrialInfo(
   user: SubscriptionUser | null,
@@ -89,19 +88,17 @@ export function calculateTrialInfo(
   const daysPassed = Math.floor((now - new Date(user.trialStartedAt).getTime()) / DAY_IN_MS)
   const daysLeft = Math.max(0, TRIAL_DAYS - daysPassed)
   const ownPatientCount = patients.filter((patient) => patient.ownerUserId === user.id).length
-  const patientsLeft = Math.max(0, TRIAL_PATIENTS - ownPatientCount)
   const expiredByTime = daysPassed >= TRIAL_DAYS
-  const expiredByPatients = ownPatientCount >= TRIAL_PATIENTS
 
   return {
-    status: expiredByTime || expiredByPatients ? 'expired' : 'trial',
+    status: expiredByTime ? 'expired' : 'trial',
     daysLeft,
-    patientsLeft,
+    patientsLeft: Infinity,
     ownPatientCount,
     expiredByTime,
-    expiredByPatients,
+    expiredByPatients: false,
     expiredBySubscription: false,
-    expired: expiredByTime || expiredByPatients,
+    expired: expiredByTime,
   }
 }
 
