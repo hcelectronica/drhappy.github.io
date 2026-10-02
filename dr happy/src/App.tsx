@@ -593,6 +593,15 @@ interface RemotePasswordRecoveryRow {
 const SESSION_USER_KEY = 'drhappy-active-user'
 const SESSION_USER_CACHE_KEY = 'drhappy-active-user-cache'
 const SESSION_TOKEN_KEY = 'drhappy-professional-session'
+
+function restoreProfessionalSessionToken(): string | null {
+  const token = localStorage.getItem(SESSION_TOKEN_KEY)
+  if (token && sessionStorage.getItem(SESSION_TOKEN_KEY) !== token) {
+    sessionStorage.setItem(SESSION_TOKEN_KEY, token)
+  }
+  return token
+}
+
 const EMAIL_VERIFICATION_PENDING_KEY = 'drhappy-pending-email-verification'
 const EMAIL_VERIFICATION_ENABLED = import.meta.env.VITE_ENABLE_EMAIL_VERIFICATION === 'true'
 const CREATED_USERS_KEY = 'drhappy-created-users'
@@ -4167,11 +4176,22 @@ function App() {
   }
 
   useEffect(() => {
-    const loadSeedUsers = async () => {
-      const persistedSessionToken = localStorage.getItem(SESSION_TOKEN_KEY)
-      if (persistedSessionToken && !sessionStorage.getItem(SESSION_TOKEN_KEY)) {
-        sessionStorage.setItem(SESSION_TOKEN_KEY, persistedSessionToken)
+    const restoreOnResume = () => {
+      if (document.visibilityState === 'visible' && activeUserId && localStorage.getItem(SESSION_USER_KEY) === activeUserId) {
+        restoreProfessionalSessionToken()
       }
+    }
+    window.addEventListener('pageshow', restoreOnResume)
+    document.addEventListener('visibilitychange', restoreOnResume)
+    return () => {
+      window.removeEventListener('pageshow', restoreOnResume)
+      document.removeEventListener('visibilitychange', restoreOnResume)
+    }
+  }, [activeUserId])
+
+  useEffect(() => {
+    const loadSeedUsers = async () => {
+      const persistedSessionToken = restoreProfessionalSessionToken()
       const storedUserId = localStorage.getItem(SESSION_USER_KEY)
       const cachedSessionUser = readJsonStorage<SeedUser | null>(SESSION_USER_CACHE_KEY, null)
       try {

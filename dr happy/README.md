@@ -251,6 +251,8 @@ El navegador conserva solamente estado local auxiliar:
 - tema visual
 - caché temporal para acelerar carga o migraciones previas
 
+La sesión profesional se restaura al recargar o reabrir la app en el mismo origen y dispositivo, siempre que el navegador conserve los datos del sitio y no hayan pasado 12 horas desde el inicio de sesión. Cerrar sesión o desactivar la cuenta invalida el acceso; `www.drhappy.com.ar` y `drhappy.com.ar` mantienen almacenamientos distintos.
+
 ## Suscripción con MercadoPago
 
 La app ya puede iniciar el checkout mensual desde el botón **Suscribirme** si despliegas las Edge Functions de Supabase.
