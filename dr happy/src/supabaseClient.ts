@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { createProfessionalFetch } from './professionalSession'
 
 function normalizeSupabaseUrl(rawUrl: string | undefined): string | null {
   const candidate = rawUrl?.trim()
@@ -21,6 +22,8 @@ const supabaseUrl = normalizeSupabaseUrl(import.meta.env.VITE_SUPABASE_URL)
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
 
 export const supabase =
-  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null
+  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey, {
+    global: { fetch: createProfessionalFetch((input, init) => fetch(input, init)) },
+  }) : null
 
 export const isSupabaseConfigured = Boolean(supabase)

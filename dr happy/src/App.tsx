@@ -65,6 +65,8 @@ import { loadWorkspaceData, saveWorkspaceData, saveTreatmentLedgerData, updatePa
 import { readPatientArchives } from './patientArchive'
 import type { ArchivedPatient } from './patientArchive'
 import { PatientArchivePanel } from './PatientArchivePanel'
+import { clearProfessionalSession, storeProfessionalSession, restoreProfessionalSessionToken, readProfessionalSession,
+  PROFESSIONAL_SESSION_KEY, GOOGLE_LOGIN_PENDING_KEY, GOOGLE_AUTO_LOGIN_BLOCKED_KEY } from './professionalSession'
 import { disconnectMercadoPago, getMercadoPagoConnectionStatus, startMercadoPagoConnection, verifyMercadoPagoConnection } from './mercadoPagoConnectService'
 import { communityRequest } from './communityService'
 import { parseClinicalSummary } from './clinicalSummaryParser'
@@ -612,13 +614,6 @@ const SESSION_USER_KEY = 'drhappy-active-user'
 const SESSION_USER_CACHE_KEY = 'drhappy-active-user-cache'
 const SESSION_TOKEN_KEY = 'drhappy-professional-session'
 
-function restoreProfessionalSessionToken(): string | null {
-  const token = localStorage.getItem(SESSION_TOKEN_KEY)
-  if (token && sessionStorage.getItem(SESSION_TOKEN_KEY) !== token) {
-    sessionStorage.setItem(SESSION_TOKEN_KEY, token)
-  }
-  return token
-}
 const EMAIL_VERIFICATION_PENDING_KEY = 'drhappy-pending-email-verification'
 const EMAIL_VERIFICATION_ENABLED = import.meta.env.VITE_ENABLE_EMAIL_VERIFICATION === 'true'
 const CREATED_USERS_KEY = 'drhappy-created-users'
@@ -2487,6 +2482,8 @@ function App() {
   const [recoveryDemoCode, setRecoveryDemoCode] = useState<string | null>(null)
   const [activeUserId, setActiveUserId] = useState<string | null>(null)
   const sessionGenerationRef = useRef(0)
+  const googleLoginBusyRef = useRef(false)
+  const loginAttemptRef = useRef(0)
   const workspaceSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
   const [googleIdentity, setGoogleIdentity] = useState<{
     email: string
@@ -3497,8 +3494,9 @@ function App() {
     if (!isSupabaseConfigured || !supabase) {
       return true
     }
+    const generation = sessionGenerationRef.current
     const save = workspaceSaveQueueRef.current.then(async () => {
-      if (localStorage.getItem(SESSION_USER_KEY) !== userId) {
+      if (generation !== sessionGenerationRef.current || localStorage.getItem(SESSION_USER_KEY) !== userId) {
         throw new Error('La sesión cambió antes de guardar los datos.')
       }
       const result = await saveWorkspaceData({
@@ -3519,6 +3517,9 @@ function App() {
   }
 
   async function loadWorkspaceForUser(user: SeedUser): Promise<void> {
+    if (isSupabaseConfigured && readProfessionalSession()?.userId !== user.id) {
+      throw new Error('La sesión no corresponde al profesional que se intenta abrir.')
+    }
     setArchivedPatients([])
     setShowPatientArchive(false)
     const sessionGeneration = ++sessionGenerationRef.current
@@ -3546,27 +3547,20 @@ function App() {
     localStorage.setItem(SESSION_USER_KEY, user.id)
     localStorage.setItem(SESSION_USER_CACHE_KEY, JSON.stringify(user))
     setActiveUserId(user.id)
-    setProfile(localProfile)
+    setProfile(isSupabaseConfigured ? null : localProfile)
     setCommunitySeenIds(localSeenIds)
-    setPatients(localLoaded.patientsList)
-    setAvailablePatients(localLoaded.availablePatientsList)
-    setAppointments(localAppointments)
-    setTreatmentLedger(loadedLedger)
+    setPatients(isSupabaseConfigured ? [] : localLoaded.patientsList)
+    setAvailablePatients(isSupabaseConfigured ? [] : localLoaded.availablePatientsList)
+    setAppointments(isSupabaseConfigured ? [] : localAppointments)
+    setTreatmentLedger(isSupabaseConfigured ? [] : loadedLedger)
 
     if (isSupabaseConfigured && supabase) {
-      // El alta de cuentas ocurre en la Edge Function auth-professional (Service Role).
-      // Desde el cliente solo se refrescan los campos del propio perfil: id y username
-      // no son actualizables, y los privilegiados los maneja admin-professionals.
-      const professionalUpdate = await updateOwnProfessionalProfile({ fullName: user.fullName, specialty: user.specialty, licenseNumber: user.licenseNumber, dni: user.dni ?? null, email: user.email, networkMemberships: user.networkMemberships ?? [] })
-      if (!professionalUpdate.success) {
-        console.warn('No se pudo sincronizar el perfil remoto al iniciar:', professionalUpdate.message)
-      }
-
       let workspaceResult = await loadWorkspaceData()
       for (let attempt = 1; !workspaceResult.success && attempt < 3; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, attempt * 350))
         workspaceResult = await loadWorkspaceData()
       }
+      if (sessionGeneration !== sessionGenerationRef.current) return
       if (!workspaceResult.success) {
         setProfile(null)
         setPatients([])
@@ -3577,6 +3571,10 @@ function App() {
         return
       }
       if (sessionGeneration !== sessionGenerationRef.current) return
+      const remoteIdentity = workspaceResult.professional as RemoteProfessionalRow | undefined
+      if (!remoteIdentity || remoteIdentity.id !== user.id) {
+        throw new Error('La sesión no corresponde a esta cuenta. Cerrá sesión y volvé a entrar para evitar mezclar sus datos.')
+      }
       const data = workspaceResult.workspace as RemoteWorkspaceRow | null
       const archives = readPatientArchives(workspaceResult.archivedPatients)
       setArchivedPatients(archives)
@@ -4215,19 +4213,28 @@ function App() {
       }
     }
     window.addEventListener('pageshow', restoreOnResume)
+    const syncOtherTab = (event: StorageEvent) => {
+      if ([PROFESSIONAL_SESSION_KEY, SESSION_USER_KEY, SESSION_TOKEN_KEY].includes(event.key || '')) {
+        const session = readProfessionalSession()
+        if (session?.userId !== activeUserId || session?.token !== sessionStorage.getItem(SESSION_TOKEN_KEY)) window.location.reload()
+      }
+    }
+    window.addEventListener('storage', syncOtherTab)
     document.addEventListener('visibilitychange', restoreOnResume)
     return () => {
       window.removeEventListener('pageshow', restoreOnResume)
+      window.removeEventListener('storage', syncOtherTab)
       document.removeEventListener('visibilitychange', restoreOnResume)
     }
   }, [activeUserId])
 
   useEffect(() => {
     const loadSeedUsers = async () => {
-      const persistedSessionToken = restoreProfessionalSessionToken()
+      const generation = sessionGenerationRef.current
       const storedUserId = localStorage.getItem(SESSION_USER_KEY)
       const cachedSessionUser = readJsonStorage<SeedUser | null>(SESSION_USER_CACHE_KEY, null)
       try {
+        const persistedSessionToken = restoreProfessionalSessionToken()
         const localUsers = readJsonStorage<SeedUser[]>(CREATED_USERS_KEY, [])
         const localActiveOverrides = readJsonStorage<Record<string, boolean>>(
           USER_ACTIVE_OVERRIDES_KEY,
@@ -4235,8 +4242,16 @@ function App() {
         )
         let merged: SeedUser[] = []
 
+        let authenticatedUser: SeedUser | null = null
         if (isSupabaseConfigured && supabase && persistedSessionToken) {
+          const own = await loadOwnProfessional()
+          if (generation !== sessionGenerationRef.current) return
+          if (!own.success || !own.professional) throw new Error(own.message || 'No se pudo restaurar la sesión profesional.')
+          authenticatedUser = mapRemoteProfessional(own.professional as RemoteProfessionalRow)
+          if (authenticatedUser.id !== storedUserId) throw new Error('La sesión guardada pertenece a otra cuenta. Volvé a iniciar sesión.')
+          storeProfessionalSession(authenticatedUser.id, persistedSessionToken)
           const result = await loadProfessionals()
+          if (generation !== sessionGenerationRef.current) return
           if (!result.success) throw new Error(`No se pudo cargar profesionales remotos: ${result.message}`)
           for (const row of result.professionals ?? []) {
             const remoteUser = mapRemoteProfessional(row as RemoteProfessionalRow)
@@ -4273,7 +4288,7 @@ function App() {
           active: user.active ?? true,
         }))
         const sessionUser =
-          normalizedUsers.find((user) => user.id === storedUserId) ??
+          authenticatedUser ?? normalizedUsers.find((user) => user.id === storedUserId) ??
           (!isSupabaseConfigured && cachedSessionUser?.id === storedUserId ? cachedSessionUser : null)
         const usersWithSession =
           sessionUser && !normalizedUsers.some((user) => user.id === sessionUser.id)
@@ -4351,13 +4366,11 @@ function App() {
           await loadWorkspaceForUser(sessionUser)
         }
       } catch (error) {
+        if (generation !== sessionGenerationRef.current) return
         const errorMessage = error instanceof Error ? error.message : 'Error cargando usuarios.'
         const invalidSession = /sesión profesional requerida|unauthorized|401/i.test(errorMessage)
         if (invalidSession) {
-          localStorage.removeItem(SESSION_USER_KEY)
-          localStorage.removeItem(SESSION_USER_CACHE_KEY)
-          localStorage.removeItem(SESSION_TOKEN_KEY)
-          sessionStorage.removeItem(SESSION_TOKEN_KEY)
+          clearProfessionalSession()
           setSeedUsers([])
           setAppError(null)
           return
@@ -4374,7 +4387,7 @@ function App() {
           })
         }
       } finally {
-        setLoadingUsers(false)
+        if (generation === sessionGenerationRef.current || localStorage.getItem(SESSION_USER_KEY) === storedUserId) setLoadingUsers(false)
       }
     }
 
@@ -4758,10 +4771,9 @@ function App() {
       return
     }
     const authClient = supabase
+    const generation = sessionGenerationRef.current
 
-    const syncGoogleIdentity = async (): Promise<void> => {
-      const { data } = await authClient.auth.getSession()
-      const sessionUser = data.session?.user
+    const syncGoogleIdentity = (sessionUser: { email?: string; app_metadata: Record<string, unknown>; user_metadata: Record<string, unknown> } | undefined): void => {
       const provider = sessionUser?.app_metadata?.provider
       if (!sessionUser?.email || provider !== 'google') {
         setGoogleIdentity(null)
@@ -4786,14 +4798,16 @@ function App() {
       })
     }
 
-    void syncGoogleIdentity()
+    let cancelled = false
+    void authClient.auth.getSession().then(({ data }) => { if (!cancelled && generation === sessionGenerationRef.current) syncGoogleIdentity(data.session?.user) })
     const {
       data: { subscription },
-    } = authClient.auth.onAuthStateChange(() => {
-      void syncGoogleIdentity()
+    } = authClient.auth.onAuthStateChange((_event, session) => {
+      syncGoogleIdentity(session?.user)
     })
     return () => {
       subscription.unsubscribe()
+      cancelled = true
     }
   }, [])
 
@@ -4967,6 +4981,7 @@ function App() {
     if (storedUserIsLoaded && activeUserId === storedUserId) {
       return
     }
+    if (!localStorage.getItem(GOOGLE_LOGIN_PENDING_KEY) && localStorage.getItem(GOOGLE_AUTO_LOGIN_BLOCKED_KEY)) return
     void resolveGoogleSession().catch((error: unknown) => {
       setAppError(
         error instanceof Error
@@ -5801,6 +5816,8 @@ function App() {
       return
     }
     setAuthError(null)
+    localStorage.setItem(GOOGLE_LOGIN_PENDING_KEY, String(Date.now()))
+    localStorage.removeItem(GOOGLE_AUTO_LOGIN_BLOCKED_KEY)
     const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
     const redirectUrl = isLocalDevelopment
       ? `${window.location.origin}${window.location.pathname || '/'}`
@@ -5815,6 +5832,7 @@ function App() {
       },
     })
     if (error) {
+      localStorage.removeItem(GOOGLE_LOGIN_PENDING_KEY)
       setAuthError(`No se pudo iniciar sesión con Google: ${error.message}`)
     }
   }
@@ -5907,45 +5925,53 @@ function App() {
   }
 
   async function resolveGoogleSession(): Promise<void> {
-    const sessionGeneration = sessionGenerationRef.current
-    if (!isSupabaseConfigured || !supabase) {
-      return
-    }
-    const { data } = await supabase.auth.getSession()
-    const googleUser = data.session?.user
-    if (!googleUser?.email) {
-      return
-    }
+    if (googleLoginBusyRef.current) return
+    googleLoginBusyRef.current = true
+    try {
+      const sessionGeneration = sessionGenerationRef.current
+      if (!isSupabaseConfigured || !supabase) return
+      const { data } = await supabase.auth.getSession()
+      if (sessionGeneration !== sessionGenerationRef.current || localStorage.getItem(GOOGLE_AUTO_LOGIN_BLOCKED_KEY)) return
+      const googleUser = data.session?.user
+      if (!googleUser?.email) return
 
-    const email = googleUser.email.toLowerCase()
-    const fullName = (googleUser.user_metadata?.full_name as string | undefined) ?? email.split('@')[0]
-    const result = await loginWithGoogle({ accessToken: data.session?.access_token || '', email, fullName })
-    if (sessionGeneration !== sessionGenerationRef.current) return
-    if (!result.success || !result.professional) {
-      setAuthError(result.message || 'No se pudo iniciar sesión con Google.')
-      return
-    }
-    const nextUser = mapAuthProfessionalPublic(result.professional)
-    if (result.sessionToken) {
-      sessionStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
-      localStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
-    }
-    setSeedUsers((current) => current.some((user) => user.id === nextUser.id) ? current.map((user) => user.id === nextUser.id ? nextUser : user) : [...current, nextUser])
-    setGoogleIdentity({ email: googleUser.email, fullName })
-    localStorage.setItem(SESSION_USER_KEY, nextUser.id)
-    await loadWorkspaceForUser(nextUser)
-    setWorkspaceLayer('overview')
-    setSelectedPatientId(null)
-    setAppNotice('Sesión iniciada con Google.')
+      const email = googleUser.email.toLowerCase()
+      if (!localStorage.getItem(GOOGLE_LOGIN_PENDING_KEY)) {
+        const cached = readJsonStorage<SeedUser | null>(SESSION_USER_CACHE_KEY, null)
+        if (cached && cached.email.trim().toLowerCase() !== email) return
+        if (readProfessionalSession()) return
+      }
+      const fullName = (googleUser.user_metadata?.full_name as string | undefined) ?? email.split('@')[0]
+      const result = await loginWithGoogle({ accessToken: data.session?.access_token || '', email, fullName })
+      if (sessionGeneration !== sessionGenerationRef.current) return
+      if (!result.success || !result.professional) {
+        setAuthError(result.message || 'No se pudo iniciar sesión con Google.')
+        return
+      }
+      const nextUser = mapAuthProfessionalPublic(result.professional)
+      storeProfessionalSession(nextUser.id, result.sessionToken || '')
+      localStorage.removeItem(GOOGLE_LOGIN_PENDING_KEY)
+      setSeedUsers((current) => current.some((user) => user.id === nextUser.id) ? current.map((user) => user.id === nextUser.id ? nextUser : user) : [...current, nextUser])
+      setGoogleIdentity({ email: googleUser.email, fullName })
+      localStorage.setItem(SESSION_USER_KEY, nextUser.id)
+      await loadWorkspaceForUser(nextUser)
+      if (readProfessionalSession()?.token !== result.sessionToken) return
+      setWorkspaceLayer('overview')
+      setSelectedPatientId(null)
+      setAppNotice('Sesión iniciada con Google.')
+    } finally { googleLoginBusyRef.current = false }
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     setAuthError(null)
     setAppNotice(null)
+    const loginAttempt = ++loginAttemptRef.current
+    const generation = sessionGenerationRef.current
 
     if (isSupabaseConfigured) {
       const result = await loginProfessional({ username: username.trim().toLowerCase(), password })
+      if (loginAttempt !== loginAttemptRef.current || generation !== sessionGenerationRef.current) return
       if (!result.success || !result.professional) {
         if (EMAIL_VERIFICATION_ENABLED && result.code === 'EMAIL_NOT_VERIFIED') {
           setEmailVerificationBusy(true)
@@ -6002,12 +6028,11 @@ function App() {
         setSeedUsers((current) => current.some((entry) => entry.id === user.id)
           ? current.map((entry) => entry.id === user.id ? user : entry)
           : [...current, user])
-        if (result.sessionToken) {
-          sessionStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
-          localStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
-        }
+        storeProfessionalSession(user.id, result.sessionToken || '')
+        localStorage.removeItem(GOOGLE_LOGIN_PENDING_KEY)
         localStorage.setItem(SESSION_USER_KEY, user.id)
         await loadWorkspaceForUser(user)
+        if (loginAttempt !== loginAttemptRef.current || readProfessionalSession()?.token !== result.sessionToken) return
         setWorkspaceLayer('overview')
         setSelectedPatientId(null)
       } catch (error) {
@@ -6205,17 +6230,18 @@ function App() {
   async function handleVerifyProfessionalEmail(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!pendingEmailVerification) return
+    const generation = sessionGenerationRef.current
     setAuthError(null)
     setEmailVerificationNotice(null)
     setEmailVerificationBusy(true)
     try {
       const result = await verifyProfessionalEmail(pendingEmailVerification.professionalId, emailVerificationCode)
+      if (generation !== sessionGenerationRef.current) return
       if (!result.success || !result.professional || !result.sessionToken) {
         setAuthError(result.message || 'No se pudo confirmar el email.')
         return
       }
       const user = mapAuthProfessionalPublic(result.professional)
-      await persistWorkspaceRemote(user.id, profileFromSeed(user), [], [])
       sessionGenerationRef.current += 1
       setActiveUserId(null)
       setProfile(null)
@@ -6223,13 +6249,12 @@ function App() {
       setAvailablePatients([])
       setAppointments([])
       setTreatmentLedger([])
-      sessionStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
-      localStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken)
-      localStorage.setItem(SESSION_USER_KEY, user.id)
+      storeProfessionalSession(user.id, result.sessionToken)
       setSeedUsers((current) => current.some((entry) => entry.id === user.id)
         ? current.map((entry) => entry.id === user.id ? user : entry)
         : [...current, user])
       await loadWorkspaceForUser(user)
+      if (readProfessionalSession()?.token !== result.sessionToken) return
       setWorkspaceLayer('overview')
       setSelectedPatientId(null)
       localStorage.removeItem(EMAIL_VERIFICATION_PENDING_KEY)
@@ -6315,15 +6340,10 @@ function App() {
 
   async function handleLogout(): Promise<void> {
     sessionGenerationRef.current += 1
+    loginAttemptRef.current += 1
     stopLiveScanner()
     stopDictation()
-    if (isSupabaseConfigured && supabase) {
-      await supabase.auth.signOut()
-    }
-    localStorage.removeItem(SESSION_USER_KEY)
-    localStorage.removeItem(SESSION_USER_CACHE_KEY)
-    sessionStorage.removeItem('drhappy-professional-session')
-    localStorage.removeItem(SESSION_TOKEN_KEY)
+    clearProfessionalSession()
     setGoogleIdentity(null)
     setActiveUserId(null)
     setProfile(null)
@@ -6331,6 +6351,8 @@ function App() {
     setAvailablePatients([])
     setAppointments([])
     setTreatmentLedger([])
+    setArchivedPatients([])
+    setShowPatientArchive(false)
     setSelectedPatientId(null)
     setPatientSearchQuery('')
     setPatientDraft(emptyPatientDraft)
@@ -6347,6 +6369,10 @@ function App() {
     setCommunityUnreadByMember({})
     setWorkspaceLayer('overview')
     setAppNotice(null)
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.auth.signOut({ scope: 'local' })
+      if (error) setAuthError(`La sesión profesional se cerró en este dispositivo, pero Google no pudo desconectarse: ${error.message}`)
+    }
   }
 
   function stopLiveScanner(): void {

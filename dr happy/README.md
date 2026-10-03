@@ -89,6 +89,16 @@ Las estadísticas incluyen un resumen financiero acumulado. Para odontólogos mu
 
 ## Ejecutar
 
+### Restauración de sesión móvil y cambio de cuenta
+
+La sesión profesional se conserva en un registro local ligado al ID de la cuenta y se restaura al reabrir la app, aunque el navegador haya perdido `sessionStorage`. Los servicios usan ese mismo registro y descartan respuestas pendientes de una cuenta anterior. Cambiar de cuenta en otra pestaña obliga a recargar la vista. El plazo del servidor sigue siendo de 12 horas; cerrar o minimizar la app no cierra la sesión por sí mismo.
+
+Al restaurar se valida primero la identidad del servidor y luego se carga su espacio de trabajo. No se sobrescribe el perfil profesional con una copia local durante el inicio. Una sesión profesional inválida no puede continuar como una cuenta distinta de Google. «Cerrar sesión» borra inmediatamente la sesión local y bloquea el reingreso automático, aunque la desconexión de Google demore o falle. Los permisos de administrador y las cuentas existentes no se modifican.
+
+`node --test tests/professional-session.test.mjs` verifica persistencia, pérdida del almacenamiento temporal, cambio de identidad, respuestas tardías y rechazo del fallback a otra cuenta.
+
+Con Vite en `http://127.0.0.1:5175`, `node tests/mobile-session.browser.mjs` recorre la app real en un navegador aislado a 390 px con servicios simulados: recuperación sin `sessionStorage`, reanudación, recarga, cambio entre dos cuentas con respuestas demoradas, dos logins superpuestos y cierre explícito. No consulta ni modifica usuarios reales. `TEST_APP_ORIGIN` y `EDGE_EXECUTABLE` permiten cambiar servidor y navegador. Para publicar la corrección del servidor deben desplegarse las funciones que importan `_shared/professionalSession.ts`; el cambio no requiere una migración ni cambia los plazos de las sesiones.
+
 ### Avisos de errores
 
 Los errores de acciones, acceso, turneras, certificados, invitaciones, suscripciones, soporte y ficha dental se anuncian mediante un toast global, visible sin volver al inicio ni hacer scroll. Se puede cerrar manualmente y desaparece después de 12 segundos; el tiempo se pausa al pasar el puntero o enfocar sus controles. Repetir una acción con el mismo error vuelve a mostrar el aviso y reinicia su tiempo, sin duplicarlo. Los errores diferentes pueden coexistir. Los mensajes junto a formularios y las acciones de reintento se conservan; los antiguos avisos rojos generales de la cabecera se reemplazan por el toast. Se respeta la preferencia de movimiento reducido y se anuncia el mensaje a lectores de pantalla.

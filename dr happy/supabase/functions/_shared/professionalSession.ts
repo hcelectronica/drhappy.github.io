@@ -45,14 +45,16 @@ export async function resolveProfessionalId(request: Request, admin: SupabaseCli
   const sessionToken = request.headers.get(SESSION_HEADER)?.trim()
   if (sessionToken) {
     const tokenHash = await hashToken(sessionToken)
-    const { data } = await admin
+    const { data, error } = await admin
       .from('professional_sessions')
       .select('professional_id, professionals!inner(active)')
       .eq('token_hash', tokenHash)
       .is('revoked_at', null)
       .gt('expires_at', new Date().toISOString())
       .maybeSingle()
+    if (error) throw new Error(`No se pudo validar la sesión profesional: ${error.message}`)
     if (data?.professional_id && (data.professionals as { active?: boolean | null } | null)?.active !== false) return data.professional_id
+    return null
   }
 
   const authorization = request.headers.get('Authorization')

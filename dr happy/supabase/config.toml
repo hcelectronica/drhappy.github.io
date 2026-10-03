@@ -26,3 +26,36 @@ verify_jwt = false
 
 [functions.public-booking]
 verify_jwt = false
+
+[functions.create-mercadopago-checkout]
+verify_jwt = true
+
+[functions.send-push-notification]
+verify_jwt = false
+
+[functions.auth-professional]
+verify_jwt = false
+
+[functions.admin-stats]
+verify_jwt = true
+
+[functions.self-delete-account]
+verify_jwt = true
+
+[functions.admin-professionals]
+verify_jwt = false
+
+[functions.ai-assistant]
+verify_jwt = true
+
+[functions.community-data]
+verify_jwt = true
+
+[functions.professionals-data]
+verify_jwt = false
+
+[functions.auth-email-verification]
+verify_jwt = true
+
+[functions.support-messages]
+verify_jwt = false
