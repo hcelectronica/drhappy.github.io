@@ -32,7 +32,7 @@ Aplicar `20261003010000_subscription_account_and_nightly_reminders.sql` y desple
 
 ## Ficha odontológica
 
-Los profesionales con especialidad odontológica acceden a una ficha de dos caras en lugar del formulario médico extenso. El anverso contiene los datos básicos, odontograma FDI permanente y temporal, registros por superficie, referencias y observaciones. El reverso reúne tratamientos, presupuesto al paciente, costo interno y cuenta con debe/haber/saldo. El giro permite cambiar de cara sin salir del paciente.
+Los profesionales con especialidad odontológica acceden a una ficha de dos caras en lugar del formulario médico extenso. El anverso contiene los datos básicos, odontograma FDI permanente y temporal, registros por superficie, referencias y observaciones. El reverso reúne tratamientos, presupuesto al paciente, costo interno y cuenta con debe/haber/saldo. El giro permite cambiar de cara sin salir del paciente, con una transición 3D de 0,8 segundos tanto desde las pestañas como desde el botón «Girar». Si el dispositivo solicita movimiento reducido, el cambio es inmediato.
 
 Las invitaciones y reservas generan fichas provisorias. «Guardar cambios» conserva la ficha sin marcar un turno como atendido; «Guardar atención» confirma la ficha y, si se abrió desde un turno vinculado, registra la atención. Los registros clínicos anteriores, certificados y órdenes se conservan y pueden consultarse.
 
