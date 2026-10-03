@@ -42,6 +42,8 @@ El guardado remoto conserva revisiones, verifica propiedad y especialidad, contr
 
 Aplicar `20261004010000_dental_records.sql` antes de desplegar `dental-records` y `workspace-data`, y luego publicar el frontend. `dental-records` valida la sesión profesional propia (`x-drhappy-session`); sus tablas y funciones de escritura no están disponibles para clientes anónimos.
 
+`20261004020000_dental_internal_cost_format.sql` corrige únicamente el formato monetario del costo interno en las notas del balance, también para registros existentes, sin alterar presupuestos, pagos ni saldos.
+
 ## Ejecutar
 
 ### Diseño de ficha odontológica (no habilitado en producción)
