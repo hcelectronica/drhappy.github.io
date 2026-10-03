@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.dental-records]
 verify_jwt = false
+
+[functions.patient-invite]
+verify_jwt = false
+
+[functions.public-booking]
+verify_jwt = false

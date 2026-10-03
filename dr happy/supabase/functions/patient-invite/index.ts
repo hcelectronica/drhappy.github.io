@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
+import { notifyProfessionalRegistration } from '../_shared/professionalRegistrationEmail.ts'
 
 // Link de invitación para que los pacientes se registren solos en la base del profesional.
 // Los registros quedan pendientes y la app del profesional los incorpora a su ficha.
@@ -142,7 +143,9 @@ serve(async (request) => {
       return jsonResponse(200, { success: true })
     }
 
+    const submissionId = crypto.randomUUID()
     const { error } = await admin.from('patient_invite_submissions').insert({
+      id: submissionId,
       professional_id: link.professional_id,
       nombre,
       apellido,
@@ -154,7 +157,11 @@ serve(async (request) => {
       phone: phone || null,
     })
     if (error) return jsonResponse(500, { success: false, message: 'No pudimos registrar tus datos. Probá de nuevo.' })
-    return jsonResponse(200, { success: true })
+    const professionalEmailSent = await notifyProfessionalRegistration({
+      admin, url: supabaseUrl, key: serviceRoleKey, professionalId: link.professional_id, eventId: submissionId,
+      event: { source: 'invite', patientName: `${apellido}, ${nombre}`, patientEmail: email, patientPhone: phone },
+    })
+    return jsonResponse(200, { success: true, professionalEmailSent })
   }
 
   // ── Acciones del profesional ───────────────────────────────────────────────

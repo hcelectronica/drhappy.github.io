@@ -22,6 +22,31 @@ Para médicos y psicólogos, un turno gratuito no crea una ficha clínica hasta 
 
 ## Suscripciones, Sofía y recordatorios
 
+### Notificaciones por email
+
+Los envíos usan `send-email` y requieren SMTP configurado en Supabase. La presencia de una función en el código no confirma su despliegue, la ejecución del cron ni la llegada a la bandeja de entrada.
+
+| Acción | Destinatario | Condición |
+| --- | --- | --- |
+| Registro profesional | Profesional | Bienvenida al completar el alta; verificación de dirección solo si `VITE_ENABLE_EMAIL_VERIFICATION=true`. |
+| Recuperación / cambio de contraseña | Profesional | Solicitud de recuperación o cambio completado. |
+| Comunicado administrativo | Profesionales seleccionados | Envío manual desde administración. |
+| Turno manual | Paciente | Email válido y opción de enviar confirmación seleccionada; también disponible el reenvío manual. |
+| Reserva pública gratuita | Paciente | Confirmación al reservar; la particular envía instrucciones de pago y confirma al aprobar Mercado Pago. |
+| Recordatorio de turno | Paciente | Cron nocturno a las 22:00 de Argentina, para turnos válidos del día siguiente. |
+| Acciones de Sofía | Paciente | Confirmación, cancelación, reprogramación, aviso de pago o recordatorio solicitado, según la acción y disponibilidad de email. |
+| Saldo pendiente | Paciente | Recordatorio manual desde balance o solicitado a Sofía. |
+| Certificado / orden | Destinatario elegido por el profesional | Envío manual del documento emitido. |
+| Baja de cuenta | Profesional | Archivo legal, según el recorrido de eliminación. |
+| Registro por invitación | Profesional | Nuevo envío real guardado mediante «Invitar paciente», sin crear un turno. |
+| Reserva por link de turnera | Profesional | Reserva guardada desde agenda pública gratuita/particular o enlace antiguo de turnos libres. |
+
+Los dos últimos avisos se generan en el servidor, aunque la app del profesional esté cerrada. El asunto distingue «Nuevo registro por invitación» de «Nueva solicitud de turno por turnera». Incluyen origen, nombre y contacto; las reservas agregan fecha, hora, lugar y estado. Una particular pendiente de pago nunca se anuncia como confirmada. No se afirma que sea una persona nueva en la base: un paciente existente también puede usar los links. No se envían datos clínicos, DNI ni fecha de nacimiento.
+
+El destinatario se consulta en el perfil guardado del profesional y, si no tiene dirección, en su cuenta; no se toma del formulario público. Los avisos se ejecutan después del guardado, no al abrir un link ni al importar la ficha. Si falla el envío, la respuesta informa `professionalEmailSent: false` y se registra el error con el identificador del evento, sin perder el registro ni inducir al paciente a reservar de nuevo. No hay reintentos automáticos ni garantía de recepción SMTP. El aviso inicial de una particular informa que falta pagar; no se agrega un segundo aviso al profesional desde el webhook de pago.
+
+Para activar estos avisos, desplegar `patient-invite` y `public-booking` con su helper compartido. Mantienen `verify_jwt=false`: las acciones públicas validan el enlace y las privadas validan la sesión profesional dentro de la función. No requiere migraciones ni cambios en el frontend ni en las credenciales SMTP existentes. Validar con `node --test tests/professional-registration-email.test.mjs tests/registration-handlers.test.mjs tests/nightly-reminder.test.mjs` y `deno check --node-modules-dir=none supabase/functions/patient-invite/index.ts supabase/functions/public-booking/index.ts`. Las pruebas de handlers cubren invitaciones guardadas/rechazadas, bots, turnera gratuita, particular pendiente de pago, enlaces antiguos y fallos de correo sin perder las reservas.
+
 Todos los planes pagos habilitan las mismas herramientas: 30 días ($15.000), 180 días ($78.000) o 365 días ($120.000). «Suscripción activa» abre «Mi suscripción» con el último período comprado, vencimiento, consumo de Sofía e historial de pagos. Una nueva compra suma días al vencimiento vigente; un pago de Mercado Pago se aplica una sola vez. Las activaciones administrativas anteriores pueden no tener una compra identificada.
 
 Sofía incluye 100 consultas por mes calendario de Argentina en cualquier plan pago y 3 consultas en total durante la prueba de 7 días. Comprar más tiempo no reinicia el cupo. Una pregunta con varias llamadas internas cuenta como una consulta; confirmar una acción pendiente no consume otra pregunta. Las solicitudes concurrentes reservan cupo en la base antes de invocar la IA. Los fallos sin tokens registrados liberan la reserva; las solicitudes que ya consumieron tokens cuentan y conservan su consumo. Los tokens de entrada/salida se muestran como información, no como un límite adicional.

@@ -61,14 +61,15 @@ export async function resolveProfessionalId(request: Request, admin: SupabaseCli
   const { data: authData } = await admin.auth.getUser(bearer)
   const authUser = authData.user
   const email = authUser?.email?.trim().toLowerCase()
-  if (!email) return null
+  if (!authUser || !email) return null
   const hasGoogleIdentity = authUser.identities?.some((identity) => identity.provider === 'google') ?? false
   if (hasGoogleIdentity ? !hasVerifiedGoogleEmail(authUser) : !authUser.email_confirmed_at) return null
   const verificationEnabled = Deno.env.get('ENABLE_EMAIL_VERIFICATION')?.trim().toLowerCase() === 'true'
-  const verificationColumns = verificationEnabled ? ', email_verification_required, email_verified_at' : ''
+  const columns = verificationEnabled ? 'id, active, email_verification_required, email_verified_at' : 'id, active'
   const { data: professional } = await admin.from('professionals')
-    .select(`id, active${verificationColumns}`)
+    .select(columns)
     .ilike('email', email)
+    .returns<Array<{ id: string; active: boolean | null; email_verification_required?: boolean; email_verified_at?: string | null }>>()
     .maybeSingle()
   if (verificationEnabled && professional?.email_verification_required === true && !professional.email_verified_at) return null
   return professional?.active === false ? null : professional?.id || null

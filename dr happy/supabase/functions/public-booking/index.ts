@@ -1,10 +1,12 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { getHolidayName } from '../_shared/argentineHolidays.ts'
+import { notifyProfessionalRegistration } from '../_shared/professionalRegistrationEmail.ts'
 
-type AdminClient = ReturnType<typeof createClient>
+type AdminClient = SupabaseClient
 
 // Función NUEVA e independiente de la Turnera existente.
 // Permite a un profesional generar un enlace público de "turnos libres"
@@ -53,6 +55,9 @@ interface RequestBody {
   patientDni?: string
   patientEmail?: string
   patientPhone?: string
+  amountToCharge?: number
+  amountConcept?: 'sena' | 'consulta'
+  paymentLink?: string
   linkId?: string
   appointmentId?: string
   appointmentDays?: number[]
@@ -111,7 +116,7 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
   })
 }
 
-function decodeBase64(value: string): Uint8Array {
+function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (value.length % 4)) % 4)
   return Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0))
 }
@@ -869,36 +874,50 @@ serve(async (request) => {
           }
         }
 
+        const professionalEmailSent = await notifyProfessionalRegistration({
+          admin, url: supabaseUrl, key: serviceRoleKey, professionalId: newAppointment.createdByUserId, eventId: appointmentId,
+          event: {
+            source: 'booking', patientName, patientEmail, patientPhone,
+            date: slotDate, time: slotTime, location: newAppointment.location,
+            status: amount ? 'pending_payment' : 'confirmed',
+          },
+        })
         let emailSent = false
         if (patientEmail) {
-          const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${serviceRoleKey}`,
-              apikey: serviceRoleKey,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              to: patientEmail,
-              subject: amount
-                ? `Completá el pago para confirmar tu turno con ${settings.professional_name}`
-                : `Turno confirmado con ${settings.professional_name} - ${slotDate} ${slotTime} hs`,
-              type: 'appointment',
-              templateData: {
-                patientName,
-                professionalName: settings.professional_name,
-                specialty: 'Consulta médica',
-                date: slotDate,
-                time: slotTime,
-                location: newAppointment.location,
-                notes: amount ? 'Tu turno quedará confirmado cuando Mercado Pago apruebe el pago.' : newAppointment.notes,
-                amountToCharge: amount,
-                amountConcept: amount ? block.amountConcept || 'consulta' : undefined,
-                paymentLink: amount ? paymentInitPoint || block.paymentLink || undefined : undefined,
+          try {
+            const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${serviceRoleKey}`,
+                apikey: serviceRoleKey,
+                'Content-Type': 'application/json',
               },
-            }),
-          })
-          emailSent = emailResponse.ok
+              body: JSON.stringify({
+                to: patientEmail,
+                subject: amount
+                  ? `Completá el pago para confirmar tu turno con ${settings.professional_name}`
+                  : `Turno confirmado con ${settings.professional_name} - ${slotDate} ${slotTime} hs`,
+                type: 'appointment',
+                templateData: {
+                  patientName,
+                  professionalName: settings.professional_name,
+                  specialty: 'Consulta médica',
+                  date: slotDate,
+                  time: slotTime,
+                  location: newAppointment.location,
+                  notes: amount ? 'Tu turno quedará confirmado cuando Mercado Pago apruebe el pago.' : newAppointment.notes,
+                  amountToCharge: amount,
+                  amountConcept: amount ? block.amountConcept || 'consulta' : undefined,
+                  paymentLink: amount ? paymentInitPoint || block.paymentLink || undefined : undefined,
+                },
+              }),
+            })
+            const emailResult: unknown = await emailResponse.json()
+            emailSent = emailResponse.ok && Boolean(emailResult && typeof emailResult === 'object' && 'success' in emailResult && emailResult.success === true)
+            if (!emailSent) console.error('[public-booking] Confirmación al paciente no enviada', { appointmentId, status: emailResponse.status })
+          } catch (error) {
+            console.error('[public-booking] Confirmación al paciente no enviada; reserva conservada', { appointmentId, message: error instanceof Error ? error.message : String(error) })
+          }
         }
 
         return jsonResponse(200, {
@@ -917,6 +936,7 @@ serve(async (request) => {
             paymentLink: amount ? block.paymentLink || null : null,
           },
           emailSent,
+          professionalEmailSent,
         })
       }
 
@@ -1087,8 +1107,16 @@ serve(async (request) => {
           return jsonResponse(500, { success: false, message: `No se pudo agendar el turno: ${upsertError.message}` })
         }
 
+        const professionalEmailSent = await notifyProfessionalRegistration({
+          admin, url: supabaseUrl, key: serviceRoleKey, professionalId: link.professional_id, eventId: appointmentId,
+          event: {
+            source: 'booking', patientName, patientEmail, patientPhone,
+            date: link.slot_date, time: slotTime, location: newAppointment.location, status: 'pending',
+          },
+        })
         return jsonResponse(200, {
           success: true,
+          professionalEmailSent,
           appointment: {
             date: link.slot_date,
             time: slotTime,
