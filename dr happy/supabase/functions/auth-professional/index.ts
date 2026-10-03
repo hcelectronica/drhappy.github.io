@@ -3,6 +3,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import bcrypt from 'npm:bcryptjs@2.4.3'
 import { corsHeaders } from '../_shared/cors.ts'
 import { createProfessionalSession, hasVerifiedGoogleEmail } from '../_shared/professionalSession.ts'
+import { notifyAdminRegistration } from '../_shared/adminRegistrationEmail.ts'
 
 // Esta función es la ÚNICA parte del sistema que puede leer o escribir el hash
 // de contraseña de un profesional. Usa la Service Role Key (nunca expuesta al
@@ -149,11 +150,12 @@ serve(async (request) => {
               : 'Ese nombre de usuario ya existe.',
           })
         }
-        if (insertError) {
-          return jsonResponse(500, { success: false, message: `No se pudo crear el usuario: ${insertError.message}` })
+        if (insertError || !inserted) {
+          return jsonResponse(500, { success: false, message: `No se pudo crear el usuario: ${insertError?.message || 'No se recibió la cuenta creada.'}` })
         }
 
-        return jsonResponse(200, { success: true, professional: inserted })
+        const adminEmailSent = await notifyAdminRegistration(supabaseUrl, serviceRoleKey, inserted, 'form')
+        return jsonResponse(200, { success: true, professional: inserted, adminEmailSent })
       }
 
       case 'login': {
@@ -249,8 +251,9 @@ serve(async (request) => {
           ...verificationFields,
         }).select(PROFESSIONAL_PUBLIC_COLUMNS).single()
         if (insertError || !inserted) return jsonResponse(500, { success: false, message: insertError?.message || 'No se pudo crear el usuario de Google.' })
+        const adminEmailSent = await notifyAdminRegistration(supabaseUrl, serviceRoleKey, inserted, 'google')
         const sessionToken = await createProfessionalSession(admin, String(inserted.id))
-        return jsonResponse(200, { success: true, professional: inserted, sessionToken })
+        return jsonResponse(200, { success: true, professional: inserted, sessionToken, adminEmailSent })
       }
 
       case 'change-password': {

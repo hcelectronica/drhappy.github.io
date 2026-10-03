@@ -3,6 +3,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import bcrypt from 'npm:bcryptjs@2.4.3'
 import { corsHeaders } from '../_shared/cors.ts'
 import { createProfessionalSession } from '../_shared/professionalSession.ts'
+import { notifyAdminRegistration } from '../_shared/adminRegistrationEmail.ts'
 
 // PARCHE LOGIN: queda desactivado hasta habilitarlo explícitamente.
 
@@ -141,8 +142,12 @@ serve(async (request) => {
     })
     if (error || !professionalId) return jsonResponse(error?.code === '23505' ? 409 : 500, { success: false, message: error ? mapRpcError(error) : 'No se pudo crear la cuenta.' })
 
+    const adminEmailSent = await notifyAdminRegistration(supabaseUrl, serviceRoleKey, {
+      id: String(professionalId), username, full_name: fullName, email,
+      specialty: body.specialty?.trim(), license_number: body.licenseNumber?.trim(),
+    }, 'email-verification')
     const emailSent = await sendCode(supabaseUrl, serviceRoleKey, email, code).catch(() => false)
-    return jsonResponse(200, { success: true, professionalId, email, resumeToken, emailSent })
+    return jsonResponse(200, { success: true, professionalId, email, resumeToken, emailSent, adminEmailSent })
   }
 
   if (body.action === 'resume') {

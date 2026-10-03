@@ -32,9 +32,12 @@ Para médicos y psicólogos, un turno gratuito no crea una ficha clínica hasta 
 
 Los envíos usan `send-email` y requieren SMTP configurado en Supabase. La presencia de una función en el código no confirma su despliegue, la ejecución del cron ni la llegada a la bandeja de entrada.
 
+El aviso administrativo de alta incluye nombre, contacto, usuario, especialidad, matrícula, ID y origen, sin contraseña ni DNI. El destinatario es fijo en el servidor. Si falla SMTP, el alta se conserva, se registra el fallo y la respuesta incluye `adminEmailSent: false`; no hay reintento automático ni envío en cada login. Desplegar `auth-professional` y `auth-email-verification` con `_shared/adminRegistrationEmail.ts`, preservando sus valores JWT. No requiere migración ni frontend. Validar con `node --test tests/admin-registration-email.test.mjs` y `deno check` de ambos handlers.
+
 | Acción | Destinatario | Condición |
 | --- | --- | --- |
 | Registro profesional | Profesional | Bienvenida al completar el alta; verificación de dirección solo si `VITE_ENABLE_EMAIL_VERIFICATION=true`. |
+| Nuevo profesional | Administración (`alan.moodie@hotmail.com`) | Aviso servidor después de crear una cuenta por formulario, Google o formulario con verificación pendiente. No se repite por login, reenvío de código o confirmación. |
 | Recuperación / cambio de contraseña | Profesional | Solicitud de recuperación o cambio completado. |
 | Comunicado administrativo | Profesionales seleccionados | Envío manual desde administración. |
 | Turno manual | Paciente | Email válido y opción de enviar confirmación seleccionada; también disponible el reenvío manual. |
