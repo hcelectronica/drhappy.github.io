@@ -58,6 +58,12 @@ Las estadísticas incluyen un resumen financiero acumulado. Para odontólogos mu
 
 ## Ejecutar
 
+### Avisos de errores
+
+Los errores de acciones, acceso, turneras, certificados, invitaciones, suscripciones, soporte y ficha dental se anuncian mediante un toast global, visible sin volver al inicio ni hacer scroll. Se puede cerrar manualmente y desaparece después de 12 segundos; el tiempo se pausa al pasar el puntero o enfocar sus controles. Repetir una acción con el mismo error vuelve a mostrar el aviso y reinicia su tiempo, sin duplicarlo. Los errores diferentes pueden coexistir. Los mensajes junto a formularios y las acciones de reintento se conservan; los antiguos avisos rojos generales de la cabecera se reemplazan por el toast. Se respeta la preferencia de movimiento reducido y se anuncia el mensaje a lectores de pantalla.
+
+Con Vite en `http://127.0.0.1:5175`, ejecutar `node tests/error-notifications.browser.mjs` para verificar el error real de impresión dental y el ciclo de los avisos en Edge aislado, sin datos reales. `TEST_APP_ORIGIN` permite cambiar el servidor; `EDGE_EXECUTABLE`, la ruta al navegador compatible con Chromium.
+
 ### Diseño de ficha odontológica (no habilitado en producción)
 
 Con el servidor de desarrollo abierto, `/dental-design` muestra una demostración interactiva basada en el anverso y reverso de la ficha dental: odontograma FDI permanente/temporal, referencias, trabajos, presupuesto al paciente, costo interno y cuenta con debe/haber/saldo. Usa datos ficticios y un borrador local independiente (`drhappy-dental-design-preview-v1`); no invoca servicios ni modifica pacientes, turnos o balances reales. La ruta no se habilita en el build de producción.

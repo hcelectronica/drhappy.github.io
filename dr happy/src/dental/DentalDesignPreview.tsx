@@ -9,6 +9,7 @@ import type { DentalCondition, DentalDesignRecord, DentalPayment, DentalSurface 
 import { dentalDate as dateLabel, dentalMoney as money, dentalStatusLabels as statusLabels, dentalLedgerRows } from './dentalPresentation'
 import { printDentalRecord } from './DentalPrint'
 import './dentalDesign.css'
+import { useErrorNotification } from '../useErrorNotification'
 
 const STORAGE_KEY = 'drhappy-dental-design-preview-v1'
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
@@ -41,7 +42,7 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
   const [initial] = useState(() => initialRecord ? { record: initialRecord, error: null } : loadDesign())
   const [record, setRecord] = useState(initial.record)
   const [identitySaved, setIdentitySaved] = useState(Boolean(initial.record.patient.dni))
-  const [error, setError] = useState<string | null>(initial.error)
+  const [error, setError] = useErrorNotification(initial.error)
   const [notice, setNotice] = useState(real ? 'Ficha odontológica privada. Guardá los cambios para sincronizar la ficha y el balance.' : 'Esta vista usa datos ficticios. No modifica pacientes ni el balance real.')
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
@@ -238,7 +239,7 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
           <button type="button" className="dental-primary" disabled={saving} onClick={() => void save()}>{saving ? 'Guardando...' : real ? (dirty ? 'Guardar cambios *' : 'Guardar cambios') : (dirty ? 'Guardar borrador *' : 'Guardar borrador')}</button>
         </div>
       </div>
-      {error ? <div className="dental-error" role="alert"><p>{error}</p>{real && onReload ? <button type="button" disabled={saving} onClick={async () => {
+      {error ? <div className="dental-error"><p>{error}</p>{real && onReload ? <button type="button" disabled={saving} onClick={async () => {
         if (dirty && !window.confirm('¿Descartar los cambios en pantalla y cargar la última ficha guardada?')) return
         savingRef.current = true
         setSaving(true)

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { SUPPORT_MESSAGE_MAX_LENGTH, sendSupportMessage } from './supportService'
+import { useErrorNotification } from './useErrorNotification'
 
 interface SupportContactFormProps {
   defaultName?: string
@@ -14,6 +15,7 @@ export function SupportContactForm({ defaultName = '', defaultEmail = '' }: Supp
   const [website, setWebsite] = useState('')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null)
+  const [, setError] = useErrorNotification()
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
@@ -26,7 +28,9 @@ export function SupportContactForm({ defaultName = '', defaultEmail = '' }: Supp
       setMessage('')
       setStatus({ ok: true, text: '¡Gracias! Recibimos tu mensaje y te vamos a responder por email.' })
     } else {
-      setStatus({ ok: false, text: result.message || 'No se pudo enviar el mensaje. Probá de nuevo.' })
+      const text = result.message || 'No se pudo enviar el mensaje. Probá de nuevo.'
+      setStatus({ ok: false, text })
+      setError(text)
     }
   }
 

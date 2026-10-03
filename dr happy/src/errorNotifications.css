@@ -1,0 +1,41 @@
+.app-error-toast-viewport {
+  position: fixed;
+  inset: auto 16px calc(24px + env(safe-area-inset-bottom)) auto;
+  z-index: 11000;
+  display: none;
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px - env(safe-area-inset-bottom));
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+.app-error-toast-viewport.is-visible { display: grid; gap: 10px; }
+.app-error-toast-viewport::backdrop { background: transparent; pointer-events: none; }
+.app-error-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #f3a8ae;
+  border-radius: 14px;
+  background: #fff3f4;
+  color: #861b2a;
+  box-shadow: 0 8px 24px rgba(70, 15, 25, 0.22);
+  pointer-events: auto;
+  animation: app-error-toast-enter 180ms ease-out;
+}
+.app-error-toast p { flex: 1; min-width: 0; margin: 0; font: 500 14px/1.5 system-ui, sans-serif; overflow-wrap: anywhere; }
+.app-error-toast-icon { display: grid; place-items: center; flex: 0 0 24px; height: 24px; border-radius: 50%; background: #a52234; color: white; font-weight: 700; }
+.app-error-toast button { flex: 0 0 32px; min-height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #861b2a; box-shadow: none; font: 24px/1 system-ui, sans-serif; cursor: pointer; }
+.app-error-toast button:hover { background: #ffe0e3; transform: none; }
+.app-error-toast button:focus-visible { outline: 2px solid #861b2a; outline-offset: 2px; }
+@keyframes app-error-toast-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 600px) {
+  .app-error-toast-viewport { inset: auto 12px calc(96px + env(safe-area-inset-bottom)) 12px; width: auto; max-height: calc(100dvh - 128px - env(safe-area-inset-bottom)); }
+  .app-error-toast { gap: 10px; padding: 12px; }
+  .app-error-toast button { flex-basis: 40px; min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) { .app-error-toast { animation: none; } }

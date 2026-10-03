@@ -4,6 +4,7 @@ import { createDentalDesignRecord } from './dentalModel'
 import { loadDentalRecord, saveDentalRecord } from './dentalService'
 import type { DentalDesignRecord } from './dentalModel'
 import type { DentalSaveResult } from './dentalService'
+import { useErrorNotification } from '../useErrorNotification'
 
 export interface DentalPatient {
   id: string
@@ -28,7 +29,7 @@ export function DentalPatientChart({ patient, appointmentId, onSaved, onBack, on
   onSavingChange: (saving: boolean) => void
 }) {
   const [loaded, setLoaded] = useState<DentalSaveResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useErrorNotification()
   const [attempt, setAttempt] = useState(0)
   const [chartVersion, setChartVersion] = useState(0)
   useEffect(() => {
@@ -36,8 +37,8 @@ export function DentalPatientChart({ patient, appointmentId, onSaved, onBack, on
     void loadDentalRecord(patient.id).then((result) => { if (!cancelled) setLoaded(result) })
       .catch((error: unknown) => { if (!cancelled) setError(error instanceof Error ? error.message : 'No se pudo cargar la ficha dental.') })
     return () => { cancelled = true; onDirtyChange(false) }
-  }, [patient.id, attempt, onDirtyChange])
-  if (error) return <section className="panel"><p className="error" role="alert">{error}</p><button type="button" onClick={() => { setError(null); setAttempt((value) => value + 1) }}>Reintentar</button><button type="button" className="ghost" onClick={onBack}>Volver a pacientes</button></section>
+  }, [patient.id, attempt, onDirtyChange, setError])
+  if (error) return <section className="panel"><p className="error">{error}</p><button type="button" onClick={() => { setError(null); setAttempt((value) => value + 1) }}>Reintentar</button><button type="button" className="ghost" onClick={onBack}>Volver a pacientes</button></section>
   if (!loaded) return <section className="panel"><p role="status">Cargando ficha odontológica...</p></section>
   const initialRecord: DentalDesignRecord = loaded.record ?? {
     ...createDentalDesignRecord(),

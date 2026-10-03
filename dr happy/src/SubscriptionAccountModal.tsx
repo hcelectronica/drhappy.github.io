@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { loadSubscriptionAccount } from './subscriptionAccountService'
 import { SubscriptionBenefits } from './SubscriptionBenefits'
 import type { SubscriptionAccount, SubscriptionPlan } from './subscriptionAccountService'
+import { useErrorNotification } from './useErrorNotification'
 
 const PLAN_LABELS = { monthly: '30 días', semiannual: '6 meses (180 días)', annual: '1 año (365 días)' }
 const PLANS: Array<{ plan: SubscriptionPlan; label: string; price: string }> = [
@@ -17,7 +18,7 @@ export function SubscriptionAccountModal({ onClose, onSubscribe, busy }: {
   busy: SubscriptionPlan | null
 }) {
   const [account, setAccount] = useState<SubscriptionAccount | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useErrorNotification()
   const [refresh, setRefresh] = useState(0)
   const [openedAt] = useState(() => Date.now())
   const panel = useRef<HTMLElement>(null)
@@ -34,7 +35,7 @@ export function SubscriptionAccountModal({ onClose, onSubscribe, busy }: {
       if (!cancelled) setError(error instanceof Error ? error.message : 'No se pudo cargar tu suscripción.')
     })
     return () => { cancelled = true }
-  }, [refresh])
+  }, [refresh, setError])
 
   return (
     <div className="subscription-account-backdrop" onClick={onClose}>
@@ -56,7 +57,7 @@ export function SubscriptionAccountModal({ onClose, onSubscribe, busy }: {
           <h2 id="subscription-account-title">Mi suscripción</h2>
           <button type="button" className="ghost" onClick={onClose} aria-label="Cerrar mi suscripción">Cerrar</button>
         </header>
-        {error ? <div role="alert"><p className="error">{error}</p><button type="button" onClick={() => { setError(null); setAccount(null); setRefresh((value) => value + 1) }}>Reintentar</button></div> : null}
+        {error ? <div><p className="error">{error}</p><button type="button" onClick={() => { setError(null); setAccount(null); setRefresh((value) => value + 1) }}>Reintentar</button></div> : null}
         {!error && !account ? <p role="status">Consultando tu plan y consumo...</p> : null}
         {account ? <>
           <p><strong>{account.plan ? PLAN_LABELS[account.plan] : 'Sin un período comprado registrado'}</strong></p>

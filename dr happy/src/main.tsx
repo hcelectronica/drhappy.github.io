@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { AppErrorBoundary } from './AppErrorBoundary'
+import { ErrorNotificationProvider } from './ErrorNotifications'
 import { installRuntimeErrorLogging, logRuntime } from './runtimeLogger'
 
 const DentalDesignPreview = import.meta.env.DEV && window.location.pathname === '/dental-design'
@@ -12,9 +13,11 @@ const DentalDesignPreview = import.meta.env.DEV && window.location.pathname === 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AppErrorBoundary>
-      {DentalDesignPreview
-        ? <Suspense fallback={<p>Cargando diseño de ficha dental...</p>}><DentalDesignPreview /></Suspense>
-        : <App />}
+      <ErrorNotificationProvider>
+        {DentalDesignPreview
+          ? <Suspense fallback={<p>Cargando diseño de ficha dental...</p>}><DentalDesignPreview /></Suspense>
+          : <App />}
+      </ErrorNotificationProvider>
     </AppErrorBoundary>
   </StrictMode>,
 )

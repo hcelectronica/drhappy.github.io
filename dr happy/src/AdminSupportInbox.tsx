@@ -5,11 +5,12 @@ import {
   setSupportMessageStatus,
 } from './supportService'
 import type { SupportMessage } from './supportService'
+import { useErrorNotification } from './useErrorNotification'
 
 export function AdminSupportInbox() {
   const [messages, setMessages] = useState<SupportMessage[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useErrorNotification()
   const [filter, setFilter] = useState<'pending' | 'all'>('pending')
 
   const load = useCallback(async () => {
@@ -19,7 +20,7 @@ export function AdminSupportInbox() {
     setLoading(false)
     if (result.success) setMessages(result.messages ?? [])
     else setError(result.message || 'No se pudieron cargar los mensajes.')
-  }, [])
+  }, [setError])
 
   useEffect(() => {
     void load()

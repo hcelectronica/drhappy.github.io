@@ -10,6 +10,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import mammoth from 'mammoth'
 import JsBarcode from 'jsbarcode'
 import './App.css'
+import { useErrorNotification } from './useErrorNotification'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
 import { SubscriptionAccountModal } from './SubscriptionAccountModal'
 import { loadSubscriptionAccount } from './subscriptionAccountService'
@@ -2420,7 +2421,7 @@ const SOFIA_PROMO_FEATURES = [
 function App() {
   const [seedUsers, setSeedUsers] = useState<SeedUser[]>([])
   const [loadingUsers, setLoadingUsers] = useState(true)
-  const [appError, setAppError] = useState<string | null>(null)
+  const [, setAppError] = useErrorNotification()
   const [appNotice, setAppNotice] = useState<string | null>(null)
   const [floatingNotice, setFloatingNotice] = useState<string | null>(null)
   const [splashVisible, setSplashVisible] = useState(true)
@@ -2446,14 +2447,7 @@ function App() {
     null,
   )
   const [showInstallToast, setShowInstallToast] = useState(false)
-  const [authError, setAuthError] = useState<string | null>(null)
-  const [authErrorToast, setAuthErrorToast] = useState<string | null>(null)
-  useEffect(() => {
-    if (!authError) return
-    setAuthErrorToast(authError)
-    const timeoutId = window.setTimeout(() => setAuthErrorToast(null), 3200)
-    return () => window.clearTimeout(timeoutId)
-  }, [authError])
+  const [, setAuthError] = useErrorNotification()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showLoginPassword, setShowLoginPassword] = useState(false)
@@ -2554,7 +2548,7 @@ function App() {
     amountConcept: 'consulta' as 'sena' | 'consulta',
   })
   const [freeSlotSaving, setFreeSlotSaving] = useState(false)
-  const [freeSlotError, setFreeSlotError] = useState<string | null>(null)
+  const [freeSlotError, setFreeSlotError] = useErrorNotification()
   const [freeSlotLinks, setFreeSlotLinks] = useState<PublicBookingLinkSummary[]>([])
   const [freeSlotLinksLoading, setFreeSlotLinksLoading] = useState(false)
   const [freeSlotGeneratedUrl, setFreeSlotGeneratedUrl] = useState<string | null>(null)
@@ -2563,7 +2557,7 @@ function App() {
   const [publicBookingSaving, setPublicBookingSaving] = useState(false)
   const [publicBookingQuotas, setPublicBookingQuotas] = useState<Record<'private' | 'coverage', string>>({ private: '', coverage: '' })
   const [publicTurneraDrafts, setPublicTurneraDrafts] = useState<Partial<Record<'private' | 'coverage', PublicTurneraDraft>>>({})
-  const [publicBookingError, setPublicBookingError] = useState<string | null>(null)
+  const [publicBookingError, setPublicBookingError] = useErrorNotification()
   const [publicBookingNotice, setPublicBookingNotice] = useState<string | null>(null)
   const [mercadoPagoConnected, setMercadoPagoConnected] = useState(false)
   const [mercadoPagoAccountEmail, setMercadoPagoAccountEmail] = useState<string | null>(null)
@@ -2604,7 +2598,7 @@ function App() {
       setAppError(params.get('message') || 'No se pudo conectar Mercado Pago.')
     }
     window.history.replaceState({}, document.title, window.location.pathname)
-  }, [])
+  }, [setAppError])
   // Métricas de uso por usuario (solo conteos y fechas, sin datos clínicos).
   const [adminUserStats, setAdminUserStats] = useState<AdminUserStats[]>([])
   const [adminUserStatsLoading, setAdminUserStatsLoading] = useState(false)
@@ -2641,11 +2635,11 @@ function App() {
   const [certificateIssued, setCertificateIssued] = useState<{ entry: CertificateEntry; pdf: Blob; reopened: boolean } | null>(null)
   const [certificateEmail, setCertificateEmail] = useState('')
   const [certificateSending, setCertificateSending] = useState(false)
-  const [certificateError, setCertificateError] = useState<string | null>(null)
+  const [certificateError, setCertificateError] = useErrorNotification()
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [inviteToken, setInviteToken] = useState<string | null>(null)
   const [inviteBusy, setInviteBusy] = useState(false)
-  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteError, setInviteError] = useErrorNotification()
   const [inviteCopied, setInviteCopied] = useState(false)
   const inviteSyncBusyRef = useRef(false)
   const [prescriptionDiagnostico, setPrescriptionDiagnostico] = useState('')
@@ -4375,7 +4369,7 @@ function App() {
     }
 
     void loadSeedUsers()
-  }, [])
+  }, [setAppError])
 
   useEffect(() => {
     const loadDiagnosisCatalog = async () => {
@@ -4935,7 +4929,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [activeUserId, loadingUsers, seedUsers.length])
+  }, [activeUserId, loadingUsers, seedUsers.length, setAppError])
 
   useEffect(() => {
     if (loadingUsers || !isSupabaseConfigured || !supabase) {
@@ -4970,7 +4964,7 @@ function App() {
           : 'No se pudo completar el inicio de sesión con Google.',
       )
     })
-  }, [activeUserId, loadingUsers, seedUsers])
+  }, [activeUserId, loadingUsers, seedUsers, setAppError, setAuthError])
 
   const sortedPatients = useMemo(() => {
     const list = [...patients]
@@ -9808,7 +9802,6 @@ function App() {
                   </button>
                 </div>
               </label>
-              {appError ? <p className="error">{appError}</p> : null}
               {appNotice ? <p className="notice">{appNotice}</p> : null}
               <button type="submit">Iniciar sesión</button>
               {isSupabaseConfigured ? (
@@ -9934,7 +9927,6 @@ function App() {
                   <button type="submit">Actualizar contraseña</button>
                 </form>
               )}
-              {appError ? <p className="error">{appError}</p> : null}
               {appNotice ? <p className="notice">{appNotice}</p> : null}
               <button type="button" className="ghost" onClick={resetRecoveryForm}>
                 Volver a iniciar sesión
@@ -10100,7 +10092,6 @@ function App() {
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
-        {authErrorToast ? <div className="floating-toast floating-toast--error" role="alert" aria-live="assertive">{authErrorToast}</div> : null}
         {contactModalOpen ? (
           <div className="drhappy-modal-overlay" onClick={() => setContactModalOpen(false)}>
             <div
@@ -10719,7 +10710,6 @@ function App() {
         </button>
       </nav>
 
-      {appError ? <p className="error">{appError}</p> : null}
       {appNotice ? <p className="notice">{appNotice}</p> : null}
 
       {workspaceLayer === 'tools' && toolsActiveTab === 'community' ? (
@@ -15903,7 +15893,7 @@ function App() {
                 {inviteBusy && !inviteUrl ? (
                   <div className="invite-loading"><span className="invite-spinner" aria-hidden="true" />Generando tu link personal...</div>
                 ) : null}
-                {inviteError ? <p className="certificate-error" role="alert">{inviteError}</p> : null}
+                {inviteError ? <p className="certificate-error">{inviteError}</p> : null}
                 {inviteUrl ? (
                   <div className="invite-content">
                     <div className="invite-link-box">
@@ -16136,7 +16126,7 @@ function App() {
               )}
             </div>
             <div className="drhappy-modal-footer certificate-modal-footer">
-              {certificateError ? <p className="certificate-error" role="alert">{certificateError}</p> : null}
+              {certificateError ? <p className="certificate-error">{certificateError}</p> : null}
               {!certificateIssued ? (
                 <>
                   <button type="button" className="ghost" onClick={closeCertificateModal} disabled={certificateSaving}>Cancelar</button>
