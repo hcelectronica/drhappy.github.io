@@ -18,6 +18,9 @@ verify_jwt = false
 [functions.dental-records]
 verify_jwt = false
 
+[functions.workspace-data]
+verify_jwt = false
+
 [functions.patient-invite]
 verify_jwt = false
 

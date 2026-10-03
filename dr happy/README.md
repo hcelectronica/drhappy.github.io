@@ -73,6 +73,12 @@ Un presupuesto propuesto no genera deuda. Al aceptarlo, su importe se proyecta e
 
 El guardado remoto conserva revisiones, verifica propiedad y especialidad, controla concurrencia e impide alterar pagos ya guardados. Ante un conflicto, los cambios permanecen en pantalla y se puede cargar la última ficha guardada con confirmación de descarte.
 
+Para odontólogos, «Eliminar paciente» mueve la ficha a **Pacientes eliminados**, incluso si tiene atenciones confirmadas o pagos. Es la primera etapa: deja de aparecer en las listas activas y puede restaurarse. «Confirmar eliminación» pide una segunda confirmación y mueve la ficha al **Archivo confirmado**, sin restauración desde la app. Ambas etapas conservan íntegros la historia, las revisiones, los documentos, el presupuesto, los cobros, los costos y los saldos; las estadísticas y el balance siguen incluyéndolos. Desde el archivo o el balance se consulta la ficha en modo de solo lectura y se imprime el mismo PDF. No se pueden agregar atenciones, pagos o certificados mientras esté archivada.
+
+Primero deben cancelarse los turnos futuros pendientes. Una nueva invitación o turno del mismo DNI no reactiva ni duplica una ficha archivada: se informa que debe revisarse el archivo. El servidor conserva las identidades ante guardados de sesiones antiguas y rechaza cambios clínicos a fichas archivadas. Las otras especialidades mantienen su comportamiento anterior.
+
+Aplicar `20261004030000_dental_patient_archive.sql` antes de desplegar la nueva versión de `workspace-data` y el frontend. Las escrituras del archivo se realizan mediante RPC validada por sesión y propiedad; no hay eliminación física de pacientes ni de movimientos. `tests/dental-patient-archive.sql` comprueba el ciclo completo con datos ficticios dentro de una transacción que finaliza en `ROLLBACK`.
+
 Aplicar `20261004010000_dental_records.sql` antes de desplegar `dental-records` y `workspace-data`, y luego publicar el frontend. `dental-records` valida la sesión profesional propia (`x-drhappy-session`); sus tablas y funciones de escritura no están disponibles para clientes anónimos.
 
 `20261004020000_dental_internal_cost_format.sql` corrige únicamente el formato monetario del costo interno en las notas del balance, también para registros existentes, sin alterar presupuestos, pagos ni saldos.

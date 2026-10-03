@@ -27,7 +27,8 @@ function loadDesign(): { record: DentalDesignRecord; error: string | null } {
   }
 }
 
-export default function DentalDesignPreview({ initialRecord, realPatientId, onSave, onBack, onDirtyChange, onSavingChange, onReload, revisions, professional }: {
+export default function DentalDesignPreview({ initialRecord, realPatientId, onSave, onBack, onDirtyChange, onSavingChange, onReload, revisions, professional, readOnly = false }: {
+  readOnly?: boolean
   professional?: { fullName: string; licenseNumber: string }
   initialRecord?: DentalDesignRecord
   realPatientId?: string
@@ -106,6 +107,7 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
     setNotice('Cambios en el borrador. Guardalos antes de salir.')
   }
   async function save(next = record, confirm = false) {
+    if (readOnly) { setError('La ficha archivada es de solo lectura. Restaurá al paciente antes de modificarla.'); return }
     if (savingRef.current) return
     savingRef.current = true
     setSaving(true)
@@ -232,11 +234,11 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
         </div>
         <div className="dental-toolbar-actions">
           <button type="button" className="dental-desktop-print" onClick={print} disabled={saving}>Imprimir / PDF</button>
-          <button type="button" disabled={!history.length || saving} onClick={() => {
+          <button type="button" disabled={readOnly || !history.length || saving} onClick={() => {
             const previous = history[history.length - 1]
             if (previous) { setRecord(previous); setHistory((items) => items.slice(0, -1)); setDirty(true); setError(null); setNotice('Último cambio deshecho. Guardá el borrador para conservarlo.') }
           }}>Deshacer</button>
-          <button type="button" className="dental-primary" disabled={saving} onClick={() => void save()}>{saving ? 'Guardando...' : real ? (dirty ? 'Guardar cambios *' : 'Guardar cambios') : (dirty ? 'Guardar borrador *' : 'Guardar borrador')}</button>
+          <button type="button" className="dental-primary" disabled={readOnly || saving} onClick={() => void save()}>{saving ? 'Guardando...' : real ? (dirty ? 'Guardar cambios *' : 'Guardar cambios') : (dirty ? 'Guardar borrador *' : 'Guardar borrador')}</button>
         </div>
       </div>
       {error ? <div className="dental-error"><p>{error}</p>{real && onReload ? <button type="button" disabled={saving} onClick={async () => {
@@ -248,8 +250,8 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
         catch (error) { setError(`No se pudo recargar: ${error instanceof Error ? error.message : 'error de conexión'}. Los cambios siguen en pantalla.`) }
         finally { savingRef.current = false; setSaving(false); onSavingChange?.(false) }
       }}>Cargar última ficha guardada</button> : null}</div> : null}
-      <p className="dental-notice" role="status">{notice}</p>
-      <fieldset className="dental-save-lock" disabled={saving}><div className={`dental-flip ${back ? 'dental-flip--back' : ''}`}>
+      <p className="dental-notice" role="status">{readOnly ? 'Ficha archivada · solo lectura. Las atenciones, pagos y saldos se conservan. Podés consultar ambas caras e imprimir el PDF.' : notice}</p>
+      <fieldset className="dental-save-lock" disabled={saving || readOnly}><div className={`dental-flip ${back ? 'dental-flip--back' : ''}`}>
         <div className="dental-flip-inner">
           <section className="dental-sheet dental-sheet--front" inert={back} aria-hidden={back} aria-label="Anverso de la ficha dental">
             <div className="dental-sheet-heading"><div><span className="dental-eyebrow">ANVERSO · REGISTRO ODONTOLÓGICO</span><h2>Odontograma</h2></div><span className={`dental-record-status ${record.status === 'confirmed' ? 'dental-record-status--confirmed' : ''}`}>{record.status === 'provisional' ? 'Ficha provisoria' : real ? 'Ficha confirmada' : 'Atención registrada · demo'}</span></div>
@@ -361,7 +363,7 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
       </dialog> : null}
       <footer className="dental-footer">
         <button ref={flipButton} type="button" onClick={flip} className="dental-flip-button"><span aria-hidden="true">↻</span> {back ? 'Girar al odontograma' : 'Girar a tratamientos y pagos'}</button>
-        <button type="button" className="dental-primary" disabled={saving} onClick={() => {
+        <button type="button" className="dental-primary" disabled={saving || readOnly} onClick={() => {
           if (!record.marks.length && !record.observations.trim() && !record.treatments.some((item) => item.status === 'completed')) { setError('Registrá un hallazgo, una observación o un trabajo realizado antes de guardar la atención.'); return }
           void save({ ...record, status: 'confirmed' }, true)
         }}>{saving ? 'Guardando...' : real ? 'Guardar atención' : 'Guardar atención de prueba'}</button>

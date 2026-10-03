@@ -19,7 +19,8 @@ export interface DentalPatient {
   numeroAfiliado: string
   dentalStatus?: 'provisional' | 'confirmed'
 }
-export function DentalPatientChart({ patient, appointmentId, onSaved, onBack, onDirtyChange, onSavingChange, professional }: {
+export function DentalPatientChart({ patient, appointmentId, onSaved, onBack, onDirtyChange, onSavingChange, professional, readOnly = false }: {
+  readOnly?: boolean
   professional: { fullName: string; licenseNumber: string }
   patient: DentalPatient
   appointmentId?: string
@@ -48,7 +49,7 @@ export function DentalPatientChart({ patient, appointmentId, onSaved, onBack, on
       locality: '', coverage: patient.obraSocial, memberNumber: patient.numeroAfiliado,
     }, status: patient.dentalStatus ?? 'provisional',
   }
-  return <DentalChart key={chartVersion} initialRecord={initialRecord} realPatientId={patient.id} professional={professional} onDirtyChange={onDirtyChange} onSavingChange={onSavingChange} onBack={onBack}
+  return <DentalChart key={chartVersion} initialRecord={initialRecord} realPatientId={patient.id} readOnly={readOnly} professional={professional} onDirtyChange={onDirtyChange} onSavingChange={onSavingChange} onBack={onBack}
     revisions={loaded.history}
     onReload={async () => {
       const result = await loadDentalRecord(patient.id)

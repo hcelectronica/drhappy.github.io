@@ -1,9 +1,23 @@
 import { corsHeaders } from '../_shared/cors.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+}
+
+async function visibleWorkspace(admin: SupabaseClient, professionalId: string, workspace: unknown) {
+  const { data: archives, error } = await admin.from('dental_patient_archives')
+    .select('patient_id, state, patient, archived_at, confirmed_at').eq('professional_id', professionalId).neq('state', 'active')
+  if (error) throw new Error('No se pudo consultar el archivo de pacientes.')
+  const hiddenIds = new Set((archives ?? []).map((entry) => entry.patient_id))
+  const row = workspace && typeof workspace === 'object' ? workspace as Record<string, unknown> : null
+  return {
+    workspace: row ? { ...row, patients_json: (Array.isArray(row.patients_json) ? row.patients_json : [])
+      .filter((patient) => patient && typeof patient === 'object' && !hiddenIds.has(patient.id)) } : null,
+    archivedPatients: archives ?? [],
+  }
 }
 
 Deno.serve(async (request) => {
@@ -33,7 +47,27 @@ Deno.serve(async (request) => {
       if (syncError) return jsonResponse(500, { success: false, message: 'No se pudieron sincronizar los pacientes odontológicos.' })
       workspace = syncedWorkspace
     }
-    return jsonResponse(200, { success: true, professional, workspace })
+    try {
+      return jsonResponse(200, { success: true, professional, ...await visibleWorkspace(admin, professionalId, workspace) })
+    } catch (error) {
+      console.error('[workspace-data] Archivo no disponible', { professionalId })
+      return jsonResponse(500, { success: false, message: error instanceof Error ? error.message : 'No se pudo consultar el archivo.' })
+    }
+  }
+  if (body.action === 'archive-patient') {
+    if (typeof body.patientId !== 'string' || !body.patientId.trim() || body.patientId.length > 128
+      || !['archive', 'restore', 'confirm'].includes(String(body.archiveAction))) {
+      return jsonResponse(400, { success: false, message: 'Paciente o acción de archivo inválidos.' })
+    }
+    const { error } = await admin.rpc('dental_archive_patient', {
+      p_professional_id: professionalId, p_patient_id: body.patientId, p_action: body.archiveAction,
+    })
+    if (error) {
+      if (!['22023', '42501', 'P0002'].includes(error.code)) console.error('[workspace-data] Falló el archivo', { professionalId, code: error.code })
+      return jsonResponse(error.code === '42501' ? 403 : error.code === 'P0002' ? 404 : error.code === '22023' ? 409 : 500,
+        { success: false, message: ['22023', '42501', 'P0002'].includes(error.code) ? error.message : 'No se pudo actualizar el archivo del paciente.' })
+    }
+    return jsonResponse(200, { success: true })
   }
   if (body.action === 'save') {
     const profile = body.profile && typeof body.profile === 'object' ? body.profile : {}

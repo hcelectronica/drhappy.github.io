@@ -61,7 +61,10 @@ import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBo
 import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia } from './aiAssistantService'
-import { loadWorkspaceData, saveWorkspaceData, saveTreatmentLedgerData } from './workspaceService'
+import { loadWorkspaceData, saveWorkspaceData, saveTreatmentLedgerData, updatePatientArchive } from './workspaceService'
+import { readPatientArchives } from './patientArchive'
+import type { ArchivedPatient } from './patientArchive'
+import { PatientArchivePanel } from './PatientArchivePanel'
 import { disconnectMercadoPago, getMercadoPagoConnectionStatus, startMercadoPagoConnection, verifyMercadoPagoConnection } from './mercadoPagoConnectService'
 import { communityRequest } from './communityService'
 import { parseClinicalSummary } from './clinicalSummaryParser'
@@ -2494,6 +2497,8 @@ function App() {
   const [patients, setPatients] = useState<PatientRecord[]>([])
   const [pendingAttentionAppointmentId, setPendingAttentionAppointmentId] = useState<string | null>(null)
   const [patientDeletingId, setPatientDeletingId] = useState<string | null>(null)
+  const [archivedPatients, setArchivedPatients] = useState<ArchivedPatient[]>([])
+  const [showPatientArchive, setShowPatientArchive] = useState(false)
   const [availablePatients, setAvailablePatients] = useState<PatientRecord[]>([])
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
   const [appointmentSearchQuery, setAppointmentSearchQuery] = useState('')
@@ -3514,6 +3519,8 @@ function App() {
   }
 
   async function loadWorkspaceForUser(user: SeedUser): Promise<void> {
+    setArchivedPatients([])
+    setShowPatientArchive(false)
     const sessionGeneration = ++sessionGenerationRef.current
     const localProfile = readJsonStorage<ProfessionalProfile>(profileStorageKey(user.id), profileFromSeed(user))
     const localLoaded = loadAccessiblePatientsForUser(user.id)
@@ -3571,6 +3578,9 @@ function App() {
       }
       if (sessionGeneration !== sessionGenerationRef.current) return
       const data = workspaceResult.workspace as RemoteWorkspaceRow | null
+      const archives = readPatientArchives(workspaceResult.archivedPatients)
+      setArchivedPatients(archives)
+      clearArchivedPatientCaches(user.id, archives)
 
       if (data) {
         const workspace = data as RemoteWorkspaceRow
@@ -4979,12 +4989,14 @@ function App() {
   }, [patients])
 
   const selectedPatient = useMemo(
-    () => patients.find((patient) => patient.id === selectedPatientId) ?? null,
-    [patients, selectedPatientId],
+    () => patients.find((patient) => patient.id === selectedPatientId)
+      ?? (isDentist && activeUserId ? normalizeRemotePatient(archivedPatients.find((entry) => entry.patient_id === selectedPatientId)?.patient, activeUserId) : null),
+    [patients, selectedPatientId, archivedPatients, isDentist, activeUserId],
   )
+  const selectedPatientArchived = archivedPatients.some((entry) => entry.patient_id === selectedPatientId)
 
   const canEditSelectedPatientRecord = Boolean(
-    selectedPatient && activeUserId && selectedPatient.ownerUserId === activeUserId,
+    selectedPatient && !selectedPatientArchived && activeUserId && selectedPatient.ownerUserId === activeUserId,
   )
   const canEditPatientForm =
     !selectedPatient || (canEditSelectedPatientRecord && patientFormUnlocked)
@@ -5529,8 +5541,8 @@ function App() {
       setAppError('Solo podés eliminar pacientes creados por tu cuenta.')
       return
     }
-    if (isDentist && (target.dentalStatus === 'confirmed' || treatmentLedger.some((entry) => entry.dentalRecordPatientId === patientId && entry.paidAmount > 0))) {
-      setAppError('Una ficha dental con atención confirmada o pagos guardados no se puede eliminar. Sus registros clínicos y financieros deben conservarse.')
+    if (isDentist) {
+      await handlePatientArchive(patientId, 'archive')
       return
     }
     const pendingAppointment = appointments.find((appointment) =>
@@ -5572,6 +5584,57 @@ function App() {
     } finally {
       setPatientDeletingId(null)
     }
+  }
+
+  async function handlePatientArchive(patientId: string, action: 'archive' | 'restore' | 'confirm'): Promise<void> {
+    if (!activeUserId || patientDeletingId) return
+    if (dentalSaving || dentalDirty || dentalRefreshRef.current) {
+      setAppError('Terminá de guardar o actualizar la ficha antes de modificar el archivo de pacientes.')
+      return
+    }
+    const prompts = {
+      archive: '¿Mover este paciente a Pacientes eliminados? Dejará de aparecer en las listas activas. Sus atenciones, pagos y saldos se conservarán.',
+      restore: '¿Restaurar este paciente a Mis pacientes con su ficha y registros?',
+      confirm: 'SEGUNDA CONFIRMACIÓN: ¿Confirmar la eliminación de las listas de este paciente? Quedará en el archivo confirmado, solo para consulta. No se borran atenciones, pagos ni saldos. Esta baja no se restaura desde la app.',
+    }
+    if (!window.confirm(prompts[action])) return
+    const userId = activeUserId
+    setPatientDeletingId(patientId)
+    let actionSaved = false
+    try {
+      await workspaceSaveQueueRef.current
+      if (localStorage.getItem(SESSION_USER_KEY) !== userId) return
+      const result = await updatePatientArchive(patientId, action)
+      if (!result.success) throw new Error(result.message || 'No se pudo actualizar el archivo del paciente.')
+      actionSaved = true
+      if (localStorage.getItem(SESSION_USER_KEY) !== userId) return
+      if (action !== 'restore') {
+        setPatients((current) => current.filter((patient) => patient.id !== patientId))
+        setAvailablePatients((current) => current.filter((patient) => patient.id !== patientId))
+        localStorage.removeItem(patientGlobalStorageKey(patientId))
+        localStorage.setItem(patientIndexStorageKey(userId), JSON.stringify(readJsonStorage<string[]>(patientIndexStorageKey(userId), []).filter((id) => id !== patientId)))
+        localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(readJsonStorage<string[]>(PATIENT_REGISTRY_KEY, []).filter((id) => id !== patientId)))
+        if (selectedPatientId === patientId) setSelectedPatientId(null)
+      }
+      await refreshDentalPatients({ propagateError: true, skipInvitations: true })
+      setAppError(null)
+      setAppNotice(action === 'archive' ? 'Paciente movido a Pacientes eliminados. El balance y sus registros se conservan.'
+        : action === 'restore' ? 'Paciente restaurado con su ficha y registros.' : 'Baja confirmada. Registros conservados en el archivo de solo lectura.')
+      showSavedFloatingNotice(action === 'archive' ? 'Paciente archivado' : action === 'restore' ? 'Paciente restaurado' : 'Baja confirmada')
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'No se pudo actualizar el archivo del paciente.'
+      setAppError(actionSaved ? `La acción se guardó en la nube, pero no se pudo actualizar la lista. Usá «Actualizar fichas y reservas» o volvé a iniciar sesión. ${detail}` : detail)
+    } finally { setPatientDeletingId(null) }
+  }
+
+  function clearArchivedPatientCaches(userId: string, entries: ArchivedPatient[]): void {
+    const ids = new Set(entries.map((entry) => entry.patient_id))
+    for (const id of ids) {
+      localStorage.removeItem(patientGlobalStorageKey(id))
+      localStorage.removeItem(patientStorageKey(userId, id))
+    }
+    localStorage.setItem(patientIndexStorageKey(userId), JSON.stringify(readJsonStorage<string[]>(patientIndexStorageKey(userId), []).filter((id) => !ids.has(id))))
+    localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(readJsonStorage<string[]>(PATIENT_REGISTRY_KEY, []).filter((id) => !ids.has(id))))
   }
 
   function persistPatientConsultation(patientId: string, entry: ConsultationEntry): void {
@@ -6855,18 +6918,21 @@ function App() {
     setAppNotice('Ficha odontológica y balance sincronizados.')
   }
 
-  async function refreshDentalPatients(): Promise<void> {
+  async function refreshDentalPatients({ propagateError = false, skipInvitations = false }: { propagateError?: boolean; skipInvitations?: boolean } = {}): Promise<void> {
     if (!isDentist || !activeUserId || dentalRefreshRef.current) return
     const userId = activeUserId
     dentalRefreshRef.current = true
     setDentalRefreshBusy(true)
     try {
-      await syncInvitedPatients()
+      if (!skipInvitations) await syncInvitedPatients()
       await workspaceSaveQueueRef.current
       const result = await loadWorkspaceData()
       if (!result.success) throw new Error(result.message || 'No se pudo actualizar la base odontológica.')
       if (localStorage.getItem(SESSION_USER_KEY) !== userId) return
       const workspace = result.workspace as RemoteWorkspaceRow | null
+      const archives = readPatientArchives(result.archivedPatients)
+      setArchivedPatients(archives)
+      clearArchivedPatientCaches(userId, archives)
       if (!workspace) return
       const nextPatients = (Array.isArray(workspace.patients_json) ? workspace.patients_json : [])
         .map((item) => normalizeRemotePatient(item, userId)).filter((item): item is PatientRecord => Boolean(item))
@@ -6884,7 +6950,10 @@ function App() {
         setTreatmentLedger(ledger)
         localStorage.setItem(treatmentLedgerStorageKey(userId), JSON.stringify(ledger))
       }
-    } catch (error) { setAppError(error instanceof Error ? error.message : 'No se pudo actualizar la base odontológica.') }
+    } catch (error) {
+      if (propagateError) throw error
+      setAppError(error instanceof Error ? error.message : 'No se pudo actualizar la base odontológica.')
+    }
     finally { dentalRefreshRef.current = false; setDentalRefreshBusy(false) }
   }
 
@@ -7992,6 +8061,10 @@ function App() {
 
   function handleStartConsultationFromAppointment(record: AppointmentRecord): void {
     const dni = (record.patientDni || '').replace(/\D/g, '')
+    if (isDentist && archivedPatients.some((entry) => entry.patient_id === record.patientId || Boolean(dni && entry.patient.dni.replace(/\D/g, '') === dni))) {
+      setAppError('El paciente está archivado. Consultá Pacientes eliminados y restauralo antes de iniciar una nueva atención.')
+      return
+    }
     const patient = patients.find((candidate) =>
       (candidate.id === record.patientId && (!dni || candidate.dni.replace(/\D/g, '') === dni)) ||
       Boolean(dni && candidate.dni.replace(/\D/g, '') === dni),
@@ -8357,6 +8430,10 @@ function App() {
     const normalizedDraftDni = patientDraft.dni.replace(/\D/g, '')
     if (!normalizedDraftDni) {
       setAppError('Ingresá un DNI válido para guardar la ficha.')
+      return
+    }
+    if (isDentist && archivedPatients.some((entry) => entry.patient.dni.replace(/\D/g, '') === normalizedDraftDni)) {
+      setAppError('Este DNI pertenece a un paciente archivado. Consultá Pacientes eliminados para evitar duplicar su ficha.')
       return
     }
     const duplicate = patients.find((patient) =>
@@ -9199,9 +9276,16 @@ function App() {
       const now = new Date().toISOString()
       const working = [...patients]
       const changed = new Map<string, PatientRecord>()
+      const processedIds: string[] = []
+      let archivedSubmissions = 0
       let created = 0
       for (const submission of submissions) {
         const dni = submission.dni.replace(/\D/g, '')
+        if (isDentist && dni && archivedPatients.some((entry) => entry.patient.dni.replace(/\D/g, '') === dni)) {
+          archivedSubmissions += 1
+          continue
+        }
+        processedIds.push(submission.id)
         const index = dni ? working.findIndex((patient) => patient.dni.replace(/\D/g, '') === dni) : -1
         if (index >= 0) {
           const current = working[index]
@@ -9251,9 +9335,11 @@ function App() {
           created += 1
         }
       }
+      if (archivedSubmissions) setAppError('Hay una invitación de un paciente archivado. Revisá Pacientes eliminados antes de incorporarlo nuevamente.')
+      if (!processedIds.length) return
       persistPatientsBatch(Array.from(changed.values()))
       if (!await persistWorkspaceRemote(activeUserId, profile, sortPatientsByName(working), appointments)) return
-      await acknowledgePatientInviteSubmissions(submissions.map((submission) => submission.id))
+      await acknowledgePatientInviteSubmissions(processedIds)
       const message = created > 0
         ? `🎉 ${created} paciente${created === 1 ? '' : 's'} se registr${created === 1 ? 'ó' : 'aron'} con tu link de invitación.`
         : 'Se actualizaron datos de pacientes que usaron tu link de invitación.'
@@ -12687,7 +12773,8 @@ function App() {
                 </div>
               ) : isDentist ? (
                 <PatientLedgerCards groups={visibleLedgerPatients} formatMoney={formatMoney} formatDate={formatShortDate}
-                  renderEntry={renderLedgerEntry} onOpenPatient={handleSelectPatient} />
+                  archivedIds={new Set(archivedPatients.map((entry) => entry.patient_id))}
+                  renderEntry={renderLedgerEntry} onOpenPatient={handleEvolvePatient} />
               ) : (
                 <div className="ledger-grid">
                   {visibleLedgerEntries.map(renderLedgerEntry)}
@@ -13247,12 +13334,15 @@ function App() {
               <p className="flow-hint">Acceso directo a tus fichas, independientemente de la agenda.</p>
             </div>
             <div className="layer-header-actions">
+              {isDentist ? <button type="button" className="ghost" onClick={() => setShowPatientArchive((value) => !value)}>{showPatientArchive ? 'Volver a Mis pacientes' : `Pacientes eliminados (${archivedPatients.filter((entry) => entry.state === 'archived').length})`}</button> : null}
               {isDentist ? <button type="button" className="ghost" disabled={dentalRefreshBusy} onClick={() => void refreshDentalPatients()}>{dentalRefreshBusy ? 'Actualizando...' : 'Actualizar fichas y reservas'}</button> : null}
               <button type="button" className="ghost invite-header-button" onClick={handleOpenInvitePatient}>📨 Invitar paciente</button>
               <button type="button" onClick={handleNewPatient}>+ Nuevo paciente</button>
             </div>
           </section>
-          <section className="panel patient-directory-panel">
+          {isDentist && showPatientArchive ? <PatientArchivePanel entries={archivedPatients} busy={patientDeletingId !== null || dentalRefreshBusy}
+            onAction={(id, action) => void handlePatientArchive(id, action)}
+            onOpen={(id) => handleEvolvePatient(id)} /> : <section className="panel patient-directory-panel">
             <label className="directory-search">
               <span>Buscar paciente</span>
               <input
@@ -13290,7 +13380,7 @@ function App() {
                         <button type="button" className="ghost" onClick={() => handleEvolvePatient(patient.id)}>{isDentist ? 'Odontograma' : 'Evolucionar'}</button>
                         <button type="button" className="ghost certificate-action" onClick={() => handleOpenCertificateModal(patient)}>📄 Certificado / orden</button>
                         {patient.ownerUserId === activeUserId ? (
-                          <button type="button" className="patient-delete-action" disabled={patientDeletingId !== null} onClick={() => void handleDeletePatient(patient.id)}>{patientDeletingId === patient.id ? 'Eliminando...' : 'Eliminar'}</button>
+                          <button type="button" className="patient-delete-action" disabled={patientDeletingId !== null || (isDentist && dentalRefreshBusy)} onClick={() => void handleDeletePatient(patient.id)}>{patientDeletingId === patient.id ? 'Eliminando...' : 'Eliminar'}</button>
                         ) : null}
                       </div>
                     </article>
@@ -13300,19 +13390,20 @@ function App() {
             ) : (
               <div className="directory-empty"><strong>No encontramos pacientes</strong><span>Probá con otro nombre, apellido o DNI.</span></div>
             )}
-          </section>
+          </section>}
         </div>
       ) : null}
 
       {isDentist && (workspaceLayer === 'patient-record' || workspaceLayer === 'clinical') ? (
-        selectedPatient ? <><DentalPatientChart key={selectedPatient.id} patient={selectedPatient} appointmentId={dentalAppointmentId} professional={{ fullName: profile.fullName, licenseNumber: profile.licenseNumber }}
+        selectedPatient ? <><DentalPatientChart key={selectedPatient.id} patient={selectedPatient} readOnly={selectedPatientArchived} appointmentId={dentalAppointmentId} professional={{ fullName: profile.fullName, licenseNumber: profile.licenseNumber }}
           onSaved={handleDentalSaved} onDirtyChange={setDentalDirty} onSavingChange={setDentalSaving} onBack={() => {
             if (dentalSaving) { setAppNotice('Esperá a que termine de guardarse la ficha dental.'); return }
             if (dentalDirty && !window.confirm('Hay cambios sin guardar. ¿Volver a pacientes y descartarlos?')) return
             setDentalDirty(false)
+            if (selectedPatientArchived) { setWorkspaceLayer('my-patients'); setShowPatientArchive(true); return }
             handleStartAttentionFlow()
           }} /><section className="panel">
-            <button type="button" className="ghost certificate-action" disabled={dentalSaving} onClick={() => handleOpenCertificateModal(selectedPatient)}>📄 Certificado / orden</button>
+            <button type="button" className="ghost certificate-action" disabled={dentalSaving || selectedPatientArchived} onClick={() => handleOpenCertificateModal(selectedPatient)}>📄 Certificado / orden</button>
             {selectedPatient.consultations.length ? <details><summary>Registros clínicos anteriores · solo lectura</summary>
               {selectedPatient.consultations.map((entry) => <article key={entry.id}>
                 <h3>{formatDate(entry.date)}</h3>

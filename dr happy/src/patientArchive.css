@@ -1,0 +1,8 @@
+.patient-archive-panel { display: grid; gap: 16px; }
+.patient-archive-panel h3, .patient-archive-panel p { margin: 0; }
+.patient-archive-tabs, .patient-archive-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.patient-archive-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.patient-archive-card { display: grid; gap: 8px; min-width: 0; padding: 16px; border: 1px solid #b8c9de; border-radius: 14px; }
+.patient-archive-card strong, .patient-archive-card span { overflow-wrap: anywhere; }
+.patient-archive-actions button { white-space: normal; }
+@media (max-width: 600px) { .patient-archive-actions { flex-direction: column; } }

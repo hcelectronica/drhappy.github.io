@@ -5,6 +5,7 @@ interface WorkspaceResponse {
   message?: string
   professional?: unknown
   workspace?: unknown
+  archivedPatients?: unknown[]
 }
 
 async function invokeWorkspace(body: Record<string, unknown>): Promise<WorkspaceResponse> {
@@ -14,7 +15,15 @@ async function invokeWorkspace(body: Record<string, unknown>): Promise<Workspace
     body,
     headers: sessionToken ? { 'x-drhappy-session': sessionToken } : undefined,
   })
-  if (error) return { success: false, message: error.message || 'No se pudo sincronizar el workspace.' }
+  if (error) {
+    if (error.context instanceof Response) {
+      try {
+        const detail: unknown = await error.context.json()
+        if (detail && typeof detail === 'object' && 'message' in detail && typeof detail.message === 'string') return { success: false, message: detail.message }
+      } catch { console.error('Respuesta inválida del servicio de workspace:', error.context.status) }
+    }
+    return { success: false, message: error.message || 'No se pudo sincronizar el workspace.' }
+  }
   return data as WorkspaceResponse
 }
 
@@ -28,4 +37,8 @@ export function saveWorkspaceData(params: { profile: unknown; patients: unknown[
 
 export function saveTreatmentLedgerData(treatmentLedger: unknown[]): Promise<WorkspaceResponse> {
   return invokeWorkspace({ action: 'save-ledger', treatmentLedger })
+}
+
+export function updatePatientArchive(patientId: string, archiveAction: 'archive' | 'restore' | 'confirm'): Promise<WorkspaceResponse> {
+  return invokeWorkspace({ action: 'archive-patient', patientId, archiveAction })
 }
