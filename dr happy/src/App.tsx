@@ -5,9 +5,6 @@ import type {
   DragEvent as ReactDragEvent,
   FormEvent,
 } from 'react'
-import { BrowserPDF417Reader, BrowserQRCodeReader } from '@zxing/browser'
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
-import mammoth from 'mammoth'
 import JsBarcode from 'jsbarcode'
 import './App.css'
 import { useErrorNotification } from './useErrorNotification'
@@ -101,8 +98,6 @@ import {
 import { CLINICAL_PROTOCOLS } from './clinicalProtocols'
 import { CONSULT_PATHOLOGIES } from './consultPathologies'
 import AuthBackground from './AuthBackground'
-import SplashScreen from './SplashScreen'
-import diagnosisCsv from '../cie-10.csv?raw'
 
 type WorkspaceLayer =
   | 'overview'
@@ -2049,6 +2044,7 @@ async function imageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
 }
 
 async function parseDniFromImageUrlWithZxing(source: string): Promise<Partial<PatientDraft> | null> {
+  const { BrowserPDF417Reader } = await import('@zxing/browser')
   const reader = new BrowserPDF417Reader()
   try {
     const image = await imageFromDataUrl(source)
@@ -2065,6 +2061,7 @@ async function parseDniFromImageUrlWithZxing(source: string): Promise<Partial<Pa
 }
 
 async function parseQrFromImageUrlWithZxing(source: string): Promise<Partial<PatientDraft> | null> {
+  const { BrowserQRCodeReader } = await import('@zxing/browser')
   const reader = new BrowserQRCodeReader()
   try {
     const image = await imageFromDataUrl(source)
@@ -2422,25 +2419,9 @@ function App() {
   const [, setAppError] = useErrorNotification()
   const [appNotice, setAppNotice] = useState<string | null>(null)
   const [floatingNotice, setFloatingNotice] = useState<string | null>(null)
-  const [splashVisible, setSplashVisible] = useState(true)
-  const [splashLeaving, setSplashLeaving] = useState(false)
   const [sofiaFeatureIndex, setSofiaFeatureIndex] = useState(0)
   const sofiaFeatureDragStartRef = useRef<number | null>(null)
 
-  useEffect(() => {
-    if (loadingUsers) {
-      return
-    }
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const holdMs = reduceMotion ? 600 : 3000
-    const fadeMs = reduceMotion ? 0 : 550
-    const leaveTimer = window.setTimeout(() => setSplashLeaving(true), holdMs)
-    const hideTimer = window.setTimeout(() => setSplashVisible(false), holdMs + fadeMs)
-    return () => {
-      window.clearTimeout(leaveTimer)
-      window.clearTimeout(hideTimer)
-    }
-  }, [loadingUsers])
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(
     null,
   )
@@ -4394,8 +4375,14 @@ function App() {
     void loadSeedUsers()
   }, [setAppError])
 
+  const clinicalResourcesEnabled = Boolean(activeUser && profile)
+
   useEffect(() => {
+    if (!clinicalResourcesEnabled) return
+    let cancelled = false
     const loadDiagnosisCatalog = async () => {
+      const { default: diagnosisCsv } = await import('../cie-10.csv?raw')
+      if (cancelled) return
       const storedCustom = readJsonStorage<string[]>(CUSTOM_DIAGNOSIS_STORAGE_KEY, [])
       const fallbackCatalog = mergeDiagnosisCatalog([
         ...loadDiagnosisCatalogFromCsv(diagnosisCsv),
@@ -4403,23 +4390,7 @@ function App() {
       ])
       if (fallbackCatalog.length > 0) {
         setDiagnosisCatalog(fallbackCatalog)
-      }
-
-      try {
-        const response = await fetch(`${import.meta.env.BASE_URL}cie-10.csv`)
-        if (response.ok) {
-          const csvText = await response.text()
-          const fetchedCatalog = mergeDiagnosisCatalog([
-            ...loadDiagnosisCatalogFromCsv(csvText),
-            ...storedCustom,
-          ])
-          if (fetchedCatalog.length > 0) {
-            setDiagnosisCatalog(fetchedCatalog)
-            return
-          }
-        }
-      } catch {
-        // Fallback to Supabase below if the static CSV is not reachable.
+        return
       }
 
       if (!isSupabaseConfigured || !supabase) {
@@ -4431,6 +4402,7 @@ function App() {
 
       for (const tableName of DIAGNOSIS_TABLE_CANDIDATES) {
         const { data, error } = await supabase.from(tableName).select('*').limit(5000)
+        if (cancelled) return
         if (error) {
           continue
         }
@@ -4453,27 +4425,37 @@ function App() {
       }
     }
 
-    void loadDiagnosisCatalog()
-  }, [])
+    void loadDiagnosisCatalog().catch((error: unknown) => {
+      if (!cancelled) setAppError(error instanceof Error ? error.message : 'No se pudo cargar el catálogo de diagnósticos.')
+    })
+    return () => { cancelled = true }
+  }, [clinicalResourcesEnabled, setAppError])
 
   useEffect(() => {
+    if (!clinicalResourcesEnabled) return
+    const controller = new AbortController()
     const loadMedicationCatalog = async () => {
       try {
-        const response = await fetch(`${import.meta.env.BASE_URL}vademecum.json`)
+        const response = await fetch(`${import.meta.env.BASE_URL}vademecum.json`, { signal: controller.signal })
         if (!response.ok) {
-          setMedicationCatalog([])
-          return
+          throw new Error(`No se pudo cargar el vademécum (HTTP ${response.status}).`)
         }
-        setMedicationCatalog(loadMedicationCatalogFromJson(await response.json()))
-      } catch {
-        setMedicationCatalog([])
+        const catalog = loadMedicationCatalogFromJson(await response.json())
+        if (!controller.signal.aborted) setMedicationCatalog(catalog)
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setAppError(error instanceof Error ? error.message : 'No se pudo cargar el vademécum.')
+        }
       }
     }
 
     void loadMedicationCatalog()
-  }, [])
+    return () => controller.abort()
+  }, [clinicalResourcesEnabled, setAppError])
 
   useEffect(() => {
+    if (!clinicalResourcesEnabled) return
+    let cancelled = false
     const loadMedicalNews = async () => {
       if (!isSupabaseConfigured || !supabase) {
         setMedicalNews(mergeMedicalNewsItems([...MEDICAL_NEWS_FALLBACK], MANUAL_MEDICAL_NEWS_ITEMS))
@@ -4482,6 +4464,7 @@ function App() {
 
       setMedicalNewsLoading(true)
       const { data, error } = await supabase.functions.invoke('fetch-medical-news')
+      if (cancelled) return
       setMedicalNewsLoading(false)
 
       if (error) {
@@ -4528,7 +4511,8 @@ function App() {
     }
 
     void loadMedicalNews()
-  }, [])
+    return () => { cancelled = true }
+  }, [clinicalResourcesEnabled])
 
   useEffect(() => {
     setCurrentMedicalNewsIndex(0)
@@ -6592,6 +6576,7 @@ function App() {
     }
     let text = ''
     if (isDocx) {
+      const { default: mammoth } = await import('mammoth')
       const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })
       text = result.value.trim()
     } else if (isImage) {
@@ -6605,6 +6590,7 @@ function App() {
         await worker.terminate()
       }
     } else if (isPdf) {
+      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
       const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise
       const pages: string[] = []
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -6669,6 +6655,7 @@ function App() {
         return
       }
       if (isDocx) {
+        const { default: mammoth } = await import('mammoth')
         text = (await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })).value.trim()
       } else {
         text = (await file.text()).trim()
@@ -9624,10 +9611,7 @@ function App() {
   if (loadingUsers) {
     return (
       <main className="loading">
-        {splashVisible ? <SplashScreen leaving={false} /> : null}
-        <span style={{ position: 'absolute', bottom: 24, opacity: 0.6, fontSize: '0.8rem' }}>
-          Cargando modelo clínico...
-        </span>
+        <p role="status">Restaurando sesión...</p>
       </main>
     )
   }
@@ -9635,7 +9619,6 @@ function App() {
   if (!activeUser || !profile) {
     return (
       <main className="auth-layout">
-        {splashVisible ? <SplashScreen leaving={splashLeaving} /> : null}
         <AuthBackground />
         <aside className="auth-promo" aria-label="Conocé las herramientas y planes de Dr Happy">
           <div className="auth-promo-heading">
@@ -9817,7 +9800,7 @@ function App() {
             </div>
           </section>
         </aside>
-        <section className={`auth-card ${splashVisible ? '' : 'auth-card--entering'}`}>
+        <section className="auth-card">
           <div className="brand-block">
             <span className="brand-mark" aria-hidden="true">
               <svg viewBox="0 0 64 64" role="presentation">

@@ -8,6 +8,12 @@ Web app base en React + TypeScript para:
 - Importación masiva de padrón desde Excel.
 - Comunidad médica con mensajería privada asíncrona.
 
+## Carga del inicio público
+
+El inicio muestra la oferta y el formulario de acceso sin la espera de la bienvenida animada. La restauración de una sesión guardada sigue validando la identidad antes de mostrar el espacio clínico. Diagnósticos, vademécum y noticias se cargan solo con un profesional autenticado; el catálogo CIE-10 empaquetado se importa bajo demanda, sin consultar un archivo público inexistente. Los lectores DOCX, PDF y de códigos se importan al usar esas herramientas. Estos cambios reducen la carga inicial, pero no garantizan la aprobación de Google Ads.
+
+Validar con `npm run build` y `node tests/mobile-session.browser.mjs` contra el servidor local (`TEST_APP_ORIGIN` permite probar el build). La prueba comprueba cargas clínicas tras restaurar sesión y su ausencia al volver al inicio público.
+
 ## Documentos clínicos
 
 Desde la ficha del paciente, **Emitir certificado** permite elegir entre un certificado médico y una orden de estudios complementarios. En la orden se busca entre estudios frecuentes codificados o se agrega uno en texto libre; el profesional debe indicar el motivo clínico, puede añadir observaciones y revisar el borrador antes de emitir. Si el contenido no cabe en el PDF, se informa el error antes de guardar la orden. Ambos documentos se guardan en la historia clínica con firma, PDF y QR; las órdenes se identifican como tales en el historial, la descarga y el envío.
