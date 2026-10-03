@@ -18,7 +18,7 @@ La selección de `src/studyCatalog.ts` contiene procedimientos activos cuyos có
 
 Los horarios de consultorio (turnos manuales), la turnera gratuita y la turnera particular se configuran por separado; ninguna impone un límite horario a las otras. El cupo de una reserva pública se libera al cancelar el turno desde la agenda, incluso para los enlaces de turnos antiguos. La cancelación y la confirmación tardía de pagos se coordinan en la base de datos mediante `20261002010000_cancel_public_booking_appointment.sql`; aplicar esa migración antes de desplegar `public-booking` y `mercadopago-patient-webhook`.
 
-Un turno gratuito no crea una ficha clínica hasta que el profesional lo atiende. «Atender» permite completar la ficha antes de la fecha del turno. Las fichas y los turnos se vinculan únicamente por DNI o por un ID de ficha ya vinculado y coherente con el DNI; compartir nombre, email o teléfono no identifica a un paciente. Si se cancela el selector nativo de compartir, no se abre WhatsApp automáticamente.
+Para médicos y psicólogos, un turno gratuito no crea una ficha clínica hasta que el profesional lo atiende. Para odontólogos, las reservas pendientes crean una ficha dental provisoria cuando se sincroniza su espacio de trabajo. «Atender» permite completar la ficha antes de la fecha del turno. Las fichas y los turnos se vinculan únicamente por DNI o por un ID de ficha ya vinculado y coherente con el DNI; compartir nombre, email o teléfono no identifica a un paciente. Si se cancela el selector nativo de compartir, no se abre WhatsApp automáticamente.
 
 ## Suscripciones, Sofía y recordatorios
 
@@ -30,7 +30,25 @@ Los recordatorios automáticos se ejecutan una vez por día a las 22:00 de Argen
 
 Aplicar `20261003010000_subscription_account_and_nightly_reminders.sql` y desplegar `subscription-account`, `mercadopago-webhook`, `ai-assistant` y `send-appointment-reminders`. La migración reemplaza la tarea de cinco minutos por el envío nocturno. El webhook debe aceptar notificaciones sin JWT de Mercado Pago; valida cada pago consultando al proveedor. Los precios del checkout siguen configurados en los secrets `MP_*_PRICE_ARS`.
 
+## Ficha odontológica
+
+Los profesionales con especialidad odontológica acceden a una ficha de dos caras en lugar del formulario médico extenso. El anverso contiene los datos básicos, odontograma FDI permanente y temporal, registros por superficie, referencias y observaciones. El reverso reúne tratamientos, presupuesto al paciente, costo interno y cuenta con debe/haber/saldo. El giro permite cambiar de cara sin salir del paciente.
+
+Las invitaciones y reservas generan fichas provisorias. «Guardar cambios» conserva la ficha sin marcar un turno como atendido; «Guardar atención» confirma la ficha y, si se abrió desde un turno vinculado, registra la atención. Los registros clínicos anteriores, certificados y órdenes se conservan y pueden consultarse.
+
+Un presupuesto propuesto no genera deuda. Al aceptarlo, su importe se proyecta en el balance de pagos; los pagos registrados se descuentan del mismo tratamiento. El costo interno nunca se suma a la deuda. Los registros odontológicos del balance se modifican desde su ficha, no como copias independientes. «Mercado Pago» es el medio de un pago registrado manualmente: esta ficha no inicia ni confirma cobros automáticos. La anotación de consentimiento no reemplaza un documento firmado.
+
+El guardado remoto conserva revisiones, verifica propiedad y especialidad, controla concurrencia e impide alterar pagos ya guardados. Ante un conflicto, los cambios permanecen en pantalla y se puede cargar la última ficha guardada con confirmación de descarte.
+
+Aplicar `20261004010000_dental_records.sql` antes de desplegar `dental-records` y `workspace-data`, y luego publicar el frontend. `dental-records` valida la sesión profesional propia (`x-drhappy-session`); sus tablas y funciones de escritura no están disponibles para clientes anónimos.
+
 ## Ejecutar
+
+### Diseño de ficha odontológica (no habilitado en producción)
+
+Con el servidor de desarrollo abierto, `/dental-design` muestra una demostración interactiva basada en el anverso y reverso de la ficha dental: odontograma FDI permanente/temporal, referencias, trabajos, presupuesto al paciente, costo interno y cuenta con debe/haber/saldo. Usa datos ficticios y un borrador local independiente (`drhappy-dental-design-preview-v1`); no invoca servicios ni modifica pacientes, turnos o balances reales. La ruta no se habilita en el build de producción.
+
+La demostración no procesa pagos de Mercado Pago ni certifica consentimientos. Es independiente de las fichas odontológicas reales disponibles al ingresar con una cuenta de odontólogo.
 
 ```bash
 npm install

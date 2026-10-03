@@ -19,11 +19,20 @@ Deno.serve(async (request) => {
   let body: Record<string, unknown>
   try { body = await request.json() } catch { return jsonResponse(400, { success: false, message: 'Cuerpo JSON inválido.' }) }
   if (body.action === 'load') {
-    const [{ data: workspace, error: workspaceError }, { data: professional, error: professionalError }] = await Promise.all([
+    const [{ data: loadedWorkspace, error: workspaceError }, { data: professional, error: professionalError }] = await Promise.all([
       admin.from('user_workspaces').select('user_id, profile_json, patients_json, appointments_json, treatment_ledger_json, treatment_ledger_initialized').eq('user_id', professionalId).maybeSingle(),
       admin.from('professionals').select('id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, enabled_modules_json, trial_started_at, subscription_status, subscription_expires_at').eq('id', professionalId).maybeSingle(),
     ])
     if (workspaceError || professionalError) return jsonResponse(500, { success: false, message: workspaceError?.message || professionalError?.message })
+    let workspace = loadedWorkspace
+    if (typeof professional?.specialty === 'string'
+      && professional.specialty.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes('odont')) {
+      const { data: syncedWorkspace, error: syncError } = await admin.rpc('dental_sync_provisional', {
+        p_professional_id: professionalId,
+      })
+      if (syncError) return jsonResponse(500, { success: false, message: 'No se pudieron sincronizar los pacientes odontológicos.' })
+      workspace = syncedWorkspace
+    }
     return jsonResponse(200, { success: true, professional, workspace })
   }
   if (body.action === 'save') {
@@ -48,18 +57,12 @@ Deno.serve(async (request) => {
     if (!Array.isArray(body.treatmentLedger)) {
       return jsonResponse(400, { success: false, message: 'El balance enviado no es válido.' })
     }
-    const { data: updatedWorkspace, error: updateError } = await admin.from('user_workspaces')
-      .update({ treatment_ledger_json: body.treatmentLedger, treatment_ledger_initialized: true })
-      .eq('user_id', professionalId)
-      .select('user_id')
-      .maybeSingle()
+    const { data: treatmentLedger, error: updateError } = await admin.rpc('dental_merge_ledger', {
+      p_professional_id: professionalId,
+      p_ledger: body.treatmentLedger,
+    })
     if (updateError) return jsonResponse(500, { success: false, message: updateError.message })
-    if (!updatedWorkspace) {
-      const { error: insertError } = await admin.from('user_workspaces')
-        .insert({ user_id: professionalId, treatment_ledger_json: body.treatmentLedger, treatment_ledger_initialized: true })
-      if (insertError) return jsonResponse(500, { success: false, message: insertError.message })
-    }
-    return jsonResponse(200, { success: true })
+    return jsonResponse(200, { success: true, treatmentLedger })
   }
   return jsonResponse(400, { success: false, message: 'Acción no soportada.' })
 })

@@ -14,6 +14,8 @@ import { isSupabaseConfigured, supabase } from './supabaseClient'
 import { SubscriptionAccountModal } from './SubscriptionAccountModal'
 import { loadSubscriptionAccount } from './subscriptionAccountService'
 import { SubscriptionBenefits } from './SubscriptionBenefits'
+import { DentalPatientChart } from './dental/DentalPatientChart'
+import type { DentalSaveResult } from './dental/dentalService'
 import { getHolidayName } from './argentineHolidays'
 import { SupportContactForm } from './SupportContactForm'
 import { AdminSupportInbox } from './AdminSupportInbox'
@@ -377,6 +379,7 @@ interface PatientRecord {
   telefono?: string
   // Fecha en que el paciente se registró solo con el link de invitación.
   registeredViaInviteAt?: string
+  dentalStatus?: 'provisional' | 'confirmed'
   createdAt: string
   updatedAt: string
 }
@@ -541,6 +544,9 @@ interface TreatmentLedgerEntry {
   notes?: string
   createdAt: string
   updatedAt: string
+  dentalRecordPatientId?: string
+  dentalTreatmentId?: string
+  internalCost?: number
 }
 
 interface TreatmentLedgerDraft {
@@ -1163,6 +1169,9 @@ function normalizeTreatmentLedgerEntry(raw: unknown): TreatmentLedgerEntry | nul
     notes: typeof candidate.notes === 'string' ? candidate.notes : undefined,
     createdAt: typeof candidate.createdAt === 'string' ? candidate.createdAt : new Date().toISOString(),
     updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : new Date().toISOString(),
+    dentalRecordPatientId: typeof candidate.dentalRecordPatientId === 'string' ? candidate.dentalRecordPatientId : undefined,
+    dentalTreatmentId: typeof candidate.dentalTreatmentId === 'string' ? candidate.dentalTreatmentId : undefined,
+    internalCost: typeof candidate.internalCost === 'number' ? candidate.internalCost : undefined,
   }
 }
 
@@ -1346,6 +1355,7 @@ function normalizeRemotePatient(raw: unknown, ownerUserId: string): PatientRecor
       : [],
     prescriptions: Array.isArray(candidate.prescriptions) ? (candidate.prescriptions as PrescriptionEntry[]) : [],
     certificates: Array.isArray(candidate.certificates) ? (candidate.certificates as CertificateEntry[]) : [],
+    dentalStatus: candidate.dentalStatus === 'confirmed' ? 'confirmed' : candidate.dentalStatus === 'provisional' ? 'provisional' : undefined,
     telefono: typeof candidate.telefono === 'string' ? candidate.telefono : '',
     registeredViaInviteAt: typeof candidate.registeredViaInviteAt === 'string' ? candidate.registeredViaInviteAt : undefined,
     createdAt:
@@ -2599,6 +2609,12 @@ function App() {
   const [adminAIUsageLoading, setAdminAIUsageLoading] = useState(false)
   const [adminAITotal, setAdminAITotal] = useState({ requests: 0, tokens: 0, costUsd: 0 })
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
+  const [dentalAppointmentId, setDentalAppointmentId] = useState<string | undefined>()
+  const [dentalDirty, setDentalDirty] = useState(false)
+  const [dentalRefreshBusy, setDentalRefreshBusy] = useState(false)
+  const [dentalSaving, setDentalSaving] = useState(false)
+  const dentalRefreshRef = useRef(false)
+  const [dentalNewPatientBusy, setDentalNewPatientBusy] = useState(false)
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
   const [myPatientsQuery, setMyPatientsQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -2915,6 +2931,7 @@ function App() {
     return () => window.clearInterval(intervalId)
   }, [activeUser, profile])
   const isAdminSession = isAdminUser(activeUser)
+  const isDentist = normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('odont')
   // Acceso a la Turnera Premium (calendario de ocupación + estadísticas): solo suscripción activa,
   // no incluye usuarios en período de prueba (trial) ni vencidos.
   const hasPremiumTurneraAccess = Boolean(isAdminSession || activeUser?.subscriptionStatus === 'active')
@@ -5517,6 +5534,10 @@ function App() {
       setAppError('Solo podés eliminar pacientes creados por tu cuenta.')
       return
     }
+    if (isDentist && (target.dentalStatus === 'confirmed' || treatmentLedger.some((entry) => entry.dentalRecordPatientId === patientId && entry.paidAmount > 0))) {
+      setAppError('Una ficha dental con atención confirmada o pagos guardados no se puede eliminar. Sus registros clínicos y financieros deben conservarse.')
+      return
+    }
     const pendingAppointment = appointments.find((appointment) =>
       appointment.status !== 'cancelled' && appointment.status !== 'attended' &&
       (appointment.patientId === patientId ||
@@ -6804,9 +6825,72 @@ function App() {
     stopDictation()
     setCommunityOpen(false)
     setPendingAttentionAppointmentId(null)
+    setDentalAppointmentId(undefined)
     setSelectedPatientId(patientId)
     setWorkspaceLayer('patient-record')
     setAppError(null)
+  }
+
+  function handleDentalSaved(result: DentalSaveResult): void {
+    if (!activeUserId) return
+    const cache: Array<[string, unknown]> = []
+    const patient = normalizeRemotePatient(result.patient, activeUserId)
+    if (patient) {
+      setPatients((current) => sortPatientsByName(current.map((item) => item.id === patient.id ? patient : item)))
+      setAvailablePatients((current) => sortPatientsByName(current.map((item) => item.id === patient.id ? patient : item)))
+      cache.push([patientGlobalStorageKey(patient.id), patient])
+    }
+    if (result.treatmentLedger) {
+      const ledger = result.treatmentLedger.map(normalizeTreatmentLedgerEntry).filter((item): item is TreatmentLedgerEntry => Boolean(item))
+      setTreatmentLedger(ledger)
+      cache.push([treatmentLedgerStorageKey(activeUserId), ledger])
+    }
+    if (result.appointments) {
+      const nextAppointments = result.appointments.map((item) => normalizeAppointmentRecord(item as AppointmentRecord))
+      setAppointments(nextAppointments)
+      cache.push([appointmentsStorageKey(activeUserId), nextAppointments])
+    }
+    try {
+      for (const [key, value] of cache) localStorage.setItem(key, JSON.stringify(value))
+      setAppError(null)
+    } catch (error) {
+      console.error('Ficha dental guardada en la nube, pero falló su copia local:', error)
+      setAppError('La ficha y el balance se guardaron en la nube, pero no se pudo actualizar su copia en este navegador.')
+    }
+    setAppNotice('Ficha odontológica y balance sincronizados.')
+  }
+
+  async function refreshDentalPatients(): Promise<void> {
+    if (!isDentist || !activeUserId || dentalRefreshRef.current) return
+    const userId = activeUserId
+    dentalRefreshRef.current = true
+    setDentalRefreshBusy(true)
+    try {
+      await syncInvitedPatients()
+      await workspaceSaveQueueRef.current
+      const result = await loadWorkspaceData()
+      if (!result.success) throw new Error(result.message || 'No se pudo actualizar la base odontológica.')
+      if (localStorage.getItem(SESSION_USER_KEY) !== userId) return
+      const workspace = result.workspace as RemoteWorkspaceRow | null
+      if (!workspace) return
+      const nextPatients = (Array.isArray(workspace.patients_json) ? workspace.patients_json : [])
+        .map((item) => normalizeRemotePatient(item, userId)).filter((item): item is PatientRecord => Boolean(item))
+      setPatients(sortPatientsByName(nextPatients))
+      setAvailablePatients(sortPatientsByName(nextPatients))
+      localStorage.setItem(patientIndexStorageKey(userId), JSON.stringify(nextPatients.map((item) => item.id)))
+      for (const patient of nextPatients) localStorage.setItem(patientGlobalStorageKey(patient.id), JSON.stringify(patient))
+      if (Array.isArray(workspace.appointments_json)) {
+        const nextAppointments = workspace.appointments_json.map((item) => normalizeAppointmentRecord(item as AppointmentRecord))
+        setAppointments(nextAppointments)
+        localStorage.setItem(appointmentsStorageKey(userId), JSON.stringify(nextAppointments))
+      }
+      if (Array.isArray(workspace.treatment_ledger_json)) {
+        const ledger = workspace.treatment_ledger_json.map(normalizeTreatmentLedgerEntry).filter((item): item is TreatmentLedgerEntry => Boolean(item))
+        setTreatmentLedger(ledger)
+        localStorage.setItem(treatmentLedgerStorageKey(userId), JSON.stringify(ledger))
+      }
+    } catch (error) { setAppError(error instanceof Error ? error.message : 'No se pudo actualizar la base odontológica.') }
+    finally { dentalRefreshRef.current = false; setDentalRefreshBusy(false) }
   }
 
   /* Atajo del listado: abre la evolución del paciente sin pasar por la ficha. */
@@ -6815,7 +6899,8 @@ function App() {
     setCommunityOpen(false)
     setPendingAttentionAppointmentId(null)
     setSelectedPatientId(patientId)
-    setWorkspaceLayer('clinical')
+    setDentalAppointmentId(undefined)
+    setWorkspaceLayer(isDentist ? 'patient-record' : 'clinical')
     setAppError(null)
   }
 
@@ -6842,7 +6927,7 @@ function App() {
 
   function handleOpenClinicalPage(): void {
     stopDictation()
-    setWorkspaceLayer('clinical')
+    setWorkspaceLayer(isDentist ? 'patient-record' : 'clinical')
     setAppError(null)
   }
 
@@ -7050,6 +7135,10 @@ function App() {
   }
 
   function handleOpenLedgerModal(entry?: TreatmentLedgerEntry): void {
+    if (entry?.dentalRecordPatientId) {
+      handleSelectPatient(entry.dentalRecordPatientId)
+      return
+    }
     if (entry) {
       setLedgerDraft({
         id: entry.id,
@@ -7126,6 +7215,11 @@ function App() {
   function handleRegisterLedgerPayment(entryId: string): void {
     const entry = treatmentLedger.find((e) => e.id === entryId)
     if (!entry) return
+    if (entry.dentalRecordPatientId) {
+      handleSelectPatient(entry.dentalRecordPatientId)
+      setAppNotice('Registrá el pago en el reverso de la ficha dental; se actualiza este balance al guardar.')
+      return
+    }
     const pending = entry.totalAmount - entry.paidAmount
     if (pending <= 0) {
       setAppNotice(`El tratamiento de ${entry.patientName} ya está saldado.`)
@@ -7170,6 +7264,11 @@ function App() {
   async function handleDeleteLedgerEntry(entryId: string): Promise<void> {
     const entry = treatmentLedger.find((e) => e.id === entryId)
     if (!entry) return
+    if (entry.dentalRecordPatientId) {
+      handleSelectPatient(entry.dentalRecordPatientId)
+      setAppNotice('Los trabajos odontológicos se anulan desde su ficha, conservando el historial y los pagos.')
+      return
+    }
     if (!window.confirm(`¿Eliminar el registro "${entry.intervention}" de ${entry.patientName}?`)) {
       return
     }
@@ -7664,7 +7763,8 @@ function App() {
   /* Pacientes registrados con el link de invitación: se incorporan al entrar y al navegar. */
   useEffect(() => {
     if (!activeUserId || !profile) return
-    void syncInvitedPatients()
+    if (isDentist && ['patient-search', 'my-patients', 'appointments', 'overview'].includes(workspaceLayer)) void refreshDentalPatients()
+    else void syncInvitedPatients()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeUserId, Boolean(profile), workspaceLayer])
 
@@ -7901,6 +8001,12 @@ function App() {
       (candidate.id === record.patientId && (!dni || candidate.dni.replace(/\D/g, '') === dni)) ||
       Boolean(dni && candidate.dni.replace(/\D/g, '') === dni),
     )
+    if (isDentist && patient) {
+      handleSelectPatient(patient.id)
+      setDentalAppointmentId(record.id)
+      setAppNotice('Ficha odontológica abierta. El turno se registra como atendido al guardar la atención.')
+      return
+    }
     if (!patient) {
       const { apellido, nombre } = splitDraftPatientName(record.patientName)
       setPendingAttentionAppointmentId(record.id)
@@ -8235,7 +8341,7 @@ function App() {
     }
   }
 
-  function handleSavePatient(event: FormEvent<HTMLFormElement>): void {
+  async function handleSavePatient(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!activeUserId) {
       return
@@ -8291,6 +8397,35 @@ function App() {
       consultations: existing?.consultations ?? [],
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
+      ...(isDentist ? { dentalStatus: existing?.dentalStatus ?? 'provisional' as const } : {}),
+    }
+    if (isDentist) {
+      const currentProfile = profile ?? (activeUser ? profileFromSeed(activeUser) : null)
+      if (!currentProfile) { setAppError('No se pudo validar el perfil odontológico.'); return }
+      setDentalNewPatientBusy(true)
+      try {
+        const nextPatients = sortPatientsByName([...patients.filter((item) => item.id !== record.id), record])
+        if (!await persistWorkspaceRemote(activeUserId, currentProfile, nextPatients, appointments)) {
+          setAppError('No se pudo guardar la ficha provisoria en la nube. Intentá nuevamente.')
+          return
+        }
+        setPatients(nextPatients)
+        setAvailablePatients(nextPatients)
+        try {
+          localStorage.setItem(patientGlobalStorageKey(record.id), JSON.stringify(record))
+          localStorage.setItem(patientIndexStorageKey(activeUserId), JSON.stringify(nextPatients.map((item) => item.id)))
+        } catch (error) {
+          console.error('Ficha dental provisoria guardada en la nube, pero falló su copia local:', error)
+          setAppError('La ficha provisoria se creó en la nube, pero no se pudo actualizar su copia en este navegador.')
+        }
+        setSelectedPatientId(record.id)
+        setDentalAppointmentId(pendingAttentionAppointmentId || undefined)
+        setPendingAttentionAppointmentId(null)
+        setPatientFormUnlocked(false)
+        setWorkspaceLayer('patient-record')
+        setAppNotice('Ficha dental provisoria creada. Completá el odontograma y guardá la atención.')
+      } finally { setDentalNewPatientBusy(false) }
+      return
     }
     if (pendingAttentionAppointmentId) {
       const appointment = attentionAppointment
@@ -8326,6 +8461,7 @@ function App() {
     setWorkspaceLayer('patient-record')
     setSelectedPatientId(null)
     setPendingAttentionAppointmentId(null)
+    setDentalAppointmentId(undefined)
     setPatientDraft(emptyPatientDraft)
     setPatientFormUnlocked(true)
     setConsultationDraft(emptyConsultationDraft)
@@ -9111,6 +9247,7 @@ function App() {
             documents: [],
             consultations: [],
             registeredViaInviteAt: submission.created_at,
+            ...(isDentist ? { dentalStatus: 'provisional' as const } : {}),
             createdAt: now,
             updatedAt: now,
           }
@@ -10179,7 +10316,7 @@ function App() {
       onClick: handleOpenAmbulance,
     } : null,
     isModuleEnabled('attention') ? {
-      key: 'attention', icon: '🩺', label: 'Atención médica', hint: 'Buscar y atender', tone: '#2563eb',
+      key: 'attention', icon: '🩺', label: isDentist ? 'Atención odontológica' : 'Atención médica', hint: isDentist ? 'Pacientes y odontograma' : 'Buscar y atender', tone: '#2563eb',
       onClick: handleStartAttentionFlow,
     } : null,
     isModuleEnabled('appointments') ? {
@@ -10269,7 +10406,21 @@ function App() {
   )
 
   return (
-    <main className="app">
+    <main className="app" onClickCapture={(event) => {
+      if (!(event.target instanceof Element) || event.target.closest('.dental-preview')) return
+      if (!event.target.closest('button, a')) return
+      if (dentalSaving) {
+        event.preventDefault()
+        event.stopPropagation()
+        setAppNotice('Esperá a que termine de guardarse la ficha dental antes de salir.')
+        return
+      }
+      if (!dentalDirty) return
+      if (!window.confirm('Hay cambios sin guardar en la ficha dental. ¿Salir y descartarlos?')) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }}>
       <header className="topbar">
         <div className="brand-block compact">
           <span className="brand-mark" aria-hidden="true">
@@ -12527,16 +12678,16 @@ function App() {
                             </button>
                           ) : null}
                           <button type="button" className="ghost" onClick={() => handleOpenLedgerModal(entry)}>
-                            ✏️ Editar
+                            {entry.dentalRecordPatientId ? 'Abrir ficha dental' : '✏️ Editar'}
                           </button>
-                          <button
+                          {!entry.dentalRecordPatientId ? <button
                             type="button"
                             className="ghost"
                             style={{ color: '#c0392b' }}
                             onClick={() => handleDeleteLedgerEntry(entry.id)}
                           >
                             🗑️ Eliminar
-                          </button>
+                          </button> : null}
                         </div>
                       </article>
                     )
@@ -13086,6 +13237,7 @@ function App() {
               <p className="flow-hint">Acceso directo a tus fichas, independientemente de la agenda.</p>
             </div>
             <div className="layer-header-actions">
+              {isDentist ? <button type="button" className="ghost" disabled={dentalRefreshBusy} onClick={() => void refreshDentalPatients()}>{dentalRefreshBusy ? 'Actualizando...' : 'Actualizar fichas y reservas'}</button> : null}
               <button type="button" className="ghost invite-header-button" onClick={handleOpenInvitePatient}>📨 Invitar paciente</button>
               <button type="button" onClick={handleNewPatient}>+ Nuevo paciente</button>
             </div>
@@ -13117,14 +13269,15 @@ function App() {
                           <span className="invite-new-badge">📨 Nuevo por invitación</span>
                         ) : null}
                         <span>DNI {patient.dni || 'Sin dato'}</span>
+                        {isDentist ? <span className="invite-new-badge">{patient.dentalStatus === 'confirmed' ? 'Ficha dental confirmada' : 'Ficha dental provisoria'}</span> : null}
                         <small className={lastConsultation ? 'patient-last-visit' : undefined}>
-                          {lastConsultation ? `Última atención: ${formatShortDate(lastConsultation.date)}` : 'Sin consultas registradas'}
+                          {isDentist ? (patient.dentalStatus === 'confirmed' ? 'Atención odontológica registrada' : 'Pendiente de primera atención') : lastConsultation ? `Última atención: ${formatShortDate(lastConsultation.date)}` : 'Sin consultas registradas'}
                         </small>
                       </div>
                       <div className="patient-directory-actions">
                         <button type="button" onClick={() => handleSelectPatient(patient.id)}>Abrir ficha</button>
                         <button type="button" className="ghost" onClick={() => handleNewAppointmentModal(patient)}>Agendar</button>
-                        <button type="button" className="ghost" onClick={() => handleEvolvePatient(patient.id)}>Evolucionar</button>
+                        <button type="button" className="ghost" onClick={() => handleEvolvePatient(patient.id)}>{isDentist ? 'Odontograma' : 'Evolucionar'}</button>
                         <button type="button" className="ghost certificate-action" onClick={() => handleOpenCertificateModal(patient)}>📄 Certificado / orden</button>
                         {patient.ownerUserId === activeUserId ? (
                           <button type="button" className="patient-delete-action" disabled={patientDeletingId !== null} onClick={() => void handleDeletePatient(patient.id)}>{patientDeletingId === patient.id ? 'Eliminando...' : 'Eliminar'}</button>
@@ -13141,7 +13294,46 @@ function App() {
         </div>
       ) : null}
 
-      {workspaceLayer === 'patient-record' ? (
+      {isDentist && (workspaceLayer === 'patient-record' || workspaceLayer === 'clinical') ? (
+        selectedPatient ? <><DentalPatientChart key={selectedPatient.id} patient={selectedPatient} appointmentId={dentalAppointmentId}
+          onSaved={handleDentalSaved} onDirtyChange={setDentalDirty} onSavingChange={setDentalSaving} onBack={() => {
+            if (dentalSaving) { setAppNotice('Esperá a que termine de guardarse la ficha dental.'); return }
+            if (dentalDirty && !window.confirm('Hay cambios sin guardar. ¿Volver a pacientes y descartarlos?')) return
+            setDentalDirty(false)
+            handleStartAttentionFlow()
+          }} /><section className="panel">
+            <button type="button" className="ghost certificate-action" disabled={dentalSaving} onClick={() => handleOpenCertificateModal(selectedPatient)}>📄 Certificado / orden</button>
+            {selectedPatient.consultations.length ? <details><summary>Registros clínicos anteriores · solo lectura</summary>
+              {selectedPatient.consultations.map((entry) => <article key={entry.id}>
+                <h3>{formatDate(entry.date)}</h3>
+                <p>{entry.motivoConsulta}</p><p>{entry.diagnostico}</p><p>{entry.enfermedadActual || entry.detalleAtencion}</p>
+                <p>{entry.examenFisico}</p><p>{entry.impresionDiagnostica}</p><p>{entry.planManejo}</p><p>{entry.pensamientoMedico}</p>
+                <button type="button" className="ghost" onClick={() => printSingleConsultation(entry)}>Imprimir esta atención</button>
+              </article>)}
+            </details> : null}
+            {selectedPatient.certificates?.length ? <details><summary>Certificados y órdenes emitidas</summary><ul className="certificate-history-list">
+              {selectedPatient.certificates.map((entry) => <li key={entry.id}><div>
+                <strong>{entry.documentType === 'study-order' ? 'Orden de estudios' : 'Certificado'} · {formatCertificateDate(entry.certificateDate)}</strong>
+                <span>{entry.documentType === 'study-order' ? entry.studies?.map((study) => study.term).join(', ') : entry.diagnostico}</span>
+              </div><button type="button" className="ghost compact" onClick={() => void handleViewIssuedCertificate(selectedPatient, entry)}>Ver copia</button></li>)}
+            </ul></details> : null}
+          </section></> : <section className="panel dental-new-patient">
+          <h2>Nueva ficha dental</h2><p>Datos básicos. El odontograma queda provisorio hasta guardar la primera atención.</p>
+          <form className="grid" onSubmit={(event) => void handleSavePatient(event)}>
+            {([
+              ['apellido', 'Apellido'], ['nombre', 'Nombre'], ['dni', 'DNI'], ['telefono', 'Teléfono'],
+              ['email', 'Email'], ['birthDate', 'Fecha de nacimiento'], ['direccion', 'Domicilio'],
+              ['obraSocial', 'Obra social'], ['numeroAfiliado', 'Número de afiliado'],
+            ] as const).map(([key, label]) => <label key={key}>{label}<input name={key} required={key === 'apellido' || key === 'dni'}
+              type={key === 'birthDate' ? 'date' : key === 'email' ? 'email' : 'text'} value={patientDraft[key]}
+              onChange={(event) => setPatientDraft((draft) => ({ ...draft, [key]: event.target.value }))} /></label>)}
+            <button type="submit" disabled={dentalNewPatientBusy}>{dentalNewPatientBusy ? 'Guardando...' : 'Crear ficha provisoria'}</button>
+            <button type="button" className="ghost" onClick={handleStartAttentionFlow}>Volver a pacientes</button>
+          </form>
+        </section>
+      ) : null}
+
+      {!isDentist && workspaceLayer === 'patient-record' ? (
         <div className="screen-stage">
           <section className="panel layer-header">
             <div>
@@ -13404,7 +13596,7 @@ function App() {
         </div>
       ) : null}
 
-      {workspaceLayer === 'clinical' ? (
+      {!isDentist && workspaceLayer === 'clinical' ? (
         <div className="screen-stage">
           <section className="panel layer-header">
             <div>

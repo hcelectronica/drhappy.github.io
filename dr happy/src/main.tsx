@@ -1,14 +1,20 @@
-import { StrictMode } from 'react'
+import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { AppErrorBoundary } from './AppErrorBoundary'
 import { installRuntimeErrorLogging, logRuntime } from './runtimeLogger'
 
+const DentalDesignPreview = import.meta.env.DEV && window.location.pathname === '/dental-design'
+  ? lazy(() => import('./dental/DentalDesignPreview'))
+  : null
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AppErrorBoundary>
-      <App />
+      {DentalDesignPreview
+        ? <Suspense fallback={<p>Cargando diseño de ficha dental...</p>}><DentalDesignPreview /></Suspense>
+        : <App />}
     </AppErrorBoundary>
   </StrictMode>,
 )
@@ -16,7 +22,7 @@ createRoot(document.getElementById('root')!).render(
 installRuntimeErrorLogging()
 logRuntime('info', 'app.started', { buildId: import.meta.env.VITE_BUILD_ID })
 
-if ('serviceWorker' in navigator) {
+if (!DentalDesignPreview && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register(`${import.meta.env.BASE_URL}service-worker.js`)

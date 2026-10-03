@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.send-appointment-reminders]
 verify_jwt = false
+
+[functions.dental-records]
+verify_jwt = false
