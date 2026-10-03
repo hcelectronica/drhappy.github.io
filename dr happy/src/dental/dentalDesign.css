@@ -38,6 +38,15 @@ body.theme-night .dental-preview input, body.theme-night .dental-preview textare
 .dental-face-tabs button { border: 0; background: transparent; color: var(--dental-muted); }
 .dental-face-tabs button[aria-pressed="true"] { background: #fff; color: #155c50; box-shadow: 0 2px 6px #183b4314; }
 .dental-toolbar-actions { display: flex; gap: 8px; }
+.dental-mobile-tools, .dental-mobile-hint { display: none; }
+.dental-zoom-dialog { width: calc(100% - 24px); max-width: 570px; max-height: calc(100dvh - 32px); padding: 16px; border: 1px solid #b8d4c9; border-radius: 18px; background: #fff; color: var(--dental-ink); overflow: auto; }
+.dental-zoom-dialog::backdrop { background: #102c39a6; }
+.dental-zoom-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.dental-zoom-heading h3 { margin: 0; font-size: 1.1rem; }
+.dental-zoom-dialog p { font-size: .8rem; line-height: 1.5; color: var(--dental-muted); }
+.dental-zoom-scroll { max-height: 52dvh; overflow: auto; padding: 12px; border: 1px solid var(--dental-line); border-radius: 12px; background: #fbfdfc; }
+.dental-zoom-scroll .dental-chart-canvas { width: 960px; min-width: 960px; }
+.dental-zoom-scroll .dental-tooth-number { min-height: 44px; font-size: .9rem; }
 .dental-notice { color: var(--dental-muted); font-size: .8rem; line-height: 1.5; min-height: 20px; }
 .dental-error { padding: 12px 16px; border: 1px solid #e9a9af; border-radius: 12px; background: #fff2f3; color: #a12030; font-size: .88rem; }
 .dental-flip { perspective: 1800px; perspective-origin: 50% 300px; }
@@ -168,10 +177,17 @@ body.theme-night .dental-preview input, body.theme-night .dental-preview textare
   .dental-face-tabs { width: 100%; }
   .dental-face-tabs button { flex: 1; padding: 9px 7px; font-size: .75rem; }
   .dental-toolbar-actions { margin-left: auto; }
+  .dental-mobile-tools { display: flex; width: 100%; justify-content: space-between; gap: 8px; }
+  .dental-mobile-tools button { flex: 1; min-height: 44px; }
+  .dental-mobile-hint { display: block; margin: 6px 0 10px; color: var(--dental-green); font-size: .75rem; line-height: 1.5; }
+  .dental-footer > .dental-flip-button { display: none; }
   .dental-sheet { padding: 18px 14px; border-radius: 14px; }
   .dental-patient-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
   .dental-patient-grid label:first-child { grid-column: 1 / -1; }
   .dental-chart-scroll { padding: 10px 4px 4px; }
+  .dental-chart-scroll .dental-chart-canvas { min-width: 0; width: 100%; }
+  .dental-chart-scroll .dental-tooth-number { padding: 3px 0; font-size: .55rem; }
+  .dental-chart-scroll .dental-tooth-count { font-size: .5rem; }
   .dental-reference { display: block; }
   .dental-reference ul { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
   .dental-selection { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 14px; }
@@ -187,6 +203,29 @@ body.theme-night .dental-preview input, body.theme-night .dental-preview textare
   .dental-payment-form > label:first-child { grid-column: 1 / -1; }
   .dental-footer > button { width: 100%; }
   .dental-preview-bottom { flex-direction: column; gap: 12px; align-items: flex-start; }
+  .dental-sheet--back { padding: 16px 10px; }
+  .dental-sheet--back .dental-sheet-heading { padding-bottom: 12px; gap: 8px; }
+  .dental-sheet--back .dental-sheet-heading h2 { font-size: 1.25rem; }
+  .dental-sheet--back .dental-section-heading { margin: 16px 0 10px; }
+  .dental-sheet--back input, .dental-sheet--back select { font-size: 16px; padding: 8px; }
+  .dental-sheet--back .dental-table-scroll { overflow: visible; border: 0; }
+  .dental-sheet--back .dental-table { display: block; min-width: 0; }
+  .dental-sheet--back .dental-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .dental-sheet--back .dental-table tbody { display: grid; gap: 10px; }
+  .dental-sheet--back .dental-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px; border: 1px solid var(--dental-line); border-radius: 12px; background: #fbfdfc; }
+  .dental-sheet--back .dental-table td { min-width: 0; padding: 5px 4px; border: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .dental-sheet--back .dental-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 3px; font-size: .68rem; color: var(--dental-muted); font-weight: 700; }
+  .dental-sheet--back .dental-cell-description { grid-column: 1 / -1; order: -1; padding-bottom: 9px; border-bottom: 1px solid var(--dental-line); margin-bottom: 4px; }
+  .dental-sheet--back .dental-cell-actions, .dental-sheet--back .dental-empty { grid-column: 1 / -1; }
+  .dental-sheet--back .dental-row-actions { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+  .dental-sheet--back .dental-row-actions button { min-height: 44px; padding: 8px; }
+  .dental-sheet--back .dental-work-form { padding: 12px; margin-top: 12px; }
+  .dental-sheet--back .dental-work-fields { gap: 10px 8px; }
+  .dental-sheet--back .dental-work-fields > label:nth-child(3) { grid-column: 1 / -1; }
+  .dental-sheet--back .dental-account-totals { gap: 6px; margin-bottom: 12px; }
+  .dental-sheet--back .dental-account-totals > div { padding: 10px; flex-wrap: wrap; }
+  .dental-sheet--back .dental-account-totals strong { font-size: 1rem; white-space: normal; overflow-wrap: anywhere; }
+  .dental-sheet--back .dental-payment-form { gap: 10px 8px; padding-top: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .dental-flip-inner { transition: none; }

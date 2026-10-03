@@ -1,18 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { DentalTooth } from './DentalTooth'
 import {
   CONDITIONS, PERMANENT_ROWS, TEMPORARY_ROWS, SURFACES, addDentalPayment, changeTreatmentStatus,
-  createDentalDesignRecord, dentalAccount, isDentalDesignRecord, markColor, moneyToCents, surfaceLabel, treatmentAccount,
+  createDentalDesignRecord, dentalAccount, isDentalDesignRecord, markColor, moneyToCents, surfaceLabel, treatmentAccount, validTooth,
 } from './dentalModel'
 import type { DentalCondition, DentalDesignRecord, DentalPayment, DentalSurface } from './dentalModel'
+import { dentalDate as dateLabel, dentalMoney as money, dentalStatusLabels as statusLabels, dentalLedgerRows } from './dentalPresentation'
+import { printDentalRecord } from './DentalPrint'
 import './dentalDesign.css'
 
 const STORAGE_KEY = 'drhappy-dental-design-preview-v1'
-const money = (cents: number) => (cents / 100).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 })
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
-const dateLabel = (date: string) => date.split('-').reverse().join('/')
-const statusLabels = { proposed: 'Propuesto', accepted: 'Aceptado', completed: 'Realizado', cancelled: 'Anulado' }
 const newWork = () => ({ date: today(), tooth: '36', surface: 'central' as DentalSurface, work: '', budget: '', cost: '' })
 
 function loadDesign(): { record: DentalDesignRecord; error: string | null } {
@@ -27,7 +26,8 @@ function loadDesign(): { record: DentalDesignRecord; error: string | null } {
   }
 }
 
-export default function DentalDesignPreview({ initialRecord, realPatientId, onSave, onBack, onDirtyChange, onSavingChange, onReload, revisions }: {
+export default function DentalDesignPreview({ initialRecord, realPatientId, onSave, onBack, onDirtyChange, onSavingChange, onReload, revisions, professional }: {
+  professional?: { fullName: string; licenseNumber: string }
   initialRecord?: DentalDesignRecord
   realPatientId?: string
   onSave?: (record: DentalDesignRecord, confirm: boolean) => Promise<DentalDesignRecord>
@@ -57,7 +57,34 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
   const [workDraft, setWorkDraft] = useState(newWork)
   const [paymentDraft, setPaymentDraft] = useState({ treatmentId: '', amount: '', date: today(), method: 'Efectivo' as DentalPayment['method'] })
   const flipButton = useRef<HTMLButtonElement>(null)
+  const mobileFlipButton = useRef<HTMLButtonElement>(null)
+  const [zoom, setZoom] = useState<{ x: number; y: number; piece?: number } | null>(null)
+  const zoomDialog = useRef<HTMLDialogElement>(null)
+  const zoomScroll = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<HTMLDivElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
+  useLayoutEffect(() => {
+    if (!zoom) return
+    zoomDialog.current?.showModal()
+    const area = zoomScroll.current
+    if (area) {
+      area.scrollLeft = zoom.x * area.scrollWidth - area.clientWidth / 2
+      area.scrollTop = zoom.y * area.scrollHeight - area.clientHeight / 2
+      const piece = zoom.piece ? area.querySelector(`[data-tooth="${zoom.piece}"]`) : null
+      if (piece) {
+        const bounds = piece.getBoundingClientRect()
+        const viewport = area.getBoundingClientRect()
+        area.scrollLeft += bounds.left - viewport.left + bounds.width / 2 - area.clientWidth / 2
+        area.scrollTop += bounds.top - viewport.top + bounds.height / 2 - area.clientHeight / 2
+      }
+    }
+  }, [zoom])
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 601px)')
+    const close = () => { if (desktop.matches) { zoomDialog.current?.close(); setZoom(null) } }
+    desktop.addEventListener('change', close)
+    return () => desktop.removeEventListener('change', close)
+  }, [])
   useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
   useEffect(() => {
     if (!dirty && !saving) return
@@ -68,23 +95,7 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
   const account = dentalAccount(record)
   const marks = record.marks.filter((mark) => mark.tooth === tooth)
   const payableTreatments = record.treatments.filter((treatment) => treatmentAccount(record, treatment).balance > 0)
-  const movements = [
-    ...record.treatments.filter((item) => ['accepted', 'completed'].includes(item.status)).map((item) => ({
-      id: item.id, date: item.acceptedDate || item.date, tooth: item.tooth,
-      face: surfaceLabel(item.surface, item.tooth), label: item.work, detail: statusLabels[item.status],
-      debit: item.budgetCents, credit: 0,
-    })),
-    ...record.payments.map((payment) => {
-      const treatment = record.treatments.find((item) => item.id === payment.treatmentId)
-      return {
-        id: payment.id, date: payment.date, tooth: treatment?.tooth, face: '—',
-        label: `Pago · ${treatment?.work || ''}`, detail: payment.method, debit: 0, credit: payment.amountCents,
-      }
-    }),
-  ].sort((a, b) => a.date.localeCompare(b.date) || (b.debit - a.debit))
-  const ledgerRows = movements.reduce<Array<typeof movements[number] & { balance: number }>>((rows, movement) => [
-    ...rows, { ...movement, balance: (rows.at(-1)?.balance ?? 0) + movement.debit - movement.credit },
-  ], [])
+  const ledgerRows = dentalLedgerRows(record)
 
   function update(next: DentalDesignRecord) {
     setHistory((items) => [...items.slice(-39), record])
@@ -156,7 +167,8 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
   }
   function flip() {
     setBack((value) => !value)
-    flipButton.current?.focus()
+    const button = window.matchMedia('(max-width: 600px)').matches ? mobileFlipButton : flipButton
+    button.current?.focus()
   }
   function proposeSelected() {
     setWorkDraft((draft) => ({ ...draft, tooth: String(tooth), surface,
@@ -167,6 +179,39 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
   }
   const rows = [...(dentition !== 'temporary' ? [{ name: 'Dentición permanente', rows: PERMANENT_ROWS }] : []),
     ...(dentition !== 'permanent' ? [{ name: 'Dentición temporal', rows: TEMPORARY_ROWS }] : [])]
+  function closeZoom() {
+    zoomDialog.current?.close()
+    setZoom(null)
+    chartRef.current?.focus()
+  }
+  function openZoom(x: number, y: number, target: EventTarget | null) {
+    const bounds = chartRef.current?.getBoundingClientRect()
+    const piece = target instanceof Element ? Number(target.closest('[data-tooth]')?.getAttribute('data-tooth')) : 0
+    if (bounds) setZoom({ x: Math.max(0, Math.min(1, (x - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (y - bounds.top) / bounds.height)), piece: validTooth(piece) ? piece : undefined })
+  }
+  function renderChart(enlarged = false) {
+    return <div className="dental-chart-canvas">
+      {rows.map((group) => <div className={`dental-dentition ${group.name.includes('temporal') ? 'dental-dentition--temporary' : ''}`} key={group.name}>
+        <h3>{group.name}</h3>
+        {group.rows.map((row, rowIndex) => <div className="dental-tooth-row" key={rowIndex}>
+          {row.map((number) => <DentalTooth key={number} tooth={number} marks={record.marks.filter((mark) => mark.tooth === number)}
+            selected={tooth === number} surface={surface} onSelect={(face) => {
+              selectTooth(number, face)
+              if (enlarged) closeZoom()
+            }} />)}
+        </div>)}
+        <div className="dental-quadrant-labels"><span>Derecha</span><span>Izquierda</span></div>
+      </div>)}
+    </div>
+  }
+  function print() {
+    if (dirty) { setError('Guardá los cambios antes de imprimir para que el PDF coincida con la ficha y el balance guardados.'); return }
+    try {
+      printDentalRecord(record, professional, !real)
+      setError(null)
+      setNotice('Ficha en color preparada con ambas caras. Elegí Guardar como PDF o tu impresora en la vista de impresión.')
+    } catch (error) { setError(error instanceof Error ? error.message : 'No se pudo preparar la impresión de la ficha.') }
+  }
 
   return (
     <main className="dental-preview">
@@ -176,6 +221,10 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
         {real ? <button type="button" disabled={saving} onClick={onBack}>Volver a pacientes</button> : <a href="/">Volver a la app</a>}
       </header>
       <div className="dental-toolbar">
+        <div className="dental-mobile-tools">
+          <button ref={mobileFlipButton} type="button" onClick={flip} className="dental-flip-button" disabled={saving}><span aria-hidden="true">↻</span> Girar ficha</button>
+          <button type="button" onClick={print} disabled={saving}>Imprimir / PDF</button>
+        </div>
         <div className="dental-face-tabs" aria-label="Cara de la ficha">
           <button type="button" aria-pressed={!back} onClick={() => setBack(false)}>01 · Odontograma</button>
           <button type="button" aria-pressed={back} onClick={() => setBack(true)}>02 · Tratamientos y cuenta</button>
@@ -218,16 +267,19 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
                     if (value === 'mixed' || value === 'permanent' || value === 'temporary') setDentition(value)
                   }}><option value="mixed">Mixta / ambas</option><option value="permanent">Permanente</option><option value="temporary">Temporal</option></select></label>
                 </div>
-                <div className="dental-chart-scroll" tabIndex={0} role="region" aria-label="Odontograma, desplazable horizontalmente en pantallas pequeñas"><div className="dental-chart-canvas">
-                  {rows.map((group) => <div className={`dental-dentition ${group.name.includes('temporal') ? 'dental-dentition--temporary' : ''}`} key={group.name}>
-                    <h3>{group.name}</h3>
-                    {group.rows.map((row, rowIndex) => <div className="dental-tooth-row" key={rowIndex}>
-                      {row.map((number) => <DentalTooth key={number} tooth={number} marks={record.marks.filter((mark) => mark.tooth === number)}
-                        selected={tooth === number} surface={surface} onSelect={(face) => selectTooth(number, face)} />)}
-                    </div>)}
-                    <div className="dental-quadrant-labels"><span>Derecha</span><span>Izquierda</span></div>
-                  </div>)}
-                </div></div>
+                <p className="dental-mobile-hint">Tocá el odontograma para ampliar esa zona y elegir la pieza.</p>
+                <div ref={chartRef} className="dental-chart-scroll" tabIndex={0} role="region" aria-label="Odontograma completo"
+                  onClickCapture={(event) => {
+                    if (!window.matchMedia('(max-width: 600px)').matches) return
+                    event.preventDefault(); event.stopPropagation()
+                    openZoom(event.clientX, event.clientY, event.target)
+                  }}
+                  onKeyDownCapture={(event) => {
+                    if (!window.matchMedia('(max-width: 600px)').matches || !['Enter', ' '].includes(event.key)) return
+                    event.preventDefault(); event.stopPropagation()
+                    const bounds = event.target instanceof Element ? event.target.getBoundingClientRect() : null
+                    if (bounds) openZoom(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2, event.target)
+                  }}>{renderChart()}</div>
                 <p className="dental-unassessed">Una pieza sin marcas está sin registrar: no equivale a una pieza sana.</p>
                 <div className="dental-observations"><label>Observaciones de la atención<textarea rows={3} value={record.observations} onChange={(event) => update({ ...record, observations: event.target.value })} placeholder="Nota breve, sin formulario clínico extenso." /></label></div>
               </div>
@@ -262,7 +314,7 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
             <section className="dental-budget-section">
               <div className="dental-section-heading"><h3>Trabajo a realizar</h3><p>Presupuesto al paciente · Costo interno del odontólogo</p></div>
               <div className="dental-table-scroll"><table className="dental-table"><caption>Plan de trabajos y presupuesto</caption><thead><tr><th>Fecha</th><th>Trabajo a realizar</th><th>Presupuesto</th><th>Costo interno</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
-                {record.treatments.map((item) => <tr key={item.id}><td>{dateLabel(item.date)}</td><td><strong>{item.work}</strong><small>Pieza {item.tooth} · {surfaceLabel(item.surface, item.tooth)}</small></td><td>{money(item.budgetCents)}</td><td>{money(item.internalCostCents)}</td><td><span className={`dental-work-status dental-work-status--${item.status}`}>{statusLabels[item.status]}</span>{item.performedDate ? <small>{dateLabel(item.performedDate)}</small> : null}</td><td><div className="dental-row-actions">
+                {record.treatments.map((item) => <tr key={item.id}><td data-label="Fecha">{dateLabel(item.date)}</td><td className="dental-cell-description"><strong>{item.work}</strong><small>Pieza {item.tooth} · {surfaceLabel(item.surface, item.tooth)}</small></td><td data-label="Presupuesto">{money(item.budgetCents)}</td><td data-label="Costo interno">{money(item.internalCostCents)}</td><td data-label="Estado"><span className={`dental-work-status dental-work-status--${item.status}`}>{statusLabels[item.status]}</span>{item.performedDate ? <small>{dateLabel(item.performedDate)}</small> : null}</td><td className="dental-cell-actions"><div className="dental-row-actions">
                   {item.status === 'proposed' ? <button type="button" onClick={() => statusChange(item.id, 'accepted')}>Aceptar</button> : null}
                   {item.status === 'accepted' ? <button type="button" onClick={() => statusChange(item.id, 'completed')}>Registrar realizado</button> : null}
                   {['proposed', 'accepted'].includes(item.status) ? <button type="button" onClick={() => statusChange(item.id, 'cancelled')}>Anular</button> : null}
@@ -285,8 +337,8 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
               <div className="dental-section-heading"><h3>Trabajo realizado y cuenta del paciente</h3><p>Los importes salen de los trabajos aceptados y sus pagos, no se vuelven a cargar.</p></div>
               <div className="dental-account-totals"><div><span>Debe · presupuestos aceptados</span><strong>{money(account.charged)}</strong></div><div><span>Haber · pagos registrados</span><strong>{money(account.paid)}</strong></div><div className="dental-balance"><span>Saldo del paciente</span><strong>{money(account.balance)}</strong></div></div>
               <div className="dental-table-scroll"><table className="dental-table dental-ledger-table"><caption>Movimientos de la cuenta del paciente</caption><thead><tr><th>Fecha</th><th>Pieza</th><th>Cara</th><th>Trabajo / movimiento</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead><tbody>
-                {ledgerRows.map((movement) => <tr key={movement.id}><td>{dateLabel(movement.date)}</td><td>{movement.tooth}</td><td>{movement.face}</td><td><strong>{movement.label}</strong><small>{movement.detail}</small></td><td>{movement.debit ? money(movement.debit) : '—'}</td><td>{movement.credit ? money(movement.credit) : '—'}</td><td>{money(movement.balance)}</td></tr>)}
-                {!movements.length ? <tr><td colSpan={7} className="dental-empty">Sin movimientos. Los presupuestos propuestos no consumen saldo.</td></tr> : null}
+                {ledgerRows.map((movement) => <tr key={movement.id}><td data-label="Fecha">{dateLabel(movement.date)}</td><td data-label="Pieza">{movement.tooth}</td><td data-label="Cara">{movement.face}</td><td className="dental-cell-description"><strong>{movement.label}</strong><small>{movement.detail}</small></td><td data-label="Debe">{movement.debit ? money(movement.debit) : '—'}</td><td data-label="Haber">{movement.credit ? money(movement.credit) : '—'}</td><td data-label="Saldo">{money(movement.balance)}</td></tr>)}
+                {!ledgerRows.length ? <tr><td colSpan={7} className="dental-empty">Sin movimientos. Los presupuestos propuestos no consumen saldo.</td></tr> : null}
               </tbody></table></div>
               <form onSubmit={addPayment} className="dental-payment-form">
                 <label>Tratamiento a pagar<select required value={paymentDraft.treatmentId} onChange={(event) => setPaymentDraft({ ...paymentDraft, treatmentId: event.target.value })}><option value="">Elegí un trabajo con saldo</option>{payableTreatments.map((item) => <option key={item.id} value={item.id}>{item.work} · pieza {item.tooth} · {money(treatmentAccount(record, item).balance)}</option>)}</select></label>
@@ -300,6 +352,11 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
           </section>
         </div>
       </div></fieldset>
+      {zoom ? <dialog ref={zoomDialog} className="dental-zoom-dialog" aria-labelledby="dental-zoom-title" onCancel={closeZoom} onClose={() => setZoom(null)}>
+        <div className="dental-zoom-heading"><div><h3 id="dental-zoom-title">Elegí la pieza</h3><p>Zona ampliada · derecha e izquierda del paciente</p></div><button type="button" onClick={closeZoom}>Cerrar</button></div>
+        <div ref={zoomScroll} className="dental-zoom-scroll" tabIndex={0} role="region" aria-label="Odontograma ampliado, desplazable">{renderChart(true)}</div>
+        <p>Deslizá para ver las piezas cercanas. Al elegir una volvés a «Registrar en esta pieza».</p>
+      </dialog> : null}
       <footer className="dental-footer">
         <button ref={flipButton} type="button" onClick={flip} className="dental-flip-button"><span aria-hidden="true">↻</span> {back ? 'Girar al odontograma' : 'Girar a tratamientos y pagos'}</button>
         <button type="button" className="dental-primary" disabled={saving} onClick={() => {

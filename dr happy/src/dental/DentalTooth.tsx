@@ -23,7 +23,7 @@ export function DentalTooth({ tooth, marks, selected, surface, onSelect, expande
   ]
   const wholeMarks = marks.filter((mark) => mark.surface === 'whole')
   return (
-    <div className={`dental-tooth ${selected ? 'dental-tooth--selected' : ''} ${expanded ? 'dental-tooth--expanded' : ''}`}>
+    <div data-tooth={tooth} className={`dental-tooth ${selected ? 'dental-tooth--selected' : ''} ${expanded ? 'dental-tooth--expanded' : ''}`}>
       <button type="button" className="dental-tooth-number" onClick={() => onSelect('whole')} aria-label={`Pieza ${tooth}, seleccionar pieza completa`} aria-pressed={selected && surface === 'whole'}>{tooth}</button>
       <svg viewBox="0 0 64 64" role="group" aria-label={`Superficies de la pieza ${tooth}`}>
         <defs><pattern id={mixedId} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#f6bcc4" /><rect x="4" width="4" height="8" fill="#bcd4fa" /></pattern></defs>

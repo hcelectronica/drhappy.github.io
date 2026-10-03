@@ -16,6 +16,8 @@ import { loadSubscriptionAccount } from './subscriptionAccountService'
 import { SubscriptionBenefits } from './SubscriptionBenefits'
 import { DentalPatientChart } from './dental/DentalPatientChart'
 import type { DentalSaveResult } from './dental/dentalService'
+import { PatientLedgerCards } from './PatientLedgerCards'
+import { filterLedgerPatients, groupLedgerByPatient, summarizeLedger } from './ledgerModel'
 import { getHolidayName } from './argentineHolidays'
 import { SupportContactForm } from './SupportContactForm'
 import { AdminSupportInbox } from './AdminSupportInbox'
@@ -3010,19 +3012,17 @@ function App() {
   // El Balance de pagos queda disponible para cualquier profesional con acceso premium.
   const canUseTreatmentLedger = hasPremiumTurneraAccess
 
-  const ledgerTotals = useMemo(() => {
-    return treatmentLedger.reduce(
-      (acc, entry) => {
-        const pending = Math.max(entry.totalAmount - entry.paidAmount, 0)
-        acc.total += entry.totalAmount
-        acc.collected += entry.paidAmount
-        acc.pending += pending
-        if (pending > 0) acc.debtors.add(entry.patientName)
-        return acc
-      },
-      { total: 0, collected: 0, pending: 0, debtors: new Set<string>() },
-    )
-  }, [treatmentLedger])
+  const ledgerTotals = useMemo(() => summarizeLedger(treatmentLedger), [treatmentLedger])
+  const ledgerPatientGroups = useMemo(() => groupLedgerByPatient(treatmentLedger), [treatmentLedger])
+  const visibleLedgerPatients = useMemo(
+    () => filterLedgerPatients(ledgerPatientGroups, ledgerFilter, ledgerSearch),
+    [ledgerPatientGroups, ledgerFilter, ledgerSearch],
+  )
+  const financialLedgerEntries = useMemo(
+    () => isDentist ? treatmentLedger.filter((entry) => Boolean(entry.dentalRecordPatientId)) : treatmentLedger,
+    [isDentist, treatmentLedger],
+  )
+  const financialLedgerTotals = useMemo(() => summarizeLedger(financialLedgerEntries), [financialLedgerEntries])
 
   const ledgerPatientBalances = useMemo(() => {
     const balances = new Map<string, { patientName: string; pending: number }>()
@@ -10405,6 +10405,46 @@ function App() {
     </>
   )
 
+  function renderLedgerEntry(entry: TreatmentLedgerEntry) {
+    const pending = entry.totalAmount - entry.paidAmount
+    const progress = entry.totalAmount > 0
+      ? Math.min(Math.round((entry.paidAmount / entry.totalAmount) * 100), 100)
+      : 0
+    return (
+      <article key={entry.id} className={`ledger-card ${pending > 0 ? 'has-debt' : 'settled'}`}>
+        <div className="ledger-card-top">
+          <div>
+            <strong className="ledger-card-patient">{entry.patientName}</strong>
+            <span className="ledger-card-date">{formatShortDate(entry.date)}</span>
+          </div>
+          <span className={`ledger-badge ${pending > 0 ? 'warn' : 'ok'}`}>
+            {pending > 0 ? `Debe ${formatMoney(pending)}` : '✅ Saldado'}
+          </span>
+        </div>
+        <p className="ledger-card-intervention">{entry.intervention}</p>
+        {entry.notes ? <p className="ledger-card-notes">{entry.notes}</p> : null}
+        <div className="ledger-progress">
+          <div className="ledger-progress-bar">
+            <div className="ledger-progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="ledger-progress-label">
+            {formatMoney(entry.paidAmount)} de {formatMoney(entry.totalAmount)} ({progress}%)
+          </span>
+        </div>
+        <div className="ledger-card-actions">
+          {pending > 0 ? <button type="button" onClick={() => handleRegisterLedgerPayment(entry.id)}>💵 Registrar pago</button> : null}
+          {pending > 0 ? <button type="button" className="ghost" disabled={ledgerReminderSendingId === entry.id} onClick={() => void handleSendLedgerPaymentReminder(entry.id)}>
+            {ledgerReminderSendingId === entry.id ? 'Enviando...' : '📧 Enviar recordatorio de pago'}
+          </button> : null}
+          <button type="button" className="ghost" onClick={() => handleOpenLedgerModal(entry)}>
+            {entry.dentalRecordPatientId ? 'Abrir ficha dental' : '✏️ Editar'}
+          </button>
+          {!entry.dentalRecordPatientId ? <button type="button" className="ghost" style={{ color: '#c0392b' }} onClick={() => handleDeleteLedgerEntry(entry.id)}>🗑️ Eliminar</button> : null}
+        </div>
+      </article>
+    )
+  }
+
   return (
     <main className="app" onClickCapture={(event) => {
       if (!(event.target instanceof Element) || event.target.closest('.dental-preview')) return
@@ -12563,7 +12603,7 @@ function App() {
                 <div>
                   <h3 style={{ margin: 0 }}>💰 Balance de pagos</h3>
                   <small className="flow-hint">
-                    Registrá cada intervención, cuánto cobraste y cuánto queda pendiente.
+                    {isDentist ? 'Una cuenta por paciente. Desplegá sus tratamientos para consultar pagos y detalles, sin eliminar el historial.' : 'Registrá cada intervención, cuánto cobraste y cuánto queda pendiente.'}
                   </small>
                 </div>
                 <button type="button" onClick={() => handleOpenLedgerModal()}>
@@ -12573,7 +12613,7 @@ function App() {
 
               <div className="ledger-summary-grid">
                 <div className="ledger-summary-card">
-                  <span className="ledger-summary-label">Facturado</span>
+                  <span className="ledger-summary-label">{isDentist ? 'Importe registrado' : 'Facturado'}</span>
                   <strong>{formatMoney(ledgerTotals.total)}</strong>
                 </div>
                 <div className="ledger-summary-card ok">
@@ -12603,26 +12643,26 @@ function App() {
                     className={`ghost compact ${ledgerFilter === 'all' ? 'active' : ''}`}
                     onClick={() => setLedgerFilter('all')}
                   >
-                    Todos ({treatmentLedger.length})
+                    Todos ({isDentist ? ledgerPatientGroups.length : treatmentLedger.length})
                   </button>
                   <button
                     type="button"
                     className={`ghost compact ${ledgerFilter === 'debt' ? 'active' : ''}`}
                     onClick={() => setLedgerFilter('debt')}
                   >
-                    Con saldo ({treatmentLedger.filter((e) => e.totalAmount - e.paidAmount > 0).length})
+                    Con saldo ({isDentist ? ledgerPatientGroups.filter((group) => group.pending > 0).length : treatmentLedger.filter((e) => e.totalAmount - e.paidAmount > 0).length})
                   </button>
                   <button
                     type="button"
                     className={`ghost compact ${ledgerFilter === 'settled' ? 'active' : ''}`}
                     onClick={() => setLedgerFilter('settled')}
                   >
-                    Saldados ({treatmentLedger.filter((e) => e.totalAmount - e.paidAmount <= 0).length})
+                    Saldados ({isDentist ? ledgerPatientGroups.filter((group) => group.pending <= 0).length : treatmentLedger.filter((e) => e.totalAmount - e.paidAmount <= 0).length})
                   </button>
                 </div>
               </div>
 
-              {visibleLedgerEntries.length === 0 ? (
+              {(isDentist ? visibleLedgerPatients.length : visibleLedgerEntries.length) === 0 ? (
                 <div className="turnera-empty-state">
                   <p>
                     {treatmentLedger.length === 0
@@ -12635,63 +12675,12 @@ function App() {
                     </button>
                   ) : null}
                 </div>
+              ) : isDentist ? (
+                <PatientLedgerCards groups={visibleLedgerPatients} formatMoney={formatMoney} formatDate={formatShortDate}
+                  renderEntry={renderLedgerEntry} onOpenPatient={handleSelectPatient} />
               ) : (
                 <div className="ledger-grid">
-                  {visibleLedgerEntries.map((entry) => {
-                    const pending = entry.totalAmount - entry.paidAmount
-                    const progress = entry.totalAmount > 0
-                      ? Math.min(Math.round((entry.paidAmount / entry.totalAmount) * 100), 100)
-                      : 0
-                    return (
-                      <article key={entry.id} className={`ledger-card ${pending > 0 ? 'has-debt' : 'settled'}`}>
-                        <div className="ledger-card-top">
-                          <div>
-                            <strong className="ledger-card-patient">{entry.patientName}</strong>
-                            <span className="ledger-card-date">{formatShortDate(entry.date)}</span>
-                          </div>
-                          <span className={`ledger-badge ${pending > 0 ? 'warn' : 'ok'}`}>
-                            {pending > 0 ? `Debe ${formatMoney(pending)}` : '✅ Saldado'}
-                          </span>
-                        </div>
-
-                        <p className="ledger-card-intervention">{entry.intervention}</p>
-                        {entry.notes ? <p className="ledger-card-notes">{entry.notes}</p> : null}
-
-                        <div className="ledger-progress">
-                          <div className="ledger-progress-bar">
-                            <div className="ledger-progress-fill" style={{ width: `${progress}%` }} />
-                          </div>
-                          <span className="ledger-progress-label">
-                            {formatMoney(entry.paidAmount)} de {formatMoney(entry.totalAmount)} ({progress}%)
-                          </span>
-                        </div>
-
-                        <div className="ledger-card-actions">
-                          {pending > 0 ? (
-                            <button type="button" onClick={() => handleRegisterLedgerPayment(entry.id)}>
-                              💵 Registrar pago
-                            </button>
-                          ) : null}
-                          {pending > 0 ? (
-                            <button type="button" className="ghost" disabled={ledgerReminderSendingId === entry.id} onClick={() => void handleSendLedgerPaymentReminder(entry.id)}>
-                              {ledgerReminderSendingId === entry.id ? 'Enviando...' : '📧 Enviar recordatorio de pago'}
-                            </button>
-                          ) : null}
-                          <button type="button" className="ghost" onClick={() => handleOpenLedgerModal(entry)}>
-                            {entry.dentalRecordPatientId ? 'Abrir ficha dental' : '✏️ Editar'}
-                          </button>
-                          {!entry.dentalRecordPatientId ? <button
-                            type="button"
-                            className="ghost"
-                            style={{ color: '#c0392b' }}
-                            onClick={() => handleDeleteLedgerEntry(entry.id)}
-                          >
-                            🗑️ Eliminar
-                          </button> : null}
-                        </div>
-                      </article>
-                    )
-                  })}
+                  {visibleLedgerEntries.map(renderLedgerEntry)}
                 </div>
               )}
             </section>
@@ -12858,6 +12847,17 @@ function App() {
 
           {turneraViewMode === 'stats' && hasPremiumTurneraAccess ? (
             <section className="panel turnera-stats-panel">
+              <h3 style={{ marginTop: 0 }}>Resumen financiero{isDentist ? ' odontológico' : ''}</h3>
+              <p className="flow-hint">{isDentist
+                ? 'Acumulado de las fichas odontológicas: presupuestos aceptados o realizados, cobros y deuda. No incluye propuestas sin aceptar ni intervenciones manuales del balance.'
+                : 'Acumulado de las intervenciones registradas en el balance.'} Los costos internos son importes registrados, no comprobantes de gastos pagados.</p>
+              <div className="analytics-summary-grid">
+                <article className="analytics-stat-card"><strong>{formatMoney(financialLedgerTotals.total)}</strong><span>{isDentist ? 'Presupuestos aceptados' : 'Importe registrado'}</span></article>
+                <article className="analytics-stat-card"><strong>{formatMoney(financialLedgerTotals.collected)}</strong><span>Dinero cobrado</span></article>
+                <article className="analytics-stat-card warn"><strong>{formatMoney(financialLedgerTotals.pending)}</strong><span>Dinero adeudado</span></article>
+                <article className="analytics-stat-card"><strong>{financialLedgerTotals.costedEntries ? formatMoney(financialLedgerTotals.internalCost) : 'Sin dato'}</strong><span>Costos internos registrados</span></article>
+              </div>
+              {financialLedgerTotals.costedEntries < financialLedgerEntries.length ? <p className="flow-hint">Costo disponible en {financialLedgerTotals.costedEntries} de {financialLedgerEntries.length} intervenciones; los importes sin dato no se consideran gastos cero.</p> : null}
               <h3 style={{ marginTop: 0 }}>📊 Pacientes atendidos por semana</h3>
               {attendanceWeeklyStats.length > 0 ? (
                 <div className="turnera-bar-chart">
@@ -13295,7 +13295,7 @@ function App() {
       ) : null}
 
       {isDentist && (workspaceLayer === 'patient-record' || workspaceLayer === 'clinical') ? (
-        selectedPatient ? <><DentalPatientChart key={selectedPatient.id} patient={selectedPatient} appointmentId={dentalAppointmentId}
+        selectedPatient ? <><DentalPatientChart key={selectedPatient.id} patient={selectedPatient} appointmentId={dentalAppointmentId} professional={{ fullName: profile.fullName, licenseNumber: profile.licenseNumber }}
           onSaved={handleDentalSaved} onDirtyChange={setDentalDirty} onSavingChange={setDentalSaving} onBack={() => {
             if (dentalSaving) { setAppNotice('Esperá a que termine de guardarse la ficha dental.'); return }
             if (dentalDirty && !window.confirm('Hay cambios sin guardar. ¿Volver a pacientes y descartarlos?')) return
