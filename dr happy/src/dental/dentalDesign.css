@@ -170,6 +170,8 @@ body.theme-night .dental-preview input, body.theme-night .dental-preview textare
   .dental-work-description { grid-column: 1 / -1; }
 }
 @media (max-width: 600px) {
+  .dental-flip { overflow: clip; overflow-clip-margin: 16px; }
+  .dental-desktop-print { display: none; }
   .dental-preview { padding: 12px 12px 28px; }
   .dental-page-header { align-items: flex-start; }
   .dental-page-header p { font-size: .8rem; }

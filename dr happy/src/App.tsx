@@ -9610,6 +9610,17 @@ function App() {
                 <strong>Atención médica</strong>
                 <small>Historias clínicas y consultas en un mismo espacio.</small>
               </article>
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--green">
+                <div className="auth-promo-tool-art auth-promo-tool-art--dental" aria-hidden="true">
+                  <svg className="auth-promo-dental-icon" viewBox="0 0 64 64" fill="none">
+                    <path d="M32 13C23 7 13 9 11 20c-2 10 4 17 6 28 1 8 5 10 8 2l4-12c1-4 5-4 6 0l4 12c3 8 7 6 8-2 2-11 8-18 6-28C51 9 41 7 32 13Z" fill="#fff" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
+                    <path d="M24 17c4 2 9 3 15 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  <span>EXCLUSIVA PARA ODONTÓLOGOS</span><strong>CADA PIEZA.<br />TODO REGISTRADO.</strong><small>Tu ficha dental, simple e interactiva</small>
+                </div>
+                <strong>Odontograma interactivo</strong>
+                <small>Registrá hallazgos por pieza y superficie. Tratamientos, presupuestos, costos y pagos conectados al balance. Adaptado al celular, con ficha completa en PDF a color.</small>
+              </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--amber">
                 <div className="auth-promo-tool-art auth-promo-tool-art--calendar" aria-hidden="true">
                   <span>AGENDA INTELIGENTE</span><strong>MENOS AUSENCIAS.<br />MÁS CONSULTAS.</strong><small>Recordatorios automáticos de turnos</small>

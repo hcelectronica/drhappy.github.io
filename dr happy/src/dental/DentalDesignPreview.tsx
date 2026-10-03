@@ -230,6 +230,7 @@ export default function DentalDesignPreview({ initialRecord, realPatientId, onSa
           <button type="button" aria-pressed={back} onClick={() => setBack(true)}>02 · Tratamientos y cuenta</button>
         </div>
         <div className="dental-toolbar-actions">
+          <button type="button" className="dental-desktop-print" onClick={print} disabled={saving}>Imprimir / PDF</button>
           <button type="button" disabled={!history.length || saving} onClick={() => {
             const previous = history[history.length - 1]
             if (previous) { setRecord(previous); setHistory((items) => items.slice(0, -1)); setDirty(true); setError(null); setNotice('Último cambio deshecho. Guardá el borrador para conservarlo.') }
