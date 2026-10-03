@@ -14,6 +14,7 @@ import { isSupabaseConfigured, supabase } from './supabaseClient'
 import { SubscriptionAccountModal } from './SubscriptionAccountModal'
 import { loadSubscriptionAccount } from './subscriptionAccountService'
 import { SubscriptionBenefits } from './SubscriptionBenefits'
+import { ServiceIllustration } from './ServiceIllustration'
 import { DentalPatientChart } from './dental/DentalPatientChart'
 import type { DentalSaveResult } from './dental/dentalService'
 import { PatientLedgerCards } from './PatientLedgerCards'
@@ -9598,6 +9599,7 @@ function App() {
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--green">
                 <div className="auth-promo-tool-art auth-promo-tool-art--emergency" aria-hidden="true">
+                  <ServiceIllustration service="emergency" />
                   <span>TRASLADOS Y GUARDIA</span><strong>ATENCIÓN<br />EN MOVIMIENTO</strong><small>Asistencia clínica cuando cada minuto cuenta</small>
                 </div>
                 <strong>Modo ambulancia</strong>
@@ -9605,6 +9607,7 @@ function App() {
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--blue">
                 <div className="auth-promo-tool-art auth-promo-tool-art--care" aria-hidden="true">
+                  <ServiceIllustration service="care" />
                   <span>CONSULTA</span><strong>ATENCIÓN<br />MÉDICA</strong><small>Historia clínica y seguimiento en contexto</small>
                 </div>
                 <strong>Atención médica</strong>
@@ -9623,6 +9626,7 @@ function App() {
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--amber">
                 <div className="auth-promo-tool-art auth-promo-tool-art--calendar" aria-hidden="true">
+                  <ServiceIllustration service="calendar" />
                   <span>AGENDA INTELIGENTE</span><strong>MENOS AUSENCIAS.<br />MÁS CONSULTAS.</strong><small>Recordatorios automáticos de turnos</small>
                 </div>
                 <strong>Turnera</strong>
@@ -9630,6 +9634,7 @@ function App() {
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--cyan">
                 <div className="auth-promo-tool-art auth-promo-tool-art--patients" aria-hidden="true">
+                  <ServiceIllustration service="patients" />
                   <span>HISTORIA CLÍNICA</span><strong>DIGITAL</strong><small>Asesorada con Sofía IA</small>
                 </div>
                 <strong>Historia clínica digital</strong>
@@ -9637,6 +9642,7 @@ function App() {
               </article>
               <article className="flyer-tool auth-promo-tool">
                 <div className="auth-promo-tool-art auth-promo-tool-art--certificates" aria-hidden="true">
+                  <ServiceIllustration service="certificates" />
                   <span>DOCUMENTOS CLÍNICOS</span><strong>CERTIFICADOS<br />EN MINUTOS</strong><small>Con tu firma y código QR</small>
                 </div>
                 <strong>Emití certificados médicos</strong>
@@ -9644,6 +9650,7 @@ function App() {
               </article>
               <article className="flyer-tool auth-promo-tool">
                 <div className="auth-promo-tool-art auth-promo-tool-art--invite" aria-hidden="true">
+                  <ServiceIllustration service="invite" />
                   <span>TUS PACIENTES, MÁS CERCA</span><strong>INVITÁ.<br />ELLOS SE REGISTRAN.</strong><small>Por link o código QR</small>
                 </div>
                 <strong>Invitá pacientes</strong>
@@ -9651,6 +9658,7 @@ function App() {
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--violet">
                 <div className="auth-promo-tool-art auth-promo-tool-art--protocols" aria-hidden="true">
+                  <ServiceIllustration service="protocols" />
                   <span>RECURSOS CLÍNICOS</span><strong>CRITERIO<br />A MANO</strong><small>Protocolos, guías y vademécum</small>
                 </div>
                 <strong>Protocolos y vademécum</strong>
@@ -9658,6 +9666,7 @@ function App() {
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--red">
                 <div className="auth-promo-tool-art auth-promo-tool-art--ledger" aria-hidden="true">
+                  <ServiceIllustration service="ledger" />
                   <span>GESTIÓN SIMPLE</span><strong>COBROS<br />MÁS CLAROS</strong><small>Pagos, saldos y seguimiento</small>
                 </div>
                 <strong>Balance de pagos</strong>
