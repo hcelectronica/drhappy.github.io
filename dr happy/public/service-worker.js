@@ -1,4 +1,4 @@
-const CACHE_NAME = 'drhappy-shell-v5'
+const CACHE_NAME = 'drhappy-shell-v6'
 
 self.addEventListener('install', (event) => {
   self.skipWaiting()
@@ -46,8 +46,8 @@ self.addEventListener('push', (event) => {
   const tag = (payload && payload.tag) || `drhappy-alert-${Date.now()}`
 
   const baseUrl = self.location.origin || 'https://drhappy.com.ar'
-  const iconUrl = `${baseUrl}/icon-192.png`
-  const badgeUrl = `${baseUrl}/icon-192.png`
+  const iconUrl = `${baseUrl}/icon-192.png?v=drh-01`
+  const badgeUrl = `${baseUrl}/icon-192.png?v=drh-01`
 
   // Opciones estándar compatibles con Android, iOS PWA, macOS y Windows
   const notificationOptions = {
@@ -101,4 +101,3 @@ self.addEventListener('notificationclick', (event) => {
       }),
   )
 })
-

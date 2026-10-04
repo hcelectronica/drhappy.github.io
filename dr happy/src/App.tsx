@@ -8,6 +8,7 @@ import type {
 } from 'react'
 import JsBarcode from 'jsbarcode'
 import './App.css'
+import { BrandMark } from './BrandMark'
 import { useErrorNotification } from './useErrorNotification'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
 import { SubscriptionAccountModal } from './SubscriptionAccountModal'
@@ -10112,20 +10113,10 @@ function App() {
         <section className="auth-card">
           <div className="brand-block">
             <span className="brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 64 64" role="presentation">
-                <rect x="4" y="4" width="56" height="56" rx="16" fill="#1d4ed8" />
-                <circle cx="32" cy="32" r="19" fill="#93c5fd" opacity="0.35" />
-                <path d="M32 13v38" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" />
-                <path d="M24 28h16" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" />
-                <path d="M22 18c4 4 7 6 10 6" stroke="#dbeafe" strokeWidth="2.5" strokeLinecap="round" />
-                <path d="M42 18c-4 4-7 6-10 6" stroke="#dbeafe" strokeWidth="2.5" strokeLinecap="round" />
-                <circle cx="32" cy="50" r="4" fill="#dbeafe" />
-                <circle cx="15" cy="48" r="2" fill="#bfdbfe" />
-                <circle cx="49" cy="16" r="2" fill="#bfdbfe" />
-              </svg>
+              <BrandMark />
             </span>
             <div className="brand-copy">
-              <h1>Dr Happy 😊</h1>
+              <h1>Dr Happy</h1>
               <p className="slogan">Basta de Papeleo, Hagamos medicina.</p>
               <p className="auth-card-subtitle" style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280', fontWeight: 500 }}>
                 Herramientas para profesionales de la salud e instituciones
@@ -10879,20 +10870,10 @@ function App() {
       <header className="topbar">
         <div className="brand-block compact">
           <span className="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 64 64" role="presentation">
-              <rect x="4" y="4" width="56" height="56" rx="16" fill="#1d4ed8" />
-              <circle cx="32" cy="32" r="19" fill="#93c5fd" opacity="0.35" />
-              <path d="M32 13v38" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" />
-              <path d="M24 28h16" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" />
-              <path d="M22 18c4 4 7 6 10 6" stroke="#dbeafe" strokeWidth="2.5" strokeLinecap="round" />
-              <path d="M42 18c-4 4-7 6-10 6" stroke="#dbeafe" strokeWidth="2.5" strokeLinecap="round" />
-              <circle cx="32" cy="50" r="4" fill="#dbeafe" />
-              <circle cx="15" cy="48" r="2" fill="#bfdbfe" />
-              <circle cx="49" cy="16" r="2" fill="#bfdbfe" />
-            </svg>
+            <BrandMark />
           </span>
           <div className="brand-copy">
-            <h1>Dr Happy 😊</h1>
+            <h1>Dr Happy</h1>
             <p className="slogan">Basta de Papeleo, Hagamos medicina.</p>
             <p className="professional">Profesional: {profile.fullName}</p>
             {googleIdentity ? (

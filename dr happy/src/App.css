@@ -913,9 +913,9 @@ body.theme-night .auth-plan--annual { border-color: #3774bf; background: #17447f
   border-radius: 16px;
   display: grid;
   place-items: center;
-  background: radial-gradient(circle at top left, #d9e5f5, #b8c9df);
+  background: #17324d;
   box-shadow: 0 8px 16px rgba(17, 45, 78, 0.25);
-  border: 1px solid #9fb5d0;
+  border: 1px solid #17324d;
 }
 
 .brand-mark svg {

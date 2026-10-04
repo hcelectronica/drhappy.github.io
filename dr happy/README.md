@@ -8,6 +8,12 @@ Web app base en React + TypeScript para:
 - Importación masiva de padrón desde Excel.
 - Comunidad médica con mensajería privada asíncrona.
 
+## Identidad visual
+
+El modelo 01 (Dr. H, caduceo integrado en la H y sonrisa) es la identidad principal. `public/brand-mark.svg` es el original vectorial; `BrandMark` muestra su copia `public/favicon.svg` en el acceso, la cabecera y la bienvenida. Los iconos PNG de 192/512 px, el icono maskable y el Apple touch icon usan el mismo diseño. La variante maskable deja el monograma dentro de la zona segura central para recortes circulares.
+
+Las referencias de instalación llevan la versión `drh-01` para renovar los iconos sin cambiar el nombre, el inicio ni el ámbito de la PWA. El navegador puede actualizar una instalación existente, pero no se garantiza una renovación inmediata del icono del sistema; si permanece el anterior, volver a añadir el acceso o reinstalar la PWA. Esto no borra la cuenta ni sus datos en la nube. No borrar los datos del sitio.
+
 ## Carga del inicio público
 
 El inicio muestra la oferta y el formulario de acceso sin la espera de la bienvenida animada. La restauración de una sesión guardada sigue validando la identidad antes de mostrar el espacio clínico. Diagnósticos, vademécum y noticias se cargan solo con un profesional autenticado; el catálogo CIE-10 empaquetado se importa bajo demanda, sin consultar un archivo público inexistente. Los lectores DOCX, PDF y de códigos se importan al usar esas herramientas. Estos cambios reducen la carga inicial, pero no garantizan la aprobación de Google Ads.
