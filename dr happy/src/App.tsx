@@ -10269,11 +10269,12 @@ function App() {
                 </div>
               </label>
               {appNotice ? <p className="notice">{appNotice}</p> : null}
-              <button type="submit">Iniciar sesión</button>
+              <button type="submit" className="auth-signin-btn">Iniciar sesión</button>
               {isSupabaseConfigured ? (
                 <button
                   type="button"
                   className="google-login-btn"
+                  aria-label="Iniciar sesión con Google"
                   onClick={() => void handleGoogleLogin()}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
@@ -10287,7 +10288,8 @@ function App() {
                     <path fill="#4CAF50" d="M24 42.5c5.3 0 9.9-1.8 13.2-4.9l-6.1-5.2c-2 1.4-4.5 2.1-7.1 2.1-5.4 0-9.9-3.1-11.4-7.6l-6.6 5.1C9.5 38 16.2 42.5 24 42.5z" />
                     <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.7 2-1.9 3.6-3.4 4.9l6.1 5.2C41 34.9 43 29.6 43 23.5c0-1-.1-2-.4-3z" />
                   </svg>
-                  Iniciar sesión con Google
+                  <span className="google-login-label">Iniciar sesión con Google</span>
+                  <span className="google-login-label-mobile">Google</span>
                 </button>
               ) : null}
               <button

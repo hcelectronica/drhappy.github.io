@@ -938,6 +938,7 @@ body.theme-night .auth-plan--annual { border-color: #3774bf; background: #17447f
 .public-brand-summary { margin: 0; color: #526575; font-size: 15px; }
 .auth-card .brand-copy h2 { margin: 0; font-size: 1.5rem; letter-spacing: -.02em; }
 .auth-secondary-options summary { cursor: pointer; font-size: .85rem; text-align: center; padding: 8px; }
+.google-login-label-mobile { display: none; }
 .install-manual-guide { text-align: left; line-height: 1.6; }
 .install-manual-guide ol { padding-left: 24px; }
 .install-manual-guide li { margin-bottom: 8px; }
@@ -5589,9 +5590,14 @@ body.theme-night .turnera-card-actions {
   .auth-card { width: 100%; padding: 12px; }
   .auth-card .brand-block { display: none; }
   .auth-login-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
-  .auth-login-form > label { grid-column: auto; }
+  .auth-login-form > label { grid-column: 1 / -1; }
   .auth-login-form input { min-height: 44px; padding: 8px; font-size: 16px; }
   .auth-login-form > button { min-height: 44px; }
+  .auth-login-form > .auth-signin-btn,
+  .auth-login-form > .google-login-btn { grid-column: auto; padding: 6px 10px !important; font-size: .85rem !important; }
+  .auth-login-form > .auth-signin-btn:not(:has(+ .google-login-btn)) { grid-column: 1 / -1; }
+  .google-login-label { display: none; }
+  .google-login-label-mobile { display: inline; }
   .auth-login-form > .text-button { min-height: 32px; }
   .auth-secondary-options { grid-column: 1 / -1; }
   .auth-secondary-options summary { min-height: 36px; box-sizing: border-box; }
