@@ -18,6 +18,8 @@ El inicio público ofrece «Instalar app» en celulares sin exigir una sesión. 
 
 ## Carga del inicio público
 
+El acceso comienza plegado en «Iniciar sesión» y despliega el formulario al tocarlo. Recuperación y confirmación de email se muestran automáticamente cuando corresponden. «Crear usuario» abre todos los campos del registro en dos columnas, sin scroll interno del formulario; el fondo del modal admite desplazamiento únicamente si la pantalla o el teclado reducen el espacio disponible. El envío sigue usando el circuito de confirmación por código de email.
+
 La cabecera pública muestra el logo, el nombre y el eslogan. En móvil se usa una composición horizontal compacta; la instalación se ofrece en una tarjeta fija superior, cerrable durante la visita, sin un modal automático antes del login. «Más opciones» conserva instalación, compartir y soporte. El login móvil coloca usuario y contraseña uno debajo del otro, con «Iniciar sesión» y «Google» juntos en una fila de botones compactos (área táctil mínima de 44 px), y evita repetir la marca de la cabecera. Google conserva el nombre accesible «Iniciar sesión con Google». Los formularios de registro, recuperación y confirmación de email mantienen sus funciones.
 
 El inicio muestra la oferta y el formulario de acceso sin la espera de la bienvenida animada. La restauración de una sesión guardada sigue validando la identidad antes de mostrar el espacio clínico. Diagnósticos, vademécum y noticias se cargan solo con un profesional autenticado; el catálogo CIE-10 empaquetado se importa bajo demanda, sin consultar un archivo público inexistente. Los lectores DOCX, PDF y de códigos se importan al usar esas herramientas. Estos cambios reducen la carga inicial, pero no garantizan la aprobación de Google Ads.

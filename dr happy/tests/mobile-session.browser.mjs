@@ -105,6 +105,9 @@ try {
         const prof=account(id);
         window.__calls.push({slug:url.split('/').pop(),action:body.action,id,token});
         let data={success:true};
+        if(url.endsWith('/auth-email-verification')&&body.action==='register'){
+          data={success:true,professionalId:'fixture-new',resumeToken:'fixture-resume',email:body.email,emailSent:true};
+        }
         if(url.endsWith('/auth-professional')){
           if(body.action==='login'){
             if(window.__delayLogin)await new Promise(resolve=>{window.__finishLogin=resolve});
@@ -160,6 +163,7 @@ try {
   assert.equal(await evaluate(`localStorage.getItem('drhappy-active-user')`), null, 'Pending Google logout cannot reopen the app')
   await evaluate(`window.__finishGoogleLogout()`)
   const login = async (id) => {
+    if (await evaluate(`document.querySelector('#auth-login-panel')?.hidden`)) await click('Iniciar sesión')
     await evaluate(`(()=>{for(const [name,value] of [['username',${JSON.stringify(id)}],['password','fixture-password']]){
       const n=document.querySelector('input[name="'+name+'"]');
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(n,value);
@@ -200,6 +204,40 @@ try {
   assert(await evaluate(`!window.__calls.some(call=>call.slug==='fetch-medical-news')`), 'Anonymous entry does not request medical news')
   console.log('Mobile sessions passed: restore without sessionStorage, resume, reload, account switch with late workspace, concurrent logins, logout and no automatic reentry.')
   console.log('Public entry passed: no splash, no anonymous clinical downloads, authenticated catalog loading preserved.')
+  assert(await evaluate(`document.querySelector('#auth-login-panel').hidden`), 'Public login starts collapsed')
+  await click('Iniciar sesión')
+  assert(await evaluate(`!document.querySelector('#auth-login-panel').hidden`))
+  await click('Cerrar acceso')
+  assert(await evaluate(`document.querySelector('#auth-login-panel').hidden`))
+  await click('Iniciar sesión')
+  await click('Crear usuario')
+  for (const [width, height] of [[390, 844], [320, 568]]) {
+    await command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true })
+    const layout = await evaluate(`(()=>{const e=document.querySelector('.register-modal-card'),f=e.querySelector('form'),r=e.getBoundingClientRect();return{top:r.top,bottom:r.bottom,viewport:innerHeight,scroll:f.scrollHeight,client:f.clientHeight}})()`)
+    assert(layout.top >= 0 && layout.bottom <= layout.viewport, JSON.stringify(layout))
+    assert(layout.scroll <= layout.client + 1, 'Registration has no inner scroll')
+  }
+  await evaluate(`(()=>{for(const [name,value] of Object.entries({firstName:'Ana',lastName:'Fixture',dni:'30111222',licenseNumber:'TEST',email:'new@example.invalid',username:'new@example.invalid',password:'fixture-only'})){
+    const n=document.querySelector('.register-form input[name="'+name+'"]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(n,value);n.dispatchEvent(new Event('input',{bubbles:true}));
+  }const s=document.querySelector('.register-form select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,'Médico');s.dispatchEvent(new Event('change',{bubbles:true}));})()`)
+  await sleep(100)
+  const filledLayout = await evaluate(`(()=>{const e=document.querySelector('.register-modal-card'),f=e.querySelector('form'),r=e.getBoundingClientRect();return{top:r.top,bottom:r.bottom,viewport:innerHeight,scroll:f.scrollHeight,client:f.clientHeight,fields:f.querySelectorAll('input,select').length}})()`)
+  assert.equal(filledLayout.fields, 8)
+  assert(filledLayout.top >= 0 && filledLayout.bottom <= filledLayout.viewport, JSON.stringify(filledLayout))
+  assert(filledLayout.scroll <= filledLayout.client + 1)
+  await click('Guardar usuario')
+  await wait(`document.body.innerText.includes('Confirmá tu email')&&!document.querySelector('.register-modal-card')`)
+  assert(await evaluate(`!document.querySelector('#auth-login-panel').hidden`), 'Verification remains visible after registration')
+  await click('Volver a iniciar sesión')
+  assert(await evaluate(`!document.querySelector('#auth-login-panel').hidden`))
+  await click('¿Olvidaste tu contraseña?')
+  await wait(`document.body.innerText.includes('Recuperar contraseña')`)
+  await click('Volver a iniciar sesión')
+  assert(await evaluate(`!document.querySelector('#auth-login-panel').hidden`))
+  await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  await evaluate(`localStorage.removeItem('drhappy-pending-email-verification')`)
+  console.log('Collapsed login and full registration passed: two screen sizes, all fields, mocked registration to email-code confirmation.')
   const reloadPublic = async () => {
     const instance = await evaluate('window.__instance')
     await command('Page.reload')

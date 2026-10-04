@@ -939,6 +939,9 @@ body.theme-night .auth-plan--annual { border-color: #3774bf; background: #17447f
 .auth-card .brand-copy h2 { margin: 0; font-size: 1.5rem; letter-spacing: -.02em; }
 .auth-secondary-options summary { cursor: pointer; font-size: .85rem; text-align: center; padding: 8px; }
 .google-login-label-mobile { display: none; }
+.auth-login-toggle { width: 100%; min-height: 44px; }
+#auth-login-panel:not([hidden]) { margin-top: 10px; }
+#auth-login-panel[hidden] { display: none; }
 .install-manual-guide { text-align: left; line-height: 1.6; }
 .install-manual-guide ol { padding-left: 24px; }
 .install-manual-guide li { margin-bottom: 8px; }
@@ -3864,17 +3867,27 @@ body.theme-night .appt-patient-search > label {
   width: min(560px, 100%);
   max-width: 560px;
   margin: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .register-modal-card .register-form {
   min-height: 0;
-  overflow-y: auto;
-  padding: 2px 4px 4px 0;
+  overflow: visible;
+  padding: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
 }
+.register-modal-card .register-form > button { grid-column: 1 / -1; min-height: 44px; }
+.register-modal-card .register-form label { min-width: 0; gap: 4px; font-size: 13px; }
+.register-modal-card .register-form input,
+.register-modal-card .register-form select { width: 100%; min-width: 0; box-sizing: border-box; min-height: 44px; padding: 8px; font-size: 16px; }
+.register-modal-card .register-form small { font-size: 11px; line-height: 1.3; }
+.register-modal-overlay { overflow-y: auto; }
 
 @media (max-width: 600px) {
   .drhappy-modal-overlay { padding: 8px; }
-  .register-modal-card { max-height: calc(100dvh - 16px); border-radius: 14px; padding: 18px; }
+  .register-modal-card { max-height: none; border-radius: 14px; padding: 14px; gap: 12px; }
 }
 
 .drhappy-modal-header {
@@ -5589,7 +5602,7 @@ body.theme-night .turnera-card-actions {
   .auth-layout:not(:has(.public-install-banner)) { padding-top: 18px; }
   .auth-card { width: 100%; padding: 12px; }
   .auth-card .brand-block { display: none; }
-  .auth-login-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
+  #auth-login-panel .auth-login-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
   .auth-login-form > label { grid-column: 1 / -1; }
   .auth-login-form input { min-height: 44px; padding: 8px; font-size: 16px; }
   .auth-login-form > button { min-height: 44px; }

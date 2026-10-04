@@ -7,6 +7,7 @@ import type {
   ReactNode,
 } from 'react'
 import JsBarcode from 'jsbarcode'
+import { createPortal } from 'react-dom'
 import './App.css'
 import { BrandMark } from './BrandMark'
 import { useErrorNotification } from './useErrorNotification'
@@ -2508,6 +2509,7 @@ function App() {
     () => localStorage.getItem(ONBOARDING_DISMISSED_KEY) === '1',
   )
   const [registerOpen, setRegisterOpen] = useState(false)
+  const [loginExpanded, setLoginExpanded] = useState(false)
   const [registerDraft, setRegisterDraft] = useState<RegisterDraft>(emptyRegisterDraft)
   const [pendingEmailVerification, setPendingEmailVerification] = useState<PendingEmailVerification | null>(() => {
     if (!EMAIL_VERIFICATION_ENABLED) return null
@@ -6148,6 +6150,7 @@ function App() {
       sessionStorage.removeItem(EMAIL_VERIFICATION_PENDING_KEY)
       setPendingEmailVerification(null)
       setShowEmailVerification(false)
+      setLoginExpanded(true)
       const user = mapAuthProfessionalPublic(result.professional)
       try {
         sessionGenerationRef.current += 1
@@ -10194,6 +10197,16 @@ function App() {
               </p>
             </div>
           </div>
+          {!showEmailVerification && !recoveryOpen ? <button
+            type="button"
+            className="auth-login-toggle"
+            aria-expanded={loginExpanded || showEmailVerification || recoveryOpen}
+            aria-controls="auth-login-panel"
+            onClick={() => setLoginExpanded((current) => !current)}
+          >
+            {loginExpanded ? 'Cerrar acceso' : 'Iniciar sesión'}
+          </button> : null}
+          <div id="auth-login-panel" hidden={!loginExpanded && !showEmailVerification && !recoveryOpen}>
           {showEmailVerification && pendingEmailVerification ? (
             <section className="recovery-form">
               <h2>Confirmá tu email</h2>
@@ -10400,14 +10413,15 @@ function App() {
                 </form>
               )}
               {appNotice ? <p className="notice">{appNotice}</p> : null}
-              <button type="button" className="ghost" onClick={resetRecoveryForm}>
+              <button type="button" className="ghost" onClick={() => { resetRecoveryForm(); setLoginExpanded(true) }}>
                 Volver a iniciar sesión
               </button>
             </section>
           )}
-          {registerOpen ? (
+          </div>
+          {registerOpen ? createPortal(
             <div
-              className="drhappy-modal-overlay"
+              className="drhappy-modal-overlay register-modal-overlay"
               onClick={() => {
                 setRegisterOpen(false)
                 setAuthError(null)
@@ -10560,7 +10574,8 @@ function App() {
                   <button type="submit">Guardar usuario</button>
                 </form>
               </div>
-            </div>
+            </div>,
+            document.body,
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
