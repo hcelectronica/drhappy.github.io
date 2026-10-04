@@ -5593,3 +5593,99 @@ body.theme-night .turnera-card-actions {
     contain-intrinsic-size: auto 180px;
   }
 }
+
+/* Ficha clínica en papel digitalizada */
+.paper-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.paper-record-actions small {
+  flex: 1 1 260px;
+  color: #64748b;
+}
+
+.paper-record-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.paper-record-item {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.paper-record-thumb {
+  width: 96px;
+  height: 120px;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  color: #475569;
+  font-weight: 700;
+  cursor: zoom-in;
+}
+
+.paper-record-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.paper-record-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.paper-record-body strong {
+  overflow-wrap: anywhere;
+}
+
+.paper-record-meta {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.paper-record-review textarea {
+  width: 100%;
+  min-height: 180px;
+  box-sizing: border-box;
+}
+
+.paper-record-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.paper-record-transcription p {
+  white-space: pre-wrap;
+  margin: 8px 0 0;
+  max-height: 320px;
+  overflow: auto;
+}
+
+@media (max-width: 560px) {
+  .paper-record-item {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .paper-record-thumb {
+    width: 72px;
+    height: 92px;
+  }
+}

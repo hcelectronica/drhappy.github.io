@@ -4,6 +4,7 @@ import type {
   CSSProperties,
   DragEvent as ReactDragEvent,
   FormEvent,
+  ReactNode,
 } from 'react'
 import JsBarcode from 'jsbarcode'
 import './App.css'
@@ -57,7 +58,7 @@ import {
 import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBookingSettings } from './publicBookingService'
 import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
-import { askSofia } from './aiAssistantService'
+import { askSofia, transcribePaperRecord } from './aiAssistantService'
 import { loadWorkspaceData, saveWorkspaceData, saveTreatmentLedgerData, updatePatientArchive } from './workspaceService'
 import { readPatientArchives } from './patientArchive'
 import type { ArchivedPatient } from './patientArchive'
@@ -278,6 +279,11 @@ interface StoredFile {
   size: number
   dataUrl: string
   uploadedAt: string
+  // Ficha clínica en papel digitalizada y, si fue legible, su transcripción revisada.
+  category?: 'paper-record'
+  transcription?: string
+  transcriptionStatus?: 'transcribed' | 'illegible'
+  transcribedAt?: string
 }
 
 interface ProfessionalProfile {
@@ -918,6 +924,10 @@ function normalizeStoredFile(raw: unknown): StoredFile | null {
     size: candidate.size,
     dataUrl: candidate.dataUrl,
     uploadedAt: candidate.uploadedAt,
+    ...(candidate.category === 'paper-record' ? { category: 'paper-record' as const } : {}),
+    ...(typeof candidate.transcription === 'string' && candidate.transcription.trim() ? { transcription: candidate.transcription } : {}),
+    ...(candidate.transcriptionStatus === 'transcribed' || candidate.transcriptionStatus === 'illegible' ? { transcriptionStatus: candidate.transcriptionStatus } : {}),
+    ...(typeof candidate.transcribedAt === 'string' ? { transcribedAt: candidate.transcribedAt } : {}),
   }
 }
 
@@ -1555,6 +1565,55 @@ async function fileToStoredFile(file: File): Promise<StoredFile> {
     size: file.size,
     dataUrl,
     uploadedAt: new Date().toISOString(),
+  }
+}
+
+const PAPER_RECORD_MAX_SIDE = 1800
+const PAPER_RECORD_MAX_PDF_BYTES = 6 * 1024 * 1024
+
+/** Digitaliza una ficha en papel: las fotos se reducen a JPEG para no saturar la historia. */
+async function paperRecordFileToStoredFile(file: File, index: number): Promise<StoredFile> {
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+  const now = new Date()
+  const datePart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const suffix = index > 0 ? `-${index + 1}` : ''
+  if (isPdf) {
+    if (file.size > PAPER_RECORD_MAX_PDF_BYTES) throw new Error(`${file.name} supera 6 MB. Subilo como foto o reducí el PDF.`)
+    const stored = await fileToStoredFile(file)
+    return { ...stored, name: `Ficha-papel-${datePart}${suffix}.pdf`, type: 'application/pdf', category: 'paper-record' }
+  }
+  if (!file.type.startsWith('image/') && !/\.(png|jpe?g|webp|heic|heif|bmp|gif)$/i.test(file.name)) {
+    throw new Error(`${file.name} no es una foto ni un PDF.`)
+  }
+  const objectUrl = URL.createObjectURL(file)
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image()
+      element.onload = () => resolve(element)
+      element.onerror = () => reject(new Error(`No se pudo abrir la foto ${file.name}. Probá con JPG o PNG.`))
+      element.src = objectUrl
+    })
+    const scale = Math.min(1, PAPER_RECORD_MAX_SIDE / Math.max(image.naturalWidth, image.naturalHeight))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('El navegador no pudo procesar la foto.')
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(image, 0, 0, canvas.width, canvas.height)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
+    return {
+      id: crypto.randomUUID(),
+      name: `Ficha-papel-${datePart}${suffix}.jpg`,
+      type: 'image/jpeg',
+      size: Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75),
+      dataUrl,
+      uploadedAt: new Date().toISOString(),
+      category: 'paper-record',
+    }
+  } finally {
+    URL.revokeObjectURL(objectUrl)
   }
 }
 
@@ -2648,6 +2707,10 @@ function App() {
 
   const [patientDraft, setPatientDraft] = useState<PatientDraft>(emptyPatientDraft)
   const [patientFormUnlocked, setPatientFormUnlocked] = useState(true)
+  const [paperRecordUploading, setPaperRecordUploading] = useState(false)
+  const [paperRecordBusyId, setPaperRecordBusyId] = useState<string | null>(null)
+  const [paperTranscriptionDrafts, setPaperTranscriptionDrafts] = useState<Record<string, { text: string; truncated?: boolean }>>({})
+  const [paperRecordIllegibleIds, setPaperRecordIllegibleIds] = useState<string[]>([])
   const [consultationDraft, setConsultationDraft] =
     useState<ConsultationDraft>(emptyConsultationDraft)
   const [clinicalSummaryBusy, setClinicalSummaryBusy] = useState(false)
@@ -8575,6 +8638,214 @@ function App() {
     setAppError(null)
   }
 
+  const canManagePaperRecords = !selectedPatient || canEditSelectedPatientRecord
+  const paperRecords = patientDraft.documents.filter((document) => document.category === 'paper-record')
+
+  /** Ficha ya guardada y sin edición abierta: se guarda al instante. Si no, viaja con "Guardar ficha". */
+  function applyPatientDocuments(nextDocuments: StoredFile[], message: string): void {
+    if (selectedPatient && canEditSelectedPatientRecord && !patientFormUnlocked) {
+      try {
+        persistPatient({ ...selectedPatient, documents: nextDocuments, updatedAt: new Date().toISOString() })
+      } catch (error) {
+        console.error('No se pudo guardar la ficha en papel:', error)
+        setAppError('No se pudo guardar la ficha en papel en este navegador. Liberá espacio o subí una foto más liviana.')
+        return
+      }
+      setPatientDraft((current) => ({ ...current, documents: nextDocuments }))
+      setAppNotice(`${message} Ya quedó guardada en la historia clínica.`)
+      return
+    }
+    setPatientDraft((current) => ({ ...current, documents: nextDocuments }))
+    setAppNotice(`${message} Se guardará en la historia clínica al tocar "Guardar ficha".`)
+  }
+
+  async function handlePaperRecordUpload(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (!files.length || paperRecordUploading) return
+    if (!canManagePaperRecords) {
+      setAppError('Solo quien creó la ficha puede agregar fichas en papel.')
+      return
+    }
+    setAppError(null)
+    setPaperRecordUploading(true)
+    try {
+      const startIndex = paperRecords.length
+      const stored: StoredFile[] = []
+      for (const [index, file] of files.entries()) {
+        stored.push(await paperRecordFileToStoredFile(file, startIndex + index))
+      }
+      applyPatientDocuments(
+        [...patientDraft.documents, ...stored],
+        stored.length === 1 ? 'Ficha en papel agregada.' : `${stored.length} fichas en papel agregadas.`,
+      )
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : 'No se pudo cargar la ficha en papel.')
+    } finally {
+      setPaperRecordUploading(false)
+    }
+  }
+
+  async function handleTranscribePaperRecord(document: StoredFile): Promise<void> {
+    if (paperRecordBusyId) return
+    const [, data] = document.dataUrl.split(',', 2)
+    if (!data) {
+      setAppError('La ficha en papel no tiene una imagen válida para transcribir.')
+      return
+    }
+    const block: AssistantContentBlock = document.type === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
+      : { type: 'image', source: { type: 'base64', media_type: /^image\/(jpeg|png|webp|gif)$/.test(document.type) ? document.type : 'image/jpeg', data } }
+    setAppError(null)
+    setPaperRecordBusyId(document.id)
+    setPaperRecordIllegibleIds((current) => current.filter((id) => id !== document.id))
+    try {
+      const result = await transcribePaperRecord({ block, professionalName: profile?.fullName || activeUser?.fullName })
+      if (!result.success) {
+        setAppError(`Sofía no pudo transcribir la ficha: ${result.message || 'intentá nuevamente.'}`)
+        return
+      }
+      if (result.illegible || !result.transcription) {
+        setPaperRecordIllegibleIds((current) => [...current, document.id])
+        setAppNotice('Sofía no pudo leer la ficha con claridad. Queda guardada como foto en la historia clínica.')
+        return
+      }
+      const transcription = result.transcription
+      setPaperTranscriptionDrafts((current) => ({ ...current, [document.id]: { text: transcription, truncated: result.truncated } }))
+      setAppNotice('Sofía transcribió la ficha. Revisala, corregí lo necesario y tocá "Guardar transcripción".')
+    } finally {
+      setPaperRecordBusyId(null)
+    }
+  }
+
+  function discardPaperTranscriptionDraft(documentId: string): void {
+    setPaperTranscriptionDrafts((current) => {
+      const next = { ...current }
+      delete next[documentId]
+      return next
+    })
+  }
+
+  function handleSavePaperTranscription(documentId: string): void {
+    const text = paperTranscriptionDrafts[documentId]?.text.trim()
+    if (!text) {
+      setAppError('La transcripción está vacía. Escribila o descartala.')
+      return
+    }
+    const now = new Date().toISOString()
+    applyPatientDocuments(
+      patientDraft.documents.map((document) => document.id === documentId
+        ? { ...document, transcription: text, transcriptionStatus: 'transcribed' as const, transcribedAt: now }
+        : document),
+      'Transcripción agregada.',
+    )
+    discardPaperTranscriptionDraft(documentId)
+  }
+
+  function handleRemovePaperRecord(document: StoredFile): void {
+    if (!window.confirm(`¿Quitar ${document.name} de la historia clínica?`)) return
+    discardPaperTranscriptionDraft(document.id)
+    applyPatientDocuments(patientDraft.documents.filter((item) => item.id !== document.id), 'Ficha en papel quitada.')
+  }
+
+  function handleOpenPaperRecord(document: StoredFile): void {
+    const [header, data] = document.dataUrl.split(',', 2)
+    if (!data) return
+    const binary = atob(data)
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+    const mimeType = /^data:([^;]+)/.exec(header)?.[1] || document.type || 'application/octet-stream'
+    const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }))
+    const opened = window.open(url, '_blank')
+    if (!opened) setAppError('El navegador bloqueó la ventana. Permití ventanas emergentes para ver la ficha.')
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
+  function renderPaperRecords(editable: boolean): ReactNode {
+    if (!editable && paperRecords.length === 0) return null
+    return (
+      <section className="patient-form-block paper-record-block">
+        <h4 className="block-title">📄 Ficha en papel</h4>
+        {editable ? (
+          <div className="paper-record-actions">
+            <label className={`file-picker-button${paperRecordUploading ? ' disabled' : ''}`} htmlFor="paper-record-upload">
+              {paperRecordUploading ? 'Cargando...' : '📷 Subir ficha papel'}
+            </label>
+            <input
+              id="paper-record-upload"
+              className="file-input-hidden"
+              type="file"
+              accept="image/*,application/pdf"
+              multiple
+              disabled={paperRecordUploading}
+              onChange={(event) => void handlePaperRecordUpload(event)}
+            />
+            <small>Sacá una foto o subí un PDF de la historia en papel. Si es legible, Sofía la transcribe; si no, queda guardada como foto.</small>
+          </div>
+        ) : null}
+        {paperRecords.length === 0 ? null : (
+          <ul className="paper-record-list">
+            {paperRecords.map((document) => {
+              const draft = paperTranscriptionDrafts[document.id]
+              const busy = paperRecordBusyId === document.id
+              return (
+                <li key={document.id} className="paper-record-item">
+                  <button type="button" className="paper-record-thumb" onClick={() => handleOpenPaperRecord(document)} title="Ver ficha completa">
+                    {document.type.startsWith('image/') ? <img src={document.dataUrl} alt={document.name} /> : <span>PDF</span>}
+                  </button>
+                  <div className="paper-record-body">
+                    <strong>{document.name}</strong>
+                    <span className="paper-record-meta">
+                      Cargada el {formatDate(document.uploadedAt)}
+                      {document.transcriptionStatus === 'transcribed' ? ' · Transcripta' : ' · Guardada como foto'}
+                    </span>
+                    {draft ? (
+                      <div className="paper-record-review">
+                        {draft.truncated ? <p className="access-note">La ficha es extensa y la transcripción puede estar incompleta. Revisá el final.</p> : null}
+                        <textarea
+                          value={draft.text}
+                          rows={10}
+                          onChange={(event) => {
+                            const text = event.target.value
+                            setPaperTranscriptionDrafts((current) => ({ ...current, [document.id]: { ...current[document.id], text } }))
+                          }}
+                        />
+                        <div className="paper-record-buttons">
+                          <button type="button" onClick={() => handleSavePaperTranscription(document.id)}>Guardar transcripción</button>
+                          <button type="button" className="ghost" onClick={() => discardPaperTranscriptionDraft(document.id)}>Descartar</button>
+                        </div>
+                      </div>
+                    ) : document.transcription ? (
+                      <details className="paper-record-transcription">
+                        <summary>Ver transcripción</summary>
+                        <p>{document.transcription}</p>
+                      </details>
+                    ) : paperRecordIllegibleIds.includes(document.id) ? (
+                      <p className="access-note">Sofía no pudo leerla con claridad: queda guardada como foto.</p>
+                    ) : null}
+                    {editable && !draft ? (
+                      <div className="paper-record-buttons">
+                        <button type="button" className="ghost compact" disabled={Boolean(paperRecordBusyId)} onClick={() => void handleTranscribePaperRecord(document)}>
+                          {busy ? 'Sofía está leyendo...' : document.transcription ? '✨ Volver a transcribir' : '✨ Transcribir con Sofía'}
+                        </button>
+                        {document.transcription ? (
+                          <button type="button" className="ghost compact" onClick={() => setPaperTranscriptionDrafts((current) => ({ ...current, [document.id]: { text: document.transcription || '' } }))}>
+                            Editar transcripción
+                          </button>
+                        ) : null}
+                        <button type="button" className="ghost compact" onClick={() => handleRemovePaperRecord(document)}>Quitar</button>
+                      </div>
+                    ) : null}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+    )
+  }
+
   function persistCustomDiagnosis(nextDiagnosis: string): void {
     const value = nextDiagnosis.trim()
     if (!value) {
@@ -8889,6 +9160,21 @@ function App() {
             })
             .join('')
 
+    const paperRecordsForPrint = patientForPrint.documents.filter((document) => document.category === 'paper-record')
+    const paperRecordsMarkup = paperRecordsForPrint.length === 0
+      ? ''
+      : `<section>
+      <h2>Historia clínica en papel</h2>
+      ${paperRecordsForPrint.map((document) => `
+        <article style="margin-bottom:14px; page-break-inside:avoid;">
+          <p><strong>${escapeHtml(document.name)}</strong> (cargada el ${escapeHtml(formatDate(document.uploadedAt))})</p>
+          ${/^data:image\/(jpeg|png|webp|gif);base64,/.test(document.dataUrl) ? `<img src="${escapeHtml(document.dataUrl)}" alt="Ficha en papel" style="max-width:100%; max-height:900px; border:1px solid #cbd5e1;" />` : ''}
+          ${document.transcription
+            ? `<p><strong>Transcripción revisada:</strong><br />${escapeHtml(document.transcription).replaceAll('\n', '<br />')}</p>`
+            : '<p><em>Sin transcripción: se conserva como imagen.</em></p>'}
+        </article>`).join('')}
+    </section>`
+
     const documentsMarkup =
       patientForPrint.documents.length === 0
         ? '<li>Sin documentos adjuntos.</li>'
@@ -8963,6 +9249,7 @@ function App() {
       <h2>Documentos adjuntos</h2>
       <ul>${documentsMarkup}</ul>
     </section>
+    ${paperRecordsMarkup}
 
     <section>
       <h2>${consultationEntriesForPrint.length <= 1 ? 'Atención clínica' : 'Evolución y atenciones registradas'}</h2>
@@ -13661,6 +13948,7 @@ function App() {
                   <button type="submit">Guardar ficha</button>
                   <small>Cada paciente se almacena de forma individual en su archivo plano local.</small>
                 </fieldset>
+                {renderPaperRecords(canManagePaperRecords)}
                 <div className="record-document-actions">
                   <button
                     type="button"
@@ -13798,6 +14086,7 @@ function App() {
                   </div>
                 </section>
               )}
+              {selectedPatient ? renderPaperRecords(false) : null}
               <form className="evolution-form" onSubmit={handleSaveConsultation}>
                 <label className="evolution-field evolution-field--wide">
                   Motivo de consulta

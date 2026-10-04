@@ -1062,6 +1062,14 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
   })
 }
 
+const PAPER_RECORD_MAX_TOKENS = 4000
+const PAPER_RECORD_SYSTEM_PROMPT = [
+  'Sos Sofía, asistente de Dr Happy. Transcribís fichas clínicas en papel (manuscritas o impresas) fotografiadas por un profesional de la salud.',
+  'Transcribí fielmente el contenido legible, en español, respetando fechas, dosis, abreviaturas y el orden del documento. No inventes, no completes, no interpretes ni agregues diagnósticos o sugerencias.',
+  'Marcá cada palabra o fragmento dudoso como [ilegible] o [¿palabra?]. Usá texto plano con saltos de línea; podés usar títulos simples en mayúsculas seguidos de dos puntos si el documento tiene secciones.',
+  'Si el documento no es una ficha o texto clínico, o si en general es ilegible y no podés transcribir contenido útil, respondé únicamente: ILEGIBLE',
+].join('\n')
+
 function cleanMessages(value: unknown): AssistantMessage[] {
   if (!Array.isArray(value)) return []
   return value.slice(-20).flatMap((rawMessage) => {
@@ -1106,7 +1114,7 @@ Deno.serve(async (request) => {
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!supabaseUrl || !serviceRoleKey) return jsonResponse(500, { success: false, message: 'Falta configuración de Supabase.' })
 
-  let payload: { action?: string; messages?: unknown; professionalId?: string; professionalName?: string; context?: string; confirmation?: { action?: string; input?: Record<string, unknown> } }
+  let payload: { action?: string; mode?: string; messages?: unknown; professionalId?: string; professionalName?: string; context?: string; confirmation?: { action?: string; input?: Record<string, unknown> } }
   try {
     payload = await request.json()
   } catch {
@@ -1209,6 +1217,26 @@ Deno.serve(async (request) => {
   let inputTokens = 0
   let outputTokens = 0
   try {
+  // Transcripción de fichas en papel: una sola llamada, sin herramientas y con más espacio de respuesta.
+  if (payload.mode === 'paper-record-transcription') {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: PAPER_RECORD_MAX_TOKENS, system: PAPER_RECORD_SYSTEM_PROMPT, messages }),
+    })
+    const result = await response.json().catch(() => null)
+    if (!response.ok) {
+      console.error('Anthropic transcription failed', response.status, result)
+      const providerMessage = typeof result?.error?.message === 'string' ? result.error.message : 'Respuesta no disponible.'
+      return jsonResponse(502, { success: false, message: `Claude rechazó la solicitud (${response.status}): ${providerMessage}` })
+    }
+    inputTokens += Number(result?.usage?.input_tokens || 0)
+    outputTokens += Number(result?.usage?.output_tokens || 0)
+    const content = Array.isArray(result?.content) ? result.content : []
+    const text = content.filter((item: { type?: string }) => item.type === 'text').map((item: { text?: string }) => item.text || '').join('\n').trim()
+    if (!text) return jsonResponse(502, { success: false, message: 'Sofía recibió una respuesta vacía.' })
+    return jsonResponse(200, { success: true, reply: text, truncated: result?.stop_reason === 'max_tokens' })
+  }
   for (let iteration = 0; iteration < 10; iteration += 1) {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

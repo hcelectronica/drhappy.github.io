@@ -19,13 +19,42 @@ interface AssistantResult {
   success: boolean
   message?: string
   reply?: string
+  truncated?: boolean
   pendingConfirmation?: AssistantPendingConfirmation
+}
+
+export interface PaperRecordTranscription {
+  success: boolean
+  message?: string
+  transcription?: string
+  illegible?: boolean
+  truncated?: boolean
+}
+
+/** Pide a Sofía que transcriba una foto o PDF de una ficha clínica en papel. */
+export async function transcribePaperRecord(params: {
+  block: AssistantContentBlock
+  professionalName?: string
+}): Promise<PaperRecordTranscription> {
+  const result = await askSofia({
+    mode: 'paper-record-transcription',
+    professionalName: params.professionalName,
+    messages: [{
+      role: 'user',
+      content: [{ type: 'text', text: 'Transcribí esta ficha clínica en papel.' }, params.block],
+    }],
+  })
+  if (!result.success) return { success: false, message: result.message }
+  const text = (result.reply || '').trim()
+  if (!text || /^ILEGIBLE[.!]?$/i.test(text)) return { success: true, illegible: true }
+  return { success: true, transcription: text, truncated: result.truncated === true }
 }
 
 export async function askSofia(params: {
   messages: AssistantMessage[]
   professionalName?: string
   context?: string
+  mode?: 'paper-record-transcription'
   confirmation?: { action: string; input: Record<string, unknown> }
 }): Promise<AssistantResult> {
   if (!isSupabaseConfigured || !supabase) {
@@ -41,6 +70,7 @@ export async function askSofia(params: {
     headers: Object.keys(headers).length ? headers : undefined,
     body: {
       action: 'chat',
+      mode: params.mode,
       messages: params.messages,
       professionalName: params.professionalName,
       context: params.context,
