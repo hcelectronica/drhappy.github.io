@@ -4023,14 +4023,9 @@ function App() {
     const sentAt = new Date().toISOString()
 
     try {
-      if (isSupabaseConfigured && supabase) {
-        for (const recipient of recipients) {
-          const result = await communityRequest({ action: 'send', recipientId: recipient.id, text: formattedText })
-          if (!result.success) {
-            throw new Error(result.message || 'No se pudo enviar el mensaje.')
-          }
-        }
-      } else {
+      // La Comunidad está retirada en el servidor (community-data responde 410),
+      // así que en producción el comunicado se entrega solo por push y email.
+      if (!isSupabaseConfigured || !supabase) {
         recipients.forEach((r) => {
           const key = communityThreadStorageKey(activeUserId, r.id)
           const currentThread = readJsonStorage<CommunityMessage[]>(key, [])
@@ -4066,24 +4061,51 @@ function App() {
             },
       )
 
-      // Enviar también por Email oficial desde soporte@drhappy.com.ar si está habilitado
+      // Un email por profesional: así nadie ve las direcciones de los demás.
+      let emailSent = 0
+      let emailFailed = 0
+      let lastEmailError = ''
       if (adminBroadcastSendEmail) {
-        const targetEmails = recipients.map((u) => u.email).filter(Boolean)
-        if (targetEmails.length > 0) {
-          void sendAdminBroadcastEmail({
-            to: targetEmails,
+        for (const recipient of recipients) {
+          const email = recipient.email?.trim()
+          if (!email) {
+            emailFailed += 1
+            continue
+          }
+          const emailRes = await sendAdminBroadcastEmail({
+            to: email,
             subject: broadcastTitle,
             message: adminBroadcastBody.trim(),
-            recipientName: isBroadcast ? 'Estimado/a profesional' : recipients[0].fullName,
+            recipientName: recipient.fullName || 'Estimado/a profesional',
           })
+          if (emailRes.success) {
+            emailSent += 1
+          } else {
+            emailFailed += 1
+            lastEmailError = emailRes.message || lastEmailError
+          }
         }
+      }
+
+      const pushSent = pushRes.success ? pushRes.sentCount : 0
+      const localOnly = !isSupabaseConfigured || !supabase
+      if (!localOnly && pushSent === 0 && emailSent === 0) {
+        throw new Error(
+          adminBroadcastSendEmail
+            ? `no se pudo entregar por email${lastEmailError ? ` (${lastEmailError})` : ''} y ningún dispositivo recibió la notificación push.`
+            : 'ningún dispositivo tiene activadas las notificaciones push. Activá "Enviar también por email" para llegar a los profesionales.',
+        )
       }
 
       setAdminBroadcastSubject('')
       setAdminBroadcastBody('')
-      const successNotice = pushRes.success && pushRes.sentCount > 0
-        ? `Comunicado enviado. Notificación push entregada a ${pushRes.sentCount} dispositivo(s)${adminBroadcastSendEmail ? ' y correos enviados vía soporte@drhappy.com.ar' : ''}.`
-        : `Comunicado publicado exitosamente para ${recipients.length} profesional(es)${adminBroadcastSendEmail ? ' (notificaciones por email emitidas)' : ''}.`
+      const parts = [
+        pushSent > 0 ? `push entregado a ${pushSent} dispositivo(s)` : '',
+        emailSent > 0 ? `email enviado a ${emailSent} profesional(es)` : '',
+      ].filter(Boolean)
+      const successNotice = localOnly
+        ? `Comunicado publicado para ${recipients.length} profesional(es).`
+        : `Comunicado enviado: ${parts.join(' y ')}.${emailFailed > 0 ? ` ${emailFailed} email(s) no se pudieron enviar.` : ''}`
       setAppNotice(successNotice)
       showSavedFloatingNotice('Comunicado enviado')
       void showAppNotification(broadcastTitle, {
