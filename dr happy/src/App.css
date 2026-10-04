@@ -907,6 +907,37 @@ body.theme-night .auth-plan--annual { border-color: #3774bf; background: #17447f
   margin-bottom: 0;
 }
 
+.public-install-banner {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border: 1px solid #c8dedf;
+  border-radius: 16px;
+  background: #f0f8f8;
+  color: #17324d;
+}
+
+.public-install-banner img { flex: 0 0 auto; border-radius: 12px; }
+.public-install-banner div { flex: 1; min-width: 0; }
+.public-install-banner strong, .public-install-banner span { display: block; }
+.public-install-banner span { margin-top: 4px; font-size: .85rem; }
+.public-install-banner button { flex: 0 0 auto; background: #17324d; color: #fff; }
+.install-manual-guide { text-align: left; line-height: 1.6; }
+.install-manual-guide ol { padding-left: 24px; }
+.install-manual-guide li { margin-bottom: 8px; }
+
+@media (max-width: 480px) {
+  .public-install-banner { flex-wrap: wrap; padding: 12px; }
+  .public-install-banner button { width: 100%; }
+}
+
 .brand-mark {
   width: 52px;
   height: 52px;

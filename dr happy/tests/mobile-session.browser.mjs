@@ -65,6 +65,9 @@ try {
   await command('Page.addScriptToEvaluateOnNewDocument', { source: `
     if(location.origin===${JSON.stringify(origin)}){
       window.__instance=crypto.randomUUID();
+      window.addEventListener('beforeinstallprompt',event=>{
+        if(!event.fixture){event.preventDefault();event.stopImmediatePropagation()}
+      });
       const account=id=>({id,username:id,full_name:id==='account-a'?'Profesional A':'Profesional B',
         specialty:'Odontologia',license_number:'TEST',email:id+'@example.invalid',active:true,is_admin:id==='account-b',
         subscription_status:'active',subscription_expires_at:'2027-12-31T00:00:00Z'});
@@ -197,6 +200,53 @@ try {
   assert(await evaluate(`!window.__calls.some(call=>call.slug==='fetch-medical-news')`), 'Anonymous entry does not request medical news')
   console.log('Mobile sessions passed: restore without sessionStorage, resume, reload, account switch with late workspace, concurrent logins, logout and no automatic reentry.')
   console.log('Public entry passed: no splash, no anonymous clinical downloads, authenticated catalog loading preserved.')
+  const reloadPublic = async () => {
+    const instance = await evaluate('window.__instance')
+    await command('Page.reload')
+    await wait(`window.__instance!==${JSON.stringify(instance)}&&!!document.querySelector('input[name="username"]')`)
+    await sleep(500)
+  }
+  await command('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36' })
+  await reloadPublic()
+  await wait(`!!document.querySelector('.public-install-banner')`)
+  await evaluate(`document.querySelector('.public-install-banner button').click()`)
+  await wait(`!!document.querySelector('.install-manual-guide')`)
+  assert(await evaluate(`document.querySelector('.install-manual-guide').textContent.includes('Chrome o Edge')`))
+  await click('Continuar en el navegador')
+  assert(await evaluate(`!!document.querySelector('.public-install-banner')`), 'Snoozing does not hide the public install button')
+  const simulateInstall = (outcome, fail = false) => evaluate(`(()=>{
+    window.__installPrompts=0;
+    const event=new Event('beforeinstallprompt',{cancelable:true});
+    event.fixture=true;
+    event.prompt=async()=>{window.__installPrompts++;${fail ? "throw new Error('Fixture install failure')" : ''}};
+    event.userChoice=Promise.resolve({outcome:${JSON.stringify(outcome)}});
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  })()`)
+  assert(await simulateInstall('dismissed'))
+  await evaluate(`document.querySelector('.public-install-banner button').click()`)
+  await wait(`window.__installPrompts===1&&!document.querySelector('[aria-labelledby="install-modal-title"]')`)
+  assert(await evaluate(`!!document.querySelector('.public-install-banner')`), 'Dismissed native prompt keeps manual installation available')
+  await simulateInstall('accepted', true)
+  await evaluate(`document.querySelector('.public-install-banner button').click()`)
+  await wait(`!!document.querySelector('.install-manual-guide')`)
+  assert(await evaluate(`document.body.textContent.includes('Fixture install failure')`), 'Install failures are surfaced')
+  await click('Continuar en el navegador')
+  await simulateInstall('accepted')
+  await evaluate(`document.querySelector('.public-install-banner button').click()`)
+  await wait(`!document.querySelector('.public-install-banner')`)
+  await command('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1' })
+  await reloadPublic()
+  await wait(`!!document.querySelector('.public-install-banner')`)
+  await evaluate(`document.querySelector('.public-install-banner button').click()`)
+  await wait(`!!document.querySelector('.install-manual-guide')`)
+  assert(await evaluate(`document.querySelector('.install-manual-guide').textContent.includes('Safari')&&document.querySelector('.install-manual-guide').textContent.includes('Compartir')`))
+  await click('Continuar en el navegador')
+  await command('Page.addScriptToEvaluateOnNewDocument', { source: `Object.defineProperty(navigator,'standalone',{get:()=>true})` })
+  await reloadPublic()
+  await wait(`!!document.querySelector('input[name="username"]')`)
+  assert(await evaluate(`!document.querySelector('.public-install-banner')`), 'Standalone app does not offer installation')
+  console.log('Public installation passed: Android fallback, native accepted/dismissed/error, persistent button, iPhone guide and standalone suppression.')
 } finally {
   if (socket?.readyState === WebSocket.OPEN) socket.close()
   browser.kill()

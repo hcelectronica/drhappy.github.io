@@ -14,6 +14,8 @@ El modelo 01 (Dr. H, caduceo integrado en la H y sonrisa) es la identidad princi
 
 Las referencias de instalación llevan la versión `drh-01` para renovar los iconos sin cambiar el nombre, el inicio ni el ámbito de la PWA. El navegador puede actualizar una instalación existente, pero no se garantiza una renovación inmediata del icono del sistema; si permanece el anterior, volver a añadir el acceso o reinstalar la PWA. Esto no borra la cuenta ni sus datos en la nube. No borrar los datos del sitio.
 
+El inicio público ofrece «Instalar app» en celulares sin exigir una sesión. Si el navegador emite `beforeinstallprompt`, el botón abre su diálogo nativo; de lo contrario muestra instrucciones (Safari y Compartir en iPhone/iPad, menú de instalación en Android). El aviso automático se puede posponer siete días, pero el botón público sigue disponible. No se ofrece al abrir la PWA en modo standalone ni después de una instalación confirmada en esa visita. No es posible instalar sin confirmación del usuario ni detectar todos los accesos directos instalados desde una pestaña del navegador.
+
 ## Carga del inicio público
 
 El inicio muestra la oferta y el formulario de acceso sin la espera de la bienvenida animada. La restauración de una sesión guardada sigue validando la identidad antes de mostrar el espacio clínico. Diagnósticos, vademécum y noticias se cargan solo con un profesional autenticado; el catálogo CIE-10 empaquetado se importa bajo demanda, sin consultar un archivo público inexistente. Los lectores DOCX, PDF y de códigos se importan al usar esas herramientas. Estos cambios reducen la carga inicial, pero no garantizan la aprobación de Google Ads.

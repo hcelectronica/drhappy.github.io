@@ -2486,6 +2486,14 @@ function App() {
     null,
   )
   const [showInstallToast, setShowInstallToast] = useState(false)
+  const [appInstalled, setAppInstalled] = useState(() =>
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as Navigator & { standalone?: boolean }).standalone === true,
+  )
+  const isMobileInstallDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const isAppleInstallDevice = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   const [, setAuthError] = useErrorNotification()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -4658,6 +4666,7 @@ function App() {
     }
 
     function handleAppInstalled(): void {
+      setAppInstalled(true)
       setInstallPromptEvent(null)
       setShowInstallToast(false)
       // No guardamos un bloqueo permanente: si el usuario desinstala la app más
@@ -4667,20 +4676,23 @@ function App() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
     window.addEventListener('appinstalled', handleAppInstalled)
+    const displayMode = window.matchMedia('(display-mode: standalone)')
+    const handleDisplayModeChange = () => setAppInstalled(displayMode.matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true)
+    displayMode.addEventListener('change', handleDisplayModeChange)
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
       window.removeEventListener('appinstalled', handleAppInstalled)
+      displayMode.removeEventListener('change', handleDisplayModeChange)
     }
   }, [])
 
   useEffect(() => {
-    const isStandalone =
-      window.matchMedia?.('(display-mode: standalone)').matches ||
-      (window.navigator as { standalone?: boolean }).standalone === true
-    if (!profile || !installPromptEvent || isStandalone) {
+    if (appInstalled) {
       setShowInstallToast(false)
       return
     }
+    if (!installPromptEvent) return
     const dismissedUntilRaw = localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY)
     const dismissedUntil = dismissedUntilRaw ? Number(dismissedUntilRaw) : 0
     if (dismissedUntil && Date.now() < dismissedUntil) {
@@ -4688,30 +4700,36 @@ function App() {
     }
     const timer = window.setTimeout(() => setShowInstallToast(true), 1200)
     return () => window.clearTimeout(timer)
-  }, [profile, installPromptEvent])
+  }, [appInstalled, installPromptEvent])
 
   async function handleInstallApp(): Promise<void> {
     if (!installPromptEvent) {
+      setShowInstallToast(true)
       return
     }
     setShowInstallToast(false)
-    await installPromptEvent.prompt()
-    const choice = await installPromptEvent.userChoice
-    if (choice.outcome !== 'accepted') {
-      // Solo pospone el aviso si el usuario no instaló; si aceptó, lo maneja
-      // el evento "appinstalled" (sin bloqueo permanente).
-      localStorage.setItem(
-        INSTALL_PROMPT_DISMISSED_KEY,
-        String(Date.now() + INSTALL_PROMPT_SNOOZE_DAYS * 24 * 60 * 60 * 1000),
+    try {
+      await installPromptEvent.prompt()
+      const choice = await installPromptEvent.userChoice
+      if (choice.outcome !== 'accepted') {
+        localStorage.setItem(
+          INSTALL_PROMPT_DISMISSED_KEY,
+          String(Date.now() + INSTALL_PROMPT_SNOOZE_DAYS * 24 * 60 * 60 * 1000),
+        )
+      }
+      if (choice.outcome === 'accepted') setAppInstalled(true)
+      setAppNotice(
+        choice.outcome === 'accepted'
+          ? 'DrHappy se está instalando en tu dispositivo.'
+          : 'Podés instalar DrHappy más tarde desde el menú del navegador.',
       )
+      showSavedFloatingNotice(choice.outcome === 'accepted' ? 'Instalando DrHappy' : 'Instalación cancelada')
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : 'No se pudo abrir la instalación de Dr Happy.')
+      setShowInstallToast(true)
+    } finally {
+      setInstallPromptEvent(null)
     }
-    setInstallPromptEvent(null)
-    setAppNotice(
-      choice.outcome === 'accepted'
-        ? 'DrHappy se está instalando en tu dispositivo.'
-        : 'Podés instalar DrHappy más tarde desde el menú del navegador.',
-    )
-    showSavedFloatingNotice(choice.outcome === 'accepted' ? 'Instalando DrHappy' : 'Instalación cancelada')
   }
 
   function handleDismissInstallToast(): void {
@@ -4719,6 +4737,47 @@ function App() {
     localStorage.setItem(
       INSTALL_PROMPT_DISMISSED_KEY,
       String(Date.now() + INSTALL_PROMPT_SNOOZE_DAYS * 24 * 60 * 60 * 1000),
+    )
+  }
+
+  function renderInstallOffer(showBanner = false): ReactNode {
+    if (appInstalled) return null
+    return (
+      <>
+        {showBanner && (isMobileInstallDevice || installPromptEvent) ? (
+          <section className="public-install-banner" aria-label="Instalar Dr Happy">
+            <img src={`${import.meta.env.BASE_URL}icon-192.png?v=drh-01`} alt="" width="44" height="44" />
+            <div><strong>Dr Happy en tu pantalla de inicio</strong><span>Abrila en un toque, sin buscar el link.</span></div>
+            <button type="button" onClick={() => void handleInstallApp()}>Instalar app</button>
+          </section>
+        ) : null}
+        {showInstallToast ? (
+          <div className="center-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="install-modal-title">
+            <div className="center-modal-card">
+              <div className="center-modal-icon-bubble" aria-hidden="true">📲</div>
+              <h3 id="install-modal-title" className="center-modal-title">Instalá Dr Happy</h3>
+              {installPromptEvent ? (
+                <>
+                  <p className="center-modal-description">Agregá Dr Happy a tu pantalla de inicio para abrirla en un toque. No necesitás iniciar sesión para instalarla.</p>
+                  <button type="button" className="primary-btn" onClick={() => void handleInstallApp()}>Instalar app</button>
+                </>
+              ) : (
+                <div className="install-manual-guide">
+                  {isAppleInstallDevice ? (
+                    <><p>En iPhone o iPad:</p><ol><li>Abrí esta web en Safari.</li><li>Tocá <strong>Compartir</strong>.</li><li>Elegí <strong>Agregar a pantalla de inicio</strong> y confirmá con <strong>Agregar</strong>.</li></ol></>
+                  ) : (
+                    <><p>Si no aparece la instalación automática:</p><ol><li>Abrí esta web en Chrome o Edge, fuera de WhatsApp, Instagram u otra app.</li><li>Abrí el menú del navegador.</li><li>Elegí <strong>Instalar app</strong> o <strong>Agregar a pantalla de inicio</strong> y confirmá.</li></ol></>
+                  )}
+                  <p>El nombre de la opción puede variar según tu navegador.</p>
+                </div>
+              )}
+              <div className="center-modal-actions">
+                <button type="button" className="secondary-btn" onClick={handleDismissInstallToast}>Continuar en el navegador por ahora</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </>
     )
   }
 
@@ -9930,6 +9989,7 @@ function App() {
     return (
       <main className="auth-layout">
         <AuthBackground />
+        {renderInstallOffer(true)}
         <aside className="auth-promo" aria-label="Conocé las herramientas y planes de Dr Happy">
           <div className="auth-promo-heading">
             <h2>La tecnología no te reemplaza, te potencia.</h2>
@@ -15341,38 +15401,7 @@ function App() {
       ) : null}
       {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
 
-      {/* Modal Central de Instalación de la App */}
-      {showInstallToast ? (
-        <div className="center-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="install-modal-title">
-          <div className="center-modal-card">
-            <div className="center-modal-icon-bubble" aria-hidden="true">
-              📲
-            </div>
-            <h3 id="install-modal-title" className="center-modal-title">
-              Instalá Dr. Happy en tu dispositivo
-            </h3>
-            <p className="center-modal-description">
-              Agregá Dr. Happy directamente a la pantalla de inicio de tu celular o computadora para abrirla en 1 toque, recibir alertas en tiempo real y trabajar a pantalla completa sin distracciones.
-            </p>
-            <div className="center-modal-actions">
-              <button
-                type="button"
-                className="primary-btn"
-                onClick={() => void handleInstallApp()}
-              >
-                📲 Instalar Dr. Happy ahora
-              </button>
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={handleDismissInstallToast}
-              >
-                Continuar en el navegador por ahora
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {renderInstallOffer()}
 
       {/* Modal Central de Activación de Notificaciones */}
       {!showInstallToast && showNotificationToast && notificationPermission !== 'granted' ? (
