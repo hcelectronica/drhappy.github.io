@@ -17,6 +17,7 @@ import { loadSubscriptionAccount } from './subscriptionAccountService'
 import { SubscriptionBenefits } from './SubscriptionBenefits'
 import { ServiceIllustration } from './ServiceIllustration'
 import { DentalPatientChart } from './dental/DentalPatientChart'
+import { DentalPromoFlyer } from './DentalPromoFlyer'
 import type { DentalSaveResult } from './dental/dentalService'
 import { PatientLedgerCards } from './PatientLedgerCards'
 import { filterLedgerPatients, groupLedgerByPatient, summarizeLedger } from './ledgerModel'
@@ -10021,6 +10022,31 @@ function App() {
               <p>Organizá la atención, la agenda y las herramientas que usás en el consultorio.</p>
             </div>
             <div className="flyer-grid auth-promo-tool-grid">
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--blue">
+                <div className="auth-promo-tool-art auth-promo-tool-art--care" aria-hidden="true">
+                  <ServiceIllustration service="care" />
+                  <span>PARA MÉDICOS</span><strong>ATENCIÓN<br />MÉDICA</strong><small>Historia clínica y seguimiento en contexto</small>
+                </div>
+                <strong>Atención médica</strong>
+                <small>Historias clínicas y consultas en un mismo espacio.</small>
+              </article>
+              <DentalPromoFlyer />
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--amber">
+                <div className="auth-promo-tool-art auth-promo-tool-art--calendar" aria-hidden="true">
+                  <ServiceIllustration service="calendar" />
+                  <span>AGENDA INTELIGENTE</span><strong>MENOS AUSENCIAS.<br />MÁS CONSULTAS.</strong><small>Recordatorios automáticos de turnos</small>
+                </div>
+                <strong>Turnera</strong>
+                <small>Turnera inteligente con recordatorios de turnos para ayudar a reducir ausencias.</small>
+              </article>
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--green">
+                <div className="auth-promo-tool-art auth-promo-tool-art--emergency" aria-hidden="true">
+                  <ServiceIllustration service="emergency" />
+                  <span>TRASLADOS Y GUARDIA</span><strong>ATENCIÓN<br />EN MOVIMIENTO</strong><small>Asistencia clínica cuando cada minuto cuenta</small>
+                </div>
+                <strong>Modo ambulancia</strong>
+                <small>Información organizada para traslados y guardias.</small>
+              </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--sofia auth-promo-sofia">
                 <div className="auth-promo-sofia-header">
                   <div className="auth-promo-sofia-identity">
@@ -10069,41 +10095,6 @@ function App() {
                     <button type="button" aria-label="Función siguiente de Sofía" onClick={() => setSofiaFeatureIndex((current) => (current + 1) % SOFIA_PROMO_FEATURES.length)}>›</button>
                   </div>
                 </div>
-              </article>
-              <article className="flyer-tool auth-promo-tool auth-promo-tool--green">
-                <div className="auth-promo-tool-art auth-promo-tool-art--emergency" aria-hidden="true">
-                  <ServiceIllustration service="emergency" />
-                  <span>TRASLADOS Y GUARDIA</span><strong>ATENCIÓN<br />EN MOVIMIENTO</strong><small>Asistencia clínica cuando cada minuto cuenta</small>
-                </div>
-                <strong>Modo ambulancia</strong>
-                <small>Información organizada para traslados y guardias.</small>
-              </article>
-              <article className="flyer-tool auth-promo-tool auth-promo-tool--blue">
-                <div className="auth-promo-tool-art auth-promo-tool-art--care" aria-hidden="true">
-                  <ServiceIllustration service="care" />
-                  <span>CONSULTA</span><strong>ATENCIÓN<br />MÉDICA</strong><small>Historia clínica y seguimiento en contexto</small>
-                </div>
-                <strong>Atención médica</strong>
-                <small>Historias clínicas y consultas en un mismo espacio.</small>
-              </article>
-              <article className="flyer-tool auth-promo-tool auth-promo-tool--green">
-                <div className="auth-promo-tool-art auth-promo-tool-art--dental" aria-hidden="true">
-                  <svg className="auth-promo-dental-icon" viewBox="0 0 64 64" fill="none">
-                    <path d="M32 13C23 7 13 9 11 20c-2 10 4 17 6 28 1 8 5 10 8 2l4-12c1-4 5-4 6 0l4 12c3 8 7 6 8-2 2-11 8-18 6-28C51 9 41 7 32 13Z" fill="#fff" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
-                    <path d="M24 17c4 2 9 3 15 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                  <span>EXCLUSIVA PARA ODONTÓLOGOS</span><strong>CADA PIEZA.<br />TODO REGISTRADO.</strong><small>Tu ficha dental, simple e interactiva</small>
-                </div>
-                <strong>Odontograma interactivo</strong>
-                <small>Registrá hallazgos por pieza y superficie. Tratamientos, presupuestos, costos y pagos conectados al balance. Adaptado al celular, con ficha completa en PDF a color.</small>
-              </article>
-              <article className="flyer-tool auth-promo-tool auth-promo-tool--amber">
-                <div className="auth-promo-tool-art auth-promo-tool-art--calendar" aria-hidden="true">
-                  <ServiceIllustration service="calendar" />
-                  <span>AGENDA INTELIGENTE</span><strong>MENOS AUSENCIAS.<br />MÁS CONSULTAS.</strong><small>Recordatorios automáticos de turnos</small>
-                </div>
-                <strong>Turnera</strong>
-                <small>Turnera inteligente con recordatorios de turnos para ayudar a reducir ausencias.</small>
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--cyan">
                 <div className="auth-promo-tool-art auth-promo-tool-art--patients" aria-hidden="true">

@@ -1,0 +1,46 @@
+.auth-promo .flyer-tool.dental-promo-flyer { position: relative; cursor: pointer; overflow: hidden; }
+.dental-promo-flyer:focus-visible { outline: 3px solid #177463; outline-offset: 3px; }
+.auth-promo .dental-promo-hint { font-size: .75rem; color: #177463; }
+.dental-promo-flyer--active > :not(.dental-promo-demo) { visibility: hidden; }
+.dental-promo-demo { position: absolute; inset: 0; padding: 12px; box-sizing: border-box; border-radius: inherit; background: #f1faf6; color: #17324d; display: flex; flex-direction: column; pointer-events: none; }
+.dental-promo-demo-heading { display: flex; justify-content: space-between; gap: 8px; color: #167b70; font: 700 10px Arial, sans-serif; }
+.dental-promo-demo svg { width: 100%; flex: 1; min-height: 0; font-family: Arial, sans-serif; }
+.dental-promo-demo text { fill: #17324d; }
+.dental-promo-caption { display: grid; align-items: center; text-align: center; min-height: 32px; font: 600 12px Arial, sans-serif; }
+.dental-promo-caption span { grid-area: 1 / 1; opacity: 0; }
+.dental-promo-overview { animation: dental-promo-overview 12s infinite; }
+.dental-promo-detail { animation: dental-promo-detail 12s infinite; transform-origin: 170px 126px; }
+.dental-promo-selected { animation: dental-promo-selected 12s infinite; }
+.dental-promo-cursor { animation: dental-promo-cursor 12s infinite; }
+.dental-promo-red { animation: dental-promo-red 12s infinite; }
+.dental-promo-blue { animation: dental-promo-blue 12s infinite; }
+.dental-promo-caption span:nth-child(1) { animation: dental-promo-caption-one 12s infinite; }
+.dental-promo-caption span:nth-child(2) { animation: dental-promo-caption-two 12s infinite; }
+.dental-promo-caption span:nth-child(3) { animation: dental-promo-caption-three 12s infinite; }
+@keyframes dental-promo-overview { 0%,22%,96%,100% { opacity: 1; } 28%,90% { opacity: 0; } }
+@keyframes dental-promo-detail { 0%,22%,96%,100% { opacity: 0; transform: scale(.7); } 30%,90% { opacity: 1; transform: scale(1); } }
+@keyframes dental-promo-selected { 0%,12%,96%,100% { fill: transparent; } 16%,90% { fill: #9edcc5; } }
+@keyframes dental-promo-cursor {
+  0% { transform: translate(290px,235px); }
+  12%,18% { transform: translate(227px,225px); }
+  16% { transform: translate(227px,225px) scale(.8); }
+  30% { transform: translate(260px,220px); }
+  43%,50% { transform: translate(170px,135px); }
+  46% { transform: translate(170px,135px) scale(.8); }
+  62%,70% { transform: translate(214px,135px); }
+  66% { transform: translate(214px,135px) scale(.8); }
+  82%,100% { transform: translate(290px,235px); }
+}
+@keyframes dental-promo-red { 0%,44%,97%,100% { fill: #fff; } 48%,93% { fill: #efa0aa; } }
+@keyframes dental-promo-blue { 0%,64%,97%,100% { fill: #fff; } 68%,93% { fill: #91b5f3; } }
+@keyframes dental-promo-caption-one { 0%,24%,97%,100% { opacity: 1; } 28%,94% { opacity: 0; } }
+@keyframes dental-promo-caption-two { 0%,25%,60%,100% { opacity: 0; } 30%,56% { opacity: 1; } }
+@keyframes dental-promo-caption-three { 0%,58%,96%,100% { opacity: 0; } 63%,92% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .dental-promo-demo * { animation: none !important; }
+  .dental-promo-overview, .dental-promo-cursor { opacity: 0; }
+  .dental-promo-detail { opacity: 1; }
+  .dental-promo-red { fill: #efa0aa; }
+  .dental-promo-blue { fill: #91b5f3; }
+  .dental-promo-caption span:nth-child(3) { opacity: 1; }
+}
