@@ -18,6 +18,8 @@ El inicio público ofrece «Instalar app» en celulares sin exigir una sesión. 
 
 ## Carga del inicio público
 
+La cabecera pública muestra el logo, el nombre y el eslogan. En móvil se usa una composición horizontal compacta; la instalación se ofrece en una tarjeta fija superior, cerrable durante la visita, sin un modal automático antes del login. «Más opciones» conserva instalación, compartir y soporte. El login móvil coloca usuario y contraseña en dos columnas y evita repetir la marca de la cabecera. Los formularios de registro, recuperación y confirmación de email mantienen sus funciones.
+
 El inicio muestra la oferta y el formulario de acceso sin la espera de la bienvenida animada. La restauración de una sesión guardada sigue validando la identidad antes de mostrar el espacio clínico. Diagnósticos, vademécum y noticias se cargan solo con un profesional autenticado; el catálogo CIE-10 empaquetado se importa bajo demanda, sin consultar un archivo público inexistente. Los lectores DOCX, PDF y de códigos se importan al usar esas herramientas. Estos cambios reducen la carga inicial, pero no garantizan la aprobación de Google Ads.
 
 Validar con `npm run build` y `node tests/mobile-session.browser.mjs` contra el servidor local (`TEST_APP_ORIGIN` permite probar el build). La prueba comprueba cargas clínicas tras restaurar sesión y su ausencia al volver al inicio público.

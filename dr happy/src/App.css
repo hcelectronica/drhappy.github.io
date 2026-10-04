@@ -929,13 +929,21 @@ body.theme-night .auth-plan--annual { border-color: #3774bf; background: #17447f
 .public-install-banner strong, .public-install-banner span { display: block; }
 .public-install-banner span { margin-top: 4px; font-size: .85rem; }
 .public-install-banner button { flex: 0 0 auto; background: #17324d; color: #fff; }
+.public-install-banner .install-banner-close { width: 36px; min-height: 36px; padding: 4px; background: transparent; color: #17324d; box-shadow: none; font-size: 22px; }
+.public-brand-header { grid-column: 1 / -1; order: -2; display: flex; align-items: center; gap: 24px; position: relative; z-index: 1; padding: 8px 0 20px; border-bottom: 1px solid #d5e1e9; color: #17324d; }
+.public-brand-symbol { width: 96px; height: 96px; flex: 0 0 auto; }
+.public-brand-symbol svg { width: 100%; height: 100%; }
+.public-brand-header h1 { margin: 0; font-size: 44px; letter-spacing: -.04em; line-height: 1.1; }
+.public-brand-tagline { margin: 8px 0 4px; font-size: 20px; font-weight: 600; }
+.public-brand-summary { margin: 0; color: #526575; font-size: 15px; }
+.auth-card .brand-copy h2 { margin: 0; font-size: 1.5rem; letter-spacing: -.02em; }
+.auth-secondary-options summary { cursor: pointer; font-size: .85rem; text-align: center; padding: 8px; }
 .install-manual-guide { text-align: left; line-height: 1.6; }
 .install-manual-guide ol { padding-left: 24px; }
 .install-manual-guide li { margin-bottom: 8px; }
 
 @media (max-width: 480px) {
-  .public-install-banner { flex-wrap: wrap; padding: 12px; }
-  .public-install-banner button { width: 100%; }
+  .public-install-banner { padding: 10px; }
 }
 
 .brand-mark {
@@ -5552,6 +5560,42 @@ body.theme-night .turnera-card-actions {
   .auth-login-form > .ghost { box-shadow: none; }
   .auth-login-extra { margin-top: 4px !important; padding-top: 8px !important; gap: 6px !important; }
   .auth-login-extra button { padding: 5px 8px !important; font-size: 0.76rem !important; }
+}
+
+@media (max-width: 899px) {
+  .auth-layout { gap: 12px; padding-top: calc(84px + env(safe-area-inset-top)); }
+  .public-brand-header { width: 100%; gap: 12px; padding: 0 0 12px; }
+  .public-brand-symbol { width: 64px; height: 64px; }
+  .public-brand-header h1 { font-size: 30px; }
+  .public-brand-tagline { font-size: 13px; margin-top: 5px; }
+  .public-brand-summary { font-size: 12px; line-height: 1.4; }
+  .public-install-banner {
+    position: fixed;
+    top: calc(8px + env(safe-area-inset-top));
+    left: 12px;
+    right: 12px;
+    width: auto;
+    z-index: 30;
+    gap: 8px;
+    padding: 8px;
+    box-shadow: 0 5px 20px rgba(23, 50, 77, .16);
+  }
+  .public-install-banner img { width: 32px; height: 32px; border-radius: 8px; }
+  .public-install-banner strong { font-size: 12px; line-height: 1.3; }
+  .public-install-banner span { display: none; }
+  .public-install-banner button { min-height: 44px; padding: 8px 10px; font-size: 12px; }
+  .public-install-banner .install-banner-close { width: 32px; min-height: 44px; padding: 4px; }
+  .auth-layout:not(:has(.public-install-banner)) { padding-top: 18px; }
+  .auth-card { width: 100%; padding: 12px; }
+  .auth-card .brand-block { display: none; }
+  .auth-login-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
+  .auth-login-form > label { grid-column: auto; }
+  .auth-login-form input { min-height: 44px; padding: 8px; font-size: 16px; }
+  .auth-login-form > button { min-height: 44px; }
+  .auth-login-form > .text-button { min-height: 32px; }
+  .auth-secondary-options { grid-column: 1 / -1; }
+  .auth-secondary-options summary { min-height: 36px; box-sizing: border-box; }
+  .auth-promo { padding-top: 4px; }
 }
 
 /* Debe ir al final: las media queries anteriores resetean el padding de .app

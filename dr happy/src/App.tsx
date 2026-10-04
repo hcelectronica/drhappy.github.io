@@ -2486,6 +2486,7 @@ function App() {
     null,
   )
   const [showInstallToast, setShowInstallToast] = useState(false)
+  const [installBannerDismissed, setInstallBannerDismissed] = useState(false)
   const [appInstalled, setAppInstalled] = useState(() =>
     window.matchMedia('(display-mode: standalone)').matches ||
     (window.navigator as Navigator & { standalone?: boolean }).standalone === true,
@@ -4693,6 +4694,7 @@ function App() {
       return
     }
     if (!installPromptEvent) return
+    if (!profile) return
     const dismissedUntilRaw = localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY)
     const dismissedUntil = dismissedUntilRaw ? Number(dismissedUntilRaw) : 0
     if (dismissedUntil && Date.now() < dismissedUntil) {
@@ -4700,7 +4702,7 @@ function App() {
     }
     const timer = window.setTimeout(() => setShowInstallToast(true), 1200)
     return () => window.clearTimeout(timer)
-  }, [appInstalled, installPromptEvent])
+  }, [appInstalled, installPromptEvent, profile])
 
   async function handleInstallApp(): Promise<void> {
     if (!installPromptEvent) {
@@ -4744,11 +4746,12 @@ function App() {
     if (appInstalled) return null
     return (
       <>
-        {showBanner && (isMobileInstallDevice || installPromptEvent) ? (
+        {showBanner && !installBannerDismissed && (isMobileInstallDevice || installPromptEvent) ? (
           <section className="public-install-banner" aria-label="Instalar Dr Happy">
             <img src={`${import.meta.env.BASE_URL}icon-192.png?v=drh-01`} alt="" width="44" height="44" />
             <div><strong>Dr Happy en tu pantalla de inicio</strong><span>Abrila en un toque, sin buscar el link.</span></div>
             <button type="button" onClick={() => void handleInstallApp()}>Instalar app</button>
+            <button type="button" className="install-banner-close" aria-label="Cerrar aviso de instalación" onClick={() => setInstallBannerDismissed(true)}>×</button>
           </section>
         ) : null}
         {showInstallToast ? (
@@ -9990,6 +9993,14 @@ function App() {
       <main className="auth-layout">
         <AuthBackground />
         {renderInstallOffer(true)}
+        <header className="public-brand-header">
+          <span className="public-brand-symbol"><BrandMark /></span>
+          <div>
+            <h1>Dr Happy</h1>
+            <p className="public-brand-tagline">Basta de papeleo, hagamos medicina.</p>
+            <p className="public-brand-summary">Tu consultorio, organizado en un solo lugar.</p>
+          </div>
+        </header>
         <aside className="auth-promo" aria-label="Conocé las herramientas y planes de Dr Happy">
           <div className="auth-promo-heading">
             <h2>La tecnología no te reemplaza, te potencia.</h2>
@@ -10176,7 +10187,7 @@ function App() {
               <BrandMark />
             </span>
             <div className="brand-copy">
-              <h1>Dr Happy</h1>
+              <h2>Dr Happy</h2>
               <p className="slogan">Basta de Papeleo, Hagamos medicina.</p>
               <p className="auth-card-subtitle" style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280', fontWeight: 500 }}>
                 Herramientas para profesionales de la salud e instituciones
@@ -10310,7 +10321,10 @@ function App() {
               <button type="button" className="ghost theme-toggle" onClick={handleToggleThemeMode}>
                 {themeMode === 'night' ? 'Modo claro' : 'Modo nocturno'}
               </button>
+              <details className="auth-secondary-options">
+                <summary>Más opciones</summary>
               <div className="auth-login-extra" style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(130, 153, 186, 0.3)' }}>
+                {!appInstalled ? <button type="button" className="ghost" onClick={() => void handleInstallApp()}>Instalar app</button> : null}
                 <button
                   type="button"
                   className="ghost"
@@ -10330,6 +10344,7 @@ function App() {
                   💬 Contactar desarrolladores
                 </button>
               </div>
+              </details>
             </form>
           ) : (
             <section className="recovery-form">
