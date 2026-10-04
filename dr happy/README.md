@@ -18,6 +18,8 @@ El inicio público ofrece «Instalar app» en celulares sin exigir una sesión. 
 
 ## Carga del inicio público
 
+El título SEO y las vistas previas al compartir usan «Dr Happy | Historia clínica digital y Turnos», sin restringir la marca a odontología. La descripción incluye odontograma, turnos, Sofía IA y la prueba de 7 días. Google puede elegir otro título o fragmento y necesita volver a rastrear la portada para reflejar los cambios.
+
 Los primeros flyers son Atención médica (para médicos), Odontograma, Turnera y Ambulancia; Sofía y las demás herramientas continúan debajo. El flyer dental reproduce una demostración ilustrativa de 12 segundos al pasar el mouse o tocarlo: cursor, selección de la pieza 36, ampliación y marcas por superficie en rojo y azul. La demostración ocupa el recuadro completo sin cambiar su tamaño, abrir ventanas, consultar pacientes ni guardar datos. Al retirar el mouse, perder el foco o presionar Escape vuelve la promoción; otro toque reinicia la secuencia. Con «reducir movimiento» se muestra el resultado estático.
 
 El acceso comienza plegado en «Iniciar sesión» y despliega el formulario al tocarlo. Recuperación y confirmación de email se muestran automáticamente cuando corresponden. «Crear usuario» abre todos los campos del registro en dos columnas, sin scroll interno del formulario; el fondo del modal admite desplazamiento únicamente si la pantalla o el teclado reducen el espacio disponible. El envío sigue usando el circuito de confirmación por código de email.
