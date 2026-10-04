@@ -207,7 +207,8 @@ try {
   assert.deepEqual(await evaluate(`Array.from(document.querySelector('.auth-promo-tool-grid').children).slice(0,4).map(e=>e.querySelector(':scope > strong').textContent)`),
     ['Atención médica', 'Odontograma interactivo', 'Turnera', 'Modo ambulancia'])
   await command('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] })
-  for (const [width, height, mobile] of [[1280, 900, false], [390, 844, true], [320, 568, true]]) {
+  for (const [width, height, mobile, reduce] of [[1280, 900, false, false], [1280, 900, false, true], [390, 844, true, false], [320, 568, true, false]]) {
+    await command('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: reduce ? 'reduce' : 'no-preference' }] })
     await command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile })
     const before = await evaluate(`(()=>{const c=document.querySelector('.dental-promo-flyer');c.scrollIntoView({block:'center'});const r=c.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height}})()`)
     if (mobile) {
@@ -247,13 +248,15 @@ try {
   await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter' })
   await wait(`!!document.querySelector('.dental-promo-demo')`)
   await command('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
-  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.dental-promo-cursor')).animationName`), 'none')
-  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.dental-promo-detail')).opacity`), '1')
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.dental-promo-cursor')).animationName`), 'dental-promo-cursor')
+  const reducedCursor = await evaluate(`getComputedStyle(document.querySelector('.dental-promo-cursor')).transform`)
+  await sleep(250)
+  assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('.dental-promo-cursor')).transform`), reducedCursor, 'Explicit demo activation plays the full sequence even with system motion reduction')
   await evaluate(`document.querySelector('.dental-promo-flyer').blur()`)
   await wait(`!document.querySelector('.dental-promo-demo')`)
   await command('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] })
   await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
-  console.log('Dental promo passed: card order, mouse and real touch activation, stable dimensions, moving cursor, expanded surfaces, red/blue timeline, keyboard and reduced motion.')
+  console.log('Dental promo passed: card order, mouse and real touch activation, stable dimensions, moving cursor, expanded surfaces, red/blue timeline, keyboard and full playback with system motion reduction.')
   assert(await evaluate(`document.querySelector('#auth-login-panel').hidden`), 'Public login starts collapsed')
   await click('Iniciar sesión')
   assert(await evaluate(`!document.querySelector('#auth-login-panel').hidden`))

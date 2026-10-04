@@ -4751,7 +4751,7 @@ function App() {
       <>
         {showBanner && !installBannerDismissed && (isMobileInstallDevice || installPromptEvent) ? (
           <section className="public-install-banner" aria-label="Instalar Dr Happy">
-            <img src={`${import.meta.env.BASE_URL}icon-192.png?v=drh-01`} alt="" width="44" height="44" />
+            <img src={`${import.meta.env.BASE_URL}icon-192.png?v=drh-08`} alt="" width="44" height="44" />
             <div><strong>Dr Happy en tu pantalla de inicio</strong><span>Abrila en un toque, sin buscar el link.</span></div>
             <button type="button" onClick={() => void handleInstallApp()}>Instalar app</button>
             <button type="button" className="install-banner-close" aria-label="Cerrar aviso de instalación" onClick={() => setInstallBannerDismissed(true)}>×</button>

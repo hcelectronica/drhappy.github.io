@@ -36,11 +36,3 @@
 @keyframes dental-promo-caption-one { 0%,24%,97%,100% { opacity: 1; } 28%,94% { opacity: 0; } }
 @keyframes dental-promo-caption-two { 0%,25%,60%,100% { opacity: 0; } 30%,56% { opacity: 1; } }
 @keyframes dental-promo-caption-three { 0%,58%,96%,100% { opacity: 0; } 63%,92% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
-  .dental-promo-demo * { animation: none !important; }
-  .dental-promo-overview, .dental-promo-cursor { opacity: 0; }
-  .dental-promo-detail { opacity: 1; }
-  .dental-promo-red { fill: #efa0aa; }
-  .dental-promo-blue { fill: #91b5f3; }
-  .dental-promo-caption span:nth-child(3) { opacity: 1; }
-}

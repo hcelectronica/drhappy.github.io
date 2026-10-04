@@ -3,14 +3,8 @@
   <rect x="4" y="4" width="92" height="92" rx="27" fill="#17324D"/>
   <g fill="none" stroke-linecap="round" stroke-linejoin="round">
     <path d="M19 24v31h6c10 0 15-6 15-15.5S35 24 25 24z M45 55V42m0 5c0-4 3-6 6-6" stroke="#fff" stroke-width="3.6"/>
-    <path d="M65 28v29 M65 42h16" stroke="#48D5C5" stroke-width="3.5"/>
-    <g transform="translate(68.2 20) scale(.8)" stroke="#48D5C5">
-      <path d="M16 7v42" stroke-width="2.2"/>
-      <path d="M14 15C8 15 3 11 1 6c6 1 10 3 13 6 M18 15c6 0 11-4 13-9-6 1-10 3-13 6" stroke-width="1.8"/>
-      <path d="M9 19c-7 4-2 8 7 11s10 7 2 12 M23 19c7 4 2 8-7 11s-10 7-2 12" stroke-width="2.1"/>
-    </g>
-    <path d="M34 70q16 14 32 0" stroke="#fff" stroke-width="3.4"/>
+    <path d="M65 25v30 M81 25v30 M65 40h16" stroke="#48D5C5" stroke-width="4"/>
+    <path d="M34 71q16 13 32 0" stroke="#fff" stroke-width="3.5"/>
   </g>
   <circle cx="56" cy="54" r="1.7" fill="#fff"/>
-  <circle cx="81" cy="22.4" r="1.68" fill="#48D5C5"/>
 </svg>
