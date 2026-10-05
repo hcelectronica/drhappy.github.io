@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Dr Happy | Videoconsulta piloto</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#edf3f8;color:#17324d;font:15px/1.5 Arial,sans-serif}
+    main{max-width:1100px;margin:auto;padding:20px}h1{font-size:24px}h2{font-size:18px}
+    .notice{padding:14px;border:1px solid #e8cf8a;background:#fff6dc;border-radius:12px}
+    button,input,textarea{font:inherit;min-height:44px;border:1px solid #bfd0df;border-radius:9px;padding:8px 12px}
+    button{cursor:pointer;background:white;color:#17324d}button:disabled{opacity:.55;cursor:not-allowed}
+    button:focus-visible,input:focus-visible{outline:3px solid #159d99}input{width:100%;min-width:0}
+    .primary{background:#17324d;color:white}.danger{background:#fff0f1;color:#982333}
+    .grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;margin-top:16px}
+    .panel{padding:16px;border-radius:14px;background:white;border:1px solid #d4e0e9}
+    .stage{background:#17324d;border-radius:12px;position:relative;min-height:320px;color:white;text-align:center}
+    video{display:block;width:100%;height:360px;object-fit:contain;border-radius:12px}
+    #local{position:absolute;bottom:12px;right:12px;width:130px;height:100px;background:#35516c}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+    #error{color:#9b2432;white-space:pre-wrap}#status{font-weight:bold}
+    .muted{font-size:13px;color:#5b7083}#messages{height:190px;overflow:auto;overflow-wrap:anywhere}
+    .message{background:#eef5f8;border-radius:8px;padding:8px;margin:8px 0}
+    form{display:flex;gap:8px}.link{margin:12px 0}[hidden]{display:none!important}
+    #login{display:grid;gap:12px;max-width:440px}#consent{width:auto;min-height:0}
+    @media(max-width:700px){.grid{grid-template-columns:1fr}main{padding:12px}video{height:300px}}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Dr Happy · Videoconsulta piloto</h1>
+  <p class="notice"><strong>Prueba técnica, no atención clínica.</strong> Creación de salas solo para administradores de Dr Happy. El invitado no necesita cuenta. Sin grabación, transcripción ni Sofía. Enlaces de 30 minutos, revocados al finalizar. Un reinicio del servidor cierra las salas. No uses información clínica ni datos de pacientes reales.</p>
+  <section id="login-panel" class="panel">
+    <h2>Acceso administrativo</h2>
+    <p>Usá tu usuario o email y contraseña de Dr Happy. La sesión de este piloto dura una hora. Las cuentas que usan solo Google necesitan definir su contraseña en Dr Happy.</p>
+    <form id="login">
+      <label>Usuario o email<input id="username" autocomplete="username" required maxlength="160"></label>
+      <label>Contraseña<input id="password" type="password" autocomplete="current-password" required maxlength="256"></label>
+      <button id="login-submit" class="primary">Iniciar sesión</button>
+    </form>
+  </section>
+  <div class="controls"><button id="logout" hidden>Cerrar sesión administrativa</button></div>
+  <label><input id="consent" type="checkbox"> Entiendo que es una prueba técnica y acepto compartir audio/video con el otro participante únicamente después de la admisión.</label>
+  <p id="network" class="muted">Conexión directa con STUN de Google para detectar rutas de red. No envía el audio/video al servidor STUN. Algunas redes necesitan TURN; la configuración se comprueba al entrar.</p>
+  <div class="controls"><button id="create" hidden class="primary">Crear sala de prueba</button><button id="devices" disabled>Activar cámara y micrófono</button><button id="audio-only" disabled>Activar solo micrófono</button><button id="join" disabled>Entrar a la sala</button></div>
+  <p class="muted">Si aparece «device in use», usá cámara en un solo navegador y «Activar solo micrófono» en el otro. No se simula video. Usá auriculares para evitar eco.</p>
+  <div id="invite" hidden class="link"><label>Enlace privado para el invitado (no lo publiques)<input id="link" readonly></label><button id="copy">Copiar enlace</button></div>
+  <p id="identity">Sin sala.</p>
+  <p id="status" role="status">Iniciá sesión como administrador o abrí una invitación.</p>
+  <p id="error" role="alert"></p>
+  <div class="grid">
+    <section class="panel">
+      <div class="stage"><video id="remote" autoplay playsinline></video><video id="local" autoplay playsinline muted></video></div>
+      <button id="play-audio" hidden>Activar audio recibido</button>
+      <div class="controls">
+        <button id="mic" disabled aria-pressed="false">Silenciar micrófono</button>
+        <button id="camera" disabled aria-pressed="false">Apagar cámara</button>
+        <button id="leave" disabled>Salir y apagar dispositivos</button>
+        <button id="end" hidden class="danger">Finalizar sala para ambos</button>
+      </div>
+      <p class="muted">Vista pequeña: tu cámara, sin reproducir tu audio. Audio local y remoto separados; no se mezclan ni graban. Al perder señalización se corta la conexión de medios y se requiere una nueva admisión.</p>
+    </section>
+    <aside class="panel">
+      <h2>Sala de espera</h2>
+      <p id="waiting">Sin participantes conectados.</p>
+      <button id="admit" hidden class="primary">Admitir invitado</button>
+      <button id="reject" hidden class="danger">Rechazar entrada</button>
+      <h2>Chat privado de prueba</h2>
+      <p class="muted">Solo después de la admisión. Mensajes en memoria, sin historial al recargar.</p>
+      <div id="messages" aria-label="Mensajes"></div>
+      <form id="chat"><input id="text" aria-label="Mensaje" maxlength="1000" required disabled><button id="send" disabled>Enviar</button></form>
+    </aside>
+  </div>
+</main>
+<script src="/socket.io/socket.io.js"></script>
+<script type="module" src="/client.js"></script>
+</body>
+</html>

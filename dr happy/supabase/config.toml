@@ -59,3 +59,6 @@ verify_jwt = true
 
 [functions.support-messages]
 verify_jwt = false
+
+[functions.video-access]
+verify_jwt = false
