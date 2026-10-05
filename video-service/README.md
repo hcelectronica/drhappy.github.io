@@ -2,14 +2,14 @@
 
 Servicio independiente de la aplicacion principal para videoconsultas. Dos
 participantes, admision manual, audio/video separados y chat WebRTC con
-confirmacion. No se ofrece transcripcion; cualquier funcion futura requerira
-consentimiento especifico por separado.
+confirmacion. Transcripcion experimental opcional, procesada solo dentro del
+navegador del profesional (ver "Transcripcion local").
 
 ## Despliegue en Hostinger
 
 Reemplazar **solo la aplicacion de video.drhappy.com.ar**, no drhappy.com.ar.
 El ZIP debe contener package.json, package-lock.json, server.mjs, videoServer.mjs,
-index.html, client.js, brand-mark.svg y este documento directamente en su raiz. No subir node_modules,
+index.html, client.js, transcription.js, brand-mark.svg y este documento directamente en su raiz. No subir node_modules,
 tests, archivos .env ni claves privilegiadas.
 
 - Framework: Other. Node: 22 o 24.
@@ -180,8 +180,27 @@ Desconexion de senalizacion corta medios y requiere readmision al reconectar.
 Fallo de medios apaga dispositivos e informa si falta TURN; no simula exito.
 
 El uso del servicio no sustituye consentimiento informado, politica de
-privacidad ni evaluacion legal/clinica. La interfaz no ofrece transcripcion;
-si se incorpora, exigira consentimiento especifico independiente.
+privacidad ni evaluacion legal/clinica. La transcripcion experimental exige
+confirmar el consentimiento del paciente antes de iniciarse.
+
+## Transcripcion local
+
+Solo el profesional, ya admitido el paciente, ve el icono de transcripcion en
+los controles del video. `transcription.js` usa el reconocimiento de voz del
+navegador con `processLocally = true`: dos reconocedores, uno con el microfono
+del profesional y otro con el audio recibido del paciente, cada fragmento con
+hablante y tiempo desde el inicio. Si el navegador no ofrece reconocimiento en
+espanol dentro del equipo, no transcribe: nunca recurre a servicios externos.
+Chrome 139 o posterior en computadora puede descargar el paquete de espanol en
+el primer uso; Edge, Safari/iPhone y Chrome en celulares hoy lo rechazan.
+
+Mientras transcribe, el paciente ve un aviso. El texto no se muestra en
+pantalla ni se envia al servidor: queda en memoria del navegador hasta
+descargarlo como .txt o descartarlo, y el navegador advierte antes de cerrar con
+texto pendiente. Cortar la conexion detiene la transcripcion. Es un borrador para
+revision profesional; el resumen con Sofia y el guardado en la historia clinica
+son etapas posteriores. `transcription.test.mjs` cubre la logica con un motor
+simulado y la prueba de navegador cubre el flujo completo de la sala.
 
 ## Registro y ciclo de vida
 

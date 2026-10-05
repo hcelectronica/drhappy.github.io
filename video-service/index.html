@@ -70,6 +70,13 @@
     #patient-select,#appointment-select{width:220px;min-width:0;max-width:100%;min-height:44px}
     input,select,textarea{min-width:0;max-width:100%}
     #patient-name{margin:0;font-weight:600}
+    #transcript-notice{margin:0;color:#b42318;font-weight:600}
+    #transcribe[hidden]{display:none}
+    #transcribe .rec-dot{fill:none}
+    #transcribe[aria-pressed=true]{background:#b42318;color:#fff}
+    #transcribe[aria-pressed=true] .rec-dot{fill:currentColor;animation:rec 1.4s ease-in-out infinite}
+    @keyframes rec{50%{opacity:.35}}
+    #transcript-panel{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:0 0 8px;font-size:14px}#transcript-panel[hidden]{display:none}
     .video-controls #fullscreen{width:44px;height:44px;min-height:44px;padding:6px;border:0;border-radius:50%;background:#ffffff24;color:#fff;font-size:24px}
     .video-controls #fullscreen[aria-pressed=true]{background:#159d99;color:#fff}
     .expanded-page{overflow:hidden}
@@ -107,6 +114,7 @@
       .in-call main:fullscreen #identity,.in-call.expanded-page #identity,.in-call main:fullscreen .waiting-controls,.in-call.expanded-page .waiting-controls,.in-call main:fullscreen #status,.in-call.expanded-page #status{display:none}
       main:fullscreen .room-view,.expanded-page .room-view{position:relative;flex:1 1 0;min-height:0}
       main:fullscreen .room-toolbar,.expanded-page .room-toolbar{padding:2px 210px 4px 0;min-height:40px}
+      main:fullscreen #transcript-panel,.expanded-page #transcript-panel{display:none}
       main:fullscreen .stage,.expanded-page .stage{flex:1 1 0;height:auto;min-height:120px;max-height:none}
       main:fullscreen .chat-dock,.expanded-page .chat-dock{position:absolute;top:2px;right:0;bottom:auto;margin:0;width:200px}
       main:fullscreen #chat-toggle,.expanded-page #chat-toggle{min-height:36px;padding:4px 10px}
@@ -133,7 +141,7 @@
       <label>Turno (opcional)<select id="appointment-select" disabled><option value="">Sin turno asociado</option></select></label>
     </div>
     <details id="invite" hidden class="link"><summary>Enlace privado del paciente</summary><div class="link-content"><label class="visually-hidden" for="link">Enlace privado del paciente</label><input id="link" readonly><button id="copy">Copiar</button><button id="share" hidden>Compartir</button></div></details>
-    <div class="room-meta"><p id="identity">Iniciá sesión para crear una videoconsulta.</p><p id="patient-name" hidden></p><p id="countdown" hidden></p></div>
+    <div class="room-meta"><p id="identity">Iniciá sesión para crear una videoconsulta.</p><p id="patient-name" hidden></p><p id="countdown" hidden></p><p id="transcript-notice" hidden role="status">● Esta consulta se está transcribiendo en el equipo del profesional.</p></div>
     <div class="waiting-controls"><p id="waiting">Sin participantes conectados.</p><button id="admit" hidden class="primary">Admitir paciente</button><button id="reject" hidden class="danger">Rechazar</button></div>
   </section>
   <p id="time-warning" role="status"></p>
@@ -147,6 +155,7 @@
         <button id="leave" hidden disabled aria-label="Salir y apagar dispositivos">Salir</button>
         <button id="end" hidden class="danger">Finalizar para ambos</button>
       </div>
+      <div id="transcript-panel" hidden><span id="transcript-status" role="status"></span><button id="transcript-download" hidden>Descargar texto</button><button id="transcript-discard" hidden>Descartar</button></div>
       <div id="stage" class="stage">
         <video id="remote" autoplay playsinline></video>
         <div id="stage-placeholder" class="stage-placeholder">
@@ -165,6 +174,9 @@
           <button id="camera" class="media-button" disabled aria-pressed="false" aria-label="Activar cámara" title="Activar cámara">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="13" height="14" rx="3"/><path d="m15 10 7-4v12l-7-4"/><path class="off-slash" d="m3 3 18 18"/></svg>
           </button>
+          <button id="transcribe" class="media-button" hidden aria-pressed="false" aria-label="Transcribir consulta" title="Transcribir consulta">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h11M4 11h9M4 16h6"/><circle class="rec-dot" cx="18" cy="15" r="3.5"/></svg>
+          </button>
         </div>
       </div>
       <div class="chat-dock"><button id="chat-toggle" aria-expanded="false" aria-controls="chat-panel"><span>Chat privado <span id="chat-badge" hidden></span></span><span id="chat-toggle-label">Abrir ▾</span></button></div>
@@ -176,7 +188,7 @@
       </aside>
       <span id="chat-announcement" class="visually-hidden" role="status"></span>
       <button id="play-audio" hidden>Activar audio recibido</button>
-      <p class="muted">No se ofrece transcripción. Si se incorpora en el futuro, se solicitará consentimiento específico por separado.</p>
+      <p class="muted">Transcripción experimental: solo con consentimiento del paciente, procesada dentro del equipo del profesional y sin guardarse en el servidor.</p>
     </section>
   <details class="help"><summary>Cómo usar la videoconsulta</summary>
     <p id="duration-help">Duración de 1 a 120 minutos, desde la primera admisión. Cortes o reingresos no reinician el tiempo. Para cambiarla, finalizá y creá otra sala.</p>

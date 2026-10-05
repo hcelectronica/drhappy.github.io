@@ -6,7 +6,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test server.test.mjs",
+    "test": "node --test server.test.mjs transcription.test.mjs",
     "test:browser": "node browser.test.mjs"
   },
   "dependencies": { "socket.io": "^4.8.1" },

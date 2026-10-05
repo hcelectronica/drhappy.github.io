@@ -1,3 +1,4 @@
+import { createTranscriber } from '/transcription.js'
 const $ = id => document.getElementById(id)
 const handoffParams = new URLSearchParams(location.hash.slice(1))
 let accessToken = handoffParams.get('p') || handoffParams.get('invite')
@@ -35,6 +36,10 @@ let patients = []
 let appointments = []
 let patientsLoaded = false
 let loadingPatients = false
+let consultationPatientName = ''
+let transcriptPending = false
+let preparingTranscript = false
+const transcriber = createTranscriber({ onUpdate: () => { transcriptPending = transcriber.segments.length > 0; update() } })
 const report = error => { $('error').textContent = error instanceof Error ? error.message : String(error) }
 const status = text => { $('status').textContent = text }
 function update() {
@@ -78,6 +83,34 @@ function update() {
     ? 'Conectado. Mensajes privados, sin historial al recargar.'
     : 'Disponible después de la admisión. Sin historial al recargar.'
   $('chat-toggle').disabled = channel?.readyState !== 'open' && !$('messages').children.length
+  updateTranscript()
+}
+function updateTranscript() {
+  const professional = role === 'professional'
+  const segments = transcriber.segments.length
+  $('transcribe').hidden = !professional || (channel?.readyState !== 'open' && !transcriber.active)
+  $('transcribe').disabled = preparingTranscript
+  $('transcribe').setAttribute('aria-pressed', String(transcriber.active))
+  const transcribeLabel = preparingTranscript ? 'Preparando transcripción...' : transcriber.active ? 'Detener transcripción' : segments ? 'Reanudar transcripción' : 'Transcribir consulta'
+  $('transcribe').setAttribute('aria-label', transcribeLabel)
+  $('transcribe').title = transcribeLabel
+  $('transcript-panel').hidden = !professional || (!transcriber.active && !segments)
+  const problems = transcriber.channels.filter(item => item.error).map(item => `${item.speaker}: ${item.error}`)
+  const listening = transcriber.channels.map(item => `${item.speaker} ${item.state}`).join(' · ')
+  $('transcript-status').textContent = transcriber.active
+    ? `● Transcribiendo · ${segments} fragmento${segments === 1 ? '' : 's'} · ${listening}${problems.length ? ` · ${problems.join(' ')}` : ''}`
+    : `Transcripción detenida · ${segments} fragmento${segments === 1 ? '' : 's'} en este equipo${problems.length ? ` · ${problems.join(' ')}` : ''}`
+  $('transcript-download').hidden = $('transcript-discard').hidden = !segments || transcriber.active
+}
+function sendTranscriptState() {
+  if (role !== 'professional' || channel?.readyState !== 'open') return
+  try { channel.send(JSON.stringify({ type: 'transcription', active: transcriber.active })) }
+  catch (error) { report(error) }
+}
+function stopTranscript() {
+  if (!transcriber.active) return
+  transcriber.stop()
+  sendTranscriptState()
 }
 function setInCall(active) {
   if (document.body.classList.contains('in-call') === active) return
@@ -198,6 +231,8 @@ window.visualViewport?.addEventListener('scroll', positionChat)
 new ResizeObserver(positionChat).observe($('chat-toggle'))
 function closePeer() {
   generation++
+  stopTranscript()
+  $('transcript-notice').hidden = true
   clearTimeout(connectionTimer)
   clearTimeout(disconnectTimer)
   pendingCandidates = []
@@ -233,6 +268,7 @@ function release() {
 }
 function showTiming(data) {
   if (role === 'professional' && typeof data.patientName === 'string' && data.patientName) {
+    consultationPatientName = data.patientName
     $('patient-name').textContent = `Paciente: ${data.patientName}`
     $('patient-name').hidden = false
   }
@@ -292,7 +328,7 @@ function message(text, sender, suffix = '') {
 }
 function setChannel(next) {
   channel = next
-  next.onopen = () => { sendMediaState(); update() }
+  next.onopen = () => { sendMediaState(); sendTranscriptState(); update() }
   next.onclose = update
   next.onerror = () => report(new Error('Falló el canal del chat. No se garantiza la entrega de los mensajes pendientes.'))
   next.onmessage = event => {
@@ -302,6 +338,10 @@ function setChannel(next) {
       if (data.type === 'media-state' && typeof data.camera === 'boolean') {
         remoteCameraOn = data.camera
         update()
+        return
+      }
+      if (data.type === 'transcription' && typeof data.active === 'boolean') {
+        if (role === 'patient') $('transcript-notice').hidden = !data.active
         return
       }
       if (typeof data.id !== 'string' || data.id.length > 100) throw new Error('Identificador de mensaje inválido.')
@@ -518,6 +558,47 @@ async function toggleDevice(kind) {
 }
 $('mic').onclick = () => toggleDevice('audio')
 $('camera').onclick = () => toggleDevice('video')
+const liveAudio = media => media?.getAudioTracks().find(track => track.readyState === 'live') ?? null
+$('transcribe').onclick = async () => {
+  if (transcriber.active) { stopTranscript(); status('Transcripción detenida. El texto quedó solo en este equipo.'); return }
+  if (preparingTranscript || role !== 'professional' || channel?.readyState !== 'open') return
+  if (!confirm('¿El paciente dio su consentimiento para transcribir esta consulta? Verá un aviso mientras se transcribe.')) return
+  $('error').textContent = ''
+  preparingTranscript = true
+  update()
+  try {
+    await transcriber.prepare()
+    if (role !== 'professional' || channel?.readyState !== 'open') return
+    transcriber.start([
+      { speaker: 'Profesional', getTrack: () => liveAudio(stream) },
+      { speaker: 'Paciente', getTrack: () => liveAudio($('remote').srcObject) },
+    ])
+    sendTranscriptState()
+    status('Transcripción local activa. El audio no sale de este equipo.')
+  } catch (error) { report(error) }
+  finally { preparingTranscript = false; update() }
+}
+$('transcript-download').onclick = () => {
+  const started = new Date(transcriber.startedAt ?? Date.now())
+  const stamp = `${started.getFullYear()}-${String(started.getMonth() + 1).padStart(2, '0')}-${String(started.getDate()).padStart(2, '0')}-${String(started.getHours()).padStart(2, '0')}${String(started.getMinutes()).padStart(2, '0')}`
+  const url = URL.createObjectURL(new Blob([transcriber.text({ patientName: consultationPatientName })], { type: 'text/plain;charset=utf-8' }))
+  const link = Object.assign(document.createElement('a'), { href: url, download: `transcripcion-videoconsulta-${stamp}.txt` })
+  document.body.append(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  transcriptPending = false
+}
+$('transcript-discard').onclick = () => {
+  if (!confirm('¿Descartar la transcripción de este equipo? No se puede recuperar.')) return
+  transcriber.discard()
+  transcriptPending = false
+}
+window.addEventListener('beforeunload', event => {
+  if (!transcriptPending && !transcriber.active) return
+  event.preventDefault()
+  event.returnValue = ''
+})
 $('join').onclick = async () => {
   if (!accessToken) { report(new Error('Creá una sala o abrí la invitación antes de entrar.')); return }
   if (joining || socket) return
