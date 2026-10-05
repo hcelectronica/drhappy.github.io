@@ -37,6 +37,11 @@ let appointments = []
 let patientsLoaded = false
 let loadingPatients = false
 let consultationPatientName = ''
+let consultationId = null
+let transcriptConsultationId = null
+let transcriptPatientName = ''
+let summarizing = false
+let savingSummary = false
 let transcriptPending = false
 let preparingTranscript = false
 const transcriber = createTranscriber({ onUpdate: () => { transcriptPending = transcriber.segments.length > 0; update() } })
@@ -100,7 +105,16 @@ function updateTranscript() {
   $('transcript-status').textContent = transcriber.active
     ? `● Transcribiendo · ${segments} fragmento${segments === 1 ? '' : 's'} · ${listening}${problems.length ? ` · ${problems.join(' ')}` : ''}`
     : `Transcripción detenida · ${segments} fragmento${segments === 1 ? '' : 's'} en este equipo${problems.length ? ` · ${problems.join(' ')}` : ''}`
-  $('transcript-download-professional').hidden = $('transcript-download-patient').hidden = $('transcript-discard').hidden = !segments || transcriber.active
+  const idle = segments > 0 && !transcriber.active
+  const editing = !$('summary-editor').hidden
+  $('transcript-download-professional').hidden = $('transcript-download-patient').hidden = $('transcript-discard').hidden = !idle
+  $('transcript-summarize').hidden = !idle || editing || !transcriptConsultationId
+  $('transcript-summarize').disabled = summarizing || savingSummary
+  $('transcript-summarize').textContent = summarizing ? 'Sofía está resumiendo...' : '✨ Resumir con Sofía (usa 1 consulta)'
+  $('transcript-discard').disabled = summarizing || savingSummary
+  $('summary-save').disabled = $('summary-cancel').disabled = savingSummary
+  $('summary-save').textContent = savingSummary ? 'Guardando...' : 'Guardar en la historia clínica'
+  if (!segments && editing) $('summary-editor').hidden = true
 }
 function sendTranscriptState() {
   if (role !== 'professional' || channel?.readyState !== 'open') return
@@ -469,6 +483,7 @@ $('create').onclick = async () => {
     const data = await api('/api/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ durationMinutes, patientId, ...(appointmentId ? { appointmentId } : {}) }) })
     accessToken = data.token
+    consultationId = data.consultationId
     role = 'professional'
     $('link').value = data.patientLink
     $('invite').hidden = false
@@ -570,6 +585,11 @@ $('transcribe').onclick = async () => {
     await transcriber.prepare()
     if (role !== 'professional' || channel?.readyState !== 'open') return
     downloadedChannels.clear()
+    if (!transcriber.segments.length || transcriptConsultationId !== consultationId) {
+      transcriptConsultationId = consultationId
+      transcriptPatientName = consultationPatientName
+    }
+    $('summary-saved').hidden = true
     transcriber.start([
       { speaker: 'Profesional', getTrack: () => liveAudio(stream) },
       { speaker: 'Paciente', getTrack: () => liveAudio($('remote').srcObject) },
@@ -594,14 +614,65 @@ function downloadChannel(speaker, slug) {
 }
 $('transcript-download-professional').onclick = () => downloadChannel('Profesional', 'profesional')
 $('transcript-download-patient').onclick = () => downloadChannel('Paciente', 'paciente')
-$('transcript-discard').onclick = () => {
-  if (!confirm('¿Descartar la transcripción de este equipo? No se puede recuperar.')) return
+function finishTranscript() {
   transcriber.discard()
   downloadedChannels.clear()
   transcriptPending = false
+  transcriptConsultationId = null
+  $('summary-editor').hidden = true
+  $('summary-editor').reset()
+  update()
+}
+const stampText = ms => `${String(Math.floor(ms / 60000)).padStart(2, '0')}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`
+const channelText = speaker => transcriber.segments.filter(item => item.speaker === speaker).map(item => `[${stampText(item.at)}] ${item.text}`).join('\n')
+$('transcript-discard').onclick = () => {
+  if (!confirm('¿Finalizar sin resumir? La transcripción se borra de este equipo y no se usa ninguna consulta de Sofía.')) return
+  finishTranscript()
+  status('Consulta finalizada sin resumen. No se usó ninguna consulta de Sofía.')
+}
+$('transcript-summarize').onclick = async () => {
+  if (summarizing || !transcriptConsultationId) return
+  $('error').textContent = ''
+  summarizing = true
+  update()
+  try {
+    const summary = await api('/api/consultations/summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeout: 70000,
+      body: JSON.stringify({ consultationId: transcriptConsultationId, professional: channelText('Profesional'), patient: channelText('Paciente') }) })
+    $('summary-reason').value = summary.motivoConsulta
+    $('summary-detail').value = summary.detalleAtencion
+    $('summary-plan').value = summary.planManejo
+    $('summary-editor').hidden = false
+    status('Revisá el borrador de Sofía y guardalo en la historia clínica.')
+    $('summary-detail').focus()
+  } catch (error) { report(error) }
+  finally { summarizing = false; update() }
+}
+$('summary-cancel').onclick = () => {
+  if (!confirm('¿Descartar el resumen? La transcripción sigue en este equipo para volver a resumirla o finalizar.')) return
+  $('summary-editor').hidden = true
+  $('summary-editor').reset()
+  update()
+}
+$('summary-editor').onsubmit = async event => {
+  event.preventDefault()
+  if (savingSummary || !transcriptConsultationId) return
+  $('error').textContent = ''
+  savingSummary = true
+  update()
+  try {
+    await api('/api/consultations/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consultationId: transcriptConsultationId, motivoConsulta: $('summary-reason').value.trim(),
+        detalleAtencion: $('summary-detail').value.trim(), planManejo: $('summary-plan').value.trim() }) })
+    const name = transcriptPatientName
+    finishTranscript()
+    $('summary-saved').textContent = `Resumen guardado en la historia clínica${name ? ` de ${name}` : ''}. Si tenés Dr Happy abierto, recargalo para verlo.`
+    $('summary-saved').hidden = false
+    status('Resumen guardado en la historia clínica.')
+  } catch (error) { report(error) }
+  finally { savingSummary = false; update() }
 }
 window.addEventListener('beforeunload', event => {
-  if (!transcriptPending && !transcriber.active) return
+  if (!transcriptPending && !transcriber.active && $('summary-editor').hidden) return
   event.preventDefault()
   event.returnValue = ''
 })
@@ -685,8 +756,8 @@ $('chat').onsubmit = event => {
   } catch (error) { item.textContent = 'No enviado'; report(error) }
 }
 window.addEventListener('pagehide', release)
-async function api(path, options = {}) {
-  const response = await fetch(path, { ...options, signal: AbortSignal.timeout(15000) })
+async function api(path, { timeout = 15000, ...options } = {}) {
+  const response = await fetch(path, { ...options, signal: AbortSignal.timeout(timeout) })
   const data = await response.json()
   if (!response.ok) {
     if (response.status === 401 && role !== 'patient') { admin = false; update() }

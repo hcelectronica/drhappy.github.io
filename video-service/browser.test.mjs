@@ -18,6 +18,8 @@ const fixtureAppointments = [
   { id: 'synthetic-appointment-1', patientId: 'synthetic-patient-1', label: 'Turno de prueba Uno' },
   { id: 'synthetic-appointment-2', patientId: 'synthetic-patient-2', label: 'Turno de prueba Dos' },
 ]
+const summaryCalls = []
+const savedSummaries = []
 const app = createVideoServer({
   origin, iceServers: [],
   now: () => Date.now() + clockOffset,
@@ -28,8 +30,13 @@ const app = createVideoServer({
       item.id === data.appointmentId && item.patientId === data.patientId))) {
       throw Object.assign(new Error('Paciente o turno de prueba invalido.'), { status: 403 })
     }
-    return { consultationId: 'synthetic-consultation', patientName: patient.name, lifecycleToken: 'd'.repeat(64) }
+    return { consultationId: '7c1e4b2a-9d3f-4a6b-8e5c-1f2a3b4c5d6e', patientName: patient.name, lifecycleToken: 'd'.repeat(64) }
   },
+  summarizeConsultation: async (_session, data) => {
+    summaryCalls.push(data)
+    return { motivoConsulta: 'Control semanal', detalleAtencion: 'Refiere estar mucho mejor.', planManejo: 'Control en una semana.' }
+  },
+  saveConsultationSummary: async (_session, data) => { savedSummaries.push(data); return { ok: true } },
   recordConsultationEvent: async (_token, event) => { lifecycleEvents.push(event); return { ok: true } },
   exchangeHandoff: async token => {
     if (!handoffs.delete(token)) throw Object.assign(new Error('El pase vencio o ya se uso. Abri nuevamente desde Dr Happy.'), { status: 401 })
@@ -396,9 +403,36 @@ try {
   assert.ok(!professionalFile.includes('Mucho mejor'), 'Professional file only has professional speech')
   assert.match(patientFile, /Canal: Paciente\n[\s\S]*\] Mucho mejor, gracias/)
   assert.ok(!patientFile.includes('Cómo estuviste'), 'Patient file only has patient speech')
+  assert.equal(await professional.evaluate(`!document.querySelector('#transcript-summarize').hidden&&document.querySelector('#transcript-discard').textContent==='Finalizar sin resumir'`), true, 'Professional can summarize with Sofia or finish without summarizing')
+  await professional.click('transcript-summarize')
+  await professional.wait(`!document.querySelector('#summary-editor').hidden`)
+  assert.equal(summaryCalls.length, 1)
+  assert.equal(summaryCalls[0].consultationId, '7c1e4b2a-9d3f-4a6b-8e5c-1f2a3b4c5d6e')
+  assert.match(summaryCalls[0].professional, /^\[\d{2}:\d{2}\] ¿Cómo estuviste esta semana\?$/)
+  assert.match(summaryCalls[0].patient, /^\[\d{2}:\d{2}\] Mucho mejor, gracias$/)
+  assert.deepEqual(await professional.evaluate(`[...document.querySelectorAll('#summary-editor textarea')].map(x=>x.value)`),
+    ['Control semanal', 'Refiere estar mucho mejor.', 'Control en una semana.'], 'Sofia draft is shown for review')
+  assert.equal(await professional.evaluate(`document.querySelector('#transcript-summarize').hidden`), true, 'No second summary while reviewing')
+  await professional.click('summary-cancel')
+  assert.equal(await professional.evaluate(`document.querySelector('#summary-editor').hidden&&!document.querySelector('#transcript-summarize').hidden`), true, 'Discarding the draft keeps the transcript')
+  await professional.click('transcript-summarize')
+  await professional.wait(`!document.querySelector('#summary-editor').hidden`)
+  await professional.evaluate(`document.querySelector('#summary-detail').value='Refiere estar mucho mejor. Corregido por el profesional.'`)
+  await professional.click('summary-save')
+  await professional.wait(`!document.querySelector('#summary-saved').hidden`)
+  assert.deepEqual(savedSummaries, [{ consultationId: '7c1e4b2a-9d3f-4a6b-8e5c-1f2a3b4c5d6e', motivoConsulta: 'Control semanal',
+    detalleAtencion: 'Refiere estar mucho mejor. Corregido por el profesional.', planManejo: 'Control en una semana.' }], 'Reviewed summary is saved')
+  assert.equal(await professional.evaluate(`document.querySelector('#transcript-panel').hidden&&document.querySelector('#summary-editor').hidden&&document.querySelector('#summary-saved').textContent.includes('Paciente de prueba Dos')`), true, 'Saving clears the local transcript')
+  await professional.click('transcribe')
+  await professional.wait(`window.__recs.length===4`)
+  await professional.evaluate(`window.__recs[2].onresult({resultIndex:0,results:[Object.assign([{transcript:'Nos vemos la semana que viene'}],{isFinal:true})]})`)
+  await professional.wait(`document.querySelector('#transcript-status').textContent.includes('1 fragmento')`)
+  await professional.click('transcribe')
+  await professional.wait(`!document.querySelector('#transcript-discard').hidden`)
   await professional.click('transcript-discard')
-  assert.equal(await professional.evaluate(`document.querySelector('#transcript-panel').hidden&&document.querySelector('#transcribe').getAttribute('aria-label')==='Transcribir consulta'`), true, 'Discard clears transcript from memory')
-  console.log('TRANSCRIPTION: on-device recognizers per speaker, patient notice, hidden text, download and discard verified with a simulated local engine.')
+  assert.equal(await professional.evaluate(`document.querySelector('#transcript-panel').hidden&&document.querySelector('#transcribe').getAttribute('aria-label')==='Transcribir consulta'`), true, 'Finishing without summary clears transcript from memory')
+  assert.equal(summaryCalls.length, 2, 'Finishing without summary does not call Sofia')
+  console.log('TRANSCRIPTION: on-device recognizers per speaker, patient notice, hidden text, downloads, Sofia review/save and finish without summary verified with a simulated local engine.')
   await professional.click('chat-toggle')
   await professional.evaluate(`document.querySelector('#text').value='Hola desde profesional de prueba'`)
   await professional.click('send')

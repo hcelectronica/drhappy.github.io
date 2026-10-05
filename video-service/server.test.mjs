@@ -93,6 +93,45 @@ test('HTTP authorization, cookie, CSRF and payload validation', async t => {
   assert.equal((await f.request('/api/rooms', { cookie, method: 'POST' })).status, 403)
 })
 
+test('Sofia summary routes require an authorized session, enforce limits and propagate quota errors', async t => {
+  const calls = []
+  const consultationId = '3f2b8c1e-5d4a-4b6f-9a1c-2e7d8f9a0b1c'
+  const f = await fixture(t, {
+    summarizeConsultation: async (token, data) => {
+      calls.push(['summary', token, data])
+      if (data.professional === 'sin cupo') throw Object.assign(new Error('Alcanzaste el limite mensual de consultas de Sofia.'), { status: 429 })
+      return { motivoConsulta: 'Control', detalleAtencion: 'Refiere mejoria.', planManejo: 'Control en 7 dias.', extra: 'no' }
+    },
+    saveConsultationSummary: async (token, data) => {
+      calls.push(['save', token, data])
+      if (data.motivoConsulta === 'repetido') throw Object.assign(new Error('Ya fue guardado.'), { status: 409 })
+      return { ok: true }
+    },
+  })
+  const summary = { consultationId, professional: 'como te sentis', patient: 'mucho mejor' }
+  assert.equal((await f.request('/api/consultations/summary', { method: 'POST', data: summary })).status, 401)
+  const cookie = await f.login()
+  assert.equal((await f.request('/api/consultations/summary', { cookie, method: 'POST', requestOrigin: 'https://attacker.invalid', data: summary })).status, 403)
+  assert.equal((await f.request('/api/consultations/summary', { cookie, method: 'POST', data: { ...summary, consultationId: 'consultation-test' } })).status, 400)
+  assert.equal((await f.request('/api/consultations/summary', { cookie, method: 'POST', data: { ...summary, patient: 'x'.repeat(100_001) } })).status, 400)
+  const long = await f.request('/api/consultations/summary', { cookie, method: 'POST', data: { ...summary, professional: 'a'.repeat(60_000), patient: 'b'.repeat(60_000) } })
+  assert.equal(long.status, 200)
+  const ok = await f.request('/api/consultations/summary', { cookie, method: 'POST', data: summary })
+  assert.deepEqual(ok.data, { motivoConsulta: 'Control', detalleAtencion: 'Refiere mejoria.', planManejo: 'Control en 7 dias.' })
+  assert.deepEqual(calls.at(-1), ['summary', 'admin', summary])
+  const quota = await f.request('/api/consultations/summary', { cookie, method: 'POST', data: { ...summary, professional: 'sin cupo' } })
+  assert.equal(quota.status, 429)
+  assert.match(quota.data.error, /limite mensual/)
+  const entry = { consultationId, motivoConsulta: 'Control', detalleAtencion: 'Refiere mejoria.', planManejo: '' }
+  assert.equal((await f.request('/api/consultations/save', { cookie, method: 'POST', data: { ...entry, detalleAtencion: '  ' } })).status, 400)
+  assert.equal((await f.request('/api/consultations/save', { cookie, method: 'POST', data: { ...entry, detalleAtencion: 'x'.repeat(8001) } })).status, 400)
+  assert.equal((await f.request('/api/consultations/save', { cookie, method: 'POST', data: entry })).status, 201)
+  assert.deepEqual(calls.at(-1), ['save', 'admin', entry])
+  assert.equal((await f.request('/api/consultations/save', { cookie, method: 'POST', data: { ...entry, motivoConsulta: 'repetido' } })).status, 409)
+  f.revoked.add('admin')
+  assert.equal((await f.request('/api/consultations/save', { cookie, method: 'POST', data: entry })).status, 403)
+})
+
 test('Patient ownership is checked server-side and lifecycle secrets never reach participants', async t => {
   const f = await fixture(t)
   assert.equal((await f.request('/api/patients')).status, 401)

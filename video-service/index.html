@@ -77,6 +77,9 @@
     #transcribe[aria-pressed=true] .rec-dot{fill:currentColor;animation:rec 1.4s ease-in-out infinite}
     @keyframes rec{50%{opacity:.35}}
     #transcript-panel{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:0 0 8px;font-size:14px}#transcript-panel[hidden]{display:none}
+    #summary-editor{display:grid;gap:8px;margin:0 0 10px}#summary-editor[hidden]{display:none}#summary-editor label{display:grid;gap:4px;font-size:14px;font-weight:600}
+    #summary-editor textarea{width:100%;min-height:72px;resize:vertical;font-size:16px}#summary-detail{min-height:160px!important}
+    #summary-editor .actions{display:flex;gap:8px;flex-wrap:wrap}#summary-help{margin:0;font-size:13px;color:#4b6378}#summary-saved{margin:0 0 8px;color:#126b45;font-weight:600}
     .video-controls #fullscreen{width:44px;height:44px;min-height:44px;padding:6px;border:0;border-radius:50%;background:#ffffff24;color:#fff;font-size:24px}
     .video-controls #fullscreen[aria-pressed=true]{background:#159d99;color:#fff}
     .expanded-page{overflow:hidden}
@@ -114,7 +117,7 @@
       .in-call main:fullscreen #identity,.in-call.expanded-page #identity,.in-call main:fullscreen .waiting-controls,.in-call.expanded-page .waiting-controls,.in-call main:fullscreen #status,.in-call.expanded-page #status{display:none}
       main:fullscreen .room-view,.expanded-page .room-view{position:relative;flex:1 1 0;min-height:0}
       main:fullscreen .room-toolbar,.expanded-page .room-toolbar{padding:2px 210px 4px 0;min-height:40px}
-      main:fullscreen #transcript-panel,.expanded-page #transcript-panel{display:none}
+      main:fullscreen #transcript-panel,.expanded-page #transcript-panel,main:fullscreen #summary-editor,.expanded-page #summary-editor{display:none}
       main:fullscreen .stage,.expanded-page .stage{flex:1 1 0;height:auto;min-height:120px;max-height:none}
       main:fullscreen .chat-dock,.expanded-page .chat-dock{position:absolute;top:2px;right:0;bottom:auto;margin:0;width:200px}
       main:fullscreen #chat-toggle,.expanded-page #chat-toggle{min-height:36px;padding:4px 10px}
@@ -155,7 +158,9 @@
         <button id="leave" hidden disabled aria-label="Salir y apagar dispositivos">Salir</button>
         <button id="end" hidden class="danger">Finalizar para ambos</button>
       </div>
-      <div id="transcript-panel" hidden><span id="transcript-status" role="status"></span><button id="transcript-download-professional" hidden>Descargar profesional</button><button id="transcript-download-patient" hidden>Descargar paciente</button><button id="transcript-discard" hidden>Descartar</button></div>
+      <div id="transcript-panel" hidden><span id="transcript-status" role="status"></span><button id="transcript-summarize" class="primary" hidden>✨ Resumir con Sofía (usa 1 consulta)</button><button id="transcript-discard" hidden>Finalizar sin resumir</button><button id="transcript-download-professional" hidden>Descargar profesional</button><button id="transcript-download-patient" hidden>Descargar paciente</button></div>
+      <form id="summary-editor" class="panel" hidden><p id="summary-help">Borrador de Sofía. Revisalo y corregilo antes de guardarlo en la historia clínica.</p><label>Motivo de consulta<textarea id="summary-reason" maxlength="300"></textarea></label><label>Resumen de la atención<textarea id="summary-detail" maxlength="8000" required></textarea></label><label>Indicaciones y pendientes<textarea id="summary-plan" maxlength="4000"></textarea></label><div class="actions"><button id="summary-save" class="primary" type="submit">Guardar en la historia clínica</button><button id="summary-cancel" type="button">Descartar resumen</button></div></form>
+      <p id="summary-saved" role="status" hidden></p>
       <div id="stage" class="stage">
         <video id="remote" autoplay playsinline></video>
         <div id="stage-placeholder" class="stage-placeholder">

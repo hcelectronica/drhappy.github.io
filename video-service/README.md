@@ -195,13 +195,24 @@ Chrome 139 o posterior en computadora puede descargar el paquete de espanol en
 el primer uso; Edge, Safari/iPhone y Chrome en celulares hoy lo rechazan.
 
 Mientras transcribe, el paciente ve un aviso. El texto no se muestra en
-pantalla ni se envia al servidor: queda en memoria del navegador hasta
-descargarlo en dos .txt independientes (profesional y paciente, cada uno con sus
-tiempos desde el inicio) o descartarlo, y el navegador advierte antes de cerrar con
-texto pendiente. Cortar la conexion detiene la transcripcion. Es un borrador para
-revision profesional; el resumen con Sofia y el guardado en la historia clinica
-son etapas posteriores. `transcription.test.mjs` cubre la logica con un motor
-simulado y la prueba de navegador cubre el flujo completo de la sala.
+pantalla ni se guarda en el servidor: queda en memoria del navegador y el
+navegador advierte antes de cerrar con texto pendiente. Cortar la conexion
+detiene la transcripcion. Al detenerla, el profesional elige:
+
+- **Finalizar sin resumir**: borra el texto del equipo y no usa consultas de Sofia.
+- **Resumir con Sofia (usa 1 consulta)**: `POST /api/consultations/summary` envia
+  ambos canales (con marcas `[mm:ss]`, hasta 100000 caracteres cada uno) a la
+  funcion `video-consultations`, que reclama una consulta de Sofia y devuelve un
+  borrador (motivo, resumen e indicaciones). El texto de la transcripcion no se
+  guarda. El profesional lo corrige y `POST /api/consultations/save` lo agrega
+  como evolucion `[VIDEOCONSULTA]` en la historia clinica del paciente, una sola
+  vez por sala; o descarta el borrador y conserva la transcripcion.
+- **Descargar** los dos .txt independientes (profesional y paciente), opcional.
+
+Si Dr Happy estaba abierto, hay que recargarlo para ver la evolucion nueva; el
+guardado de la app conserva las evoluciones de videoconsulta aunque tenga datos
+viejos. `transcription.test.mjs` cubre la logica con un motor simulado y la
+prueba de navegador cubre el flujo completo de la sala.
 
 ## Registro y ciclo de vida
 

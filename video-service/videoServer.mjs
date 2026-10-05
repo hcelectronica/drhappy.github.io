@@ -10,6 +10,7 @@ const validToken = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(v
 const patientToken = () => randomBytes(16).toString('base64url')
 const validAccessToken = value => validToken(value) || (typeof value === 'string' && /^[A-Za-z0-9_-]{21}[AQgw]$/.test(value))
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(value)
+const validUuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value)
 
 export function createVideoServer({
   origin = process.env.PUBLIC_ORIGIN || 'https://video.drhappy.com.ar',
@@ -20,6 +21,8 @@ export function createVideoServer({
   verifyAdmin,
   listPatients,
   createConsultation,
+  summarizeConsultation,
+  saveConsultationSummary,
   recordConsultationEvent,
   waitingDurationMs = 30 * 60_000,
   now = Date.now,
@@ -53,14 +56,14 @@ export function createVideoServer({
     }
     if (++bucket.count > limit) throw fail(429, 'Demasiados intentos. Espera un momento y reintenta.')
   }
-  async function remote(path, body, sessionToken) {
+  async function remote(path, body, sessionToken, timeoutMs = 10_000) {
     let response
     try {
       response = await fetch(`${supabaseUrl}/functions/v1/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(sessionToken ? { 'x-drhappy-session': sessionToken } : {}) },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(timeoutMs),
       })
     } catch {
       throw fail(503, 'No se pudo contactar al servicio de autorizacion.')
@@ -68,8 +71,9 @@ export function createVideoServer({
     let data
     try { data = await response.json() }
     catch { throw fail(503, 'El servicio de autorizacion devolvio una respuesta invalida.') }
-    if (!response.ok) throw fail([400, 401, 403, 429].includes(response.status) ? response.status : 503,
-      response.status >= 500 ? 'No se pudo validar la cuenta. Reintenta.' : data.error || data.message || 'Acceso denegado.')
+    if (!response.ok) throw fail([400, 401, 402, 403, 404, 409, 429].includes(response.status) ? response.status : 503,
+      response.status === 502 && data.error ? data.error
+        : response.status >= 500 ? 'No se pudo validar la cuenta. Reintenta.' : data.error || data.message || 'Acceso denegado.')
     return data
   }
   async function remoteLogin(username, password) {
@@ -87,6 +91,8 @@ export function createVideoServer({
   verifyAdmin ??= remoteVerify
   listPatients ??= sessionToken => remote('video-consultations', { action: 'list' }, sessionToken)
   createConsultation ??= (sessionToken, data) => remote('video-consultations', { action: 'create', ...data }, sessionToken)
+  summarizeConsultation ??= (sessionToken, data) => remote('video-consultations', { action: 'summarize', ...data }, sessionToken, 60_000)
+  saveConsultationSummary ??= (sessionToken, data) => remote('video-consultations', { action: 'save-summary', ...data }, sessionToken)
   recordConsultationEvent ??= async (lifecycleToken, event) => {
     const data = await remote('video-consultations', { action: 'event', lifecycleToken, event })
     if (data?.ok !== true) throw fail(503, 'No se pudo confirmar el registro de videoconsulta.')
@@ -154,11 +160,11 @@ export function createVideoServer({
     identity(rawToken)
     return result
   }
-  async function body(request) {
+  async function body(request, limit = 4096) {
     let text = ''
     for await (const chunk of request) {
       text += chunk.toString()
-      if (Buffer.byteLength(text) > 4096) throw fail(413, 'Solicitud demasiado grande.')
+      if (Buffer.byteLength(text) > limit) throw fail(413, 'Solicitud demasiado grande.')
     }
     try { return JSON.parse(text) }
     catch { throw fail(400, 'Solicitud JSON invalida.') }
@@ -217,6 +223,30 @@ export function createVideoServer({
           patients: data.patients.map(({ id, name }) => ({ id, name })),
           appointments: data.appointments.map(({ id, patientId, label }) => ({ id, patientId, label })),
         })
+      }
+      if (path === '/api/consultations/summary' && request.method === 'POST') {
+        const session = getSession(request)
+        rate(`summary:${session.key}`, 6, 10 * 60_000)
+        await authorize(session)
+        const data = await body(request, 450_000)
+        if (!validUuid(data?.consultationId) || typeof data.professional !== 'string' || typeof data.patient !== 'string'
+          || data.professional.length > 100_000 || data.patient.length > 100_000) throw fail(400, 'Transcripcion invalida.')
+        const summary = await summarizeConsultation(session.upstream, { consultationId: data.consultationId, professional: data.professional, patient: data.patient })
+        if (![summary?.motivoConsulta, summary?.detalleAtencion, summary?.planManejo].every(value => typeof value === 'string')) throw fail(503, 'Sofia devolvio un resumen invalido.')
+        return json(response, 200, { motivoConsulta: summary.motivoConsulta, detalleAtencion: summary.detalleAtencion, planManejo: summary.planManejo })
+      }
+      if (path === '/api/consultations/save' && request.method === 'POST') {
+        const session = getSession(request)
+        rate(`save:${session.key}`, 10, 10 * 60_000)
+        await authorize(session)
+        const data = await body(request, 64_000)
+        if (!validUuid(data?.consultationId) || ![data.motivoConsulta, data.detalleAtencion, data.planManejo].every(value => typeof value === 'string')
+          || data.motivoConsulta.length > 300 || !data.detalleAtencion.trim() || data.detalleAtencion.length > 8000 || data.planManejo.length > 4000) {
+          throw fail(400, 'Revisa el resumen: el detalle es obligatorio y hay un limite de largo.')
+        }
+        await saveConsultationSummary(session.upstream, { consultationId: data.consultationId,
+          motivoConsulta: data.motivoConsulta, detalleAtencion: data.detalleAtencion, planManejo: data.planManejo })
+        return json(response, 201, { ok: true })
       }
       if (path === '/api/rooms' && request.method === 'POST') {
         const session = getSession(request)

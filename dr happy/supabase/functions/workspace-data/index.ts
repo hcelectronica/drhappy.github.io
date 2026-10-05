@@ -71,8 +71,27 @@ Deno.serve(async (request) => {
   }
   if (body.action === 'save') {
     const profile = body.profile && typeof body.profile === 'object' ? body.profile : {}
-    const patients = Array.isArray(body.patients) ? body.patients : []
+    let patients = Array.isArray(body.patients) ? body.patients : []
     const appointments = Array.isArray(body.appointments) ? body.appointments : []
+    // Las evoluciones de videoconsulta se guardan desde el servidor: una pestaña con datos viejos no debe borrarlas.
+    const { data: current, error: currentError } = await admin.from('user_workspaces').select('patients_json').eq('user_id', professionalId).maybeSingle()
+    if (currentError) return jsonResponse(500, { success: false, message: currentError.message })
+    const videoEntries = new Map<string, Record<string, unknown>[]>()
+    for (const patient of Array.isArray(current?.patients_json) ? current.patients_json : []) {
+      if (!patient || typeof patient !== 'object' || typeof patient.id !== 'string' || !Array.isArray(patient.consultations)) continue
+      const entries = patient.consultations.filter((entry: unknown) => entry && typeof entry === 'object'
+        && typeof (entry as Record<string, unknown>).id === 'string' && String((entry as Record<string, unknown>).id).startsWith('video-'))
+      if (entries.length) videoEntries.set(patient.id, entries)
+    }
+    if (videoEntries.size) {
+      patients = patients.map((patient) => {
+        if (!patient || typeof patient !== 'object' || !videoEntries.has(patient.id)) return patient
+        const consultations = Array.isArray(patient.consultations) ? patient.consultations : []
+        const known = new Set(consultations.map((entry: unknown) => entry && typeof entry === 'object' ? (entry as Record<string, unknown>).id : null))
+        const missing = videoEntries.get(patient.id)!.filter((entry) => !known.has(entry.id))
+        return missing.length ? { ...patient, consultations: [...missing, ...consultations] } : patient
+      })
+    }
     const workspaceUpdate: Record<string, unknown> = {
       user_id: professionalId,
       profile_json: profile,
