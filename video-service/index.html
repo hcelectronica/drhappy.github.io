@@ -7,15 +7,17 @@
   <title>Dr Happy | Videoconsulta piloto</title>
   <style>
     *{box-sizing:border-box}body{margin:0;background:#edf3f8;color:#17324d;font:15px/1.5 Arial,sans-serif}
-    main{max-width:1100px;margin:auto;padding:20px}h1{font-size:24px}h2{font-size:18px}
-    .notice{padding:14px;border:1px solid #e8cf8a;background:#fff6dc;border-radius:12px}
+    main{max-width:960px;margin:auto;padding:16px}h1{font-size:22px;margin:0}h2{font-size:18px}
+    .heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .heading .brand{display:flex;align-items:center;gap:10px}.heading img{width:40px;height:40px}
+    .notice{padding:8px 12px;border:1px solid #e8cf8a;background:#fff6dc;border-radius:12px;margin-bottom:12px;font-size:13px}
+    summary{cursor:pointer;min-height:28px;display:list-item}details p{margin:8px 0}
     button,input,textarea{font:inherit;min-height:44px;border:1px solid #bfd0df;border-radius:9px;padding:8px 12px}
     button{cursor:pointer;background:white;color:#17324d}button:disabled{opacity:.55;cursor:not-allowed}
-    button:focus-visible,input:focus-visible{outline:3px solid #159d99}input{width:100%;min-width:0}
+    button:focus-visible,input:focus-visible{outline:3px solid #159d99}input{width:100%;min-width:0;font-size:16px}
     .primary{background:#17324d;color:white}.danger{background:#fff0f1;color:#982333}
-    .grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;margin-top:16px}
     .panel{padding:16px;border-radius:14px;background:white;border:1px solid #d4e0e9}
-    .stage{background:radial-gradient(ellipse at top,#254f68,#10263b 75%);border-radius:22px;position:relative;height:440px;min-height:320px;color:white;overflow:hidden;text-align:center;isolation:isolate}
+    .stage{background:radial-gradient(ellipse at top,#254f68,#10263b 75%);border-radius:22px;position:relative;height:clamp(220px,40svh,360px);color:white;overflow:hidden;text-align:center;isolation:isolate}
     #remote{display:block;width:100%;height:100%;object-fit:contain}
     .stage-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 20px 80px;pointer-events:none}
     .stage-logo{width:108px;height:108px;filter:drop-shadow(0 12px 24px #06132380);animation:logo-breathe 4s ease-in-out infinite}
@@ -34,46 +36,67 @@
     .media-button .off-slash{display:none}
     .media-button[aria-pressed=false] .off-slash{display:block}
     .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-    .controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
-    #error{color:#9b2432;white-space:pre-wrap}#status{font-weight:bold}
-    .muted{font-size:13px;color:#5b7083}#messages{height:190px;overflow:auto;overflow-wrap:anywhere}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+    .room-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0}
+    #duration-panel{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:13px;white-space:nowrap}
+    #duration{width:72px;padding:8px}
+    .consent{display:flex;gap:8px;align-items:flex-start;font-size:13px}.consent input{margin-top:4px}
+    .room-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px}
+    #identity{margin:0;color:#5b7083}#countdown{margin:0;font-weight:600}
+    #waiting{margin:0;font-size:13px}.waiting-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0}
+    #error{color:#9b2432;white-space:pre-wrap;overflow-wrap:anywhere}#status{font-weight:600;font-size:13px}
+    #status,#error,#time-warning{margin:6px 0}#error:empty,#time-warning:empty{display:none}
+    .muted{font-size:13px;color:#5b7083}
+    .chat-dock{margin-top:8px;display:flex;gap:8px;align-items:center}
+    #chat-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;text-align:left}
+    #chat-toggle[aria-expanded=true]{border-color:#159d99;background:#eaf8f6}
+    #chat-badge{background:#17324d;color:white;padding:1px 8px;border-radius:12px;font-size:12px}
+    #chat-panel{position:fixed;display:flex;flex-direction:column;gap:8px;z-index:10;padding:12px;background:#fff;border:1px solid #bfd0df;border-radius:14px;box-shadow:0 12px 28px #17324d26;overflow:hidden}
+    .chat-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .chat-heading h2{margin:0;font-size:15px}.chat-heading button{padding:4px 10px}
+    #chat-state{margin:0;font-size:12px;color:#5b7083}
+    #chat-panel.compact #chat-state{display:none}
+    #messages{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-wrap:anywhere}
+    #chat{flex-shrink:0}#chat input{font-size:16px}
     .message{background:#eef5f8;border-radius:8px;padding:8px;margin:8px 0}
-    form{display:flex;gap:8px}.link{margin:12px 0}[hidden]{display:none!important}
+    form{display:flex;gap:8px}.link{margin:6px 0 8px;font-size:13px}.link-content{display:flex;align-items:center;gap:8px}.link label{flex:1;min-width:0;font-size:12px}.link input{font-size:13px}[hidden]{display:none!important}
     #login{display:grid;gap:12px;max-width:440px}#consent{width:auto;min-height:0}
-    @media(max-width:700px){.grid{grid-template-columns:1fr}main{padding:12px}.stage{height:390px}.stage-logo{width:88px;height:88px}#self-preview{width:112px;height:84px}.panel{padding:12px}}
+    .help{margin-top:8px;color:#5b7083;font-size:12px}.help p{margin:6px 0}
+    @media(max-width:700px){main{padding:10px}h1{font-size:18px}.heading img{width:32px;height:32px}.heading #logout{font-size:12px;padding:6px 8px}.stage{height:clamp(180px,25svh,300px);border-radius:18px}.stage-logo{width:60px;height:60px;flex-shrink:0}.stage-placeholder{padding:12px 12px 70px}.stage-placeholder p{font-size:13px;margin-top:8px}#self-preview{width:96px;height:72px}.panel{padding:12px}.room-toolbar{gap:6px}.room-toolbar button{padding:8px 10px;font-size:13px}#duration{width:60px}#duration-panel{gap:4px}.preview-label{font-size:10px}.video-controls{gap:10px;padding:7px;bottom:10px}.media-button{width:46px;height:46px;padding:11px}.controls button{font-size:12px}.notice{font-size:12px;margin-bottom:8px}}
+    @media(max-width:360px){#duration-panel{margin-left:0}.room-toolbar{justify-content:space-between}.heading .brand{gap:6px}}
     @media(prefers-reduced-motion:reduce){.stage-logo{animation:none}}
   </style>
 </head>
 <body>
 <main>
-  <h1>Dr Happy · Videoconsulta piloto</h1>
-  <p class="notice"><strong>Prueba técnica, no atención clínica.</strong> Creación de salas solo para administradores de Dr Happy. El invitado no necesita cuenta. Sin grabación, transcripción ni Sofía. La invitación permite hasta 30 minutos de espera antes de la primera admisión. Después, la consulta dura los minutos elegidos y el enlace se revoca al finalizar. Un reinicio del servidor cierra las salas. No uses información clínica ni datos de pacientes reales.</p>
+  <header class="heading"><div class="brand"><img src="/brand-mark.svg" alt="Dr. H"><h1>Videoconsulta <small>· piloto</small></h1></div><button id="logout" hidden>Cerrar sesión</button></header>
+  <details class="notice"><summary><strong>Prueba técnica, no atención clínica.</strong> Sin datos de pacientes reales.</summary><p>Creación de salas solo para administradores de Dr Happy. El invitado no necesita cuenta. Sin grabación, transcripción ni Sofía. Hay hasta 30 minutos de espera para admitir; después se cuenta la duración elegida. Finalizar revoca el enlace. Un reinicio del servidor cierra las salas.</p></details>
   <section id="login-panel" class="panel">
     <h2>Acceso administrativo</h2>
-    <p>Usá tu usuario o email y contraseña de Dr Happy. La sesión administrativa dura tres horas, para cubrir la espera y consultas de hasta 120 minutos. Las cuentas que usan solo Google necesitan definir su contraseña en Dr Happy.</p>
+    <p>Si abrís Videoconsulta desde la app, entrás con tu sesión sin otra contraseña. Para acceso directo, usá tu usuario o email y contraseña de Dr Happy. La sesión de video dura tres horas.</p>
     <form id="login">
       <label>Usuario o email<input id="username" autocomplete="username" required maxlength="160"></label>
       <label>Contraseña<input id="password" type="password" autocomplete="current-password" required maxlength="256"></label>
       <button id="login-submit" class="primary">Iniciar sesión</button>
     </form>
   </section>
-  <div class="controls"><button id="logout" hidden>Cerrar sesión administrativa</button></div>
-  <label><input id="consent" type="checkbox"> Entiendo que es una prueba técnica y acepto compartir audio/video con el otro participante únicamente después de la admisión.</label>
-  <p id="network" class="muted">Conexión directa con STUN de Google para detectar rutas de red. No envía el audio/video al servidor STUN. Algunas redes necesitan TURN; la configuración se comprueba al entrar.</p>
-  <section id="duration-panel" hidden class="panel">
-    <label>Duración de la consulta (minutos)<input id="duration" type="number" min="1" max="120" step="1" value="40" inputmode="numeric" aria-describedby="duration-help"></label>
-    <p id="duration-help" class="muted">Elegí entre 1 y 120 minutos antes de crear la sala. El tiempo comienza con la primera admisión, continúa durante cortes o reingresos y no se reinicia. Al llegar a cero, se finaliza para ambos. Para cambiar la duración, creá otra sala.</p>
+  <label class="consent"><input id="consent" type="checkbox"> Acepto esta prueba técnica. Cámara y micrófono solo se comparten después de la admisión y cuando yo los activo.</label>
+  <section aria-label="Preparar sala">
+    <details id="invite" hidden class="link"><summary>Enlace privado del paciente</summary><div class="link-content"><label class="visually-hidden" for="link">Enlace privado del paciente</label><input id="link" readonly><button id="copy">Copiar</button><button id="share" hidden>Compartir</button></div></details>
+    <div class="room-meta"><p id="identity">Sin sala.</p><p id="countdown" hidden></p></div>
+    <div class="waiting-controls"><p id="waiting">Sin participantes conectados.</p><button id="admit" hidden class="primary">Admitir paciente</button><button id="reject" hidden class="danger">Rechazar</button></div>
   </section>
-  <div class="controls"><button id="create" hidden class="primary">Crear sala de prueba</button><button id="join" disabled>Entrar a la sala</button></div>
-  <p class="muted">Activá cámara y micrófono por separado con los iconos del video. Podés entrar solo con audio y sumar cámara durante la llamada. Si un dispositivo está ocupado, cerralo en el otro programa. Usá auriculares para evitar eco.</p>
-  <div id="invite" hidden class="link"><label>Enlace privado para el invitado (no lo publiques)<input id="link" readonly></label><button id="copy">Copiar enlace</button></div>
-  <p id="identity">Sin sala.</p>
-  <p id="countdown" hidden></p>
   <p id="time-warning" role="status"></p>
   <p id="status" role="status">Iniciá sesión como administrador o abrí una invitación.</p>
   <p id="error" role="alert"></p>
-  <div class="grid">
-    <section class="panel">
+    <section aria-label="Video y chat">
+      <div class="room-toolbar" role="group" aria-label="Crear y entrar a la sala">
+        <button id="create" hidden class="primary">1. Crear sala</button>
+        <button id="join" disabled>Entrar a la sala</button>
+        <label id="duration-panel" hidden for="duration">Duración <input id="duration" type="number" min="1" max="120" step="1" value="40" inputmode="numeric" aria-describedby="duration-help"> min</label>
+        <button id="leave" hidden disabled aria-label="Salir y apagar dispositivos">Salir</button>
+        <button id="end" hidden class="danger">Finalizar para ambos</button>
+      </div>
       <div id="stage" class="stage">
         <video id="remote" autoplay playsinline></video>
         <div id="stage-placeholder" class="stage-placeholder">
@@ -93,24 +116,22 @@
           </button>
         </div>
       </div>
+      <div class="chat-dock"><button id="chat-toggle" aria-expanded="false" aria-controls="chat-panel"><span>Chat privado <span id="chat-badge" hidden></span></span><span id="chat-toggle-label">Abrir ▾</span></button></div>
+      <aside id="chat-panel" hidden aria-label="Chat privado">
+        <div class="chat-heading"><h2>Chat privado</h2><button id="chat-close" aria-label="Minimizar chat">Minimizar</button></div>
+        <p id="chat-state">Disponible después de la admisión. Sin historial al recargar.</p>
+        <div id="messages" aria-label="Mensajes"></div>
+        <form id="chat"><input id="text" aria-label="Mensaje" placeholder="Escribí un mensaje..." maxlength="1000" required disabled><button id="send" disabled>Enviar</button></form>
+      </aside>
+      <span id="chat-announcement" class="visually-hidden" role="status"></span>
       <button id="play-audio" hidden>Activar audio recibido</button>
-      <div class="controls">
-        <button id="leave" disabled>Salir y apagar dispositivos</button>
-        <button id="end" hidden class="danger">Finalizar sala para ambos</button>
-      </div>
-      <p id="preview-help" class="muted">Mové tu vista pequeña con mouse o dedo dentro del recuadro. Con teclado, enfocala y usá las flechas. Tu audio no se reproduce localmente. No se graban los medios. Al perder señalización se corta la conexión de medios y se requiere una nueva admisión.</p>
     </section>
-    <aside class="panel">
-      <h2>Sala de espera</h2>
-      <p id="waiting">Sin participantes conectados.</p>
-      <button id="admit" hidden class="primary">Admitir invitado</button>
-      <button id="reject" hidden class="danger">Rechazar entrada</button>
-      <h2>Chat privado de prueba</h2>
-      <p class="muted">Solo después de la admisión. Mensajes en memoria, sin historial al recargar.</p>
-      <div id="messages" aria-label="Mensajes"></div>
-      <form id="chat"><input id="text" aria-label="Mensaje" maxlength="1000" required disabled><button id="send" disabled>Enviar</button></form>
-    </aside>
-  </div>
+  <details class="help"><summary>Cómo usar la sala y condiciones de la prueba</summary>
+    <p id="duration-help">Duración de 1 a 120 minutos, desde la primera admisión. Cortes o reingresos no reinician el tiempo. Para cambiarla, finalizá y creá otra sala.</p>
+    <p>Podés entrar sin cámara ni micrófono y activarlos después con sus iconos. Crear no te conecta: compartí el enlace y tocá Entrar. El profesional admite al paciente. Usá auriculares para evitar eco.</p>
+    <p id="preview-help">Mové tu vista pequeña con mouse o dedo. Con teclado, enfocala y usá las flechas. Tu audio no se reproduce localmente. Al perder señalización se corta la conexión de medios y se requiere una nueva admisión.</p>
+    <p id="network">Conexión directa con STUN de Google para detectar rutas de red; no recibe audio/video. Sin TURN, algunas redes pueden impedir conectar los medios.</p>
+  </details>
 </main>
 <script src="/socket.io/socket.io.js"></script>
 <script type="module" src="/client.js"></script>

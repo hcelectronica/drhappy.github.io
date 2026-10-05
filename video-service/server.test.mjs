@@ -45,7 +45,7 @@ async function fixture(t, options = {}) {
   const create = async (cookie, durationMinutes = 40) => {
     const response = await request('/api/rooms', { cookie, method: 'POST', data: { durationMinutes } })
     assert.equal(response.status, 201)
-    return { ...response.data, patient: response.data.patientLink.split('#invite=')[1] }
+    return { ...response.data, patient: response.data.patientLink.split('#p=')[1] }
   }
   const connect = (token, cookie, requestOrigin = origin) => new Promise(resolve => {
     const client = io(origin, { transports: ['websocket'], reconnection: false,
@@ -308,6 +308,29 @@ test('Consumed pass still requires fresh administrative validation before creati
   const denied = await f.request('/api/handoff', { method: 'POST', data: { token: 'a'.repeat(64) } })
   assert.equal(denied.status, 403)
   assert.equal(denied.cookie, undefined)
+})
+
+test('Short patient links have 128-bit random secrets in fragments, retain admission and reject guessing or administrative use', async t => {
+  const f = await fixture(t)
+  const cookie = await f.login()
+  const room = await f.create(cookie)
+  assert.match(room.patient, /^[A-Za-z0-9_-]{21}[AQgw]$/)
+  assert.equal(Buffer.from(room.patient, 'base64url').length, 16)
+  assert.equal(new URL(room.patientLink).pathname, '/')
+  assert.equal(new URL(room.patientLink).search, '', 'Secret never placed in server request URL')
+  assert.equal(room.patientLink.length, f.origin.length + 26)
+  const room2 = await f.create(cookie)
+  assert.notEqual(room.patient, room2.patient)
+  assert.equal((await f.request('/api/ice', { headers: { 'x-video-token': room.patient } })).status, 200)
+  assert.equal((await f.request('/api/rooms', { method: 'POST', data: { durationMinutes: 40 }, headers: { 'x-video-token': room.patient } })).status, 401)
+  assert.equal((await f.request('/api/handoff', { method: 'POST', data: { token: room.patient } })).status, 400)
+  assert.equal((await f.request('/api/session', { cookie: `drhappy-video=${room.patient}` })).status, 401)
+  const patient = (await f.connect(room.patient)).client
+  assert(patient.connected)
+  assert((await emit(patient, 'signal', { description: { type: 'answer', sdp: 'test' } })).error)
+  const invalid = room.patient.slice(0, -1) + 'B'
+  assert.equal((await f.request('/api/ice', { headers: { 'x-video-token': invalid } })).status, 401)
+  assert((await f.connect('A'.repeat(22))).error)
 })
 
 test('Manual login keeps original replacement behavior instead of silently retaining old sessions', async t => {

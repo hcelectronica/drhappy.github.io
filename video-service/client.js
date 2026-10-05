@@ -1,5 +1,5 @@
 const $ = id => document.getElementById(id)
-let accessToken = new URLSearchParams(location.hash.slice(1)).get('invite')
+let accessToken = new URLSearchParams(location.hash.slice(1)).get('p') || new URLSearchParams(location.hash.slice(1)).get('invite')
 let handoffToken = new URLSearchParams(location.hash.slice(1)).get('handoff')
 history.replaceState(null, '', location.pathname)
 let role = accessToken ? 'patient' : null
@@ -13,6 +13,7 @@ let generation = 0
 let admin = false
 let authorizing = Boolean(handoffToken)
 let joining = false
+let creating = false
 let mediaGeneration = 0
 const deviceBusy = new Set()
 let senders = {}
@@ -26,16 +27,21 @@ let connectionTimer
 let disconnectTimer
 const pendingMessages = new Map()
 const seenMessages = new Set()
+let unreadMessages = 0
 const report = error => { $('error').textContent = error instanceof Error ? error.message : String(error) }
 const status = text => { $('status').textContent = text }
 function update() {
-  $('create').hidden = !admin || role === 'patient'
-  $('duration-panel').hidden = !admin || role === 'patient'
+  $('create').hidden = !admin || role === 'patient' || Boolean(socket)
+  $('duration-panel').hidden = !admin || role === 'patient' || Boolean(socket)
   $('login-panel').hidden = admin || role === 'patient' || authorizing
   $('logout').hidden = !admin || role === 'patient'
-  $('identity').textContent = role ? `Rol de prueba: ${role === 'professional' ? 'profesional' : 'paciente'}.` : 'Sin sala.'
-  $('join').disabled = !stream?.getTracks().some(track => track.readyState === 'live' && track.enabled)
-    || !accessToken || Boolean(socket) || joining || !$('consent').checked || deviceBusy.size > 0
+  $('identity').textContent = role ? `Ingresás como ${role === 'professional' ? 'profesional' : 'paciente'}.` : 'Creá una sala para comenzar.'
+  $('identity').hidden = Boolean(socket)
+  $('create').disabled = creating || Boolean(accessToken) || Boolean(socket)
+  $('create').textContent = creating ? 'Creando...' : '1. Crear sala'
+  $('duration').disabled = creating || Boolean(accessToken)
+  $('join').disabled = !accessToken || Boolean(socket) || joining || !$('consent').checked || deviceBusy.size > 0
+  $('join').textContent = socket ? 'En la sala' : joining ? 'Entrando...' : role === 'professional' ? '2. Entrar' : 'Entrar a la sala'
   for (const [kind, id, name] of [['audio', 'mic', 'micrófono'], ['video', 'camera', 'cámara']]) {
     const track = stream?.getTracks().find(track => track.kind === kind && track.readyState === 'live')
     const enabled = Boolean(track?.enabled)
@@ -55,8 +61,63 @@ function update() {
   $('stage-message').textContent = peer?.connectionState === 'connected' ? 'Participante con cámara apagada'
     : peer ? 'Conectando con tu invitado...' : socket ? 'Esperando la admisión' : 'Tu sala de videoconsulta'
   $('leave').disabled = !stream && !socket
+  $('leave').hidden = !socket && !stream?.getTracks().length
+  $('leave').textContent = socket ? 'Salir' : 'Apagar dispositivos'
   $('text').disabled = $('send').disabled = channel?.readyState !== 'open'
+  $('chat-state').textContent = channel?.readyState === 'open'
+    ? 'Conectado. Mensajes privados, sin historial al recargar.'
+    : 'Disponible después de la admisión. Sin historial al recargar.'
+  $('chat-toggle').disabled = channel?.readyState !== 'open' && !$('messages').children.length
 }
+function positionChat() {
+  if ($('chat-panel').hidden) return
+  const dock = $('chat-toggle').getBoundingClientRect()
+  const viewport = window.visualViewport
+  const bottom = (viewport?.offsetTop || 0) + (viewport?.height || innerHeight) - 10
+  const top = Math.max(10, Math.min(dock.bottom + 6, bottom - 160))
+  const panel = $('chat-panel')
+  panel.style.left = `${dock.left}px`
+  panel.style.width = `${dock.width}px`
+  panel.style.top = `${top}px`
+  const height = Math.min(300, Math.max(100, bottom - top))
+  panel.style.height = `${height}px`
+  panel.classList.toggle('compact', height < 220)
+}
+function setChatOpen(open) {
+  $('chat-panel').hidden = !open
+  $('chat-toggle').setAttribute('aria-expanded', String(open))
+  $('chat-toggle-label').textContent = open ? 'Cerrar ▴' : 'Abrir ▾'
+  if (open) {
+    unreadMessages = 0
+    $('chat-badge').hidden = true
+    $('chat-announcement').textContent = ''
+    positionChat()
+    $('messages').scrollTop = $('messages').scrollHeight
+  } else if ($('chat-panel').contains(document.activeElement)) $('chat-toggle').focus({ preventScroll: true })
+}
+function resetChat() {
+  $('messages').replaceChildren()
+  $('text').value = ''
+  seenMessages.clear()
+  unreadMessages = 0
+  $('chat-badge').hidden = true
+  $('chat-announcement').textContent = ''
+  setChatOpen(false)
+}
+function clearInvitation() {
+  $('invite').hidden = true
+  $('link').value = ''
+}
+$('chat-toggle').onclick = () => setChatOpen($('chat-panel').hidden)
+$('chat-close').onclick = () => { setChatOpen(false); $('chat-toggle').focus({ preventScroll: true }) }
+$('chat-panel').addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.preventDefault(); setChatOpen(false) }
+})
+window.addEventListener('resize', positionChat)
+window.addEventListener('scroll', positionChat, { passive: true })
+window.visualViewport?.addEventListener('resize', positionChat)
+window.visualViewport?.addEventListener('scroll', positionChat)
+new ResizeObserver(positionChat).observe($('chat-toggle'))
 function closePeer() {
   generation++
   clearTimeout(connectionTimer)
@@ -101,7 +162,7 @@ function showTiming(data) {
     const formatted = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
     $('countdown').hidden = false
     $('countdown').textContent = data.startedAt === null
-      ? `Consulta de ${data.durationMinutes} minutos. Sin iniciar. Invitación: ${formatted} para admitir al invitado.`
+      ? `${data.durationMinutes} minutos · Sin iniciar · Espera: ${formatted}`
       : `Consulta de ${data.durationMinutes} minutos · Tiempo restante: ${formatted}`
     if (data.startedAt !== null && remaining <= 300 && !warningShown) {
       warningShown = true
@@ -113,6 +174,8 @@ function showTiming(data) {
   expiryTimer = setTimeout(() => {
     release()
     accessToken = null
+    clearInvitation()
+    $('waiting').textContent = 'Sala finalizada.'
     status(data.startedAt === null ? 'La invitación venció sin iniciar la consulta.' : 'La consulta finalizó: se cumplió la duración elegida.')
     update()
   }, remainingMs)
@@ -167,6 +230,12 @@ function setChannel(next) {
           if (seenMessages.size >= 1000) seenMessages.delete(seenMessages.values().next().value)
           seenMessages.add(data.id)
           message(data.text, role === 'professional' ? 'Paciente' : 'Profesional')
+          if ($('chat-panel').hidden) {
+            unreadMessages++
+            $('chat-badge').textContent = String(unreadMessages)
+            $('chat-badge').hidden = false
+            $('chat-announcement').textContent = `${unreadMessages} mensaje${unreadMessages === 1 ? '' : 's'} nuevo${unreadMessages === 1 ? '' : 's'} en el chat.`
+          }
         }
         next.send(JSON.stringify({ type: 'ack', id: data.id }))
       } else throw new Error('Formato de chat no reconocido.')
@@ -220,7 +289,7 @@ function makePeer() {
     if (next.connectionState === 'connected') {
       clearTimeout(connectionTimer)
       clearTimeout(disconnectTimer)
-      status('Medios conectados por WebRTC. Prueba técnica; la cámara puede estar desactivada.')
+      status('Medios conectados por WebRTC.')
       update()
     } else if (next.connectionState === 'failed') networkFailure()
     else if (next.connectionState === 'disconnected') {
@@ -261,9 +330,12 @@ async function handleSignal(data) {
   }
 }
 $('create').onclick = async () => {
-  $('create').disabled = true
+  if (creating) return
+  creating = true
+  $('error').textContent = ''
+  update()
   try {
-    if (socket) throw new Error('Salí de la sala actual antes de crear otra.')
+    if (socket || accessToken) throw new Error('Finalizá la sala actual antes de crear otra.')
     const durationMinutes = Number($('duration').value)
     if (!$('duration').value || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 120) {
       throw new Error('Elegí una duración entera entre 1 y 120 minutos.')
@@ -274,12 +346,25 @@ $('create').onclick = async () => {
     role = 'professional'
     $('link').value = data.patientLink
     $('invite').hidden = false
+    $('invite').open = true
+    $('waiting').textContent = 'Tu paciente aparecerá cuando entre.'
+    $('share').hidden = typeof navigator.share !== 'function'
+    resetChat()
     warningShown = false
     showTiming(data)
-    status(`Sala creada: ${data.durationMinutes} minutos desde la primera admisión. Compartí el enlace privado con tu invitado.`)
+    status('Compartí el enlace y tocá Entrar.')
     update()
   } catch (error) { report(error) }
-  finally { $('create').disabled = false }
+  finally { creating = false; update() }
+}
+$('share').onclick = async () => {
+  try {
+    await navigator.share({ title: 'Videoconsulta Dr Happy', text: 'Este es tu enlace privado para entrar a la sala de espera.', url: $('link').value })
+    status('Enlace compartido. El paciente necesita tu admisión para conectar.')
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return
+    report(error)
+  }
 }
 $('copy').onclick = async () => {
   try { await navigator.clipboard.writeText($('link').value); status('Enlace copiado. Compartilo solo con tu invitado.') }
@@ -348,9 +433,10 @@ async function toggleDevice(kind) {
 $('mic').onclick = () => toggleDevice('audio')
 $('camera').onclick = () => toggleDevice('video')
 $('join').onclick = async () => {
-  if (!stream || !accessToken) { report(new Error('Prepará tus dispositivos y la invitación.')); return }
+  if (!accessToken) { report(new Error('Creá una sala o abrí la invitación antes de entrar.')); return }
   if (!$('consent').checked || joining || socket) return
   $('error').textContent = ''
+  stream ??= new MediaStream()
   joining = true
   update()
   const before = generation
@@ -368,15 +454,18 @@ $('join').onclick = async () => {
   } finally { joining = false; update() }
   if (before !== generation || !stream) return
   socket = io({ auth: { token: accessToken }, reconnection: true })
+  $('invite').open = false
   signalQueue = Promise.resolve()
   socket.on('identity', data => { role = data.role; update() })
   socket.on('connect', () => { status('Señalización conectada. Esperando admisión.'); update() })
   socket.on('connect_error', error => { report(error); release(); status('No se pudo entrar a la sala.') })
   socket.on('disconnect', () => { closePeer(); status('Se perdió la señalización. Sin compartir medios; requiere nueva admisión.'); $('admit').hidden = $('reject').hidden = true })
-  socket.on('ended', reason => { release(); accessToken = null; status(reason); update() })
+  socket.on('ended', reason => { release(); accessToken = null; clearInvitation(); $('waiting').textContent = 'Sala finalizada.'; status(reason); update() })
   socket.on('state', data => {
     showTiming(data)
-    $('waiting').textContent = data.patientPresent ? data.admitted ? 'Paciente admitido.' : 'Paciente de prueba esperando admisión.' : 'El paciente todavía no entró.'
+    $('waiting').textContent = role === 'patient'
+      ? data.professionalPresent ? data.admitted ? 'El profesional te admitió.' : 'El profesional está en la sala. Esperá su admisión.' : 'Esperando que entre el profesional.'
+      : data.patientPresent ? data.admitted ? 'Paciente admitido.' : 'Tu paciente está esperando: admitilo para conectar.' : 'Esperando que tu paciente abra el enlace y entre.'
     $('admit').hidden = $('reject').hidden = role !== 'professional' || !data.patientPresent || data.admitted
     $('end').hidden = role !== 'professional'
     if (!data.admitted || !data.professionalPresent || !data.patientPresent) {
@@ -454,6 +543,7 @@ $('logout').onclick = async () => {
     admin = false
     $('invite').hidden = true
     $('link').value = ''
+    resetChat()
     status('Sesión cerrada y salas finalizadas.')
     update()
   } catch (error) { report(error) }

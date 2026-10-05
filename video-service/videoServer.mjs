@@ -7,6 +7,8 @@ const opaque = () => randomBytes(32).toString('hex')
 const hash = value => createHash('sha256').update(value).digest('hex')
 const fail = (status, message) => Object.assign(new Error(message), { status })
 const validToken = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
+const patientToken = () => randomBytes(16).toString('base64url')
+const validAccessToken = value => validToken(value) || (typeof value === 'string' && /^[A-Za-z0-9_-]{21}[AQgw]$/.test(value))
 
 export function createVideoServer({
   origin = process.env.PUBLIC_ORIGIN || 'https://video.drhappy.com.ar',
@@ -126,7 +128,7 @@ export function createVideoServer({
     return json(response, 200, { ok: true })
   }
   function identity(rawToken) {
-    const result = validToken(rawToken) ? tokens.get(hash(rawToken)) : null
+    const result = validAccessToken(rawToken) ? tokens.get(hash(rawToken)) : null
     if (!result || !rooms.has(result.room.id) || result.room.expiresAt <= now()) throw fail(401, 'El acceso no es valido o vencio.')
     return result
   }
@@ -201,13 +203,13 @@ export function createVideoServer({
         if (rooms.size >= 30 || [...rooms.values()].filter(room => room.owner === session.key).length >= 3) throw fail(429, 'Finaliza las salas anteriores antes de crear otra.')
         const id = opaque()
         const professional = opaque()
-        const patient = opaque()
+        const patient = patientToken()
         const room = { id, owner: session.key, professional: hash(professional), patient: hash(patient),
           durationMinutes: data.durationMinutes, startedAt: null, expiresAt: now() + waitingDurationMs, admitted: false, sockets: {} }
         rooms.set(id, room)
         tokens.set(room.professional, { room, role: 'professional' })
         tokens.set(room.patient, { room, role: 'patient' })
-        return json(response, 201, { token: professional, patientLink: `${origin}/#invite=${patient}`, ...timing(room) })
+        return json(response, 201, { token: professional, patientLink: `${origin}/#p=${patient}`, ...timing(room) })
       }
       if (path === '/api/ice' && request.method === 'GET') {
         rate('ice-global', 120, 60_000)

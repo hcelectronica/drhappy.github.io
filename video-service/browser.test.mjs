@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -96,7 +96,7 @@ async function attach(tab) {
   }
   await command('Page.enable')
   await command('Runtime.enable')
-  await command('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__testInstance=String(Date.now())+String(Math.random())' })
+  await command('Page.addScriptToEvaluateOnNewDocument', { source: `window.__testInstance=String(Date.now())+String(Math.random());window.__captureRequests=0;if(navigator.mediaDevices){const capture=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=(...args)=>{window.__captureRequests++;return capture(...args)}}` })
   const navigate = async url => {
     let before = await evaluate('window.__testInstance')
     if (before) {
@@ -151,7 +151,7 @@ try {
   await professional.evaluate(`document.querySelector('#duration').value='40'`)
   await professional.click('consent')
   await professional.click('create')
-  await professional.wait(`document.querySelector('#link').value.includes('#invite=')`)
+  await professional.wait(`document.querySelector('#link').value.includes('#p=')`)
   const invite = await professional.evaluate(`document.querySelector('#link').value`)
   assert.match(await professional.evaluate(`document.querySelector('#countdown').textContent`), /40 minutos.*Sin iniciar/)
   const patientTab = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' }).then(response => response.json())
@@ -160,16 +160,27 @@ try {
   await patient.wait(`document.querySelector('#identity')?.textContent.includes('paciente')`)
   await patient.click('consent')
   assert.equal(await patient.evaluate('location.hash'), '', 'Invitation removed from visible URL')
-  await professional.click('devices')
-  await patient.click('mic')
-  await patient.wait(`document.querySelector('#mic').getAttribute('aria-pressed')==='true'`)
-  await patient.evaluate(`void(window.__getUserMedia=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices));navigator.mediaDevices.getUserMedia=async()=>{throw new DOMException('Cámara bloqueada','NotAllowedError')}`)
-  await patient.click('camera')
-  await patient.wait(`document.querySelector('#error').textContent.includes('Cámara bloqueada')`)
-  assert.equal(await patient.evaluate(`document.querySelector('#local').srcObject.getAudioTracks()[0].readyState`), 'live', 'Camera denial preserves microphone')
-  await patient.evaluate(`navigator.mediaDevices.getUserMedia=window.__getUserMedia`)
-  await patient.click('camera')
-  await patient.wait(`document.querySelector('#camera').getAttribute('aria-pressed')==='true'`)
+  assert(invite.length <= 56, 'Private patient link is short enough for easy sharing')
+  assert.equal(await professional.evaluate(`document.querySelector('#duration').disabled`), true, 'Existing room duration cannot be misleadingly edited')
+  for (const [width, height, mobile] of [[360, 740, true], [390, 844, true], [768, 1024, false], [1280, 900, false]]) {
+    await professional.command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile })
+    assert.equal(await professional.evaluate(`document.documentElement.scrollWidth<=${width}`), true, 'Compact creation toolbar never overflows viewport')
+    assert(await professional.evaluate(`(()=>{const c=document.querySelector('#create').getBoundingClientRect(),j=document.querySelector('#join').getBoundingClientRect(),s=document.querySelector('#stage').getBoundingClientRect(),d=document.querySelector('#duration').getBoundingClientRect();return Math.abs(c.top-j.top)<1&&s.top>=c.bottom&&s.top-c.bottom<20&&d.width<=72})()`), 'Create/Enter stay together immediately above video and duration stays compact')
+    if (process.env.VIDEO_SCREENSHOT_DIR) {
+      const image = await professional.command('Page.captureScreenshot', { format: 'png' })
+      await writeFile(join(process.env.VIDEO_SCREENSHOT_DIR, `video-v6-room-${width}.png`), Buffer.from(image.data, 'base64'))
+    }
+  }
+  await professional.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  await professional.evaluate(`Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async value=>{window.__copiedInvite=value}})`)
+  await professional.click('copy')
+  assert.equal(await professional.evaluate('window.__copiedInvite'), invite, 'Copy uses complete short private link')
+  if (await professional.evaluate(`!document.querySelector('#share').hidden`)) {
+    await professional.evaluate(`navigator.share=async data=>{window.__sharedInvite=data}`)
+    await professional.click('share')
+    assert.equal(await professional.evaluate('window.__sharedInvite.url'), invite, 'Native share uses same private link')
+  }
+  for (const client of [professional, patient]) assert.equal(await client.evaluate(`window.__captureRequests`), 0)
   await professional.click('join')
   await patient.click('join')
   await professional.wait(`!document.querySelector('#admit').hidden`)
@@ -189,19 +200,81 @@ try {
   await professional.wait(`document.querySelector('#status').textContent.includes('conectados por WebRTC')&&!document.querySelector('#send').disabled`)
   await patient.wait(`document.querySelector('#status').textContent.includes('conectados por WebRTC')&&!document.querySelector('#send').disabled`)
   for (const client of [professional, patient]) {
+    assert.equal(await client.evaluate(`window.__captureRequests`), 0, 'Admission without devices never requests capture')
+    assert.equal(await client.evaluate(`document.querySelector('#mic').getAttribute('aria-pressed')==='false'&&document.querySelector('#camera').getAttribute('aria-pressed')==='false'`), true)
+    assert.equal(await client.evaluate(`document.querySelector('#self-preview').hidden`), true)
+  }
+  await professional.click('devices')
+  await patient.click('mic')
+  await patient.wait(`document.querySelector('#mic').getAttribute('aria-pressed')==='true'`)
+  await patient.evaluate(`void(window.__getUserMedia=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices));navigator.mediaDevices.getUserMedia=async()=>{throw new DOMException('Cámara bloqueada','NotAllowedError')}`)
+  await patient.click('camera')
+  await patient.wait(`document.querySelector('#error').textContent.includes('Cámara bloqueada')`)
+  assert.equal(await patient.evaluate(`document.querySelector('#local').srcObject.getAudioTracks()[0].readyState`), 'live', 'Camera denial preserves microphone')
+  await patient.evaluate(`navigator.mediaDevices.getUserMedia=window.__getUserMedia`)
+  await patient.click('camera')
+  await patient.wait(`document.querySelector('#camera').getAttribute('aria-pressed')==='true'`)
+  for (const client of [professional, patient]) {
     assert.match(await client.evaluate(`document.querySelector('#countdown').textContent`), /40 minutos.*Tiempo restante: (40:00|39:\d\d)/)
     assert.deepEqual(await client.evaluate(`(()=>{const l=document.querySelector('#local').srcObject,r=document.querySelector('#remote').srcObject;return{localAudio:l.getAudioTracks().length,remoteAudio:r.getAudioTracks().length,remoteVideo:r.getVideoTracks().length,separate:l.getAudioTracks()[0]!==r.getAudioTracks()[0]}})()`),
       { localAudio: 1, remoteAudio: 1, remoteVideo: 1, separate: true })
     await client.wait(`document.querySelector('#remote').videoWidth>0`)
   }
+  await professional.click('chat-toggle')
   await professional.evaluate(`document.querySelector('#text').value='Hola desde profesional de prueba'`)
   await professional.click('send')
   await patient.wait(`document.querySelector('#messages').textContent.includes('Hola desde profesional de prueba')`)
   await professional.wait(`document.querySelector('#messages').textContent.includes('Recibido por el otro navegador')`)
+  assert.equal(await patient.evaluate(`document.querySelector('#chat-panel').hidden&&document.querySelector('#chat-badge').textContent==='1'&&!document.querySelector('#chat-badge').hidden`), true, 'Closed chat shows unread message without opening or scrolling')
+  for (let index = 0; index < 12; index++) {
+    await professional.evaluate(`document.querySelector('#text').value=${JSON.stringify('Mensaje de prueba de scroll interno ')}+${index};document.querySelector('#chat').requestSubmit()`)
+    await professional.wait(`Array.from(document.querySelectorAll('#messages small')).at(-1).textContent.includes('Recibido')`)
+  }
+  await patient.wait(`document.querySelector('#chat-badge').textContent==='13'`)
+  for (const [width, height, mobile] of [[360, 740, true], [390, 844, true], [1280, 900, false]]) {
+    await professional.command('Page.bringToFront')
+    await professional.command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile })
+    await professional.evaluate(`window.scrollTo(0,0)`)
+    await professional.wait(`(()=>{const p=document.querySelector('#chat-panel').getBoundingClientRect(),d=document.querySelector('#chat-toggle').getBoundingClientRect();return p.bottom<=${height}&&Math.abs(p.width-d.width)<1})()`)
+    const panel = await professional.evaluate(`(()=>{const p=document.querySelector('#chat-panel').getBoundingClientRect(),s=document.querySelector('#stage').getBoundingClientRect();return{top:p.top,bottom:p.bottom,stageBottom:s.bottom}})()`)
+    assert(panel.top >= panel.stageBottom && panel.bottom <= height, 'Professional chat also fits below video: ' + JSON.stringify({ width, height, ...panel }))
+    assert(await professional.evaluate(`document.querySelector('#end').getBoundingClientRect().bottom<=document.querySelector('#stage').getBoundingClientRect().top`), 'Open chat never covers finalization control above video')
+  }
+  await professional.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  for (const [width, height, mobile] of [[390, 844, true], [1280, 900, false]]) {
+    await patient.command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile })
+    await patient.evaluate(`window.scrollTo(0,0)`)
+    const geometry = await patient.evaluate(`(()=>{const r=document.querySelector('#stage').getBoundingClientRect();return{top:r.top,height:r.height,scroll:scrollY,documentHeight:document.documentElement.scrollHeight}})()`)
+    await patient.click('chat-toggle')
+    await patient.wait(`!document.querySelector('#chat-panel').hidden`)
+    const expanded = await patient.evaluate(`(()=>{const s=document.querySelector('#stage').getBoundingClientRect(),p=document.querySelector('#chat-panel').getBoundingClientRect();return{top:s.top,height:s.height,scroll:scrollY,documentHeight:document.documentElement.scrollHeight,panelTop:p.top,panelBottom:p.bottom,stageBottom:s.bottom}})()`)
+    assert.equal(expanded.top, geometry.top, 'Opening chat never moves video')
+    assert.equal(expanded.height, geometry.height, 'Opening chat never shrinks video')
+    assert.equal(expanded.scroll, geometry.scroll, 'Opening chat never scrolls page')
+    assert.equal(expanded.documentHeight, geometry.documentHeight, 'Chat expansion never grows document')
+    assert(expanded.panelTop >= expanded.stageBottom && expanded.panelBottom <= height, 'Drawer stays below video and inside viewport')
+    assert.equal(await patient.evaluate(`document.querySelector('#messages').scrollHeight>document.querySelector('#messages').clientHeight`), true, 'Long conversations scroll within messages only')
+    await patient.evaluate(`document.querySelector('#messages').scrollTop=0`)
+    assert.equal(await patient.evaluate('scrollY'), geometry.scroll, 'Scrolling conversation does not move page')
+    if (process.env.VIDEO_SCREENSHOT_DIR) {
+      const image = await patient.command('Page.captureScreenshot', { format: 'png' })
+      await writeFile(join(process.env.VIDEO_SCREENSHOT_DIR, `video-v6-chat-${width}.png`), Buffer.from(image.data, 'base64'))
+    }
+    assert.equal(await patient.evaluate(`document.querySelector('#chat-badge').hidden`), true)
+    await patient.click('chat-close')
+    assert.equal(await patient.evaluate(`document.activeElement===document.querySelector('#chat-toggle')`), true, 'Minimize returns focus to chat toggle')
+  }
+  await patient.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  await patient.click('chat-toggle')
   await patient.evaluate(`document.querySelector('#text').value='<img src=x onerror=alert(1)>'`)
   await patient.click('send')
   await professional.wait(`document.querySelector('#messages').textContent.includes('<img src=x onerror=alert(1)>')`)
   assert.equal(await professional.evaluate(`document.querySelector('#messages img')===null`), true)
+  assert.equal(await professional.evaluate(`document.querySelector('#chat-badge').hidden`), true, 'Open chat does not accumulate unread badge')
+  await patient.command('Page.bringToFront')
+  await patient.evaluate(`document.querySelector('#text').focus({preventScroll:true})`)
+  await patient.command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  assert.equal(await patient.evaluate(`document.querySelector('#chat-panel').hidden&&document.activeElement===document.querySelector('#chat-toggle')`), true, 'Escape minimizes chat without moving video focus')
   await patient.click('mic')
   assert.equal(await patient.evaluate(`document.querySelector('#local').srcObject.getAudioTracks()[0].enabled`), false)
   await patient.evaluate(`void(window.__oldCamera=document.querySelector('#local').srcObject.getVideoTracks()[0])`)
@@ -271,8 +344,10 @@ try {
   await duplicate.click('join')
   await duplicate.wait(`document.querySelector('#error').textContent.includes('no es valido')`)
   await professional.click('create')
-  await professional.wait(`document.querySelector('#link').value!==${JSON.stringify(invite)}&&!document.querySelector('#create').disabled`)
+  await professional.wait(`document.querySelector('#link').value.includes('#p=')&&document.querySelector('#link').value!==${JSON.stringify(invite)}`)
   const nextInvite = await professional.evaluate(`document.querySelector('#link').value`)
+  assert.equal(await professional.evaluate(`document.querySelector('#messages').children.length`), 0, 'New room never retains previous patient messages')
+  assert.equal(await professional.evaluate(`document.querySelector('#chat-panel').hidden&&document.querySelector('#chat-badge').hidden`), true)
   await professional.click('camera')
   await professional.wait(`document.querySelector('#camera').getAttribute('aria-pressed')==='true'`)
   await professional.click('join')
@@ -282,7 +357,7 @@ try {
   await patient.click('devices')
   await patient.click('join')
   await professional.wait(`!document.querySelector('#reject').hidden`)
-  const authorization = await patient.evaluate(`new Promise(resolve=>{const test=io({auth:{token:${JSON.stringify(nextInvite.split('#invite=')[1])}},reconnection:false});test.on('connect_error',e=>{test.disconnect();resolve(e.message)});})`)
+  const authorization = await patient.evaluate(`new Promise(resolve=>{const test=io({auth:{token:${JSON.stringify(nextInvite.split('#p=')[1])}},reconnection:false});test.on('connect_error',e=>{test.disconnect();resolve(e.message)});})`)
   assert(authorization.includes('otra pestana'))
   await professional.click('reject')
   await patient.wait(`document.querySelector('#status').textContent.includes('rechazo')`)
@@ -291,7 +366,7 @@ try {
   await professional.wait(`document.querySelector('#status').textContent.includes('finalizo')`)
   await professional.evaluate(`document.querySelector('#duration').value='1'`)
   await professional.click('create')
-  await professional.wait(`document.querySelector('#link').value!==${JSON.stringify(nextInvite)}`)
+  await professional.wait(`document.querySelector('#link').value.includes('#p=')&&document.querySelector('#link').value!==${JSON.stringify(nextInvite)}`)
   const timedInvite = await professional.evaluate(`document.querySelector('#link').value`)
   await professional.click('camera')
   await professional.wait(`document.querySelector('#camera').getAttribute('aria-pressed')==='true'`)
@@ -324,7 +399,7 @@ try {
   await professional.click('logout')
   await professional.wait(`!document.querySelector('#login-panel').hidden`)
   assert.equal(await professional.evaluate(`document.querySelector('#create').hidden`), true)
-  console.log('PASS: independent camera/mic icons, camera denial preserves mic, camera off releases capture, audio-only/video-only entry and adding the other device live, mouse/touch/keyboard PiP drag and resize bounds, waiting logo/reduced motion; duration, expiry releases devices, WebRTC tracks/frames, chat, admission, readmission, rejection and mobile layout.')
+  console.log('PASS: short private links; compact adjacent Create/Enter and duration at 360/390/768/1280px; no-device admission with zero capture prompts, later live camera/mic; collapsible chat with unread badge, stable video/page geometry, internal scroll area and focus; messages cleared between rooms; WebRTC frames, camera denial, mute/release, mouse/touch/keyboard PiP, duration/expiry, admission/reentry/rejection and automatic login.')
 } finally {
   await app.close()
   for (const socket of sockets) socket.close()
