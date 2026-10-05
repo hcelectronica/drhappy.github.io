@@ -30,6 +30,22 @@ El inicio muestra la oferta y el formulario de acceso sin la espera de la bienve
 
 Validar con `npm run build` y `node tests/mobile-session.browser.mjs` contra el servidor local (`TEST_APP_ORIGIN` permite probar el build). La prueba comprueba cargas clínicas tras restaurar sesión y su ausencia al volver al inicio público.
 
+## Videoconsulta piloto para administradores
+
+La cabecera y la navegación lateral de una sesión administrativa ofrecen
+«Videoconsulta — piloto», que abre `https://video.drhappy.com.ar/` en otra pestaña
+sin enviar credenciales por URL ni compartir acceso al documento original.
+No aparece para profesionales no administradores ni en el inicio público.
+El subdominio requiere su propio inicio de sesión; ocultar el acceso en la app
+no es el control de seguridad. El servidor valida sesión activa e `is_admin`
+mediante `video-access` en Supabase.
+
+El servicio independiente vive en `../video-service`; su README detalla despliegue,
+pruebas, límites, STUN/TURN y cierre de salas. El piloto tiene invitación temporal,
+admisión, audio/video y chat, sin grabación ni Sofía. Sigue restringido a pruebas
+técnicas sin datos clínicos: la aceptación de prueba no reemplaza consentimiento
+informado ni una política de privacidad para atención real.
+
 ## Documentos clínicos
 
 Desde la ficha del paciente, **Emitir certificado** permite elegir entre un certificado médico y una orden de estudios complementarios. En la orden se busca entre estudios frecuentes codificados o se agrega uno en texto libre; el profesional debe indicar el motivo clínico, puede añadir observaciones y revisar el borrador antes de emitir. Si el contenido no cabe en el PDF, se informa el error antes de guardar la orden. Ambos documentos se guardan en la historia clínica con firma, PDF y QR; las órdenes se identifican como tales en el historial, la descarga y el envío.

@@ -132,6 +132,7 @@ try {
   await command('Page.navigate', { url: origin + '/' })
   const ready = (name) => wait(`document.body?.innerText.includes(${JSON.stringify(name)})&&Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Cerrar sesión'))`)
   await ready('Profesional A')
+  assert.equal(await evaluate(`document.querySelectorAll('a.video-pilot-link').length`), 0, 'Non-admin does not see video pilot links')
   await wait(`performance.getEntriesByType('resource').some(r=>r.name.includes('vademecum.json'))`)
   await wait(`performance.getEntriesByType('resource').some(r=>/cie-10/.test(r.name))`)
   assert(await evaluate(`window.__calls.some(call=>call.slug==='fetch-medical-news')`), 'Clinical resources still load after authenticated restoration')
@@ -175,6 +176,29 @@ try {
   await evaluate(`window.__delayWorkspace=false`)
   await login('account-b')
   await ready('Profesional B')
+  const videoLinkSelector = 'a.video-pilot-link'
+  assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(videoLinkSelector)}).length`), 2, 'Admin sees header and navigation video links')
+  for (const [width, height, mobile] of [[1280, 900, false], [390, 844, true]]) {
+    await command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile })
+    assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(${JSON.stringify(videoLinkSelector)})).map(a=>({href:a.href,target:a.target,rel:a.rel,text:a.textContent.includes('Videoconsulta')}))`),
+      Array.from({ length: 2 }, () => ({ href: 'https://video.drhappy.com.ar/', target: '_blank', rel: 'noopener noreferrer', text: true })))
+    assert(await evaluate(`document.querySelector('a.video-pilot-link.ghost').getBoundingClientRect().height>=44`), 'Header video link has a usable touch target')
+    await evaluate(`document.querySelector('.sidebar-handle').click()`)
+    await wait(`document.querySelector('.app-sidebar').classList.contains('open')`)
+    assert(await evaluate(`(()=>{const a=document.querySelector('.sidebar-nav a.video-pilot-link');a.focus();const r=a.getBoundingClientRect();return document.activeElement===a&&r.width>=42&&r.height>=44&&getComputedStyle(a).display!=='none'})()`), 'Navigation video link is keyboard focusable with a usable touch target')
+    await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    let videoTab
+    for (let attempt = 0; attempt < 100; attempt++) {
+      videoTab = (await command('Target.getTargets')).targetInfos.find(tab => tab.type === 'page' && tab.url.startsWith('https://video.drhappy.com.ar/'))
+      if (videoTab) break
+      await sleep(100)
+    }
+    assert(videoTab, 'Video link opens the public pilot in a separate tab')
+    await command('Target.closeTarget', { targetId: videoTab.targetId })
+    assert.equal(await evaluate(`location.origin`), origin, 'Opening video preserves the app workspace')
+  }
+  console.log('Video pilot access passed: non-admin hidden, admin header/menu links, desktop/mobile touch targets, keyboard opening in separate tab without credentials.')
   await evaluate(`window.__finishWorkspace()`)
   await sleep(500)
   assert(await evaluate(`document.body.innerText.includes('Profesional B')&&!document.body.innerText.includes('Profesional A')`))
@@ -183,6 +207,7 @@ try {
   assert(await evaluate(`!document.querySelector('.patient-directory-grid').textContent.includes('account-a')`), 'Old account patients cannot reappear')
   await click('Cerrar sesión')
   await wait(`!!document.querySelector('input[name="username"]')`)
+  assert.equal(await evaluate(`document.querySelectorAll('a.video-pilot-link').length`), 0, 'Logout removes admin video access')
   await evaluate(`window.__delayLogin=true`)
   await login('account-a')
   await wait(`!!window.__finishLogin`)

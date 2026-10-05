@@ -11036,6 +11036,17 @@ function App() {
             </button>
           ) : null}
           {isAdminSession ? (
+            <a
+              className="ghost video-pilot-link"
+              href="https://video.drhappy.com.ar/"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Prueba técnica para administradores, sin datos clínicos. Abre en otra pestaña y requiere iniciar sesión."
+            >
+              Videoconsulta — piloto
+            </a>
+          ) : null}
+          {isAdminSession ? (
             <button
               type="button"
               className="ghost"
@@ -11116,6 +11127,19 @@ function App() {
             <button type="button" title="Administrar usuarios" className={workspaceLayer === 'user-admin' ? 'active' : ''} onClick={() => { handleOpenUserAdmin(); setSidebarOpen(false) }}>
               <span>⚙️</span> Administrar usuarios
             </button>
+          ) : null}
+          {isAdminSession ? (
+            <a
+              className="video-pilot-link"
+              href="https://video.drhappy.com.ar/"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Videoconsulta — piloto (otra pestaña, solo pruebas)"
+              aria-label="Videoconsulta — piloto, abre en otra pestaña"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <span aria-hidden="true">📹</span> Videoconsulta — piloto
+            </a>
           ) : null}
         </nav>
         <div className="sidebar-footer">
