@@ -34,11 +34,28 @@ Validar con `npm run build` y `node tests/mobile-session.browser.mjs` contra el 
 
 La cabecera y la navegación lateral de una sesión administrativa ofrecen
 «Videoconsulta — piloto», que abre `https://video.drhappy.com.ar/` en otra pestaña
-sin enviar credenciales por URL ni compartir acceso al documento original.
+con acceso automático, sin enviar contraseña ni sesión permanente por URL
+ni compartir acceso al documento original. Se usa un pase aleatorio de un solo
+uso, válido durante 60 segundos, enviado en el fragmento y eliminado al cargar.
 No aparece para profesionales no administradores ni en el inicio público.
-El subdominio requiere su propio inicio de sesión; ocultar el acceso en la app
-no es el control de seguridad. El servidor valida sesión activa e `is_admin`
-mediante `video-access` en Supabase.
+El acceso directo al subdominio conserva el inicio de sesión manual. Ocultar
+el acceso en la app no es el control de seguridad: `video-handoff` valida la
+sesión profesional vigente y el permiso administrativo al emitir y canjear el
+pase, y `video-access` sigue revalidando el permiso en el servidor de video.
+Los ingresos con Google de la app también tienen sesión profesional y pueden
+usar este acceso automático. El navegador debe permitir abrir otra pestaña.
+Se requiere la migración `20261005010000_video_handoff.sql`, desplegar la función
+`video-handoff` con `verify_jwt=false` y actualizar el servicio de video (ZIP v5
+o posterior). No se necesitan claves nuevas en Hostinger.
+
+Pruebas: `tests/video-handoff.sql` ejecuta verificaciones de permisos y caducidad
+en una transacción con rollback. `tests/video-handoff.edge.mjs` prueba el canje
+concurrente y el adaptador real de Node contra el proyecto configurado; requiere
+CLI autenticada, funciones desplegadas y `LIVE_VIDEO_HANDOFF_TEST=1`. Crea una
+cuenta sintética sin contraseña ni datos clínicos y elimina sus sesiones, pases
+y cuenta en `finally`. La prueba usa el puerto local 5197. La suite
+`tests/mobile-session.browser.mjs` verifica el acceso desde la app, aislamiento
+del opener, ventanas bloqueadas, errores y cambios de cuenta.
 
 El servicio independiente vive en `../video-service`; su README detalla despliegue,
 pruebas, límites, STUN/TURN y cierre de salas. El piloto tiene invitación temporal,

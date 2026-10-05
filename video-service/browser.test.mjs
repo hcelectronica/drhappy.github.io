@@ -8,9 +8,14 @@ import { createVideoServer } from './videoServer.mjs'
 
 const origin = 'http://127.0.0.1:5195'
 let clockOffset = 0
+const handoffs = new Set(['a'.repeat(64), 'b'.repeat(64)])
 const app = createVideoServer({
   origin, iceServers: [],
   now: () => Date.now() + clockOffset,
+  exchangeHandoff: async token => {
+    if (!handoffs.delete(token)) throw Object.assign(new Error('El pase vencio o ya se uso. Abri nuevamente desde Dr Happy.'), { status: 401 })
+    return 'test-upstream-session'
+  },
   login: async (username, password) => {
     if (username !== 'test-admin' || password !== 'test-password') throw Object.assign(new Error('Acceso denegado.'), { status: 401 })
     return 'test-upstream-session'
@@ -121,8 +126,22 @@ try {
   await professional.wait(`typeof document.querySelector('#login').onsubmit==='function'`)
   assert.equal(await professional.evaluate(`navigator.mediaDevices!==undefined`), true)
   assert.equal(await professional.evaluate(`document.querySelector('#create').hidden`), true, 'Anonymous cannot create a room')
+  await professional.navigate(`${origin}/#handoff=${'c'.repeat(64)}`)
+  await professional.wait(`document.querySelector('#error').textContent.includes('pase vencio')&&!document.querySelector('#login-panel').hidden`)
+  assert.equal(await professional.evaluate('location.hash'), '', 'Failed pass removed immediately from address bar')
+  assert.equal(await professional.evaluate(`document.querySelector('#create').hidden`), true)
   await professional.evaluate(`document.querySelector('#username').value='test-admin';document.querySelector('#password').value='test-password'`)
   await professional.click('login-submit')
+  await professional.wait(`!document.querySelector('#create').hidden`)
+  await professional.click('logout')
+  await professional.wait(`!document.querySelector('#login-panel').hidden`)
+  await professional.navigate(`${origin}/#handoff=${'a'.repeat(64)}`)
+  await professional.wait(`!document.querySelector('#create').hidden&&document.querySelector('#login-panel').hidden`)
+  assert.equal(await professional.evaluate('location.hash'), '', 'Automatic access consumes and removes fragment without password')
+  await professional.navigate(`${origin}/#handoff=${'a'.repeat(64)}`)
+  await professional.wait(`document.querySelector('#error').textContent.includes('pase vencio')`)
+  assert.equal(await professional.evaluate(`document.querySelector('#create').hidden`), true, 'Reused pass cannot claim successful authorization')
+  await professional.navigate(`${origin}/#handoff=${'b'.repeat(64)}`)
   await professional.wait(`!document.querySelector('#create').hidden`)
   assert.equal(await professional.evaluate(`document.querySelector('#duration').value`), '40')
   await professional.evaluate(`document.querySelector('#duration').value='121'`)

@@ -43,10 +43,10 @@ try {
     if (response.error) request.reject(new Error(response.error.message))
     else request.resolve(response.result)
   })
-  const command = (method, params = {}) => new Promise((resolve, reject) => {
+  const command = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
     const id = ++nextId
     pending.set(id, { resolve, reject })
-    socket.send(JSON.stringify({ id, method, params }))
+    socket.send(JSON.stringify({ id, method, params, sessionId }))
   })
   const evaluate = async (expression) => {
     const result = await command('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true })
@@ -105,6 +105,11 @@ try {
         const prof=account(id);
         window.__calls.push({slug:url.split('/').pop(),action:body.action,id,token});
         let data={success:true};
+        if(url.endsWith('/video-handoff')){
+          if(window.__delayVideo)await new Promise(resolve=>{window.__finishVideo=resolve});
+          if(window.__failVideo)return new Response(JSON.stringify({error:'Pase de prueba rechazado.'}),{status:403,headers:{'content-type':'application/json'}});
+          data={token:'a'.repeat(64),expiresInSeconds:60};
+        }
         if(url.endsWith('/auth-email-verification')&&body.action==='register'){
           data={success:true,professionalId:'fixture-new',resumeToken:'fixture-resume',email:body.email,emailSent:true};
         }
@@ -132,7 +137,7 @@ try {
   await command('Page.navigate', { url: origin + '/' })
   const ready = (name) => wait(`document.body?.innerText.includes(${JSON.stringify(name)})&&Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Cerrar sesión'))`)
   await ready('Profesional A')
-  assert.equal(await evaluate(`document.querySelectorAll('a.video-pilot-link').length`), 0, 'Non-admin does not see video pilot links')
+  assert.equal(await evaluate(`document.querySelectorAll('button.video-pilot-link').length`), 0, 'Non-admin does not see video pilot links')
   await wait(`performance.getEntriesByType('resource').some(r=>r.name.includes('vademecum.json'))`)
   await wait(`performance.getEntriesByType('resource').some(r=>/cie-10/.test(r.name))`)
   assert(await evaluate(`window.__calls.some(call=>call.slug==='fetch-medical-news')`), 'Clinical resources still load after authenticated restoration')
@@ -176,17 +181,18 @@ try {
   await evaluate(`window.__delayWorkspace=false`)
   await login('account-b')
   await ready('Profesional B')
-  const videoLinkSelector = 'a.video-pilot-link'
+  const videoLinkSelector = 'button.video-pilot-link'
   assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(videoLinkSelector)}).length`), 2, 'Admin sees header and navigation video links')
   for (const [width, height, mobile] of [[1280, 900, false], [390, 844, true]]) {
     await command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile })
-    assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(${JSON.stringify(videoLinkSelector)})).map(a=>({href:a.href,target:a.target,rel:a.rel,text:a.textContent.includes('Videoconsulta')}))`),
-      Array.from({ length: 2 }, () => ({ href: 'https://video.drhappy.com.ar/', target: '_blank', rel: 'noopener noreferrer', text: true })))
-    assert(await evaluate(`document.querySelector('a.video-pilot-link.ghost').getBoundingClientRect().height>=44`), 'Header video link has a usable touch target')
+    assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(${JSON.stringify(videoLinkSelector)})).map(a=>({type:a.type,text:a.textContent.includes('Videoconsulta')}))`),
+      Array.from({ length: 2 }, () => ({ type: 'button', text: true })))
+    assert(await evaluate(`document.querySelector('button.video-pilot-link.ghost').getBoundingClientRect().height>=44`), 'Header video link has a usable touch target')
     await evaluate(`document.querySelector('.sidebar-handle').click()`)
     await wait(`document.querySelector('.app-sidebar').classList.contains('open')`)
-    assert(await evaluate(`(()=>{const a=document.querySelector('.sidebar-nav a.video-pilot-link');a.focus();const r=a.getBoundingClientRect();return document.activeElement===a&&r.width>=42&&r.height>=44&&getComputedStyle(a).display!=='none'})()`), 'Navigation video link is keyboard focusable with a usable touch target')
-    await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    assert(await evaluate(`(()=>{const a=document.querySelector('.sidebar-nav button.video-pilot-link');a.focus();const r=a.getBoundingClientRect();return document.activeElement===a&&r.width>=42&&r.height>=44&&getComputedStyle(a).display!=='none'})()`), 'Navigation video link is keyboard focusable with a usable touch target')
+    await command('Page.bringToFront')
+    await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r', unmodifiedText: '\r', windowsVirtualKeyCode: 13 })
     await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
     let videoTab
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -194,11 +200,28 @@ try {
       if (videoTab) break
       await sleep(100)
     }
-    assert(videoTab, 'Video link opens the public pilot in a separate tab')
+    assert(videoTab, 'Video link opens the public pilot in a separate tab: ' + await evaluate(`JSON.stringify({body:document.body.innerText.slice(-1800),calls:window.__calls.filter(call=>call.slug==='video-handoff')})`))
+    assert.equal(videoTab.url, `https://video.drhappy.com.ar/#handoff=${'a'.repeat(64)}`, 'Only short-lived pass goes in fragment, never app session/password')
+    const attachedVideo = await command('Target.attachToTarget', { targetId: videoTab.targetId, flatten: true })
+    const openerCheck = await command('Runtime.evaluate', { expression: 'window.opener===null', returnByValue: true }, attachedVideo.sessionId)
+    assert.equal(openerCheck.result.value, true, 'Video page has no opener access to app')
+    await command('Target.detachFromTarget', { sessionId: attachedVideo.sessionId })
+    assert.deepEqual(await evaluate(`window.__calls.filter(call=>call.slug==='video-handoff').at(-1)`),
+      { slug: 'video-handoff', action: 'create', id: 'account-b', token: 'token-account-b' }, 'Pass issued with current professional session')
     await command('Target.closeTarget', { targetId: videoTab.targetId })
     assert.equal(await evaluate(`location.origin`), origin, 'Opening video preserves the app workspace')
   }
-  console.log('Video pilot access passed: non-admin hidden, admin header/menu links, desktop/mobile touch targets, keyboard opening in separate tab without credentials.')
+  await evaluate(`window.__savedOpen=window.open;window.open=()=>null;document.querySelector('button.video-pilot-link.ghost').click()`)
+  await wait(`document.body.innerText.includes('El navegador bloqueó la pestaña')`)
+  await evaluate(`window.open=window.__savedOpen;window.__failVideo=true;document.querySelector('button.video-pilot-link.ghost').click()`)
+  await wait(`document.body.innerText.includes('Pase de prueba rechazado.')&&!document.querySelector('button.video-pilot-link.ghost').disabled`)
+  await evaluate(`window.__failVideo=false;window.__delayVideo=true;document.querySelector('button.video-pilot-link.ghost').click()`)
+  await wait(`!!window.__finishVideo&&document.querySelector('button.video-pilot-link.ghost').disabled`)
+  await evaluate(`localStorage.setItem('drhappy-session-v2',JSON.stringify({userId:'account-a',token:'token-account-a'}));window.__finishVideo()`)
+  await wait(`!document.querySelector('button.video-pilot-link.ghost').disabled`)
+  assert.equal((await command('Target.getTargets')).targetInfos.filter(tab=>tab.url==='about:blank').length, 0, 'Failed/account-changed requests close their blank tabs')
+  await evaluate(`window.__delayVideo=false;localStorage.setItem('drhappy-session-v2',JSON.stringify({userId:'account-b',token:'token-account-b'}))`)
+  console.log('Video pilot access passed: permissions, keyboard/mobile entry, one-use fragment, no opener, blocked popup, rejected pass and account-change cleanup.')
   await evaluate(`window.__finishWorkspace()`)
   await sleep(500)
   assert(await evaluate(`document.body.innerText.includes('Profesional B')&&!document.body.innerText.includes('Profesional A')`))
@@ -207,7 +230,7 @@ try {
   assert(await evaluate(`!document.querySelector('.patient-directory-grid').textContent.includes('account-a')`), 'Old account patients cannot reappear')
   await click('Cerrar sesión')
   await wait(`!!document.querySelector('input[name="username"]')`)
-  assert.equal(await evaluate(`document.querySelectorAll('a.video-pilot-link').length`), 0, 'Logout removes admin video access')
+  assert.equal(await evaluate(`document.querySelectorAll('button.video-pilot-link').length`), 0, 'Logout removes admin video access')
   await evaluate(`window.__delayLogin=true`)
   await login('account-a')
   await wait(`!!window.__finishLogin`)

@@ -13,6 +13,7 @@ export function createVideoServer({
   supabaseUrl = process.env.SUPABASE_URL || 'https://stzsobirxdivbgqxwkhc.supabase.co',
   iceServers = JSON.parse(process.env.ICE_SERVERS_JSON || '[{"urls":"stun:stun.l.google.com:19302"}]'),
   login,
+  exchangeHandoff,
   verifyAdmin,
   waitingDurationMs = 30 * 60_000,
   now = Date.now,
@@ -76,6 +77,11 @@ export function createVideoServer({
   }
   login ??= remoteLogin
   verifyAdmin ??= remoteVerify
+  exchangeHandoff ??= async token => {
+    const data = await remote('video-handoff', { action: 'exchange', token })
+    if (typeof data.sessionToken !== 'string' || !data.sessionToken) throw fail(503, 'No se recibio una sesion de videoconsulta valida.')
+    return data.sessionToken
+  }
   const json = (response, status, body) => {
     response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
     response.end(JSON.stringify(body))
@@ -96,6 +102,28 @@ export function createVideoServer({
   function revoke(session) {
     sessions.delete(session.key)
     for (const room of rooms.values()) if (room.owner === session.key) endRoom(room, 'La sesion administrativa se cerro o ya no tiene permiso.')
+  }
+  async function establishSession(request, response, upstream, reuseExisting = false) {
+    const id = await verifyAdmin(upstream)
+    if (typeof id !== 'string' || !id) throw fail(503, 'Identidad administrativa invalida.')
+    let previous
+    try { previous = getSession(request) }
+    catch (error) { if (error.status !== 401) throw error }
+    if (previous) {
+      if (reuseExisting) {
+        try {
+          await authorize(previous)
+          if (previous.id === id) return json(response, 200, { ok: true })
+        } catch (error) { if (![401, 403].includes(error.status)) throw error }
+      }
+      revoke(previous)
+    }
+    if (sessions.size >= 100) throw fail(429, 'Hay demasiadas sesiones abiertas.')
+    const raw = opaque()
+    const key = hash(raw)
+    sessions.set(key, { key, upstream, id, expiresAt: now() + 3 * 60 * 60_000 })
+    response.setHeader('Set-Cookie', `${cookieName}=${raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age=10800${local ? '' : '; Secure'}`)
+    return json(response, 200, { ok: true })
   }
   function identity(rawToken) {
     const result = validToken(rawToken) ? tokens.get(hash(rawToken)) : null
@@ -139,17 +167,14 @@ export function createVideoServer({
         if (!data || typeof data.username !== 'string' || !/^[a-zA-Z0-9_.@+-]{1,160}$/.test(data.username.trim())
           || typeof data.password !== 'string' || !data.password || data.password.length > 256) throw fail(400, 'Ingresa usuario/email y contrasena validos.')
         const upstream = await login(data.username.trim(), data.password)
-        const id = await verifyAdmin(upstream)
-        if (typeof id !== 'string' || !id) throw fail(503, 'Identidad administrativa invalida.')
-        let previous
-        try { previous = getSession(request) }
-        catch (error) { if (error.status !== 401) throw error }
-        if (previous) revoke(previous)
-        const raw = opaque()
-        const key = hash(raw)
-        sessions.set(key, { key, upstream, id, expiresAt: now() + 3 * 60 * 60_000 })
-        response.setHeader('Set-Cookie', `${cookieName}=${raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age=10800${local ? '' : '; Secure'}`)
-        return json(response, 200, { ok: true })
+        return await establishSession(request, response, upstream)
+      }
+      if (path === '/api/handoff' && request.method === 'POST') {
+        rate('handoff-global', 30, 60_000)
+        const data = await body(request)
+        if (!validToken(data?.token)) throw fail(400, 'Pase temporal invalido.')
+        const upstream = await exchangeHandoff(data.token)
+        return await establishSession(request, response, upstream, true)
       }
       if (path === '/api/logout' && request.method === 'POST') {
         revoke(getSession(request))

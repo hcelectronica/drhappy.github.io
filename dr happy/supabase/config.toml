@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.video-access]
 verify_jwt = false
+
+[functions.video-handoff]
+verify_jwt = false

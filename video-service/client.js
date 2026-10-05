@@ -1,5 +1,6 @@
 const $ = id => document.getElementById(id)
 let accessToken = new URLSearchParams(location.hash.slice(1)).get('invite')
+let handoffToken = new URLSearchParams(location.hash.slice(1)).get('handoff')
 history.replaceState(null, '', location.pathname)
 let role = accessToken ? 'patient' : null
 let stream = null
@@ -10,6 +11,7 @@ let pendingCandidates = []
 let signalQueue = Promise.resolve()
 let generation = 0
 let admin = false
+let authorizing = Boolean(handoffToken)
 let joining = false
 let mediaGeneration = 0
 const deviceBusy = new Set()
@@ -29,7 +31,7 @@ const status = text => { $('status').textContent = text }
 function update() {
   $('create').hidden = !admin || role === 'patient'
   $('duration-panel').hidden = !admin || role === 'patient'
-  $('login-panel').hidden = admin || role === 'patient'
+  $('login-panel').hidden = admin || role === 'patient' || authorizing
   $('logout').hidden = !admin || role === 'patient'
   $('identity').textContent = role ? `Rol de prueba: ${role === 'professional' ? 'profesional' : 'paciente'}.` : 'Sin sala.'
   $('join').disabled = !stream?.getTracks().some(track => track.readyState === 'live' && track.enabled)
@@ -502,14 +504,23 @@ $('remote').addEventListener('playing', update)
 async function restoreSession() {
   if (role === 'patient') return
   try {
+    if (handoffToken) {
+      status('Validando tu acceso desde Dr Happy...')
+      const token = handoffToken
+      handoffToken = null
+      await api('/api/handoff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) })
+      admin = true
+      status('Acceso desde Dr Happy confirmado. Creá una sala de prueba.')
+      return
+    }
     const response = await fetch('/api/session', { signal: AbortSignal.timeout(15000) })
     const data = await response.json()
     if (response.status === 401) return
     if (!response.ok) throw new Error(data.error)
     admin = data.admin === true
     if (admin) status('Sesión administrativa recuperada. Creá una sala.')
-  } catch (error) { report(error) }
-  finally { update() }
+  } catch (error) { status('No se pudo recuperar el acceso. Abrí la videoconsulta otra vez desde Dr Happy o iniciá sesión aquí.'); report(error) }
+  finally { authorizing = false; update() }
 }
 update()
 restoreSession()

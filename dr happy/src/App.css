@@ -696,7 +696,7 @@ body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
   .capacity-status { white-space: normal; }
   .appointment-capacity-panel > .screen-action { justify-self: start; }
 }
-.topbar-actions > button:not(.google-session-chip) { display: none; }
+.topbar-actions > button:not(.google-session-chip):not(.video-pilot-link) { display: none; }
 .topbar-actions .google-session-chip { display: grid; }
 
 .loading,
@@ -1790,8 +1790,7 @@ small {
 input,
 textarea,
 select,
-button,
-a.video-pilot-link {
+button {
   font: inherit;
 }
 
@@ -1855,8 +1854,7 @@ button:disabled {
   cursor: not-allowed;
 }
 
-button.ghost,
-a.video-pilot-link.ghost {
+button.ghost {
   background: rgba(225, 236, 249, 0.95);
   color: #132f4d;
   border: 1px solid rgba(125, 151, 187, 0.8);
@@ -1865,7 +1863,7 @@ a.video-pilot-link.ghost {
     inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
-a.video-pilot-link {
+.video-pilot-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1877,12 +1875,12 @@ a.video-pilot-link {
   text-decoration: none;
 }
 
-a.video-pilot-link:focus-visible {
+.video-pilot-link:focus-visible {
   outline: 3px solid #4b82ff;
   outline-offset: 3px;
 }
 
-.sidebar-nav a.video-pilot-link {
+.sidebar-nav .video-pilot-link {
   display: flex;
   gap: 11px;
   justify-content: flex-start;
@@ -1899,19 +1897,19 @@ a.video-pilot-link:focus-visible {
   box-shadow: none;
 }
 
-.sidebar-nav a.video-pilot-link span {
+.sidebar-nav .video-pilot-link span {
   width: 21px;
   color: #7b96cc;
   font-size: 1rem;
   text-align: center;
 }
 
-.sidebar-nav a.video-pilot-link:hover {
+.sidebar-nav .video-pilot-link:hover {
   background: rgba(228, 236, 252, 0.72);
   color: #35507d;
 }
 
-body.theme-night .sidebar-nav a.video-pilot-link {
+body.theme-night .sidebar-nav .video-pilot-link {
   color: #bdcde8;
 }
 
@@ -3188,8 +3186,7 @@ body.theme-night select {
   color-scheme: dark;
 }
 
-body.theme-night button.ghost,
-body.theme-night a.video-pilot-link.ghost {
+body.theme-night button.ghost {
   background: rgba(20, 36, 60, 0.95);
   color: #d6e7ff;
   border-color: rgba(86, 111, 149, 0.8);
@@ -5472,7 +5469,7 @@ body.theme-night .turnera-card-actions {
   .sidebar-sofia-copy { display: none; }
   .sidebar-nav { display: flex; align-items: center; gap: 6px; padding: 0; flex: 1; min-width: 0; }
   .sidebar-nav button,
-  .sidebar-nav a.video-pilot-link,
+  .sidebar-nav .video-pilot-link,
   .sidebar-toggle-row {
     flex: 1 1 0;
     min-width: 42px;
@@ -5486,7 +5483,7 @@ body.theme-night .turnera-card-actions {
     border-radius: 12px;
   }
   .sidebar-nav button span,
-  .sidebar-nav a.video-pilot-link span { width: auto; font-size: 1.05rem; }
+  .sidebar-nav .video-pilot-link span { width: auto; font-size: 1.05rem; }
   .sidebar-nav button small { display: none; }
   .sidebar-toggle-row > span:first-child { flex-direction: column; gap: 1px; text-align: center; }
   .sidebar-toggle-row b { font-size: 1.15rem; }

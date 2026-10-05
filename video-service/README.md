@@ -21,7 +21,7 @@ tests, archivos .env ni claves privilegiadas.
 - El origen predeterminado es https://video.drhappy.com.ar.
 - Supabase predeterminado: proyecto Dr Happy stzsobirxdivbgqxwkhc.
 - No requiere variables para esta primera prueba.
-- La funcion Supabase video-access debe estar desplegada con verify_jwt=false:
+- Las funciones Supabase video-access y video-handoff deben estar desplegadas con verify_jwt=false:
   la propia funcion valida la sesion profesional y el permiso is_admin.
 - No copiar SUPABASE_SERVICE_ROLE_KEY al hosting: permanece en Supabase.
 
@@ -30,10 +30,11 @@ ser HTTPS, sin ruta ni barra final. Solo se permite HTTP para loopback local.
 
 ## Uso
 
-1. Administrador: abrir el subdominio e iniciar sesion con usuario/email y
-   contrasena de Dr Happy. No es la contrasena de Hostinger. Solo cuentas con
-   is_admin=true y activas. Las cuentas exclusivamente Google necesitan una
-   contrasena definida en Dr Happy; no se incluye OAuth en este piloto.
+1. Administrador: desde la app, tocar Videoconsulta para entrar automaticamente
+   con la cuenta actual, incluso si ingreso con Google. No pide otra contrasena.
+   Abrir directamente el subdominio conserva el login con usuario/email y
+   contrasena de Dr Happy (no de Hostinger); el login directo no incluye OAuth.
+   Solo cuentas con is_admin=true y activas.
 2. Elegir duracion entera de 1 a 120 minutos (40 por defecto), crear sala y copiar
    invitacion. Aceptar prueba, activar dispositivos con los iconos del video y entrar.
 3. Invitado: abrir el enlace privado, aceptar prueba, activar dispositivos y entrar.
@@ -50,6 +51,22 @@ video y sumar el otro despues sin nueva admision ni reiniciar el temporizador.
 Silenciar microfono deshabilita su pista (no libera el permiso de captura);
 apagar camara detiene la pista y libera el dispositivo. Salir/finalizar apaga
 ambos. Un error de un dispositivo no apaga el otro.
+
+El acceso automatico requiere la migracion 20261005010000_video_handoff.sql y
+la funcion video-handoff. La app abre una pestana sin opener y solicita un pase
+aleatorio de 256 bits valido 60 segundos. La base guarda solo su hash; emitir
+otro reemplaza el pendiente. El canje elimina el pase atomicamente y verifica
+de nuevo la sesion de origen y el permiso administrativo. No se envia por URL
+la contrasena ni el token permanente de la app. El fragmento se elimina al
+cargar y el servidor de video intercambia el pase por una nueva sesion
+profesional, que guarda exclusivamente en memoria, y una cookie HttpOnly.
+Si vence o se reutiliza, se informa el error y se debe volver a abrir desde la
+app. No se concede acceso ante fallos del servicio de autorizacion.
+Si la misma cuenta ya tiene sesion de video vigente, se conserva su cookie y
+sus salas; abrir otra cuenta revoca las salas de la sesion anterior. El cierre
+de sesion de la app y el de video son independientes: cerrar la app no termina
+automaticamente una llamada existente. La sesion local de video dura tres
+horas y reiniciar el servidor la revoca.
 
 El recuadro muestra la marca Dr. H modelo 08 durante la espera o si el otro
 participante tiene la camara apagada, con animacion suave que respeta reducir

@@ -12,6 +12,7 @@ import './App.css'
 import { BrandMark } from './BrandMark'
 import { useErrorNotification } from './useErrorNotification'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
+import { createVideoAccessUrl } from './videoConsultationService'
 import { SubscriptionAccountModal } from './SubscriptionAccountModal'
 import { loadSubscriptionAccount } from './subscriptionAccountService'
 import { SubscriptionBenefits } from './SubscriptionBenefits'
@@ -2479,6 +2480,32 @@ function App() {
   const [seedUsers, setSeedUsers] = useState<SeedUser[]>([])
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [, setAppError] = useErrorNotification()
+  const [videoAccessBusy, setVideoAccessBusy] = useState(false)
+  async function handleOpenVideoPilot() {
+    let popup: Window | null = null
+    try {
+      const session = readProfessionalSession()
+      if (!session) throw new Error('Volvé a iniciar sesión en Dr Happy para abrir la videoconsulta.')
+      popup = window.open('about:blank', '_blank')
+      if (!popup) throw new Error('El navegador bloqueó la pestaña. Permití ventanas emergentes para Dr Happy y volvé a tocar Videoconsulta.')
+      popup.opener = null
+      popup.document.title = 'Abriendo videoconsulta'
+      popup.document.body.textContent = 'Preparando tu acceso a la videoconsulta...'
+      setVideoAccessBusy(true)
+      setAppError(null)
+      const url = await createVideoAccessUrl()
+      const current = readProfessionalSession()
+      if (current?.userId !== session.userId || current.token !== session.token) {
+        throw new Error('La cuenta cambió. Abrí la videoconsulta desde la sesión actual.')
+      }
+      if (popup.closed) throw new Error('La pestaña de videoconsulta se cerró. Volvé a abrirla desde Dr Happy.')
+      popup.location.replace(url)
+      setSidebarOpen(false)
+    } catch (error) {
+      popup?.close()
+      setAppError(error instanceof Error ? error.message : 'No se pudo abrir la videoconsulta.')
+    } finally { setVideoAccessBusy(false) }
+  }
   const [appNotice, setAppNotice] = useState<string | null>(null)
   const [floatingNotice, setFloatingNotice] = useState<string | null>(null)
   const [sofiaFeatureIndex, setSofiaFeatureIndex] = useState(0)
@@ -11036,15 +11063,15 @@ function App() {
             </button>
           ) : null}
           {isAdminSession ? (
-            <a
+            <button
+              type="button"
               className="ghost video-pilot-link"
-              href="https://video.drhappy.com.ar/"
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Prueba técnica para administradores, sin datos clínicos. Abre en otra pestaña y requiere iniciar sesión."
+              onClick={() => { void handleOpenVideoPilot() }}
+              disabled={videoAccessBusy}
+              title="Prueba técnica para administradores, sin datos clínicos. Abre en otra pestaña con tu sesión."
             >
               Videoconsulta — piloto
-            </a>
+            </button>
           ) : null}
           {isAdminSession ? (
             <button
@@ -11129,17 +11156,16 @@ function App() {
             </button>
           ) : null}
           {isAdminSession ? (
-            <a
+            <button
+              type="button"
               className="video-pilot-link"
-              href="https://video.drhappy.com.ar/"
-              target="_blank"
-              rel="noopener noreferrer"
               title="Videoconsulta — piloto (otra pestaña, solo pruebas)"
               aria-label="Videoconsulta — piloto, abre en otra pestaña"
-              onClick={() => setSidebarOpen(false)}
+              onClick={() => { void handleOpenVideoPilot() }}
+              disabled={videoAccessBusy}
             >
               <span aria-hidden="true">📹</span> Videoconsulta — piloto
-            </a>
+            </button>
           ) : null}
         </nav>
         <div className="sidebar-footer">

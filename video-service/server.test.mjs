@@ -274,6 +274,55 @@ test('Invalid public origins and ICE configurations fail explicitly at startup',
   assert.throws(() => createVideoServer({ iceServers: [{ urls: 'turn:example.invalid:3478' }] }), /STUN\/TURN/)
 })
 
+test('One-use handoff establishes HttpOnly session, rejects reuse/invalid passes and cross-origin requests', async t => {
+  const available = new Set(['a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64)])
+  const f = await fixture(t, { exchangeHandoff: async token => {
+    if (!available.delete(token)) throw Object.assign(new Error('Pase vencido o usado.'), { status: 401 })
+    return token === 'c'.repeat(64) ? 'admin2' : 'admin'
+  } })
+  assert.equal((await f.request('/api/handoff', { method: 'POST', data: { token: 'invalid' } })).status, 400)
+  assert.equal((await f.request('/api/handoff', { method: 'POST', requestOrigin: 'https://attacker.invalid', data: { token: 'a'.repeat(64) } })).status, 403)
+  const response = await f.request('/api/handoff', { method: 'POST', data: { token: 'a'.repeat(64) } })
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/)
+  assert.deepEqual(response.data, { ok: true }, 'Does not expose upstream session token to browser')
+  assert.equal((await f.request('/api/session', { cookie: response.cookie })).status, 200)
+  assert.equal((await f.request('/api/handoff', { method: 'POST', data: { token: 'a'.repeat(64) } })).status, 401)
+  const room = await f.create(response.cookie)
+  const professional = (await f.connect(room.token, response.cookie)).client
+  const same = await f.request('/api/handoff', { cookie: response.cookie, method: 'POST', data: { token: 'b'.repeat(64) } })
+  assert.equal(same.status, 200)
+  assert.equal(same.cookie, undefined, 'Same account keeps cookie and existing rooms')
+  assert(professional.connected)
+  const ended = event(professional, 'ended')
+  const other = await f.request('/api/handoff', { cookie: response.cookie, method: 'POST', data: { token: 'c'.repeat(64) } })
+  assert.equal(other.status, 200)
+  assert.notEqual(other.cookie, response.cookie)
+  await ended
+  assert.equal((await f.request('/api/session', { cookie: response.cookie })).status, 401)
+})
+
+test('Consumed pass still requires fresh administrative validation before creating local session', async t => {
+  const f = await fixture(t, { exchangeHandoff: async () => 'admin' })
+  f.revoked.add('admin')
+  const denied = await f.request('/api/handoff', { method: 'POST', data: { token: 'a'.repeat(64) } })
+  assert.equal(denied.status, 403)
+  assert.equal(denied.cookie, undefined)
+})
+
+test('Manual login keeps original replacement behavior instead of silently retaining old sessions', async t => {
+  const f = await fixture(t)
+  const cookie = await f.login()
+  const room = await f.create(cookie)
+  const professional = (await f.connect(room.token, cookie)).client
+  const ended = event(professional, 'ended')
+  const response = await f.request('/api/login', { cookie, method: 'POST', data: { username: 'admin', password: 'correct' } })
+  assert.equal(response.status, 200)
+  assert.notEqual(response.cookie, cookie)
+  await ended
+  assert.equal((await f.request('/api/session', { cookie })).status, 401)
+})
+
 test('Entry listens within 3 seconds when executed directly or imported by a hosting wrapper', async t => {
   for (const mode of ['direct', 'import']) {
     await t.test(mode, async () => {
