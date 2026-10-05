@@ -10,6 +10,7 @@ import JsBarcode from 'jsbarcode'
 import { createPortal } from 'react-dom'
 import './App.css'
 import { BrandMark } from './BrandMark'
+import { buildPatientAttachmentsMarkup, patientDocumentLabel, selectPatientPrintAttachments, waitForPatientPrintImages } from './patientDocumentPrint'
 import { useErrorNotification } from './useErrorNotification'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
 import { createVideoAccessUrl } from './videoConsultationService'
@@ -2748,9 +2749,12 @@ function App() {
   const [patientDraft, setPatientDraft] = useState<PatientDraft>(emptyPatientDraft)
   const [patientFormUnlocked, setPatientFormUnlocked] = useState(true)
   const [paperRecordUploading, setPaperRecordUploading] = useState(false)
+  const [patientPrintBusy, setPatientPrintBusy] = useState(false)
+  const [optionalPrintDocuments, setOptionalPrintDocuments] = useState<{ patientId: string | null; ids: string[] }>({ patientId: null, ids: [] })
   const [paperRecordBusyId, setPaperRecordBusyId] = useState<string | null>(null)
   const [paperTranscriptionDrafts, setPaperTranscriptionDrafts] = useState<Record<string, { text: string; truncated?: boolean }>>({})
   const [paperRecordIllegibleIds, setPaperRecordIllegibleIds] = useState<string[]>([])
+  const patientDocumentContext = useRef(0)
   const [consultationDraft, setConsultationDraft] =
     useState<ConsultationDraft>(emptyConsultationDraft)
   const [clinicalSummaryBusy, setClinicalSummaryBusy] = useState(false)
@@ -2771,6 +2775,9 @@ function App() {
     Record<string, number>
   >({})
   const [workspaceLayer, setWorkspaceLayer] = useState<WorkspaceLayer>('overview')
+  useEffect(() => {
+    patientDocumentContext.current += 1
+  }, [activeUserId, selectedPatientId, workspaceLayer])
   const [dictationAvailable, setDictationAvailable] = useState(false)
   const [dictating, setDictating] = useState(false)
   const [dictationField, setDictationField] = useState<DictationConsultationField | null>(null)
@@ -8741,8 +8748,8 @@ function App() {
       try {
         persistPatient({ ...selectedPatient, documents: nextDocuments, updatedAt: new Date().toISOString() })
       } catch (error) {
-        console.error('No se pudo guardar la ficha en papel:', error)
-        setAppError('No se pudo guardar la ficha en papel en este navegador. Liberá espacio o subí una foto más liviana.')
+        console.error('No se pudieron guardar los documentos del paciente:', error)
+        setAppError('No se pudieron guardar los documentos en este navegador. Liberá espacio o subí un archivo más liviano.')
         return
       }
       setPatientDraft((current) => ({ ...current, documents: nextDocuments }))
@@ -8753,28 +8760,35 @@ function App() {
     setAppNotice(`${message} Se guardará en la historia clínica al tocar "Guardar ficha".`)
   }
 
-  async function handlePaperRecordUpload(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+  async function handlePaperRecordUpload(event: ChangeEvent<HTMLInputElement>, paperRecord = true): Promise<void> {
     const files = Array.from(event.target.files ?? [])
     event.target.value = ''
     if (!files.length || paperRecordUploading) return
     if (!canManagePaperRecords) {
-      setAppError('Solo quien creó la ficha puede agregar fichas en papel.')
+      setAppError('Solo quien creó la ficha puede agregar documentos.')
       return
     }
     setAppError(null)
     setPaperRecordUploading(true)
+    const contextVersion = patientDocumentContext.current
     try {
       const startIndex = paperRecords.length
       const stored: StoredFile[] = []
       for (const [index, file] of files.entries()) {
-        stored.push(await paperRecordFileToStoredFile(file, startIndex + index))
+        const document = await paperRecordFileToStoredFile(file, startIndex + index)
+        stored.push(paperRecord ? document : { ...document, name: file.name, category: undefined })
+      }
+      if (contextVersion !== patientDocumentContext.current) {
+        throw new Error('Cambiaste de paciente o de pantalla durante la carga. El documento no se agregó; volvé a cargarlo en la ficha correcta.')
       }
       applyPatientDocuments(
         [...patientDraft.documents, ...stored],
-        stored.length === 1 ? 'Ficha en papel agregada.' : `${stored.length} fichas en papel agregadas.`,
+        paperRecord
+          ? stored.length === 1 ? 'Ficha en papel agregada.' : `${stored.length} fichas en papel agregadas.`
+          : stored.length === 1 ? 'Documento agregado.' : `${stored.length} documentos agregados.`,
       )
     } catch (error) {
-      setAppError(error instanceof Error ? error.message : 'No se pudo cargar la ficha en papel.')
+      setAppError(error instanceof Error ? error.message : 'No se pudo cargar el documento.')
     } finally {
       setPaperRecordUploading(false)
     }
@@ -8801,7 +8815,7 @@ function App() {
       }
       if (result.illegible || !result.transcription) {
         setPaperRecordIllegibleIds((current) => [...current, document.id])
-        setAppNotice('Sofía no pudo leer la ficha con claridad. Queda guardada como foto en la historia clínica.')
+        setAppNotice('Sofía no pudo leer la ficha con claridad. Se conserva el documento digitalizado en la historia clínica.')
         return
       }
       const transcription = result.transcription
@@ -8839,27 +8853,32 @@ function App() {
   function handleRemovePaperRecord(document: StoredFile): void {
     if (!window.confirm(`¿Quitar ${document.name} de la historia clínica?`)) return
     discardPaperTranscriptionDraft(document.id)
-    applyPatientDocuments(patientDraft.documents.filter((item) => item.id !== document.id), 'Ficha en papel quitada.')
+    applyPatientDocuments(patientDraft.documents.filter((item) => item.id !== document.id), 'Documento quitado.')
   }
 
   function handleOpenPaperRecord(document: StoredFile): void {
     const [header, data] = document.dataUrl.split(',', 2)
-    if (!data) return
-    const binary = atob(data)
-    const bytes = new Uint8Array(binary.length)
-    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
-    const mimeType = /^data:([^;]+)/.exec(header)?.[1] || document.type || 'application/octet-stream'
-    const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }))
-    const opened = window.open(url, '_blank')
-    if (!opened) setAppError('El navegador bloqueó la ventana. Permití ventanas emergentes para ver la ficha.')
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    try {
+      if (!data) throw new Error('El documento guardado no contiene datos. Volvé a cargarlo.')
+      const binary = atob(data)
+      const bytes = new Uint8Array(binary.length)
+      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+      const mimeType = document.type || /^data:([^;]+)/.exec(header)?.[1] || 'application/octet-stream'
+      const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }))
+      const opened = window.open(url, '_blank')
+      if (!opened) setAppError('El navegador bloqueó la ventana. Permití ventanas emergentes para ver el documento.')
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (error) {
+      console.error('No se pudo abrir el documento del paciente:', error)
+      setAppError(error instanceof Error ? error.message : 'No se pudo abrir el documento guardado.')
+    }
   }
 
   function renderPaperRecords(editable: boolean): ReactNode {
-    if (!editable && paperRecords.length === 0) return null
+    if (!editable && patientDraft.documents.length === 0) return null
     return (
       <section className="patient-form-block paper-record-block">
-        <h4 className="block-title">📄 Ficha en papel</h4>
+        <h4 className="block-title">📄 Documentos agregados</h4>
         {editable ? (
           <div className="paper-record-actions">
             <label className={`file-picker-button${paperRecordUploading ? ' disabled' : ''}`} htmlFor="paper-record-upload">
@@ -8874,25 +8893,58 @@ function App() {
               disabled={paperRecordUploading}
               onChange={(event) => void handlePaperRecordUpload(event)}
             />
-            <small>Sacá una foto o subí un PDF de la historia en papel. Si es legible, Sofía la transcribe; si no, queda guardada como foto.</small>
+            <label className={`file-picker-button${paperRecordUploading ? ' disabled' : ''}`} htmlFor="patient-document-upload">
+              Agregar foto o PDF
+            </label>
+            <input
+              id="patient-document-upload"
+              className="file-input-hidden"
+              type="file"
+              accept="image/*,application/pdf"
+              multiple
+              disabled={paperRecordUploading}
+              onChange={(event) => void handlePaperRecordUpload(event, false)}
+            />
+            <small>Las fichas de papel se incluyen siempre como anexo del resumen PDF. Sofía puede transcribirlas, pero no es obligatorio: se conserva el documento digitalizado.</small>
           </div>
         ) : null}
-        {paperRecords.length === 0 ? null : (
+        {patientDraft.documents.length === 0 ? <p className="paper-record-meta">Todavía no hay documentos agregados.</p> : (
+          <details className="patient-documents-folder">
+            <summary>Ver documentos agregados ({patientDraft.documents.length})</summary>
+            <p className="paper-record-meta">Marcá los otros documentos que quieras incluir en el próximo resumen PDF.</p>
           <ul className="paper-record-list">
-            {paperRecords.map((document) => {
+            {patientDraft.documents.map((document) => {
               const draft = paperTranscriptionDrafts[document.id]
               const busy = paperRecordBusyId === document.id
               return (
                 <li key={document.id} className="paper-record-item">
-                  <button type="button" className="paper-record-thumb" onClick={() => handleOpenPaperRecord(document)} title="Ver ficha completa">
-                    {document.type.startsWith('image/') ? <img src={document.dataUrl} alt={document.name} /> : <span>PDF</span>}
-                  </button>
                   <div className="paper-record-body">
-                    <strong>{document.name}</strong>
+                    <strong>{patientDocumentLabel(document)} — {formatDate(document.uploadedAt)}</strong>
                     <span className="paper-record-meta">
-                      Cargada el {formatDate(document.uploadedAt)}
-                      {document.transcriptionStatus === 'transcribed' ? ' · Transcripta' : ' · Guardada como foto'}
+                      {document.type === 'application/pdf' ? 'PDF' : 'Imagen'}
+                      {' · '}{Math.max(1, Math.round(document.size / 1024))} KB
+                      {document.category === 'paper-record' ? ' · Incluido siempre en el resumen PDF' : ''}
+                      {document.transcription ? ' · Transcripción revisada' : ''}
                     </span>
+                    <div className="paper-record-buttons">
+                      <button type="button" className="ghost compact" onClick={() => handleOpenPaperRecord(document)}>Ver original</button>
+                      {document.category !== 'paper-record' ? (
+                        <label className="patient-document-print-choice">
+                          <input
+                            type="checkbox"
+                            checked={optionalPrintDocuments.patientId === selectedPatientId && optionalPrintDocuments.ids.includes(document.id)}
+                            onChange={(event) => {
+                              const checked = event.target.checked
+                              setOptionalPrintDocuments(current => {
+                                const ids = current.patientId === selectedPatientId ? current.ids : []
+                                return { patientId: selectedPatientId, ids: checked ? [...ids, document.id] : ids.filter(id => id !== document.id) }
+                              })
+                            }}
+                          />
+                          Incluir en resumen PDF
+                        </label>
+                      ) : null}
+                    </div>
                     {draft ? (
                       <div className="paper-record-review">
                         {draft.truncated ? <p className="access-note">La ficha es extensa y la transcripción puede estar incompleta. Revisá el final.</p> : null}
@@ -8905,7 +8957,7 @@ function App() {
                           }}
                         />
                         <div className="paper-record-buttons">
-                          <button type="button" onClick={() => handleSavePaperTranscription(document.id)}>Guardar transcripción</button>
+                          <button type="button" disabled={paperRecordUploading} onClick={() => handleSavePaperTranscription(document.id)}>Guardar transcripción</button>
                           <button type="button" className="ghost" onClick={() => discardPaperTranscriptionDraft(document.id)}>Descartar</button>
                         </div>
                       </div>
@@ -8915,19 +8967,19 @@ function App() {
                         <p>{document.transcription}</p>
                       </details>
                     ) : paperRecordIllegibleIds.includes(document.id) ? (
-                      <p className="access-note">Sofía no pudo leerla con claridad: queda guardada como foto.</p>
+                      <p className="access-note">Sofía no pudo leerla con claridad: se conserva el documento digitalizado.</p>
                     ) : null}
                     {editable && !draft ? (
                       <div className="paper-record-buttons">
-                        <button type="button" className="ghost compact" disabled={Boolean(paperRecordBusyId)} onClick={() => void handleTranscribePaperRecord(document)}>
+                        {document.category === 'paper-record' ? <button type="button" className="ghost compact" disabled={Boolean(paperRecordBusyId)} onClick={() => void handleTranscribePaperRecord(document)}>
                           {busy ? 'Sofía está leyendo...' : document.transcription ? '✨ Volver a transcribir' : '✨ Transcribir con Sofía'}
-                        </button>
+                        </button> : null}
                         {document.transcription ? (
                           <button type="button" className="ghost compact" onClick={() => setPaperTranscriptionDrafts((current) => ({ ...current, [document.id]: { text: document.transcription || '' } }))}>
                             Editar transcripción
                           </button>
                         ) : null}
-                        <button type="button" className="ghost compact" onClick={() => handleRemovePaperRecord(document)}>Quitar</button>
+                        <button type="button" className="ghost compact" disabled={paperRecordUploading} onClick={() => handleRemovePaperRecord(document)}>Quitar</button>
                       </div>
                     ) : null}
                   </div>
@@ -8935,6 +8987,7 @@ function App() {
               )
             })}
           </ul>
+          </details>
         )}
       </section>
     )
@@ -9208,11 +9261,12 @@ function App() {
     }
   }
 
-  function printPatientDocument(
+  async function printPatientDocument(
     patientForPrint: PatientRecord,
     consultationEntriesForPrint: ConsultationEntry[],
     documentTitle: string,
-  ): void {
+  ): Promise<void> {
+    if (patientPrintBusy) return
     if (!profile) {
       setAppError('Completa tu perfil profesional para imprimir documentos clínicos.')
       return
@@ -9254,20 +9308,10 @@ function App() {
             })
             .join('')
 
-    const paperRecordsForPrint = patientForPrint.documents.filter((document) => document.category === 'paper-record')
-    const paperRecordsMarkup = paperRecordsForPrint.length === 0
-      ? ''
-      : `<section>
-      <h2>Historia clínica en papel</h2>
-      ${paperRecordsForPrint.map((document) => `
-        <article style="margin-bottom:14px; page-break-inside:avoid;">
-          <p><strong>${escapeHtml(document.name)}</strong> (cargada el ${escapeHtml(formatDate(document.uploadedAt))})</p>
-          ${/^data:image\/(jpeg|png|webp|gif);base64,/.test(document.dataUrl) ? `<img src="${escapeHtml(document.dataUrl)}" alt="Ficha en papel" style="max-width:100%; max-height:900px; border:1px solid #cbd5e1;" />` : ''}
-          ${document.transcription
-            ? `<p><strong>Transcripción revisada:</strong><br />${escapeHtml(document.transcription).replaceAll('\n', '<br />')}</p>`
-            : '<p><em>Sin transcripción: se conserva como imagen.</em></p>'}
-        </article>`).join('')}
-    </section>`
+    const attachmentsForPrint = selectPatientPrintAttachments(
+      patientForPrint.documents,
+      optionalPrintDocuments.patientId === patientForPrint.id ? optionalPrintDocuments.ids : [],
+    )
 
     const documentsMarkup =
       patientForPrint.documents.length === 0
@@ -9275,7 +9319,7 @@ function App() {
         : patientForPrint.documents
             .map(
               (document) =>
-                `<li>${escapeHtml(document.name)} (${escapeHtml(formatDate(document.uploadedAt))})</li>`,
+                `<li>${escapeHtml(patientDocumentLabel(document))} (${escapeHtml(formatDate(document.uploadedAt))}) · ${attachmentsForPrint.some(item => item.id === document.id) ? 'Incluido en el anexo' : 'Disponible en la ficha; no incluido en este anexo'}</li>`,
             )
             .join('')
 
@@ -9285,7 +9329,14 @@ function App() {
       return
     }
 
-    printWindow.document.write(`<!doctype html>
+    setPatientPrintBusy(true)
+    printWindow.document.write('<!doctype html><html lang="es"><meta charset="utf-8"><title>Preparando resumen</title><body><p role="status">Preparando resumen y todas las páginas de los documentos adjuntos...</p></body></html>')
+    printWindow.document.close()
+    try {
+      const attachmentsMarkup = await buildPatientAttachmentsMarkup(attachmentsForPrint)
+      if (printWindow.closed) throw new Error('Se cerró la ventana antes de preparar el resumen. Volvé a intentar.')
+      printWindow.document.open()
+      printWindow.document.write(`<!doctype html>
 <html lang="es">
   <head>
     <meta charset="utf-8" />
@@ -9300,8 +9351,13 @@ function App() {
       .photos { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
       .photos img { max-width: 180px; max-height: 180px; border: 1px solid #d8e2ee; border-radius: 8px; object-fit: contain; padding: 4px; }
       ul { margin: 6px 0 0 16px; }
+      .clinical-attachment-page, .clinical-attachment-transcription { break-before: page; }
+      .clinical-attachment-page img { display: block; max-width: 100%; max-height: 235mm; object-fit: contain; margin: 10px auto; }
       @media print {
+        @page { size: A4; margin: 12mm; }
         body { padding: 0; }
+        .clinical-attachment-page h2 { margin-top: 0; }
+        .clinical-attachment-page { break-inside: avoid; }
       }
     </style>
   </head>
@@ -9343,18 +9399,26 @@ function App() {
       <h2>Documentos adjuntos</h2>
       <ul>${documentsMarkup}</ul>
     </section>
-    ${paperRecordsMarkup}
-
     <section>
       <h2>${consultationEntriesForPrint.length <= 1 ? 'Atención clínica' : 'Evolución y atenciones registradas'}</h2>
       ${consultationsMarkup}
     </section>
+    ${attachmentsMarkup}
   </body>
 </html>`)
-    printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
-    setAppNotice('Documento preparado para guardar o imprimir en PDF.')
+      printWindow.document.close()
+      await waitForPatientPrintImages(printWindow)
+      if (printWindow.closed) throw new Error('Se cerró la ventana antes de imprimir el resumen.')
+      printWindow.focus()
+      printWindow.print()
+      setAppNotice('Documento preparado para guardar o imprimir en PDF, con los anexos seleccionados.')
+    } catch (error) {
+      console.error('No se pudo preparar el resumen con sus documentos:', error)
+      printWindow.close()
+      setAppError(error instanceof Error ? error.message : 'No se pudo preparar el resumen completo. No se inició la impresión.')
+    } finally {
+      setPatientPrintBusy(false)
+    }
   }
 
   // ── Certificado médico ──────────────────────────────────────────────────────
@@ -9994,7 +10058,7 @@ function App() {
           ...patientForPrint.consultations,
         ]
       : patientForPrint.consultations
-    printPatientDocument(
+    void printPatientDocument(
       patientForPrint,
       consultationEntriesForPrint,
       'RESUMEN DE HISTORIA CLINICA',
@@ -10008,7 +10072,7 @@ function App() {
       return
     }
 
-    printPatientDocument(patientForPrint, [entry], 'ATENCION CLINICA INDIVIDUAL')
+    void printPatientDocument(patientForPrint, [entry], 'ATENCION CLINICA INDIVIDUAL')
   }
 
   if (loadingUsers) {
@@ -14076,9 +14140,9 @@ function App() {
                     type="button"
                     className="ghost"
                     onClick={printSelectedPatientSummary}
-                    disabled={!selectedPatient}
+                    disabled={!selectedPatient || patientPrintBusy || paperRecordUploading}
                   >
-                    Imprimir resumen (PDF)
+                    {patientPrintBusy ? 'Preparando resumen...' : 'Imprimir resumen (PDF)'}
                   </button>
                   {isAdminSession ? (
                     <button

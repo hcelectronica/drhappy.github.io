@@ -17,6 +17,27 @@ let socket
 let launchError
 browser.on('error', (error) => { launchError = error })
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+function paperPdfFixture() {
+  const blue = '0 0 1 rg 50 50 400 700 re f\n'
+  const red = '1 0 0 rg 50 50 700 400 re f\n'
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> /Contents 4 0 R >>',
+    `<< /Length ${Buffer.byteLength(blue)} >>\nstream\n${blue}endstream`,
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << >> /Contents 6 0 R >>',
+    `<< /Length ${Buffer.byteLength(red)} >>\nstream\n${red}endstream`,
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets = [0]
+  for (const [index, object] of objects.entries()) {
+    offsets.push(Buffer.byteLength(pdf))
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+  }
+  const xref = Buffer.byteLength(pdf)
+  pdf += `xref\n0 7\n0000000000 65535 f \n${offsets.slice(1).map(offset => String(offset).padStart(10, '0') + ' 00000 n \n').join('')}trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`
+  return Buffer.from(pdf).toString('base64')
+}
 try {
   let tabs
   for (let attempt = 0; attempt < 150; attempt++) {
@@ -61,9 +82,13 @@ try {
     throw new Error('UI timeout: ' + expression + '\n' + await evaluate('document.body.innerText.slice(-2000)'))
   }
   const checkTouchLayout = async label => {
+    await command('Page.bringToFront')
     for (const [width, height] of [[320, 568], [375, 667], [390, 844], [430, 932], [844, 390]]) {
       await command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true })
-      await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`)
+      await evaluate(`new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>reject(new Error('Viewport frames did not settle')),5000);
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{clearTimeout(timer);resolve()}));
+      })`)
       const layout = await evaluate(`(()=>{
         const visible=e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
         const fields=Array.from(document.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]):not([type=file]):not([type=color]),select,textarea')).filter(visible);
@@ -88,7 +113,7 @@ try {
         if(!event.fixture){event.preventDefault();event.stopImmediatePropagation()}
       });
       const account=id=>({id,username:id,full_name:id==='account-a'?'Profesional A':'Profesional B',
-        specialty:'Odontologia',license_number:'TEST',email:id+'@example.invalid',active:true,is_admin:id==='account-b',
+        specialty:localStorage.getItem('fixture-medical')?'Clinica':'Odontologia',license_number:'TEST',email:id+'@example.invalid',active:true,is_admin:id==='account-b',
         subscription_status:'active',subscription_expires_at:'2027-12-31T00:00:00Z'});
       if(!localStorage.getItem('fixture-initialized')){
         localStorage.setItem('fixture-initialized','true');
@@ -148,6 +173,10 @@ try {
               email:'patient@example.invalid',consultations:[],documents:[],dentalStatus:'provisional',
               createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}],appointments_json:[],
             treatment_ledger_json:[],treatment_ledger_initialized:true}};
+          if(localStorage.getItem('fixture-medical')){
+            if(body.action==='save')localStorage.setItem('fixture-document-patients',JSON.stringify(body.patients));
+            data.workspace.patients_json=JSON.parse(localStorage.getItem('fixture-document-patients'));
+          }
         }
         if(url.endsWith('/patient-invite'))data={success:true,submissions:[]};
         return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
@@ -175,6 +204,7 @@ try {
     await wait(`Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes(${JSON.stringify(text)})&&!b.disabled)`)
     await evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes(${JSON.stringify(text)})&&!b.disabled).click()`)
   }
+  if (process.env.TEST_PATIENT_DOCUMENTS !== '1') {
   await checkTouchLayout('authenticated home')
   await click('Mis pacientes')
   await wait(`document.querySelector('.patient-directory-grid')?.textContent.includes('account-a')`)
@@ -442,6 +472,114 @@ try {
   await wait(`!!document.querySelector('input[name="username"]')`)
   assert(await evaluate(`!document.querySelector('.public-install-banner')`), 'Standalone app does not offer installation')
   console.log('Public installation passed: Android fallback, native accepted/dismissed/error, persistent button, iPhone guide and standalone suppression.')
+  }
+
+  await evaluate(`(()=>{
+    localStorage.setItem('fixture-medical','true');
+    localStorage.setItem('drhappy-active-user','account-a');
+    localStorage.setItem('drhappy-professional-session','token-account-a');
+    localStorage.removeItem('drhappy-session-v2');
+    const canvas=document.createElement('canvas');canvas.width=700;canvas.height=1000;
+    const context=canvas.getContext('2d');context.fillStyle='white';context.fillRect(0,0,700,1000);
+    context.fillStyle='black';context.font='32px sans-serif';context.fillText('Historia manuscrita de prueba',40,80);
+    const image=canvas.toDataURL('image/jpeg');
+    const stored=(id,type,dataUrl,category)=>({id,name:id+(type==='application/pdf'?'.pdf':'.jpg'),type,dataUrl,category,size:1000,uploadedAt:'2026-10-05T12:00:00Z'});
+    const documents=[
+      {...stored('paper-image','image/jpeg',image,'paper-record'),transcription:'Texto revisado <sin inventar> & original'},
+      stored('paper-pdf','application/pdf','data:application/octet-stream;base64,${paperPdfFixture()}','paper-record'),
+      stored('study-image','image/jpeg',image),
+      stored('study-pdf','application/pdf','data:application/pdf;base64,${paperPdfFixture()}')
+    ];
+    const patient={id:'patient-account-a',ownerUserId:'account-a',nombre:'Paciente',apellido:'account-a',dni:'11111111',documents,consultations:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+    localStorage.setItem('fixture-document-patients',JSON.stringify([patient,{...patient,id:'patient-second',apellido:'Segundo',dni:'33333333',documents:[documents[2]]}]));
+  })()`)
+  await command('Page.reload')
+  await ready('Profesional A')
+  await click('Mis pacientes')
+  await wait(`document.querySelector('.patient-directory-grid')?.textContent.includes('account-a')`)
+  await click('Abrir ficha')
+  await wait(`!!document.querySelector('.patient-documents-folder')`)
+  assert(await evaluate(`!document.querySelector('.patient-documents-folder').open`), 'Documents start collapsed')
+  assert.equal(await evaluate(`document.querySelectorAll('.paper-record-list img').length`), 0, 'No accumulated image thumbnails')
+  await evaluate(`document.querySelector('.patient-documents-folder').open=true`)
+  assert(await evaluate(`document.querySelector('.paper-record-list').textContent.includes('Imagen de HC en papel agregada')`))
+  assert.equal(await evaluate(`document.querySelectorAll('.paper-record-item').length`), 4, 'Existing paper and general documents are retained')
+  await checkTouchLayout('patient documents folder')
+  await evaluate(`(()=>{
+    const open=window.open.bind(window);window.__printCount=0;
+    window.open=(...args)=>{const popup=open(...args);if(popup){window.__printWindow=popup;popup.print=()=>{window.__printCount++};popup.focus=()=>{}}return popup};
+  })()`)
+  const printSummary = async expectedPages => {
+    const count = await evaluate('window.__printCount')
+    await click('Imprimir resumen (PDF)')
+    await wait(`window.__printCount===${count + 1}`)
+    assert.equal(await evaluate(`window.__printWindow.document.querySelectorAll('.clinical-attachment-page').length`), expectedPages)
+    assert(await evaluate(`Array.from(window.__printWindow.document.images).every(image=>image.complete&&image.naturalWidth>0)`), 'Every original and rendered PDF page loads before print')
+    assert(await evaluate(`window.__printWindow.document.body.textContent.includes('Texto revisado <sin inventar> & original')`), 'Reviewed text remains escaped and accompanies the original')
+    assert(await evaluate(`window.__printWindow.document.querySelector('.clinical-attachment-page').previousElementSibling.textContent.includes('Atención clínica')`), 'Original documents are annexed after the clinical summary')
+  }
+  await printSummary(3)
+  assert.equal(await evaluate(`window.__printWindow.document.querySelectorAll('.clinical-attachment-page')[2].textContent.includes('Página 2 de 2')`), true, 'Both PDF pages are included, not just the file name')
+  const colors = await evaluate(`(async()=>{
+    const images=Array.from(window.__printWindow.document.querySelectorAll('.clinical-attachment-page img')).slice(1);
+    return images.map(image=>{const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;const c=canvas.getContext('2d');c.drawImage(image,0,0);return Array.from(c.getImageData(Math.floor(canvas.width/2),Math.floor(canvas.height/2),1,1).data)});
+  })()`)
+  assert(colors[0][2] > 200 && colors[0][0] < 40, 'First PDF page is rendered in blue')
+  assert(colors[1][0] > 200 && colors[1][2] < 40, 'Second PDF page is rendered in red')
+  await evaluate(`window.__printWindow.close();document.querySelectorAll('.patient-document-print-choice input').forEach(input=>input.click())`)
+  await printSummary(6)
+  const popupId = (await command('Target.getTargets')).targetInfos.find(target => target.type === 'page' && target.url === 'about:blank').targetId
+  const popupSession = (await command('Target.attachToTarget', { targetId: popupId, flatten: true })).sessionId
+  const rendered = await command('Page.printToPDF', { preferCSSPageSize: true, printBackground: true }, popupSession)
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const task = getDocument({ data: new Uint8Array(Buffer.from(rendered.data, 'base64')) })
+  try {
+    const pdf = await task.promise
+    assert.equal(pdf.numPages, 8, 'Export has clinical summary, six original pages and reviewed transcription with no missing/blank pages')
+  } finally {
+    await task.destroy()
+  }
+  await evaluate(`window.__printWindow.close()`)
+  await click('Mis pacientes')
+  await evaluate(`Array.from(document.querySelectorAll('.patient-directory-card')).find(card=>card.textContent.includes('Segundo')).querySelector('button').click()`)
+  await wait(`!!document.querySelector('.patient-documents-folder')`)
+  await evaluate(`document.querySelector('.patient-documents-folder').open=true`)
+  assert(await evaluate(`!document.querySelector('.patient-document-print-choice input').checked`), 'Print selections do not leak to a different patient')
+  await click('Mis pacientes')
+  await click('Abrir ficha')
+  await wait(`!!document.querySelector('#patient-document-upload')`)
+  await evaluate(`(()=>{
+    const input=document.querySelector('#patient-document-upload');const transfer=new DataTransfer();
+    transfer.items.add(new File([Uint8Array.from(atob('${paperPdfFixture()}'),c=>c.charCodeAt(0))],'Estudio agregado.pdf',{type:'application/pdf'}));
+    input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+  })()`)
+  await wait(`document.querySelector('.paper-record-list')?.textContent.includes('Estudio agregado.pdf')`)
+  assert(await evaluate(`JSON.parse(localStorage.getItem('fixture-document-patients'))[0].documents.some(doc=>doc.name==='Estudio agregado.pdf'&&!doc.category)`), 'General uploads are saved without automatically classifying them as paper history')
+  await evaluate(`(()=>{
+    const input=document.querySelector('#paper-record-upload');const transfer=new DataTransfer();
+    transfer.items.add(new File(['not a PDF'],'Roto.pdf',{type:'application/pdf'}));
+    input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+  })()`)
+  await wait(`document.querySelectorAll('.paper-record-item').length===6`)
+  const printedBeforeError = await evaluate('window.__printCount')
+  await click('Imprimir resumen (PDF)')
+  await wait(`document.querySelector('.app-error-toast p')?.textContent.includes('no se pudo preparar el PDF')`)
+  assert.equal(await evaluate('window.__printCount'), printedBeforeError, 'Unreadable attachments abort instead of silently printing an incomplete history')
+  await evaluate(`(()=>{
+    const read=FileReader.prototype.readAsDataURL;
+    FileReader.prototype.readAsDataURL=function(file){window.__finishDocumentRead=()=>{FileReader.prototype.readAsDataURL=read;read.call(this,file)}};
+    const input=document.querySelector('#patient-document-upload');const transfer=new DataTransfer();
+    transfer.items.add(new File([Uint8Array.from(atob('${paperPdfFixture()}'),c=>c.charCodeAt(0))],'No cruzar pacientes.pdf',{type:'application/pdf'}));
+    input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+  })()`)
+  await wait(`typeof window.__finishDocumentRead==='function'`)
+  await click('Mis pacientes')
+  await evaluate(`Array.from(document.querySelectorAll('.patient-directory-card')).find(card=>card.textContent.includes('Segundo')).querySelector('button').click()`)
+  await wait(`document.querySelectorAll('.paper-record-item').length===1`)
+  await evaluate('window.__finishDocumentRead()')
+  await wait(`Array.from(document.querySelectorAll('.app-error-toast p')).some(p=>p.textContent.includes('Cambiaste de paciente'))`)
+  assert(await evaluate(`JSON.parse(localStorage.getItem('fixture-document-patients')).every(patient=>patient.documents.every(doc=>doc.name!=='No cruzar pacientes.pdf'))`), 'An upload interrupted by a patient switch is not attached to either record')
+  console.log('Patient documents passed: collapsed text list, original preservation, multi-page PDF/color rendering, optional annex selection, eight-page PDF output, isolated patient choices, upload persistence and explicit unreadable-file failure.')
 } finally {
   if (socket?.readyState === WebSocket.OPEN) socket.close()
   browser.kill()

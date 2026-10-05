@@ -36,6 +36,18 @@ En pantallas menores a 900 px o dispositivos con puntero táctil, los campos de 
 
 `node tests/mobile-session.browser.mjs` comprueba fuentes y ancho del documento a 320, 375, 390, 430 y 844 px con entrada táctil emulada: inicio, pacientes, nueva ficha, odontograma, perfil, turnera, modal de turno, herramientas, acceso, registro y recuperación. Usa Edge/Chromium; no sustituye una prueba de Safari en iPhone real con teclado abierto, rotación y zoom manual.
 
+## Documentos del paciente y anexos del resumen PDF
+
+La ficha clínica médica y su evolución muestran «Documentos agregados» como lista plegable, sin miniaturas. Las fichas de papel se identifican por tipo y fecha de incorporación; los otros archivos conservan su nombre. «Ver original» abre el documento digitalizado. Los adjuntos existentes se conservan sin migrarlos ni duplicarlos.
+
+«Subir ficha papel» clasifica la foto o el PDF como historia previa y lo incluye siempre como anexo del resumen y de la impresión individual. «Agregar foto o PDF» permite adjuntar otros documentos; cada uno tiene una casilla «Incluir en resumen PDF» que solo afecta a la selección de impresión de ese paciente, no al archivo guardado. Los no seleccionados figuran en el índice como disponibles en la ficha pero no incluidos en ese anexo.
+
+La exportación coloca la información clínica primero y los documentos después: una página de anexo por imagen o página del PDF, con fecha y numeración. Los PDF se renderizan con el lector y el worker de PDF.js servidos desde la propia app, sin servicios externos. La impresión espera a todas las imágenes; un PDF ilegible, protegido o dañado impide imprimir un resumen parcial y muestra un error. El documento de origen permanece guardado; las imágenes temporales de los PDF se generan solo para imprimir. La transcripción con Sofía es opcional, requiere revisión profesional y nunca sustituye al documento digitalizado.
+
+Se mantiene la compresión de fotos a JPEG (lado máximo de 1800 px) y el límite de 6 MB por PDF. La lista plegable reduce espacio visual, no almacenamiento; conviene comprobar la legibilidad del archivo digitalizado. No se modifica el almacenamiento local y la sincronización existentes.
+
+Validar con `node --test tests/patient-document-print.test.mjs`, `npm run build` y `node tests/mobile-session.browser.mjs` contra el build servido mediante `TEST_APP_ORIGIN`. `TEST_PATIENT_DOCUMENTS=1` ejecuta solo el recorrido de documentos. La prueba de navegador comprueba la lista móvil, adjuntos anteriores, PDF de dos páginas vertical/horizontal, selección opcional, exportación real de ocho páginas, persistencia de carga y errores sin impresión incompleta.
+
 ## Videoconsulta piloto para administradores
 
 La cabecera y la navegación lateral de una sesión administrativa ofrecen
