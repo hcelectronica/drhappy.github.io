@@ -100,7 +100,7 @@ function updateTranscript() {
   $('transcript-status').textContent = transcriber.active
     ? `● Transcribiendo · ${segments} fragmento${segments === 1 ? '' : 's'} · ${listening}${problems.length ? ` · ${problems.join(' ')}` : ''}`
     : `Transcripción detenida · ${segments} fragmento${segments === 1 ? '' : 's'} en este equipo${problems.length ? ` · ${problems.join(' ')}` : ''}`
-  $('transcript-download').hidden = $('transcript-discard').hidden = !segments || transcriber.active
+  $('transcript-download-professional').hidden = $('transcript-download-patient').hidden = $('transcript-discard').hidden = !segments || transcriber.active
 }
 function sendTranscriptState() {
   if (role !== 'professional' || channel?.readyState !== 'open') return
@@ -569,6 +569,7 @@ $('transcribe').onclick = async () => {
   try {
     await transcriber.prepare()
     if (role !== 'professional' || channel?.readyState !== 'open') return
+    downloadedChannels.clear()
     transcriber.start([
       { speaker: 'Profesional', getTrack: () => liveAudio(stream) },
       { speaker: 'Paciente', getTrack: () => liveAudio($('remote').srcObject) },
@@ -578,20 +579,25 @@ $('transcribe').onclick = async () => {
   } catch (error) { report(error) }
   finally { preparingTranscript = false; update() }
 }
-$('transcript-download').onclick = () => {
+const downloadedChannels = new Set()
+function downloadChannel(speaker, slug) {
   const started = new Date(transcriber.startedAt ?? Date.now())
   const stamp = `${started.getFullYear()}-${String(started.getMonth() + 1).padStart(2, '0')}-${String(started.getDate()).padStart(2, '0')}-${String(started.getHours()).padStart(2, '0')}${String(started.getMinutes()).padStart(2, '0')}`
-  const url = URL.createObjectURL(new Blob([transcriber.text({ patientName: consultationPatientName })], { type: 'text/plain;charset=utf-8' }))
-  const link = Object.assign(document.createElement('a'), { href: url, download: `transcripcion-videoconsulta-${stamp}.txt` })
+  const url = URL.createObjectURL(new Blob([transcriber.text({ patientName: consultationPatientName, speaker })], { type: 'text/plain;charset=utf-8' }))
+  const link = Object.assign(document.createElement('a'), { href: url, download: `transcripcion-${slug}-${stamp}.txt` })
   document.body.append(link)
   link.click()
   link.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
-  transcriptPending = false
+  downloadedChannels.add(speaker)
+  transcriptPending = downloadedChannels.size < 2
 }
+$('transcript-download-professional').onclick = () => downloadChannel('Profesional', 'profesional')
+$('transcript-download-patient').onclick = () => downloadChannel('Paciente', 'paciente')
 $('transcript-discard').onclick = () => {
   if (!confirm('¿Descartar la transcripción de este equipo? No se puede recuperar.')) return
   transcriber.discard()
+  downloadedChannels.clear()
   transcriptPending = false
 }
 window.addEventListener('beforeunload', event => {

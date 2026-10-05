@@ -16,9 +16,11 @@ export function formatClock(ms) {
   return hours ? `${hours}:${clock}` : clock
 }
 
-export function transcriptText(segments, { patientName = '', startedAt = null, lang = '' } = {}) {
+export function transcriptText(segments, { patientName = '', startedAt = null, lang = '', speaker = '' } = {}) {
+  if (speaker) segments = segments.filter(segment => segment.speaker === speaker)
   const lines = [
     'Transcripción de videoconsulta - Dr Happy',
+    speaker ? `Canal: ${speaker}` : null,
     patientName ? `Paciente: ${patientName}` : null,
     startedAt ? `Inicio: ${new Date(startedAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}` : null,
     lang ? `Idioma de reconocimiento: ${lang}` : null,
@@ -26,7 +28,7 @@ export function transcriptText(segments, { patientName = '', startedAt = null, l
     '',
   ].filter(line => line !== null)
   const ordered = segments.map((segment, index) => ({ ...segment, index })).sort((a, b) => a.at - b.at || a.index - b.index)
-  for (const segment of ordered) lines.push(`[${formatClock(segment.at)}] ${segment.speaker}: ${segment.text}`)
+  for (const segment of ordered) lines.push(speaker ? `[${formatClock(segment.at)}] ${segment.text}` : `[${formatClock(segment.at)}] ${segment.speaker}: ${segment.text}`)
   if (!ordered.length) lines.push('(Sin fragmentos reconocidos.)')
   return `${lines.join('\n')}\n`
 }

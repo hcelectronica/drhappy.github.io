@@ -95,6 +95,13 @@ test('Runs one local recognizer per speaker on its own audio track and orders se
   assert.match(text, /Paciente: Rodolfo Pérez/)
   assert.ok(text.indexOf('[00:02] Paciente: Mejor que la anterior') < text.indexOf('[00:05] Profesional: ¿Cómo dormiste'))
   assert.ok(!text.includes('parcial'))
+  const patientOnly = transcriber.text({ speaker: 'Paciente' })
+  assert.match(patientOnly, /Canal: Paciente\n/)
+  assert.match(patientOnly, /\[00:02\] Mejor que la anterior/)
+  assert.ok(!patientOnly.includes('dormiste'))
+  const professionalOnly = transcriber.text({ speaker: 'Profesional' })
+  assert.match(professionalOnly, /\[00:05\] ¿Cómo dormiste esta semana\?/)
+  assert.ok(!professionalOnly.includes('anterior'))
   assert.ok(updates.length > 0)
 })
 

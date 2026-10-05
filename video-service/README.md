@@ -196,7 +196,8 @@ el primer uso; Edge, Safari/iPhone y Chrome en celulares hoy lo rechazan.
 
 Mientras transcribe, el paciente ve un aviso. El texto no se muestra en
 pantalla ni se envia al servidor: queda en memoria del navegador hasta
-descargarlo como .txt o descartarlo, y el navegador advierte antes de cerrar con
+descargarlo en dos .txt independientes (profesional y paciente, cada uno con sus
+tiempos desde el inicio) o descartarlo, y el navegador advierte antes de cerrar con
 texto pendiente. Cortar la conexion detiene la transcripcion. Es un borrador para
 revision profesional; el resumen con Sofia y el guardado en la historia clinica
 son etapas posteriores. `transcription.test.mjs` cubre la logica con un motor
