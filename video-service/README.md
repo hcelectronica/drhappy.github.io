@@ -7,12 +7,15 @@ con confirmacion. No graba, no transcribe y no envia medios a Sofia.
 ## Despliegue en Hostinger
 
 Reemplazar **solo la aplicacion de video.drhappy.com.ar**, no drhappy.com.ar.
-El ZIP debe contener package.json, package-lock.json, server.mjs, index.html,
-client.js y este documento directamente en su raiz. No subir node_modules,
+El ZIP debe contener package.json, package-lock.json, server.mjs, videoServer.mjs,
+index.html, client.js y este documento directamente en su raiz. No subir node_modules,
 tests, archivos .env ni claves privilegiadas.
 
 - Framework: Other. Node: 22 o 24.
 - Entrada: server.mjs. Inicio: npm start.
+- server.mjs llama listen() directamente, tambien cuando Hostinger lo importa
+  desde su wrapper. La fabrica sin efectos de inicio vive en videoServer.mjs;
+  no usar ese modulo como archivo de entrada.
 - Sin build ni directorio dist. Hostinger instala dependencies.
 - Usa el PORT asignado por Hostinger.
 - El origen predeterminado es https://video.drhappy.com.ar.

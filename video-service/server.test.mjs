@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:net'
+import { spawn } from 'node:child_process'
 import { io } from 'socket.io-client'
-import { createVideoServer } from './server.mjs'
+import { createVideoServer } from './videoServer.mjs'
 
 async function fixture(t, options = {}) {
   const reservation = createServer()
@@ -197,4 +198,51 @@ test('Invalid public origins and ICE configurations fail explicitly at startup',
   assert.throws(() => createVideoServer({ origin: 'http://public.invalid' }), /HTTPS/)
   assert.throws(() => createVideoServer({ iceServers: [{ urls: 'https://invalid' }] }), /STUN\/TURN/)
   assert.throws(() => createVideoServer({ iceServers: [{ urls: 'turn:example.invalid:3478' }] }), /STUN\/TURN/)
+})
+
+test('Entry listens within 3 seconds when executed directly or imported by a hosting wrapper', async t => {
+  for (const mode of ['direct', 'import']) {
+    await t.test(mode, async () => {
+      const reservation = createServer()
+      await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve))
+      const port = reservation.address().port
+      await new Promise(resolve => reservation.close(resolve))
+      const origin = `http://127.0.0.1:${port}`
+      const args = mode === 'direct' ? ['server.mjs'] : ['--input-type=module', '-e', "await import('./server.mjs')"]
+      const started = performance.now()
+      const child = spawn(process.execPath, args, {
+        cwd: new URL('.', import.meta.url),
+        env: { ...process.env, PORT: String(port), PUBLIC_ORIGIN: origin, ICE_SERVERS_JSON: '[]' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      let output = ''
+      let launchError
+      child.stdout.on('data', chunk => { output += chunk })
+      child.stderr.on('data', chunk => { output += chunk })
+      child.on('error', error => { launchError = error })
+      try {
+        let ready = false
+        while (performance.now() - started < 3000) {
+          if (launchError) throw launchError
+          if (child.exitCode !== null) throw new Error(`Startup exited: ${output}`)
+          try {
+            const response = await fetch(`${origin}/health`, { signal: AbortSignal.timeout(500) })
+            if (response.ok) { assert.equal((await response.json()).pilot, true); ready = true; break }
+          } catch (error) {
+            if (error.cause?.code !== 'ECONNREFUSED' && error.name !== 'TimeoutError') throw error
+          }
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        assert(ready, `No listen within 3 seconds: ${mode}\n${output}`)
+        const denied = await fetch(`${origin}/api/rooms`, { method: 'POST', headers: { Origin: origin } })
+        assert.equal(denied.status, 401)
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) {
+          const exited = new Promise(resolve => child.once('exit', resolve))
+          child.kill()
+          await exited
+        }
+      }
+    })
+  }
 })

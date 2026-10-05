@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createVideoServer } from './server.mjs'
+import { createVideoServer } from './videoServer.mjs'
 
 const origin = 'http://127.0.0.1:5195'
 const app = createVideoServer({
