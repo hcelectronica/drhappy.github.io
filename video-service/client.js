@@ -11,7 +11,10 @@ let signalQueue = Promise.resolve()
 let generation = 0
 let admin = false
 let joining = false
-let activating = false
+let mediaGeneration = 0
+const deviceBusy = new Set()
+let senders = {}
+let remoteCameraOn = false
 let iceServers = []
 let hasTurn = false
 let expiryTimer
@@ -29,12 +32,26 @@ function update() {
   $('login-panel').hidden = admin || role === 'patient'
   $('logout').hidden = !admin || role === 'patient'
   $('identity').textContent = role ? `Rol de prueba: ${role === 'professional' ? 'profesional' : 'paciente'}.` : 'Sin sala.'
-  $('join').disabled = !stream || !accessToken || Boolean(socket) || joining || !$('consent').checked
-  $('devices').disabled = activating || Boolean(stream) || !$('consent').checked || (!admin && role !== 'patient')
-  $('audio-only').disabled = $('devices').disabled
-  $('mic').disabled = !stream?.getAudioTracks().length
-  $('camera').disabled = !stream?.getVideoTracks().length
-  if (stream && !stream.getVideoTracks().length) $('camera').textContent = 'Sin cámara · solo audio'
+  $('join').disabled = !stream?.getTracks().some(track => track.readyState === 'live' && track.enabled)
+    || !accessToken || Boolean(socket) || joining || !$('consent').checked || deviceBusy.size > 0
+  for (const [kind, id, name] of [['audio', 'mic', 'micrófono'], ['video', 'camera', 'cámara']]) {
+    const track = stream?.getTracks().find(track => track.kind === kind && track.readyState === 'live')
+    const enabled = Boolean(track?.enabled)
+    const button = $(id)
+    button.disabled = deviceBusy.has(kind) || joining || !$('consent').checked || (!admin && role !== 'patient')
+    button.setAttribute('aria-pressed', String(enabled))
+    const label = `${enabled ? kind === 'audio' ? 'Silenciar' : 'Apagar' : 'Activar'} ${name}`
+    button.setAttribute('aria-label', label)
+    button.title = label
+  }
+  const videoEnabled = Boolean(stream?.getVideoTracks().some(track => track.readyState === 'live' && track.enabled))
+  $('self-preview').hidden = !videoEnabled
+  if (videoEnabled && previewPosition) movePreview(previewPosition.x, previewPosition.y)
+  const visibleRemote = Boolean(peer && remoteCameraOn && $('remote').srcObject?.getVideoTracks().some(track => !track.muted && track.readyState === 'live'))
+  $('remote').style.visibility = visibleRemote ? 'visible' : 'hidden'
+  $('stage-placeholder').hidden = visibleRemote
+  $('stage-message').textContent = peer?.connectionState === 'connected' ? 'Participante con cámara apagada'
+    : peer ? 'Conectando con tu invitado...' : socket ? 'Esperando la admisión' : 'Tu sala de videoconsulta'
   $('leave').disabled = !stream && !socket
   $('text').disabled = $('send').disabled = channel?.readyState !== 'open'
 }
@@ -43,6 +60,8 @@ function closePeer() {
   clearTimeout(connectionTimer)
   clearTimeout(disconnectTimer)
   pendingCandidates = []
+  senders = {}
+  remoteCameraOn = false
   if (channel) { channel.onclose = null; channel.close(); channel = null }
   if (peer) { peer.onconnectionstatechange = null; peer.close(); peer = null }
   $('remote').srcObject = null
@@ -55,6 +74,7 @@ function closePeer() {
   update()
 }
 function release() {
+  mediaGeneration++
   closePeer()
   joining = false
   clearTimeout(expiryTimer)
@@ -66,10 +86,6 @@ function release() {
   stream?.getTracks().forEach(track => track.stop())
   stream = null
   $('local').srcObject = null
-  $('mic').textContent = 'Silenciar micrófono'
-  $('camera').textContent = 'Apagar cámara'
-  $('mic').setAttribute('aria-pressed', 'false')
-  $('camera').setAttribute('aria-pressed', 'false')
   $('end').hidden = $('admit').hidden = $('reject').hidden = true
   update()
 }
@@ -128,13 +144,18 @@ function message(text, sender, suffix = '') {
 }
 function setChannel(next) {
   channel = next
-  next.onopen = update
+  next.onopen = () => { sendMediaState(); update() }
   next.onclose = update
   next.onerror = () => report(new Error('Falló el canal del chat. No se garantiza la entrega de los mensajes pendientes.'))
   next.onmessage = event => {
     try {
       if (typeof event.data !== 'string' || event.data.length > 5000) throw new Error('Mensaje de chat inválido.')
       const data = JSON.parse(event.data)
+      if (data.type === 'media-state' && typeof data.camera === 'boolean') {
+        remoteCameraOn = data.camera
+        update()
+        return
+      }
       if (typeof data.id !== 'string' || data.id.length > 100) throw new Error('Identificador de mensaje inválido.')
       if (data.type === 'ack') {
         const pending = pendingMessages.get(data.id)
@@ -150,6 +171,11 @@ function setChannel(next) {
     } catch (error) { report(error) }
   }
 }
+function sendMediaState() {
+  if (channel?.readyState !== 'open') return
+  try { channel.send(JSON.stringify({ type: 'media-state', camera: Boolean(stream?.getVideoTracks().some(track => track.enabled && track.readyState === 'live')) })) }
+  catch (error) { report(error) }
+}
 function makePeer() {
   const next = new RTCPeerConnection({ iceServers })
   peer = next
@@ -163,8 +189,12 @@ function makePeer() {
       : 'Esta red no logró conectar directamente. Probá otra red o configurá TURN en el servidor. Volvé a entrar y solicitá nueva admisión.'))
   }
   connectionTimer = setTimeout(networkFailure, 45000)
-  stream.getTracks().forEach(track => next.addTrack(track, stream))
-  if (!stream.getVideoTracks().length) next.addTransceiver('video', { direction: 'recvonly' })
+  if (role === 'professional') {
+    for (const kind of ['audio', 'video']) {
+      const track = stream.getTracks().find(track => track.kind === kind && track.readyState === 'live')
+      senders[kind] = next.addTransceiver(track || kind, { direction: 'sendrecv', streams: [stream] }).sender
+    }
+  }
   next.onicecandidate = event => {
     if (event.candidate && peer === next) request('signal', { candidate: event.candidate.toJSON() }).catch(report)
   }
@@ -173,6 +203,10 @@ function makePeer() {
     const remote = $('remote').srcObject ?? new MediaStream()
     if (!remote.getTracks().some(track => track.id === event.track.id)) remote.addTrack(event.track)
     $('remote').srcObject = remote
+    event.track.onmute = update
+    event.track.onunmute = update
+    event.track.onended = update
+    update()
     $('remote').play().catch(() => {
       if (peer !== next || current !== generation) return
       $('play-audio').hidden = false
@@ -185,6 +219,7 @@ function makePeer() {
       clearTimeout(connectionTimer)
       clearTimeout(disconnectTimer)
       status('Medios conectados por WebRTC. Prueba técnica; la cámara puede estar desactivada.')
+      update()
     } else if (next.connectionState === 'failed') networkFailure()
     else if (next.connectionState === 'disconnected') {
       status('Audio/video interrumpido. Intentando recuperar la conexión...')
@@ -206,6 +241,15 @@ async function handleSignal(data) {
     for (const candidate of pendingCandidates) await next.addIceCandidate(candidate)
     pendingCandidates = []
     if (data.description.type === 'offer') {
+      for (const transceiver of next.getTransceivers()) {
+        const kind = transceiver.receiver.track.kind
+        if (!['audio', 'video'].includes(kind)) continue
+        transceiver.direction = 'sendrecv'
+        transceiver.sender.setStreams(stream)
+        await transceiver.sender.replaceTrack(stream.getTracks().find(track => track.kind === kind && track.readyState === 'live') || null)
+        if (current !== generation) return
+        senders[kind] = transceiver.sender
+      }
       await next.setLocalDescription(await next.createAnswer())
       if (current === generation) await request('signal', { description: next.localDescription.toJSON() })
     }
@@ -239,38 +283,68 @@ $('copy').onclick = async () => {
   try { await navigator.clipboard.writeText($('link').value); status('Enlace copiado. Compartilo solo con tu invitado.') }
   catch (error) { report(error); $('link').select() }
 }
-async function activateDevices(withVideo) {
-  if (activating) return
-  activating = true
-  const before = generation
-  $('devices').disabled = true
-  $('audio-only').disabled = true
+async function toggleDevice(kind) {
+  if (deviceBusy.has(kind)) return
+  deviceBusy.add(kind)
+  const before = mediaGeneration
+  update()
   $('error').textContent = ''
+  let acquired
   try {
     if (!$('consent').checked || (!admin && role !== 'patient')) throw new Error('Aceptá la prueba e iniciá sesión o abrí una invitación antes de activar dispositivos.')
-    const acquired = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
-      video: withVideo ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } : false,
+    const existing = stream?.getTracks().find(track => track.kind === kind && track.readyState === 'live')
+    if (existing && kind === 'audio') {
+      existing.enabled = !existing.enabled
+      return
+    }
+    if (existing) {
+      if (peer && senders[kind]) await senders[kind].replaceTrack(null)
+      if (before !== mediaGeneration) return
+      existing.stop()
+      stream.removeTrack(existing)
+      $('local').srcObject = stream
+      return
+    }
+    acquired = await navigator.mediaDevices.getUserMedia({
+      audio: kind === 'audio' ? { echoCancellation: true, noiseSuppression: true } : false,
+      video: kind === 'video' ? { width: { ideal: 640, max: 1280 }, height: { ideal: 480, max: 720 }, facingMode: 'user' } : false,
     })
-    if (before !== generation || !$('consent').checked) { acquired.getTracks().forEach(track => track.stop()); return }
-    stream = acquired
+    if (before !== mediaGeneration || !$('consent').checked) { acquired.getTracks().forEach(track => track.stop()); return }
+    const track = acquired.getTracks()[0]
+    if (!track || track.kind !== kind) throw new Error('No se recibió el dispositivo solicitado.')
+    const activePeer = peer
+    if (activePeer && senders[kind]) await senders[kind].replaceTrack(track)
+    if (before !== mediaGeneration) { acquired.getTracks().forEach(track => track.stop()); return }
+    stream ??= new MediaStream()
+    stream.addTrack(track)
     $('local').srcObject = stream
-    if (withVideo) await $('local').play()
-    if (before !== generation || stream !== acquired) return
-    stream.getTracks().forEach(track => { track.onended = () => { report(new Error('Un dispositivo dejó de estar disponible. Salí y volvé a activarlo.')); release() } })
-    status(withVideo ? 'Vista previa local activa. Los medios no se comparten hasta la admisión.' : 'Micrófono activo, sin cámara. Los medios no se comparten hasta la admisión.')
+    track.onended = () => {
+      if (stream?.getTracks().includes(track)) {
+        stream.removeTrack(track)
+        report(new Error(`${kind === 'audio' ? 'El micrófono' : 'La cámara'} dejó de estar disponible. Podés volver a activarlo con su icono.`))
+        sendMediaState()
+        update()
+      }
+    }
+    if (kind === 'video') await $('local').play()
+    if (before !== mediaGeneration) return
+    if (!peer) status('Vista previa preparada. Los medios no se comparten hasta la admisión.')
   } catch (error) {
-    if (before !== generation) return
-    stream?.getTracks().forEach(track => track.stop())
-    stream = null
-    $('local').srcObject = null
+    if (acquired) {
+      for (const track of acquired.getTracks()) { track.stop(); stream?.removeTrack(track) }
+    }
+    if (before !== mediaGeneration) return
     report(error instanceof DOMException && error.name === 'NotReadableError'
-      ? new Error('La cámara o el micrófono está ocupado por otro navegador o programa. Cerrá el dispositivo en el otro lado o probá «Activar solo micrófono». Si el micrófono también está ocupado, necesitás otro dispositivo.')
+      ? new Error('El dispositivo está ocupado por otro navegador o programa. Cerralo en el otro lado o usá únicamente el otro dispositivo con su icono.')
       : error)
-  } finally { activating = false; update() }
+  } finally {
+    deviceBusy.delete(kind)
+    sendMediaState()
+    update()
+  }
 }
-$('devices').onclick = () => activateDevices(true)
-$('audio-only').onclick = () => activateDevices(false)
+$('mic').onclick = () => toggleDevice('audio')
+$('camera').onclick = () => toggleDevice('video')
 $('join').onclick = async () => {
   if (!stream || !accessToken) { report(new Error('Prepará tus dispositivos y la invitación.')); return }
   if (!$('consent').checked || joining || socket) return
@@ -322,19 +396,6 @@ $('join').onclick = async () => {
     signalQueue = signalQueue.then(() => handleSignal(data)).catch(report)
   })
   update()
-}
-$('mic').onclick = () => {
-  const track = stream.getAudioTracks()[0]
-  track.enabled = !track.enabled
-  $('mic').textContent = track.enabled ? 'Silenciar micrófono' : 'Activar micrófono'
-  $('mic').setAttribute('aria-pressed', String(!track.enabled))
-}
-$('camera').onclick = () => {
-  const track = stream?.getVideoTracks()[0]
-  if (!track) { report(new Error('Esta entrada usa solo audio. Salí para volver a elegir dispositivos.')); return }
-  track.enabled = !track.enabled
-  $('camera').textContent = track.enabled ? 'Apagar cámara' : 'Activar cámara'
-  $('camera').setAttribute('aria-pressed', String(!track.enabled))
 }
 $('play-audio').onclick = async () => {
   try { await $('remote').play(); $('play-audio').hidden = true }
@@ -396,6 +457,48 @@ $('logout').onclick = async () => {
   } catch (error) { report(error) }
 }
 $('consent').onchange = () => { if (!$('consent').checked) release(); update() }
+const preview = $('self-preview')
+let previewPosition = null
+let drag = null
+function movePreview(x, y) {
+  const stage = $('stage')
+  const toolbar = stage.querySelector('.video-controls')
+  const maxX = Math.max(8, stage.clientWidth - preview.offsetWidth - 8)
+  const maxY = Math.max(8, toolbar.offsetTop - preview.offsetHeight - 10)
+  const left = Math.min(maxX, Math.max(8, x))
+  const top = Math.min(maxY, Math.max(8, y))
+  preview.style.left = `${left}px`
+  preview.style.top = `${top}px`
+  preview.style.right = 'auto'
+  preview.style.bottom = 'auto'
+  previewPosition = { x: left, y: top }
+}
+preview.addEventListener('pointerdown', event => {
+  if (!event.isPrimary || event.button !== 0) return
+  event.preventDefault()
+  preview.focus({ preventScroll: true })
+  drag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: preview.offsetLeft, top: preview.offsetTop }
+  preview.setPointerCapture(event.pointerId)
+  preview.classList.add('dragging')
+})
+preview.addEventListener('pointermove', event => {
+  if (!drag || drag.id !== event.pointerId) return
+  movePreview(drag.left + event.clientX - drag.x, drag.top + event.clientY - drag.y)
+})
+const endDrag = () => { drag = null; preview.classList.remove('dragging') }
+preview.addEventListener('pointerup', endDrag)
+preview.addEventListener('pointercancel', endDrag)
+preview.addEventListener('lostpointercapture', endDrag)
+preview.addEventListener('keydown', event => {
+  const delta = { ArrowLeft: [-16, 0], ArrowRight: [16, 0], ArrowUp: [0, -16], ArrowDown: [0, 16] }[event.key]
+  if (!delta) return
+  event.preventDefault()
+  movePreview(preview.offsetLeft + delta[0], preview.offsetTop + delta[1])
+})
+new ResizeObserver(() => {
+  if (previewPosition && !preview.hidden) movePreview(previewPosition.x, previewPosition.y)
+}).observe($('stage'))
+$('remote').addEventListener('playing', update)
 async function restoreSession() {
   if (role === 'patient') return
   try {

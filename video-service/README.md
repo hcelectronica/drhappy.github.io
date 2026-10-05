@@ -8,7 +8,7 @@ con confirmacion. No graba, no transcribe y no envia medios a Sofia.
 
 Reemplazar **solo la aplicacion de video.drhappy.com.ar**, no drhappy.com.ar.
 El ZIP debe contener package.json, package-lock.json, server.mjs, videoServer.mjs,
-index.html, client.js y este documento directamente en su raiz. No subir node_modules,
+index.html, client.js, brand-mark.svg y este documento directamente en su raiz. No subir node_modules,
 tests, archivos .env ni claves privilegiadas.
 
 - Framework: Other. Node: 22 o 24.
@@ -35,7 +35,7 @@ ser HTTPS, sin ruta ni barra final. Solo se permite HTTP para loopback local.
    is_admin=true y activas. Las cuentas exclusivamente Google necesitan una
    contrasena definida en Dr Happy; no se incluye OAuth en este piloto.
 2. Elegir duracion entera de 1 a 120 minutos (40 por defecto), crear sala y copiar
-   invitacion. Aceptar prueba, activar dispositivos y entrar.
+   invitacion. Aceptar prueba, activar dispositivos con los iconos del video y entrar.
 3. Invitado: abrir el enlace privado, aceptar prueba, activar dispositivos y entrar.
    No necesita cuenta; no puede crear salas ni admitir/finalizar.
 4. Administrador: Admitir invitado. Antes de ese paso no hay medios ni chat remotos.
@@ -43,7 +43,25 @@ ser HTTPS, sin ruta ni barra final. Solo se permite HTTP para loopback local.
    finaliza todas las salas creadas en esa sesion.
 
 Usar auriculares y dos dispositivos; una misma camara puede estar ocupada si
-se intenta usar desde dos navegadores. Existe entrada solo con microfono.
+se intenta usar desde dos navegadores. Los iconos de microfono y camara activan
+cada dispositivo de forma independiente antes y durante la llamada. Entrar
+requiere al menos un dispositivo activo. Es posible iniciar solo con audio o
+video y sumar el otro despues sin nueva admision ni reiniciar el temporizador.
+Silenciar microfono deshabilita su pista (no libera el permiso de captura);
+apagar camara detiene la pista y libera el dispositivo. Salir/finalizar apaga
+ambos. Un error de un dispositivo no apaga el otro.
+
+El recuadro muestra la marca Dr. H modelo 08 durante la espera o si el otro
+participante tiene la camara apagada, con animacion suave que respeta reducir
+movimiento. No es una simulacion de video remoto. La vista propia esta espejada
+y puede arrastrarse dentro del recuadro con mouse o dedo, o moverse con flechas
+al enfocarla. Se limita a los bordes y al area sobre los controles para no
+taparlos, y se reajusta al cambiar el tamano de pantalla.
+
+WebRTC negocia audio y video sendrecv al admitir aun si una pista no esta
+activada; replaceTrack permite agregar/quitar camara o agregar microfono sin
+renegociar la sala. El canal privado comunica el estado de camara para ocultar
+el ultimo frame cuando se apaga. No modifica permisos, duracion ni STUN/TURN.
 No publicar invitaciones. Hay hasta 30 minutos de espera desde la creacion para
 la primera admision. Esa espera no consume la duracion elegida. La consulta
 empieza con la primera admision, no con la activacion de la camara ni cuando

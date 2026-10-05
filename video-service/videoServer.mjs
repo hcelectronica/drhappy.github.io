@@ -190,10 +190,10 @@ export function createVideoServer({
         return json(response, 200, { iceServers, hasTurn })
       }
       if (request.method !== 'GET') throw fail(405, 'Metodo no permitido.')
-      const file = path === '/' ? 'index.html' : path === '/client.js' ? 'client.js' : null
+      const file = path === '/' ? 'index.html' : path === '/client.js' ? 'client.js' : path === '/brand-mark.svg' ? 'brand-mark.svg' : null
       if (!file) throw fail(404, 'Recurso no encontrado.')
       const contents = await readFile(new URL(file, import.meta.url))
-      response.writeHead(200, { 'Content-Type': file.endsWith('.html') ? 'text/html; charset=utf-8' : 'text/javascript; charset=utf-8' })
+      response.writeHead(200, { 'Content-Type': file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.svg') ? 'image/svg+xml' : 'text/javascript; charset=utf-8' })
       response.end(contents)
     } catch (error) {
       if (!error.status || error.status >= 500) console.error('video HTTP:', error.message)

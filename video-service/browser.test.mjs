@@ -43,9 +43,11 @@ async function attach(tab) {
     socket.addEventListener('error', reject, { once: true })
   })
   let id = 0
+  const runtimeErrors = []
   const requests = new Map()
   socket.addEventListener('message', event => {
     const result = JSON.parse(event.data)
+    if (result.method === 'Runtime.exceptionThrown') runtimeErrors.push(result.params.exceptionDetails.exception?.description || result.params.exceptionDetails.text)
     const request = requests.get(result.id)
     if (!request) return
     requests.delete(result.id)
@@ -69,13 +71,26 @@ async function attach(tab) {
       if (await evaluate(expression)) return
       await sleep(100)
     }
-    throw new Error(`Timeout: ${expression}\n${await evaluate('document.body.innerText')}`)
+    throw new Error(`Timeout: ${expression}\n${await evaluate('document.body.innerText')}\n${runtimeErrors.join('\n')}\n${await evaluate(`JSON.stringify({tracks:document.querySelector('#local')?.srcObject?.getTracks().map(t=>({kind:t.kind,state:t.readyState,enabled:t.enabled})),mic:document.querySelector('#mic')?.outerHTML})`)}`)
   }
   const click = async element => {
+    if (element === 'devices') {
+      await click('mic')
+      await wait(`document.querySelector('#mic').getAttribute('aria-pressed')==='true'`)
+      await click('camera')
+      await wait(`document.querySelector('#camera').getAttribute('aria-pressed')==='true'`)
+      return
+    }
+    if (element === 'audio-only') {
+      await click('mic')
+      await wait(`document.querySelector('#mic').getAttribute('aria-pressed')==='true'`)
+      return
+    }
     await wait(`!!document.getElementById(${JSON.stringify(element)})&&!document.getElementById(${JSON.stringify(element)}).disabled`)
     await evaluate(`document.getElementById(${JSON.stringify(element)}).click()`)
   }
   await command('Page.enable')
+  await command('Runtime.enable')
   await command('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__testInstance=String(Date.now())+String(Math.random())' })
   const navigate = async url => {
     let before = await evaluate('window.__testInstance')
@@ -127,7 +142,15 @@ try {
   await patient.click('consent')
   assert.equal(await patient.evaluate('location.hash'), '', 'Invitation removed from visible URL')
   await professional.click('devices')
-  await patient.click('devices')
+  await patient.click('mic')
+  await patient.wait(`document.querySelector('#mic').getAttribute('aria-pressed')==='true'`)
+  await patient.evaluate(`void(window.__getUserMedia=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices));navigator.mediaDevices.getUserMedia=async()=>{throw new DOMException('Cámara bloqueada','NotAllowedError')}`)
+  await patient.click('camera')
+  await patient.wait(`document.querySelector('#error').textContent.includes('Cámara bloqueada')`)
+  assert.equal(await patient.evaluate(`document.querySelector('#local').srcObject.getAudioTracks()[0].readyState`), 'live', 'Camera denial preserves microphone')
+  await patient.evaluate(`navigator.mediaDevices.getUserMedia=window.__getUserMedia`)
+  await patient.click('camera')
+  await patient.wait(`document.querySelector('#camera').getAttribute('aria-pressed')==='true'`)
   await professional.click('join')
   await patient.click('join')
   await professional.wait(`!document.querySelector('#admit').hidden`)
@@ -162,16 +185,22 @@ try {
   assert.equal(await professional.evaluate(`document.querySelector('#messages img')===null`), true)
   await patient.click('mic')
   assert.equal(await patient.evaluate(`document.querySelector('#local').srcObject.getAudioTracks()[0].enabled`), false)
+  await patient.evaluate(`void(window.__oldCamera=document.querySelector('#local').srcObject.getVideoTracks()[0])`)
   await patient.click('camera')
-  assert.equal(await patient.evaluate(`document.querySelector('#local').srcObject.getVideoTracks()[0].enabled`), false)
+  await patient.wait(`document.querySelector('#camera').getAttribute('aria-pressed')==='false'`)
+  assert.equal(await patient.evaluate(`window.__oldCamera.readyState`), 'ended', 'Camera off releases capture')
+  assert.equal(await patient.evaluate(`document.querySelector('#local').srcObject.getVideoTracks().length`), 0)
+  await professional.wait(`!document.querySelector('#stage-placeholder').hidden`)
   await patient.click('mic')
   await patient.click('camera')
+  await patient.wait(`document.querySelector('#camera').getAttribute('aria-pressed')==='true'`)
+  await professional.wait(`document.querySelector('#stage-placeholder').hidden`)
   await patient.click('leave')
   await professional.wait(`document.querySelector('#remote').srcObject===null&&document.querySelector('#send').disabled`)
   await patient.click('audio-only')
   await patient.wait(`!!document.querySelector('#local').srcObject&&!document.querySelector('#join').disabled`)
   assert.equal(await patient.evaluate(`document.querySelector('#local').srcObject.getVideoTracks().length`), 0)
-  assert.equal(await patient.evaluate(`document.querySelector('#camera').disabled`), true)
+  assert.equal(await patient.evaluate(`document.querySelector('#camera').disabled`), false, 'Audio-only can enable camera later')
   await patient.click('join')
   await professional.wait(`!document.querySelector('#admit').hidden`)
   assert.equal(await patient.evaluate(`document.querySelector('#remote').srcObject===null`), true, 'Reentry requires fresh admission')
@@ -181,6 +210,34 @@ try {
   }
   assert.equal(await professional.evaluate(`document.querySelector('#remote').srcObject.getAudioTracks().length`), 1)
   await patient.wait(`document.querySelector('#remote').videoWidth>0`)
+  await professional.wait(`!document.querySelector('#stage-placeholder').hidden`)
+  await patient.click('camera')
+  await patient.wait(`document.querySelector('#camera').getAttribute('aria-pressed')==='true'`)
+  await professional.wait(`document.querySelector('#stage-placeholder').hidden&&document.querySelector('#remote').videoWidth>0`)
+  assert.equal(await patient.evaluate(`document.querySelector('#send').disabled`), false, 'Adding video preserves chat and admission')
+  await patient.command('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false })
+  const previewRect = await patient.evaluate(`(()=>{document.querySelector('#stage').scrollIntoView({block:'center'});const r=document.querySelector('#self-preview').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2,left:r.left,top:r.top}})()`)
+  await patient.command('Input.dispatchMouseEvent', { type: 'mousePressed', x: previewRect.x, y: previewRect.y, button: 'left', clickCount: 1 })
+  await patient.command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: previewRect.x - 140, y: previewRect.y - 90, button: 'left', buttons: 1 })
+  await patient.command('Input.dispatchMouseEvent', { type: 'mouseReleased', x: previewRect.x - 140, y: previewRect.y - 90, button: 'left', clickCount: 1 })
+  assert(await patient.evaluate(`document.querySelector('#self-preview').getBoundingClientRect().left<${previewRect.left}-50`), 'Mouse drag moves preview')
+  await patient.evaluate(`document.querySelector('#self-preview').focus()`)
+  const beforeKey = await patient.evaluate(`document.querySelector('#self-preview').offsetLeft`)
+  await patient.command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37 })
+  assert.equal(await patient.evaluate(`document.querySelector('#self-preview').offsetLeft`), beforeKey - 16, 'Keyboard moves preview')
+  await patient.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  await patient.command('Emulation.setTouchEmulationEnabled', { enabled: true })
+  await patient.command('Page.bringToFront')
+  const touchRect = await patient.evaluate(`(()=>{document.querySelector('#stage').scrollIntoView({block:'center'});const r=document.querySelector('#self-preview').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2,left:r.left,top:r.top}})()`)
+  await patient.command('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: touchRect.x, y: touchRect.y }] })
+  await patient.command('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: touchRect.x - 60, y: touchRect.y - 60 }] })
+  await patient.command('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  assert(await patient.evaluate(`(()=>{const p=document.querySelector('#self-preview'),s=document.querySelector('#stage'),c=document.querySelector('.video-controls');return p.offsetLeft>=8&&p.offsetLeft+p.offsetWidth<=s.clientWidth-7&&p.offsetTop+p.offsetHeight<=c.offsetTop-9})()`), 'Touch drag and resize remain in stage above controls')
+  assert(await patient.evaluate(`document.querySelector('#self-preview').getBoundingClientRect().left!==${touchRect.left}`), 'Touch moves preview')
+  await patient.command('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+  assert.equal(await patient.evaluate(`getComputedStyle(document.querySelector('.stage-logo')).animationName`), 'none')
+  await patient.command('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] })
+  assert.equal(await patient.evaluate(`getComputedStyle(document.querySelector('.stage-logo')).animationName`), 'logo-breathe')
   for (const client of [professional, patient]) await client.evaluate(`void(window.__testTracks=document.querySelector('#local').srcObject.getTracks())`)
   await professional.click('end')
   for (const client of [professional, patient]) {
@@ -197,7 +254,8 @@ try {
   await professional.click('create')
   await professional.wait(`document.querySelector('#link').value!==${JSON.stringify(invite)}&&!document.querySelector('#create').disabled`)
   const nextInvite = await professional.evaluate(`document.querySelector('#link').value`)
-  await professional.click('devices')
+  await professional.click('camera')
+  await professional.wait(`document.querySelector('#camera').getAttribute('aria-pressed')==='true'`)
   await professional.click('join')
   await patient.navigate(nextInvite)
   await patient.wait(`document.querySelector('#identity')?.textContent.includes('paciente')`)
@@ -216,7 +274,8 @@ try {
   await professional.click('create')
   await professional.wait(`document.querySelector('#link').value!==${JSON.stringify(nextInvite)}`)
   const timedInvite = await professional.evaluate(`document.querySelector('#link').value`)
-  await professional.click('devices')
+  await professional.click('camera')
+  await professional.wait(`document.querySelector('#camera').getAttribute('aria-pressed')==='true'`)
   await professional.click('join')
   await patient.navigate(timedInvite)
   await patient.wait(`document.querySelector('#identity')?.textContent.includes('paciente')`)
@@ -231,6 +290,11 @@ try {
     assert.match(await client.evaluate(`document.querySelector('#time-warning').textContent`), /5 minutos o menos/)
     await client.evaluate(`void(window.__timedTracks=document.querySelector('#local').srcObject.getTracks())`)
   }
+  assert.equal(await professional.evaluate(`document.querySelector('#local').srcObject.getAudioTracks().length`), 0, 'Video-only entry needs no microphone')
+  await professional.click('mic')
+  await professional.wait(`document.querySelector('#mic').getAttribute('aria-pressed')==='true'`)
+  await patient.wait(`document.querySelector('#remote').srcObject.getAudioTracks().some(t=>!t.muted)`)
+  await professional.evaluate(`void(window.__timedTracks=document.querySelector('#local').srcObject.getTracks())`)
   clockOffset += 60_000
   for (const client of [professional, patient]) {
     await client.wait(`/duraci[oó]n elegida/.test(document.querySelector('#status').textContent)`)
@@ -241,7 +305,7 @@ try {
   await professional.click('logout')
   await professional.wait(`!document.querySelector('#login-panel').hidden`)
   assert.equal(await professional.evaluate(`document.querySelector('#create').hidden`), true)
-  console.log('PASS: duration selection/validation, waiting vs consultation countdown for both roles, final warning and timed closure stops devices; real WebRTC with fake devices, waiting gate, separate audio/video, two-way chat, controls, readmission, rejection, finalization and mobile layout.')
+  console.log('PASS: independent camera/mic icons, camera denial preserves mic, camera off releases capture, audio-only/video-only entry and adding the other device live, mouse/touch/keyboard PiP drag and resize bounds, waiting logo/reduced motion; duration, expiry releases devices, WebRTC tracks/frames, chat, admission, readmission, rejection and mobile layout.')
 } finally {
   await app.close()
   for (const socket of sockets) socket.close()
