@@ -22,7 +22,7 @@ serve(async (request) => {
       .select('id, is_admin, active').eq('id', id).maybeSingle()
     if (error) throw error
     if (!data || data.active === false || data.is_admin !== true) {
-      return reply(403, { error: 'La videoconsulta piloto esta habilitada solo para administradores.' })
+      return reply(403, { error: 'La videoconsulta esta habilitada solo para administradores.' })
     }
     return reply(200, { id: data.id })
   } catch (error) {

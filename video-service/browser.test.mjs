@@ -9,9 +9,28 @@ import { createVideoServer } from './videoServer.mjs'
 const origin = 'http://127.0.0.1:5195'
 let clockOffset = 0
 const handoffs = new Set(['a'.repeat(64), 'b'.repeat(64)])
+const lifecycleEvents = []
+const fixturePatients = [
+  { id: 'synthetic-patient-1', name: 'Paciente de prueba Uno' },
+  { id: 'synthetic-patient-2', name: 'Paciente de prueba Dos' },
+]
+const fixtureAppointments = [
+  { id: 'synthetic-appointment-1', patientId: 'synthetic-patient-1', label: 'Turno de prueba Uno' },
+  { id: 'synthetic-appointment-2', patientId: 'synthetic-patient-2', label: 'Turno de prueba Dos' },
+]
 const app = createVideoServer({
   origin, iceServers: [],
   now: () => Date.now() + clockOffset,
+  listPatients: async () => ({ patients: fixturePatients, appointments: fixtureAppointments }),
+  createConsultation: async (_session, data) => {
+    const patient = fixturePatients.find(item => item.id === data.patientId)
+    if (!patient || (data.appointmentId && !fixtureAppointments.some(item =>
+      item.id === data.appointmentId && item.patientId === data.patientId))) {
+      throw Object.assign(new Error('Paciente o turno de prueba invalido.'), { status: 403 })
+    }
+    return { consultationId: 'synthetic-consultation', patientName: patient.name, lifecycleToken: 'd'.repeat(64) }
+  },
+  recordConsultationEvent: async (_token, event) => { lifecycleEvents.push(event); return { ok: true } },
   exchangeHandoff: async token => {
     if (!handoffs.delete(token)) throw Object.assign(new Error('El pase vencio o ya se uso. Abri nuevamente desde Dr Happy.'), { status: 401 })
     return 'test-upstream-session'
@@ -96,7 +115,25 @@ async function attach(tab) {
   }
   await command('Page.enable')
   await command('Runtime.enable')
-  await command('Page.addScriptToEvaluateOnNewDocument', { source: `window.__testInstance=String(Date.now())+String(Math.random());window.__captureRequests=0;if(navigator.mediaDevices){const capture=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=(...args)=>{window.__captureRequests++;return capture(...args)}}` })
+  await command('Page.addScriptToEvaluateOnNewDocument', { source: `
+    window.__testInstance=String(Date.now())+String(Math.random())
+    window.__captureRequests=0
+    window.__patientListRequests=0
+    window.__roomCreateBody=null
+    const originalFetch=window.fetch.bind(window)
+    window.fetch=async (input,init={})=>{
+      const path=new URL(typeof input==='string'?input:input.url,location.href).pathname
+      if(path==='/api/patients')window.__patientListRequests++
+      if(path==='/api/rooms'&&init.method==='POST'){
+        window.__roomCreateBody=JSON.parse(init.body)
+      }
+      return originalFetch(input,init)
+    }
+    if(navigator.mediaDevices){
+      const capture=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+      navigator.mediaDevices.getUserMedia=(...args)=>{window.__captureRequests++;return capture(...args)}
+    }
+  ` })
   const navigate = async url => {
     let before = await evaluate('window.__testInstance')
     if (before) {
@@ -124,6 +161,7 @@ try {
   await professional.navigate(origin)
   await professional.wait(`!!document.querySelector('#create')`)
   await professional.wait(`typeof document.querySelector('#login').onsubmit==='function'`)
+  assert.equal(await professional.evaluate(`Array.from(document.querySelectorAll('.heading,.help,.muted,#stage-message,#status')).some(e=>/piloto|prueba/i.test(e.textContent))`), false, 'User-facing branding and help contain no pilot/trial wording')
   assert.equal(await professional.evaluate(`navigator.mediaDevices!==undefined`), true)
   assert.equal(await professional.evaluate(`document.querySelector('#create').hidden`), true, 'Anonymous cannot create a room')
   await professional.navigate(`${origin}/#handoff=${'c'.repeat(64)}`)
@@ -133,6 +171,22 @@ try {
   await professional.evaluate(`document.querySelector('#username').value='test-admin';document.querySelector('#password').value='test-password'`)
   await professional.click('login-submit')
   await professional.wait(`!document.querySelector('#create').hidden`)
+  await professional.wait(`document.querySelector('#patient-select').options.length===3`)
+  const mobileControlStyles = `['patient-select','appointment-select','link','text','duration','username','password'].map(id=>{const e=document.getElementById(id),s=getComputedStyle(e);return {id,fontSize:parseFloat(s.fontSize),minWidth:s.minWidth,maxWidth:s.maxWidth}})`
+  for (const [width, height] of [[390, 844], [844, 390]]) {
+    await professional.command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true })
+    await professional.command('Emulation.setTouchEmulationEnabled', { enabled: true })
+    const styles = await professional.evaluate(mobileControlStyles)
+    assert(styles.every(style => style.fontSize >= 16 && style.minWidth === '0px' && style.maxWidth === '100%'), 'Mobile/coarse form controls prevent focus zoom without losing width guards: ' + JSON.stringify(styles))
+    assert.equal(await professional.evaluate(`document.documentElement.scrollWidth<=innerWidth`), true, 'Patient and appointment selectors fit the mobile viewport')
+    console.log('MOBILE FOCUS GUARD:', JSON.stringify({ viewport: [width, height], styles }))
+  }
+  const viewportPolicy = await professional.evaluate(`document.querySelector('meta[name=viewport]').content`)
+  assert.equal(/user-scalable\s*=\s*no|maximum-scale/i.test(viewportPolicy), false, 'Manual pinch zoom is not restricted')
+  await professional.command('Emulation.setTouchEmulationEnabled', { enabled: false })
+  await professional.command('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false })
+  assert.equal(await professional.evaluate(`document.querySelector('#create').disabled&&document.querySelector('#patient-selection').hidden===false`), true, 'Creation waits for an explicit patient selection')
+  assert.equal(await professional.evaluate(`document.querySelector('#consent')===null`), true, 'No technical-trial checkbox gates room access')
   await professional.click('logout')
   await professional.wait(`!document.querySelector('#login-panel').hidden`)
   await professional.navigate(`${origin}/#handoff=${'a'.repeat(64)}`)
@@ -141,25 +195,32 @@ try {
   await professional.navigate(`${origin}/#handoff=${'a'.repeat(64)}`)
   await professional.wait(`document.querySelector('#error').textContent.includes('pase vencio')`)
   assert.equal(await professional.evaluate(`document.querySelector('#create').hidden`), true, 'Reused pass cannot claim successful authorization')
-  await professional.navigate(`${origin}/#handoff=${'b'.repeat(64)}`)
+  await professional.navigate(`${origin}/#handoff=${'b'.repeat(64)}&patient=synthetic-patient-2&appointment=synthetic-appointment-2`)
   await professional.wait(`!document.querySelector('#create').hidden`)
+  await professional.wait(`document.querySelector('#patient-select').value==='synthetic-patient-2'&&document.querySelector('#appointment-select').value==='synthetic-appointment-2'`)
+  assert.equal(await professional.evaluate(`document.querySelector('#patient-selection').hidden`), false, 'Only the professional gets the patient selector')
   assert.equal(await professional.evaluate(`document.querySelector('#duration').value`), '40')
   await professional.evaluate(`document.querySelector('#duration').value='121'`)
   await professional.click('create')
   await professional.wait(`document.querySelector('#error').textContent.includes('entre 1 y 120')`)
   assert.equal(await professional.evaluate(`document.querySelector('#link').value`), '')
   await professional.evaluate(`document.querySelector('#duration').value='40'`)
-  await professional.click('consent')
   await professional.click('create')
   await professional.wait(`document.querySelector('#link').value.includes('#p=')`)
   const invite = await professional.evaluate(`document.querySelector('#link').value`)
+  assert.deepEqual(await professional.evaluate(`window.__roomCreateBody`), {
+    durationMinutes: 40, patientId: 'synthetic-patient-2', appointmentId: 'synthetic-appointment-2',
+  }, 'Room creation sends selected patient and appointment IDs')
+  assert.equal(await professional.evaluate(`document.querySelector('#patient-name').textContent`), 'Paciente: Paciente de prueba Dos')
+  assert.equal(invite.includes('synthetic-patient') || invite.includes('Paciente de prueba'), false, 'Private invite contains no patient identity')
   assert.match(await professional.evaluate(`document.querySelector('#countdown').textContent`), /40 minutos.*Sin iniciar/)
   const patientTab = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' }).then(response => response.json())
   const patient = await attach(patientTab)
   await patient.navigate(invite)
   await patient.wait(`document.querySelector('#identity')?.textContent.includes('paciente')`)
-  await patient.click('consent')
   assert.equal(await patient.evaluate('location.hash'), '', 'Invitation removed from visible URL')
+  assert.equal(await patient.evaluate(`document.querySelector('#patient-selection').hidden`), true, 'Patient role never gets a patient list')
+  assert.equal(await patient.evaluate(`window.__patientListRequests`), 0, 'Patient role never requests the patient list')
   assert(invite.length <= 56, 'Private patient link is short enough for easy sharing')
   assert.equal(await professional.evaluate(`document.querySelector('#duration').disabled`), true, 'Existing room duration cannot be misleadingly edited')
   for (const [width, height, mobile] of [[360, 740, true], [390, 844, true], [768, 1024, false], [1280, 900, false]]) {
@@ -171,6 +232,8 @@ try {
       await writeFile(join(process.env.VIDEO_SCREENSHOT_DIR, `video-v6-room-${width}.png`), Buffer.from(image.data, 'base64'))
     }
   }
+  await professional.command('Emulation.setDeviceMetricsOverride', { width: 844, height: 390, deviceScaleFactor: 1, mobile: true })
+  assert(await professional.evaluate(`(()=>{const s=document.querySelector('#stage'),f=document.querySelector('#fullscreen');return s.getBoundingClientRect().height>=170&&f.closest('.video-controls')!==null})()`), 'Mobile landscape retains a useful video area and an in-video expand control')
   await professional.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
   await professional.evaluate(`Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async value=>{window.__copiedInvite=value}})`)
   await professional.click('copy')
@@ -191,11 +254,31 @@ try {
   const duplicate = await attach(duplicateTab)
   await duplicate.navigate(invite)
   await duplicate.wait(`document.querySelector('#identity')?.textContent.includes('paciente')`)
-  await duplicate.click('consent')
   await duplicate.click('devices')
   await duplicate.click('join')
   await duplicate.wait(`document.querySelector('#error').textContent.includes('otra pestana')`)
   assert.equal(await duplicate.evaluate(`document.querySelector('#local').srcObject===null`), true, 'Failed join releases devices')
+  const fullFit = ids => `(()=>{const room=document.querySelector('#room-view'),s=document.querySelector('#stage').getBoundingClientRect(),vh=window.visualViewport?.height||innerHeight;const hits=${JSON.stringify(ids)}.concat(document.querySelector('#play-audio').hidden?[]:['play-audio']).map(id=>{const e=document.getElementById(id),r=e.getBoundingClientRect(),h=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return {id,top:Math.round(r.top*100)/100,bottom:Math.round(r.bottom*100)/100,ok:!e.hidden&&r.width>0&&r.top>=0&&r.bottom<=vh&&(e===h||e.contains(h))}});return {container:document.fullscreenElement?.id||(document.body.classList.contains('expanded-page')?'expanded-page':null),viewport:[innerWidth,innerHeight],video:{width:s.width,height:s.height,top:s.top,bottom:s.bottom,marginTop:s.top,marginBottom:vh-s.bottom},room:{scrollHeight:room.scrollHeight,clientHeight:room.clientHeight},documentOverflow:document.documentElement.scrollHeight-innerHeight,hits}})()`
+  const assertFullFit = (shape, label) => {
+    console.log(label + ':', JSON.stringify(shape))
+    assert(shape.video.top >= 0 && shape.video.bottom <= shape.viewport[1], label + ' video fully visible')
+    assert(shape.room.scrollHeight <= shape.room.clientHeight + 1, label + ' room has no vertical scroll')
+    assert(shape.hits.every(hit => hit.ok), label + ' controls visible and hit-testable: ' + JSON.stringify(shape.hits.filter(hit => !hit.ok)))
+  }
+  await professional.command('Page.bringToFront')
+  await professional.click('fullscreen')
+  await professional.wait(`document.fullscreenElement===document.querySelector('#room-view')`)
+  assert.equal(await professional.evaluate(`['admit','reject','waiting','status'].every(id=>{const e=document.getElementById(id),r=e.getBoundingClientRect();return document.fullscreenElement.contains(e)&&!e.hidden&&r.top>=0&&r.bottom<=innerHeight})`), true, 'Native fullscreen shows admission, rejection and waiting/status before admission')
+  await professional.click('fullscreen')
+  await professional.wait(`document.fullscreenElement===null`)
+  await professional.command('Emulation.setDeviceMetricsOverride', { width: 844, height: 390, deviceScaleFactor: 1, mobile: true })
+  await professional.click('fullscreen')
+  await professional.wait(`document.fullscreenElement===document.querySelector('#room-view')`)
+  await professional.evaluate(`window.dispatchEvent(new Event('resize'))`)
+  assertFullFit(await professional.evaluate(fullFit(['admit', 'reject', 'waiting', 'status', 'leave', 'end', 'mic', 'camera', 'fullscreen', 'chat-toggle'])), 'NATIVE LANDSCAPE FULLSCREEN BEFORE ADMISSION')
+  await professional.click('fullscreen')
+  await professional.wait(`document.fullscreenElement===null`)
+  await professional.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
   await professional.click('admit')
   await professional.wait(`document.querySelector('#status').textContent.includes('conectados por WebRTC')&&!document.querySelector('#send').disabled`)
   await patient.wait(`document.querySelector('#status').textContent.includes('conectados por WebRTC')&&!document.querySelector('#send').disabled`)
@@ -204,6 +287,68 @@ try {
     assert.equal(await client.evaluate(`document.querySelector('#mic').getAttribute('aria-pressed')==='false'&&document.querySelector('#camera').getAttribute('aria-pressed')==='false'`), true)
     assert.equal(await client.evaluate(`document.querySelector('#self-preview').hidden`), true)
   }
+  assert(lifecycleEvents.includes('start'), 'Current server persists start before successful admission')
+  const fullscreenControls = ['leave', 'end', 'status', 'waiting', 'admit', 'reject', 'countdown', 'error',
+    'chat-toggle', 'chat-panel', 'chat-close', 'text', 'send', 'mic', 'camera', 'fullscreen', 'play-audio']
+  assert.equal(await professional.evaluate(`${JSON.stringify(fullscreenControls)}.every(id=>document.querySelector('#room-view').contains(document.getElementById(id)))`), true, 'Fullscreen container owns all room controls, admission and status')
+  for (const [width, height] of [[390, 844], [844, 390]]) {
+    await professional.command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true })
+    const geometry = await professional.evaluate(`(()=>{const r=document.querySelector('#stage').getBoundingClientRect();return {viewport:[innerWidth,innerHeight],video:{width:r.width,height:r.height},old25svh:innerHeight*.25,oldClamped:Math.max(180,Math.min(300,innerHeight*.25))}})()`)
+    assert(geometry.video.height >= geometry.oldClamped * 1.2, 'Video is at least 20% larger than the previous mobile height: ' + JSON.stringify(geometry))
+    console.log('ROOM GEOMETRY:', JSON.stringify(geometry))
+  }
+  await professional.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  await professional.command('Page.bringToFront')
+  const nativeSupported = await professional.evaluate(`document.fullscreenEnabled&&typeof document.querySelector('#room-view').requestFullscreen==='function'`)
+  assert(nativeSupported, 'This Edge runner must exercise native fullscreen, not just a mock')
+  await professional.click('fullscreen')
+  await professional.wait(`document.fullscreenElement===document.querySelector('#room-view')`)
+  await professional.click('chat-toggle')
+  const nativeShape = await professional.evaluate(`(()=>{const f=document.fullscreenElement.getBoundingClientRect(),s=document.querySelector('#stage').getBoundingClientRect(),p=document.querySelector('#chat-panel').getBoundingClientRect();return {container:document.fullscreenElement.id,viewport:[innerWidth,innerHeight],room:{width:f.width,height:f.height},video:{width:s.width,height:s.height},chat:{left:p.left,top:p.top,right:p.right,bottom:p.bottom},allControls:${JSON.stringify(fullscreenControls)}.every(id=>document.fullscreenElement.contains(document.getElementById(id)))}})()`)
+  assert(nativeShape.allControls)
+  assert(nativeShape.chat.left >= 0 && nativeShape.chat.right <= nativeShape.room.width && nativeShape.chat.bottom <= nativeShape.room.height)
+  const controlsUncovered = `['leave','end','mic','camera','chat-toggle','chat-close','text','send'].every(id=>{const e=document.getElementById(id),r=e.getBoundingClientRect();const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !e.hidden&&r.top>=0&&r.bottom<=innerHeight&&(e===hit||e.contains(hit))})`
+  assert.equal(await professional.evaluate(controlsUncovered), true, 'Native portrait fullscreen chat never covers leave/end or camera/microphone and editor remains actionable')
+  console.log('NATIVE FULLSCREEN:', JSON.stringify(nativeShape))
+  await professional.evaluate(`void(window.__realViewport=window.visualViewport);Object.defineProperty(window,'visualViewport',{configurable:true,value:Object.assign(new EventTarget(),{offsetTop:0,offsetLeft:0,width:390,height:450})});window.dispatchEvent(new Event('resize'))`)
+  const keyboardShape = await professional.evaluate(`(()=>{const p=document.querySelector('#chat-panel').getBoundingClientRect(),e=document.querySelector('#text').getBoundingClientRect();return {panel:{left:p.left,top:p.top,right:p.right,bottom:p.bottom},editorBottom:e.bottom}})()`)
+  assert(keyboardShape.panel.left >= 10 && keyboardShape.panel.right <= 380 && keyboardShape.panel.bottom <= 440 && keyboardShape.editorBottom <= 440, 'Fullscreen chat/editor fit the keyboard-reduced visual viewport')
+  console.log('FULLSCREEN KEYBOARD (simulated visual viewport 390x450):', JSON.stringify(keyboardShape))
+  await professional.evaluate(`Object.defineProperty(window,'visualViewport',{configurable:true,value:window.__realViewport});window.dispatchEvent(new Event('resize'))`)
+  await professional.command('Emulation.setDeviceMetricsOverride', { width: 844, height: 390, deviceScaleFactor: 1, mobile: true })
+  await professional.evaluate(`document.querySelector('#room-view').scrollTop=0;window.dispatchEvent(new Event('resize'))`)
+  await professional.click('chat-close')
+  const admittedLandscape = await professional.evaluate(fullFit(['leave', 'end', 'mic', 'camera', 'fullscreen', 'chat-toggle']))
+  assertFullFit(admittedLandscape, 'NATIVE LANDSCAPE FULLSCREEN ADMITTED')
+  assert(admittedLandscape.video.height > 220, 'Admitted landscape fullscreen video exceeds the former fixed 220px stage')
+  await professional.click('chat-toggle')
+  const nativeLandscape = await professional.evaluate(`(()=>{const s=document.querySelector('#stage').getBoundingClientRect(),p=document.querySelector('#chat-panel').getBoundingClientRect();return {container:document.fullscreenElement?.id,viewport:[innerWidth,innerHeight],video:{width:s.width,height:s.height,top:s.top,bottom:s.bottom},chat:{top:p.top,bottom:p.bottom},editorBottom:document.querySelector('#text').getBoundingClientRect().bottom}})()`)
+  assert.equal(nativeLandscape.container, 'room-view')
+  assert(nativeLandscape.chat.bottom <= 390 && nativeLandscape.editorBottom <= 390)
+  assert.equal(await professional.evaluate(controlsUncovered), true, 'Native landscape fullscreen keeps room actions/media controls and chat editor clickable: ' + JSON.stringify(await professional.evaluate(`['leave','end','mic','camera','chat-close','text','send'].map(id=>{const e=document.getElementById(id),r=e.getBoundingClientRect();return {id,top:r.top,bottom:r.bottom,hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.id}})`)))
+  console.log('NATIVE LANDSCAPE FULLSCREEN:', JSON.stringify(nativeLandscape))
+  await professional.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  await professional.evaluate(`window.dispatchEvent(new Event('resize'))`)
+  await professional.click('chat-close')
+  await professional.click('fullscreen')
+  await professional.wait(`document.fullscreenElement===null`)
+  await professional.evaluate(`Object.defineProperty(document,'fullscreenEnabled',{configurable:true,value:false});window.scrollTo(0,80);document.querySelector('#fullscreen').focus({preventScroll:true});window.__expandedScroll=scrollY`)
+  await professional.click('fullscreen')
+  assert.equal(await professional.evaluate(`document.body.classList.contains('expanded-page')&&document.querySelector('#fullscreen').getAttribute('aria-pressed')==='true'`), true, 'Unsupported native fullscreen uses expanded-page fallback')
+  assert.equal(await professional.evaluate(`!document.querySelector('#leave').hidden&&!document.querySelector('#end').hidden&&!document.querySelector('#chat-toggle').hidden`), true, 'Leave, end and chat stay available in expanded-page mode')
+  await professional.click('chat-toggle')
+  assert.equal(await professional.evaluate(controlsUncovered), true, 'Expanded-page fallback keeps the same actionable controls as native fullscreen')
+  console.log('EXPANDED-PAGE FALLBACK:', JSON.stringify(await professional.evaluate(`(()=>{const r=document.querySelector('#room-view').getBoundingClientRect(),s=document.querySelector('#stage').getBoundingClientRect();return {nativeElement:document.fullscreenElement,room:{width:r.width,height:r.height},video:{width:s.width,height:s.height},originalScroll:window.__expandedScroll}})()`)))
+  await professional.command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  assert.equal(await professional.evaluate(`!document.body.classList.contains('expanded-page')&&scrollY===window.__expandedScroll&&document.activeElement===document.querySelector('#fullscreen')`), true, 'Fallback Escape restores original scroll and focus')
+  assert.equal(await professional.evaluate(`document.querySelector('#chat-panel').hidden`), true, 'Fallback Escape closes chat')
+  await professional.command('Emulation.setDeviceMetricsOverride', { width: 844, height: 390, deviceScaleFactor: 1, mobile: true })
+  await professional.click('fullscreen')
+  assert.equal(await professional.evaluate(`document.body.classList.contains('expanded-page')&&document.fullscreenElement===null`), true)
+  assertFullFit(await professional.evaluate(fullFit(['leave', 'end', 'mic', 'camera', 'fullscreen', 'chat-toggle'])), 'EXPANDED-PAGE LANDSCAPE FALLBACK ADMITTED')
+  await professional.command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await professional.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  await professional.evaluate(`delete document.fullscreenEnabled;window.scrollTo(0,0)`)
   await professional.click('devices')
   await patient.click('mic')
   await patient.wait(`document.querySelector('#mic').getAttribute('aria-pressed')==='true'`)
@@ -237,7 +382,7 @@ try {
     await professional.evaluate(`window.scrollTo(0,0)`)
     await professional.wait(`(()=>{const p=document.querySelector('#chat-panel').getBoundingClientRect(),d=document.querySelector('#chat-toggle').getBoundingClientRect();return p.bottom<=${height}&&Math.abs(p.width-d.width)<1})()`)
     const panel = await professional.evaluate(`(()=>{const p=document.querySelector('#chat-panel').getBoundingClientRect(),s=document.querySelector('#stage').getBoundingClientRect();return{top:p.top,bottom:p.bottom,stageBottom:s.bottom}})()`)
-    assert(panel.top >= panel.stageBottom && panel.bottom <= height, 'Professional chat also fits below video: ' + JSON.stringify({ width, height, ...panel }))
+    assert(panel.top >= 0 && panel.bottom <= height, 'Professional floating chat stays within viewport: ' + JSON.stringify({ width, height, ...panel }))
     assert(await professional.evaluate(`document.querySelector('#end').getBoundingClientRect().bottom<=document.querySelector('#stage').getBoundingClientRect().top`), 'Open chat never covers finalization control above video')
   }
   await professional.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
@@ -252,7 +397,7 @@ try {
     assert.equal(expanded.height, geometry.height, 'Opening chat never shrinks video')
     assert.equal(expanded.scroll, geometry.scroll, 'Opening chat never scrolls page')
     assert.equal(expanded.documentHeight, geometry.documentHeight, 'Chat expansion never grows document')
-    assert(expanded.panelTop >= expanded.stageBottom && expanded.panelBottom <= height, 'Drawer stays below video and inside viewport')
+    assert(expanded.panelTop >= 0 && expanded.panelBottom <= height, 'Drawer stays inside viewport without resizing the larger video')
     assert.equal(await patient.evaluate(`document.querySelector('#messages').scrollHeight>document.querySelector('#messages').clientHeight`), true, 'Long conversations scroll within messages only')
     await patient.evaluate(`document.querySelector('#messages').scrollTop=0`)
     assert.equal(await patient.evaluate('scrollY'), geometry.scroll, 'Scrolling conversation does not move page')
@@ -332,6 +477,8 @@ try {
   assert.equal(await patient.evaluate(`getComputedStyle(document.querySelector('.stage-logo')).animationName`), 'logo-breathe')
   for (const client of [professional, patient]) await client.evaluate(`void(window.__testTracks=document.querySelector('#local').srcObject.getTracks())`)
   await professional.click('end')
+  await professional.wait(`document.querySelector('#status').textContent.includes('finalizo')`)
+  assert(lifecycleEvents.includes('completed'), 'Current server persists finalization before completion is acknowledged')
   for (const client of [professional, patient]) {
     await client.wait(`document.querySelector('#status').textContent.includes('finalizo')`)
     assert.equal(await client.evaluate(`window.__testTracks.every(track=>track.readyState==='ended')`), true)
@@ -339,7 +486,6 @@ try {
   }
   await duplicate.navigate(invite)
   await duplicate.wait(`document.querySelector('#identity')?.textContent.includes('paciente')`)
-  await duplicate.click('consent')
   await duplicate.click('devices')
   await duplicate.click('join')
   await duplicate.wait(`document.querySelector('#error').textContent.includes('no es valido')`)
@@ -353,7 +499,6 @@ try {
   await professional.click('join')
   await patient.navigate(nextInvite)
   await patient.wait(`document.querySelector('#identity')?.textContent.includes('paciente')`)
-  await patient.click('consent')
   await patient.click('devices')
   await patient.click('join')
   await professional.wait(`!document.querySelector('#reject').hidden`)
@@ -374,7 +519,6 @@ try {
   await patient.navigate(timedInvite)
   await patient.wait(`document.querySelector('#identity')?.textContent.includes('paciente')`)
   assert.equal(await patient.evaluate(`document.querySelector('#duration-panel').hidden`), true)
-  await patient.click('consent')
   await patient.click('devices')
   await patient.click('join')
   await professional.wait(`!document.querySelector('#admit').hidden`)
@@ -399,7 +543,7 @@ try {
   await professional.click('logout')
   await professional.wait(`!document.querySelector('#login-panel').hidden`)
   assert.equal(await professional.evaluate(`document.querySelector('#create').hidden`), true)
-  console.log('PASS: short private links; compact adjacent Create/Enter and duration at 360/390/768/1280px; no-device admission with zero capture prompts, later live camera/mic; collapsible chat with unread badge, stable video/page geometry, internal scroll area and focus; messages cleared between rooms; WebRTC frames, camera denial, mute/release, mouse/touch/keyboard PiP, duration/expiry, admission/reentry/rejection and automatic login.')
+  console.log('PASS: opaque invitations; professional patient/appointment selection; room patient metadata; compact creation controls; responsive/fullscreen room UI; no-device admission, chat, WebRTC frames, draggable PiP, duration/expiry, admission/reentry/rejection and automatic login.')
 } finally {
   await app.close()
   for (const socket of sockets) socket.close()

@@ -696,7 +696,7 @@ body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
   .capacity-status { white-space: normal; }
   .appointment-capacity-panel > .screen-action { justify-self: start; }
 }
-.topbar-actions > button:not(.google-session-chip):not(.video-pilot-link) { display: none; }
+.topbar-actions > button:not(.google-session-chip) { display: none; }
 .topbar-actions .google-session-chip { display: grid; }
 
 .loading,
@@ -1861,56 +1861,6 @@ button.ghost {
   box-shadow:
     0 10px 18px rgba(42, 76, 129, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.65);
-}
-
-.video-pilot-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 11px 16px;
-  border-radius: 16px;
-  font: inherit;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.video-pilot-link:focus-visible {
-  outline: 3px solid #4b82ff;
-  outline-offset: 3px;
-}
-
-.sidebar-nav .video-pilot-link {
-  display: flex;
-  gap: 11px;
-  justify-content: flex-start;
-  width: 100%;
-  min-height: 44px;
-  padding: 10px 12px;
-  border: 1px solid transparent;
-  border-radius: 13px;
-  background: transparent;
-  color: #55668a;
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-align: left;
-  box-shadow: none;
-}
-
-.sidebar-nav .video-pilot-link span {
-  width: 21px;
-  color: #7b96cc;
-  font-size: 1rem;
-  text-align: center;
-}
-
-.sidebar-nav .video-pilot-link:hover {
-  background: rgba(228, 236, 252, 0.72);
-  color: #35507d;
-}
-
-body.theme-night .sidebar-nav .video-pilot-link {
-  color: #bdcde8;
 }
 
 .error {
@@ -5469,7 +5419,6 @@ body.theme-night .turnera-card-actions {
   .sidebar-sofia-copy { display: none; }
   .sidebar-nav { display: flex; align-items: center; gap: 6px; padding: 0; flex: 1; min-width: 0; }
   .sidebar-nav button,
-  .sidebar-nav .video-pilot-link,
   .sidebar-toggle-row {
     flex: 1 1 0;
     min-width: 42px;
@@ -5482,8 +5431,7 @@ body.theme-night .turnera-card-actions {
     color: #dbeafe;
     border-radius: 12px;
   }
-  .sidebar-nav button span,
-  .sidebar-nav .video-pilot-link span { width: auto; font-size: 1.05rem; }
+  .sidebar-nav button span { width: auto; font-size: 1.05rem; }
   .sidebar-nav button small { display: none; }
   .sidebar-toggle-row > span:first-child { flex-direction: column; gap: 1px; text-align: center; }
   .sidebar-toggle-row b { font-size: 1.15rem; }

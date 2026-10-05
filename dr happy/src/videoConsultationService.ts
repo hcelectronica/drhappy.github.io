@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient'
 
-export async function createVideoAccessUrl(): Promise<string> {
+export async function createVideoAccessUrl(context?: { patientId: string; appointmentId?: string }): Promise<string> {
   if (!supabase) throw new Error('Supabase no está conectado.')
   const { data, error } = await supabase.functions.invoke('video-handoff', { body: { action: 'create' } })
   if (error) {
@@ -20,5 +20,10 @@ export async function createVideoAccessUrl(): Promise<string> {
     || typeof result.token !== 'string' || !/^[a-f0-9]{64}$/.test(result.token)) {
     throw new Error('No se recibió un pase válido para la videoconsulta.')
   }
-  return `https://video.drhappy.com.ar/#handoff=${result.token}`
+  const fragment = new URLSearchParams({ handoff: result.token })
+  if (context) {
+    fragment.set('patient', context.patientId)
+    if (context.appointmentId) fragment.set('appointment', context.appointmentId)
+  }
+  return `https://video.drhappy.com.ar/#${fragment}`
 }

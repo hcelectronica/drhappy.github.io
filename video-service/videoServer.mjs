@@ -9,6 +9,7 @@ const fail = (status, message) => Object.assign(new Error(message), { status })
 const validToken = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 const patientToken = () => randomBytes(16).toString('base64url')
 const validAccessToken = value => validToken(value) || (typeof value === 'string' && /^[A-Za-z0-9_-]{21}[AQgw]$/.test(value))
+const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(value)
 
 export function createVideoServer({
   origin = process.env.PUBLIC_ORIGIN || 'https://video.drhappy.com.ar',
@@ -17,6 +18,9 @@ export function createVideoServer({
   login,
   exchangeHandoff,
   verifyAdmin,
+  listPatients,
+  createConsultation,
+  recordConsultationEvent,
   waitingDurationMs = 30 * 60_000,
   now = Date.now,
   checkIntervalMs = 30_000,
@@ -36,6 +40,8 @@ export function createVideoServer({
   const rooms = new Map()
   const tokens = new Map()
   const buckets = new Map()
+  const pendingRecords = new Set()
+  const pendingCreations = new Map()
   let closing = false
   const hasTurn = iceServers.some(item => (Array.isArray(item.urls) ? item.urls : [item.urls]).some(url => /^turns?:/.test(url)))
   function rate(key, limit, windowMs) {
@@ -69,7 +75,7 @@ export function createVideoServer({
   async function remoteLogin(username, password) {
     const data = await remote('auth-professional', { action: 'login', username, password })
     if (!data.success || typeof data.sessionToken !== 'string') throw fail(503, 'No se recibio una sesion valida.')
-    if (data.professional?.is_admin !== true || data.professional.active === false) throw fail(403, 'Este piloto esta habilitado solo para administradores.')
+    if (data.professional?.is_admin !== true || data.professional.active === false) throw fail(403, 'La videoconsulta esta habilitada solo para administradores.')
     return data.sessionToken
   }
   async function remoteVerify(sessionToken) {
@@ -79,6 +85,13 @@ export function createVideoServer({
   }
   login ??= remoteLogin
   verifyAdmin ??= remoteVerify
+  listPatients ??= sessionToken => remote('video-consultations', { action: 'list' }, sessionToken)
+  createConsultation ??= (sessionToken, data) => remote('video-consultations', { action: 'create', ...data }, sessionToken)
+  recordConsultationEvent ??= async (lifecycleToken, event) => {
+    const data = await remote('video-consultations', { action: 'event', lifecycleToken, event })
+    if (data?.ok !== true) throw fail(503, 'No se pudo confirmar el registro de videoconsulta.')
+    return data
+  }
   exchangeHandoff ??= async token => {
     const data = await remote('video-handoff', { action: 'exchange', token })
     if (typeof data.sessionToken !== 'string' || !data.sessionToken) throw fail(503, 'No se recibio una sesion de videoconsulta valida.')
@@ -161,7 +174,7 @@ export function createVideoServer({
       if (request.headers.host !== parsedOrigin.host) throw fail(403, 'Host no autorizado.')
       const path = new URL(request.url, origin).pathname
       if (request.method === 'POST' && request.headers.origin !== origin) throw fail(403, 'Origen no autorizado.')
-      if (path === '/health' && request.method === 'GET') return json(response, 200, { ok: true, pilot: true, turnConfigured: hasTurn })
+      if (path === '/health' && request.method === 'GET') return json(response, 200, { ok: true, turnConfigured: hasTurn })
       if (path === '/api/login' && request.method === 'POST') {
         rate('login-global', 20, 60_000)
         if (sessions.size >= 100) throw fail(429, 'Hay demasiadas sesiones abiertas.')
@@ -189,6 +202,22 @@ export function createVideoServer({
         await authorize(session)
         return json(response, 200, { admin: true })
       }
+      if (path === '/api/patients' && request.method === 'GET') {
+        const session = getSession(request)
+        rate(`patients:${session.key}`, 30, 60_000)
+        await authorize(session)
+        const data = await listPatients(session.upstream)
+        await authorize(session)
+        if (!Array.isArray(data?.patients) || !Array.isArray(data?.appointments)
+          || data.patients.some(patient => !validId(patient?.id) || typeof patient.name !== 'string')
+          || data.appointments.some(appointment => !validId(appointment?.id) || !validId(appointment.patientId) || typeof appointment.label !== 'string')) {
+          throw fail(503, 'Lista de pacientes invalida.')
+        }
+        return json(response, 200, {
+          patients: data.patients.map(({ id, name }) => ({ id, name })),
+          appointments: data.appointments.map(({ id, patientId, label }) => ({ id, patientId, label })),
+        })
+      }
       if (path === '/api/rooms' && request.method === 'POST') {
         const session = getSession(request)
         rate(`create:${session.key}`, 5, 60_000)
@@ -197,19 +226,44 @@ export function createVideoServer({
         if (!Number.isInteger(data?.durationMinutes) || data.durationMinutes < 1 || data.durationMinutes > 120) {
           throw fail(400, 'La duracion debe ser un numero entero entre 1 y 120 minutos.')
         }
+        if (!validId(data.patientId) || (data.appointmentId !== undefined && !validId(data.appointmentId))) {
+          throw fail(400, 'Selecciona un paciente guardado y un turno valido, si corresponde.')
+        }
         if (session.expiresAt < now() + waitingDurationMs + data.durationMinutes * 60_000) {
           throw fail(409, 'Tu sesion administrativa no alcanza para esta duracion y la espera. Cierra sesion y volve a ingresar antes de crear la sala.')
         }
-        if (rooms.size >= 30 || [...rooms.values()].filter(room => room.owner === session.key).length >= 3) throw fail(429, 'Finaliza las salas anteriores antes de crear otra.')
-        const id = opaque()
-        const professional = opaque()
-        const patient = patientToken()
-        const room = { id, owner: session.key, professional: hash(professional), patient: hash(patient),
-          durationMinutes: data.durationMinutes, startedAt: null, expiresAt: now() + waitingDurationMs, admitted: false, sockets: {} }
-        rooms.set(id, room)
-        tokens.set(room.professional, { room, role: 'professional' })
-        tokens.set(room.patient, { room, role: 'patient' })
-        return json(response, 201, { token: professional, patientLink: `${origin}/#p=${patient}`, ...timing(room) })
+        const pending = pendingCreations.get(session.key) || 0
+        const totalPending = [...pendingCreations.values()].reduce((total, count) => total + count, 0)
+        if (rooms.size + totalPending >= 30 || [...rooms.values()].filter(room => room.owner === session.key).length + pending >= 3) throw fail(429, 'Finaliza las salas anteriores antes de crear otra.')
+        pendingCreations.set(session.key, pending + 1)
+        try {
+          const id = opaque()
+          const professional = opaque()
+          const patient = patientToken()
+          const consultation = await createConsultation(session.upstream, {
+            patientId: data.patientId, ...(data.appointmentId ? { appointmentId: data.appointmentId } : {}), durationMinutes: data.durationMinutes,
+          })
+          if (!validId(consultation?.consultationId) || typeof consultation.patientName !== 'string' || !validToken(consultation.lifecycleToken)) {
+            throw fail(503, 'No se recibio un registro de videoconsulta valido.')
+          }
+          try { await authorize(session) }
+          catch (error) {
+            await recordConsultationEvent(consultation.lifecycleToken, 'interrupted')
+            throw error
+          }
+          const room = { id, owner: session.key, professional: hash(professional), patient: hash(patient),
+            consultationId: consultation.consultationId, patientName: consultation.patientName, lifecycleToken: consultation.lifecycleToken,
+            durationMinutes: data.durationMinutes, startedAt: null, expiresAt: now() + waitingDurationMs, admitted: false, sockets: {} }
+          rooms.set(id, room)
+          tokens.set(room.professional, { room, role: 'professional' })
+          tokens.set(room.patient, { room, role: 'patient' })
+          return json(response, 201, { token: professional, patientLink: `${origin}/#p=${patient}`,
+            consultationId: room.consultationId, patientName: room.patientName, ...timing(room) })
+        } finally {
+          const remaining = (pendingCreations.get(session.key) || 1) - 1
+          if (remaining) pendingCreations.set(session.key, remaining)
+          else pendingCreations.delete(session.key)
+        }
       }
       if (path === '/api/ice' && request.method === 'GET') {
         rate('ice-global', 120, 60_000)
@@ -260,6 +314,7 @@ export function createVideoServer({
     return { durationMinutes: room.durationMinutes, startedAt: room.startedAt, expiresAt: room.expiresAt, serverNow: now() }
   }
   function endRoom(room, reason) {
+    if (!rooms.has(room.id)) return
     tokens.delete(room.professional)
     tokens.delete(room.patient)
     rooms.delete(room.id)
@@ -267,6 +322,19 @@ export function createVideoServer({
       socket.emit('ended', reason)
       socket.disconnect(true)
     }
+    const event = reason.includes('duracion') || reason.includes('vencio') ? 'expired'
+      : reason.includes('finalizo') ? 'completed' : reason.includes('rechazo') ? 'rejected' : 'interrupted'
+    const record = (async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try { await recordConsultationEvent(room.lifecycleToken, event); return }
+        catch (error) {
+          console.error('video: no se pudo guardar el cierre de la consulta', room.consultationId, error.message)
+          if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    })()
+    pendingRecords.add(record)
+    void record.finally(() => pendingRecords.delete(record))
   }
   io.on('connection', socket => {
     const { room, role } = socket.data.identity
@@ -288,28 +356,37 @@ export function createVideoServer({
       try {
         rate(`action:${socket.id}`, 20, 10_000)
         await privileged()
-        handler(ack)
+        await handler(ack)
       } catch (error) {
         if (!error.status || error.status >= 500) console.error('video: no se pudo autorizar una accion')
         ack({ error: error.status ? error.message : 'No se pudo confirmar la accion.' })
         if ([401, 403].includes(error.status) && role === 'professional') endRoom(room, 'La cuenta administrativa ya no esta autorizada.')
       }
     }
-    socket.on('admit', action(ack => {
+    socket.on('admit', action(async ack => {
       if (!room.sockets.patient) return ack({ error: 'El paciente todavia no entro.' })
       if (!room.admitted) {
         if (room.startedAt === null) {
-          room.startedAt = now()
-          room.expiresAt = room.startedAt + room.durationMinutes * 60_000
+          room.startPromise ??= recordConsultationEvent(room.lifecycleToken, 'start')
+          try { await room.startPromise }
+          catch (error) { room.startPromise = null; throw error }
+          active()
+          if (!room.sockets.patient) return ack({ error: 'El paciente se desconecto antes de la admision.' })
+          if (room.startedAt === null) {
+            room.startedAt = now()
+            room.expiresAt = room.startedAt + room.durationMinutes * 60_000
+          }
         }
         room.admitted = true
         snapshot(room)
       }
       ack({ ok: true })
     }))
-    socket.on('end', action(ack => {
+    socket.on('end', action(async ack => {
+      await recordConsultationEvent(room.lifecycleToken, 'completed')
+      active()
       ack({ ok: true })
-      endRoom(room, 'El administrador finalizo la sala de prueba.')
+      endRoom(room, 'El profesional finalizo la videoconsulta.')
     }))
     socket.on('reject', action(ack => {
       if (room.admitted || !room.sockets.patient) return ack({ error: 'No se puede rechazar esta entrada.' })
@@ -382,7 +459,7 @@ export function createVideoServer({
       clearInterval(check)
       for (const room of rooms.values()) endRoom(room, 'El servidor se reinicio. Solicita una nueva sala.')
       sessions.clear()
-      io.close(resolve)
+      io.close(() => { void Promise.allSettled([...pendingRecords]).then(resolve) })
     }),
   }
 }

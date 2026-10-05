@@ -4,13 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>Dr Happy | Videoconsulta piloto</title>
+  <title>Dr Happy | Videoconsulta</title>
   <style>
     *{box-sizing:border-box}body{margin:0;background:#edf3f8;color:#17324d;font:15px/1.5 Arial,sans-serif}
     main{max-width:960px;margin:auto;padding:16px}h1{font-size:22px;margin:0}h2{font-size:18px}
     .heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
     .heading .brand{display:flex;align-items:center;gap:10px}.heading img{width:40px;height:40px}
-    .notice{padding:8px 12px;border:1px solid #e8cf8a;background:#fff6dc;border-radius:12px;margin-bottom:12px;font-size:13px}
     summary{cursor:pointer;min-height:28px;display:list-item}details p{margin:8px 0}
     button,input,textarea{font:inherit;min-height:44px;border:1px solid #bfd0df;border-radius:9px;padding:8px 12px}
     button{cursor:pointer;background:white;color:#17324d}button:disabled{opacity:.55;cursor:not-allowed}
@@ -40,7 +39,6 @@
     .room-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0}
     #duration-panel{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:13px;white-space:nowrap}
     #duration{width:72px;padding:8px}
-    .consent{display:flex;gap:8px;align-items:flex-start;font-size:13px}.consent input{margin-top:4px}
     .room-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px}
     #identity{margin:0;color:#5b7083}#countdown{margin:0;font-weight:600}
     #waiting{margin:0;font-size:13px}.waiting-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0}
@@ -56,21 +54,70 @@
     .chat-heading h2{margin:0;font-size:15px}.chat-heading button{padding:4px 10px}
     #chat-state{margin:0;font-size:12px;color:#5b7083}
     #chat-panel.compact #chat-state{display:none}
+    #chat-panel.compact{padding:8px;gap:4px}
+    #chat-panel.compact .chat-heading button{min-height:32px}
     #messages{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-wrap:anywhere}
     #chat{flex-shrink:0}#chat input{font-size:16px}
     .message{background:#eef5f8;border-radius:8px;padding:8px;margin:8px 0}
     form{display:flex;gap:8px}.link{margin:6px 0 8px;font-size:13px}.link-content{display:flex;align-items:center;gap:8px}.link label{flex:1;min-width:0;font-size:12px}.link input{font-size:13px}[hidden]{display:none!important}
-    #login{display:grid;gap:12px;max-width:440px}#consent{width:auto;min-height:0}
+    #login{display:grid;gap:12px;max-width:440px}
     .help{margin-top:8px;color:#5b7083;font-size:12px}.help p{margin:6px 0}
-    @media(max-width:700px){main{padding:10px}h1{font-size:18px}.heading img{width:32px;height:32px}.heading #logout{font-size:12px;padding:6px 8px}.stage{height:clamp(180px,25svh,300px);border-radius:18px}.stage-logo{width:60px;height:60px;flex-shrink:0}.stage-placeholder{padding:12px 12px 70px}.stage-placeholder p{font-size:13px;margin-top:8px}#self-preview{width:96px;height:72px}.panel{padding:12px}.room-toolbar{gap:6px}.room-toolbar button{padding:8px 10px;font-size:13px}#duration{width:60px}#duration-panel{gap:4px}.preview-label{font-size:10px}.video-controls{gap:10px;padding:7px;bottom:10px}.media-button{width:46px;height:46px;padding:11px}.controls button{font-size:12px}.notice{font-size:12px;margin-bottom:8px}}
+    main{width:100%;max-width:1600px;min-height:100svh;display:flex;flex-direction:column}
+    .room-view{display:flex;flex-direction:column;flex:1;min-height:0}
+    .stage{height:clamp(300px,min(62svh,calc(100svh - 440px)),760px);min-height:240px;flex:none}
+    #patient-selection{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:8px 0}
+    #patient-selection label{display:grid;gap:4px;font-size:13px;min-width:0;max-width:100%}
+    #patient-select,#appointment-select{width:220px;min-width:0;max-width:100%;min-height:44px}
+    input,select,textarea{min-width:0;max-width:100%}
+    #patient-name{margin:0;font-weight:600}
+    .video-controls #fullscreen{width:44px;height:44px;min-height:44px;padding:6px;border:0;border-radius:50%;background:#ffffff24;color:#fff;font-size:24px}
+    .video-controls #fullscreen[aria-pressed=true]{background:#159d99;color:#fff}
+    .expanded-page{overflow:hidden}
+    .expanded-page main,main:fullscreen{position:fixed;inset:0;max-width:none;width:100%;height:100dvh;min-height:0;overflow:auto;background:#edf3f8;padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));z-index:20}
+    .expanded-page .stage,main:fullscreen .stage{height:clamp(220px,calc(100dvh - 320px),900px);max-height:none}
+    main:fullscreen .chat-dock,.expanded-page .chat-dock{position:fixed;right:10px;bottom:max(6px,env(safe-area-inset-bottom));width:200px;max-width:calc(100% - 20px);z-index:5}
+    @supports(height:100dvh){main{min-height:100dvh}.stage{height:clamp(300px,min(62dvh,calc(100dvh - 440px)),760px)}}
+    @media(max-width:700px){.stage{height:clamp(260px,48svh,560px)}}
+    @media(max-height:600px) and (orientation:landscape){
+      main{padding:6px 10px;min-height:100dvh}.heading{margin-bottom:4px}.heading img{width:30px;height:30px}
+      .room-toolbar{padding:4px 0;gap:5px}.stage{height:clamp(220px,calc(100dvh - 170px),420px);min-height:220px;border-radius:14px}
+      .stage-logo{width:52px;height:52px}.stage-placeholder{padding:8px 8px 58px}.stage-placeholder p{font-size:12px;margin-top:6px}
+      #self-preview{width:88px;height:66px;bottom:74px;right:10px}.video-controls{bottom:8px;padding:5px;gap:6px}
+      .media-button{width:42px;height:42px;padding:9px}.chat-dock{margin-top:4px}
+    }
+    @media(max-width:700px){main{padding:10px}h1{font-size:18px}.heading img{width:32px;height:32px}.heading #logout{font-size:12px;padding:6px 8px}.stage{height:clamp(260px,48svh,560px);border-radius:18px}.stage-logo{width:60px;height:60px;flex-shrink:0}.stage-placeholder{padding:12px 12px 70px}.stage-placeholder p{font-size:13px;margin-top:8px}#self-preview{width:96px;height:72px}.panel{padding:12px}.room-toolbar{gap:6px}.room-toolbar button{padding:8px 10px;font-size:13px}#duration{width:60px}#duration-panel{gap:4px}.preview-label{font-size:10px}.video-controls{gap:10px;padding:7px;bottom:10px}.media-button{width:46px;height:46px;padding:11px}.controls button{font-size:12px}}
     @media(max-width:360px){#duration-panel{margin-left:0}.room-toolbar{justify-content:space-between}.heading .brand{gap:6px}}
+    @media(max-width:700px),(pointer:coarse){
+      input,select,textarea,.link input,#chat input{font-size:16px}
+    }
+    @media(max-height:600px) and (orientation:landscape){
+      main:fullscreen,.expanded-page main{padding:6px 10px}
+      .heading{margin-bottom:2px}.heading #logout{min-height:32px;padding:4px 8px}
+      .room-meta,.waiting-controls,#waiting,#status{font-size:12px;line-height:1.2}
+      .waiting-controls{margin:2px 0}#status,#error,#time-warning{margin:2px 0}
+      .room-toolbar button{min-height:36px;padding:4px 8px}
+      .stage{height:220px;min-height:220px}
+      main:fullscreen,.expanded-page main{display:flex;flex-direction:column;overflow:hidden;padding:4px max(10px,env(safe-area-inset-right)) max(4px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}
+      main:fullscreen>.heading,.expanded-page main>.heading,main:fullscreen .help,.expanded-page .help,main:fullscreen #login-panel,.expanded-page #login-panel,main:fullscreen #patient-selection,.expanded-page #patient-selection,main:fullscreen #invite,.expanded-page #invite,main:fullscreen .room-view>.muted,.expanded-page .room-view>.muted{display:none}
+      main:fullscreen p,.expanded-page main p{margin:0}
+      main:fullscreen .room-meta,.expanded-page .room-meta{justify-content:flex-start;gap:4px 12px}
+      main:fullscreen .waiting-controls,.expanded-page .waiting-controls{margin:2px 0}
+      main:fullscreen .waiting-controls button,.expanded-page .waiting-controls button{min-height:32px;padding:4px 10px}
+      main:fullscreen #time-warning:empty,.expanded-page #time-warning:empty,main:fullscreen #error:empty,.expanded-page #error:empty{display:none}
+      .in-call main:fullscreen #identity,.in-call.expanded-page #identity,.in-call main:fullscreen .waiting-controls,.in-call.expanded-page .waiting-controls,.in-call main:fullscreen #status,.in-call.expanded-page #status{display:none}
+      main:fullscreen .room-view,.expanded-page .room-view{position:relative;flex:1 1 0;min-height:0}
+      main:fullscreen .room-toolbar,.expanded-page .room-toolbar{padding:2px 210px 4px 0;min-height:40px}
+      main:fullscreen .stage,.expanded-page .stage{flex:1 1 0;height:auto;min-height:120px;max-height:none}
+      main:fullscreen .chat-dock,.expanded-page .chat-dock{position:absolute;top:2px;right:0;bottom:auto;margin:0;width:200px}
+      main:fullscreen #chat-toggle,.expanded-page #chat-toggle{min-height:36px;padding:4px 10px}
+      main:fullscreen #play-audio,.expanded-page #play-audio{position:absolute;left:8px;bottom:8px;z-index:4;min-height:36px;padding:4px 10px}
+    }
     @media(prefers-reduced-motion:reduce){.stage-logo{animation:none}}
   </style>
 </head>
 <body>
-<main>
-  <header class="heading"><div class="brand"><img src="/brand-mark.svg" alt="Dr. H"><h1>Videoconsulta <small>· piloto</small></h1></div><button id="logout" hidden>Cerrar sesión</button></header>
-  <details class="notice"><summary><strong>Prueba técnica, no atención clínica.</strong> Sin datos de pacientes reales.</summary><p>Creación de salas solo para administradores de Dr Happy. El invitado no necesita cuenta. Sin grabación, transcripción ni Sofía. Hay hasta 30 minutos de espera para admitir; después se cuenta la duración elegida. Finalizar revoca el enlace. Un reinicio del servidor cierra las salas.</p></details>
+<main id="room-view" aria-label="Videoconsulta">
+  <header class="heading"><div class="brand"><img src="/brand-mark.svg" alt="Dr. H"><h1>Videoconsulta</h1></div><button id="logout" hidden>Cerrar sesión</button></header>
   <section id="login-panel" class="panel">
     <h2>Acceso administrativo</h2>
     <p>Si abrís Videoconsulta desde la app, entrás con tu sesión sin otra contraseña. Para acceso directo, usá tu usuario o email y contraseña de Dr Happy. La sesión de video dura tres horas.</p>
@@ -80,16 +127,19 @@
       <button id="login-submit" class="primary">Iniciar sesión</button>
     </form>
   </section>
-  <label class="consent"><input id="consent" type="checkbox"> Acepto esta prueba técnica. Cámara y micrófono solo se comparten después de la admisión y cuando yo los activo.</label>
   <section aria-label="Preparar sala">
+    <div id="patient-selection" hidden>
+      <label>Paciente<select id="patient-select" required disabled><option value="">Elegí un paciente</option></select></label>
+      <label>Turno (opcional)<select id="appointment-select" disabled><option value="">Sin turno asociado</option></select></label>
+    </div>
     <details id="invite" hidden class="link"><summary>Enlace privado del paciente</summary><div class="link-content"><label class="visually-hidden" for="link">Enlace privado del paciente</label><input id="link" readonly><button id="copy">Copiar</button><button id="share" hidden>Compartir</button></div></details>
-    <div class="room-meta"><p id="identity">Sin sala.</p><p id="countdown" hidden></p></div>
+    <div class="room-meta"><p id="identity">Iniciá sesión para crear una videoconsulta.</p><p id="patient-name" hidden></p><p id="countdown" hidden></p></div>
     <div class="waiting-controls"><p id="waiting">Sin participantes conectados.</p><button id="admit" hidden class="primary">Admitir paciente</button><button id="reject" hidden class="danger">Rechazar</button></div>
   </section>
   <p id="time-warning" role="status"></p>
   <p id="status" role="status">Iniciá sesión como administrador o abrí una invitación.</p>
   <p id="error" role="alert"></p>
-    <section aria-label="Video y chat">
+    <section class="room-view" aria-label="Video y chat">
       <div class="room-toolbar" role="group" aria-label="Crear y entrar a la sala">
         <button id="create" hidden class="primary">1. Crear sala</button>
         <button id="join" disabled>Entrar a la sala</button>
@@ -108,6 +158,7 @@
           <span class="preview-label">Vos · arrastrá para mover</span>
         </div>
         <div class="video-controls" role="group" aria-label="Cámara y micrófono">
+          <button id="fullscreen" type="button" aria-pressed="false" aria-label="Ampliar videoconsulta" title="Ampliar videoconsulta">⛶</button>
           <button id="mic" class="media-button" disabled aria-pressed="false" aria-label="Activar micrófono" title="Activar micrófono">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/><path class="off-slash" d="m3 3 18 18"/></svg>
           </button>
@@ -125,10 +176,11 @@
       </aside>
       <span id="chat-announcement" class="visually-hidden" role="status"></span>
       <button id="play-audio" hidden>Activar audio recibido</button>
+      <p class="muted">No se ofrece transcripción. Si se incorpora en el futuro, se solicitará consentimiento específico por separado.</p>
     </section>
-  <details class="help"><summary>Cómo usar la sala y condiciones de la prueba</summary>
+  <details class="help"><summary>Cómo usar la videoconsulta</summary>
     <p id="duration-help">Duración de 1 a 120 minutos, desde la primera admisión. Cortes o reingresos no reinician el tiempo. Para cambiarla, finalizá y creá otra sala.</p>
-    <p>Podés entrar sin cámara ni micrófono y activarlos después con sus iconos. Crear no te conecta: compartí el enlace y tocá Entrar. El profesional admite al paciente. Usá auriculares para evitar eco.</p>
+    <p>Elegí al paciente antes de crear la sala. Podés asociar un turno si corresponde. Crear no te conecta: compartí el enlace y tocá Entrar. El profesional admite al paciente. Usá auriculares para evitar eco.</p>
     <p id="preview-help">Mové tu vista pequeña con mouse o dedo. Con teclado, enfocala y usá las flechas. Tu audio no se reproduce localmente. Al perder señalización se corta la conexión de medios y se requiere una nueva admisión.</p>
     <p id="network">Conexión directa con STUN de Google para detectar rutas de red; no recibe audio/video. Sin TURN, algunas redes pueden impedir conectar los medios.</p>
   </details>

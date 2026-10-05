@@ -13,6 +13,7 @@ async function fixture(t, options = {}) {
   const origin = `http://127.0.0.1:${port}`
   const revoked = new Set()
   const clients = []
+  const records = []
   const app = createVideoServer({
     origin, iceServers: [],
     login: async (username, password) => {
@@ -24,6 +25,12 @@ async function fixture(t, options = {}) {
       if (revoked.has(token)) throw Object.assign(new Error('Permiso revocado.'), { status: 403 })
       return token
     },
+    listPatients: async () => ({ patients: [{ id: 'patient-test', name: 'Paciente de prueba' }], appointments: [] }),
+    createConsultation: async (_token, data) => {
+      if (data.patientId !== 'patient-test' || data.appointmentId) throw Object.assign(new Error('Paciente o turno ajeno.'), { status: 403 })
+      return { consultationId: 'consultation-test', patientName: 'Paciente de prueba', lifecycleToken: 'a'.repeat(64) }
+    },
+    recordConsultationEvent: async (_token, event) => { records.push(event); return { ok: true } },
     ...options,
   })
   await new Promise(resolve => app.server.listen(port, '127.0.0.1', resolve))
@@ -43,7 +50,7 @@ async function fixture(t, options = {}) {
     return response.cookie
   }
   const create = async (cookie, durationMinutes = 40) => {
-    const response = await request('/api/rooms', { cookie, method: 'POST', data: { durationMinutes } })
+    const response = await request('/api/rooms', { cookie, method: 'POST', data: { durationMinutes, patientId: 'patient-test' } })
     assert.equal(response.status, 201)
     return { ...response.data, patient: response.data.patientLink.split('#p=')[1] }
   }
@@ -54,7 +61,7 @@ async function fixture(t, options = {}) {
     client.on('connect', () => resolve({ client }))
     client.on('connect_error', error => { client.disconnect(); resolve({ error }) })
   })
-  return { origin, revoked, request, login, create, connect }
+  return { origin, revoked, request, login, create, connect, records }
 }
 const event = (client, name) => new Promise((resolve, reject) => {
   const timer = setTimeout(() => { client.off(name, listener); reject(new Error(`Timeout ${name}`)) }, 5000)
@@ -84,6 +91,51 @@ test('HTTP authorization, cookie, CSRF and payload validation', async t => {
   assert.equal((await f.request('/api/ice', { headers: { 'x-video-token': room.token } })).status, 401)
   f.revoked.add('admin')
   assert.equal((await f.request('/api/rooms', { cookie, method: 'POST' })).status, 403)
+})
+
+test('Patient ownership is checked server-side and lifecycle secrets never reach participants', async t => {
+  const f = await fixture(t)
+  assert.equal((await f.request('/api/patients')).status, 401)
+  const cookie = await f.login()
+  assert.deepEqual((await f.request('/api/patients', { cookie })).data.patients, [{ id: 'patient-test', name: 'Paciente de prueba' }])
+  for (const patientId of [undefined, '', '<script>', 'another-patient']) {
+    const result = await f.request('/api/rooms', { cookie, method: 'POST', data: { durationMinutes: 40, patientId } })
+    assert([400, 403].includes(result.status))
+  }
+  const room = await f.create(await f.login())
+  assert.equal(room.patientName, 'Paciente de prueba')
+  assert.equal(room.consultationId, 'consultation-test')
+  assert(!JSON.stringify(room).includes('lifecycleToken'))
+  assert(!room.patientLink.includes('patient-test'))
+  const professional = (await f.connect(room.token, await f.login('admin2'))).error
+  assert(professional)
+})
+
+test('Admission and finalization persist clinical metadata before success acknowledgement', async t => {
+  const f = await fixture(t)
+  const cookie = await f.login()
+  const room = await f.create(cookie)
+  const professional = (await f.connect(room.token, cookie)).client
+  await f.connect(room.patient)
+  assert.equal((await emit(professional, 'admit')).ok, true)
+  assert.deepEqual(f.records, ['start'])
+  assert.equal((await emit(professional, 'admit')).ok, true)
+  assert.deepEqual(f.records, ['start'])
+  assert.equal((await emit(professional, 'end')).ok, true)
+  assert(f.records.includes('completed'))
+})
+
+test('Failure to persist start prevents admission instead of leaving an unregistered call', async t => {
+  const f = await fixture(t, { recordConsultationEvent: async (_token, event) => {
+    if (event === 'start') throw Object.assign(new Error('Registro no disponible.'), { status: 503 })
+    return { ok: true }
+  } })
+  const cookie = await f.login()
+  const room = await f.create(cookie)
+  const professional = (await f.connect(room.token, cookie)).client
+  const patient = (await f.connect(room.patient)).client
+  assert((await emit(professional, 'admit')).error)
+  assert((await emit(patient, 'signal', { candidate: { candidate: 'candidate:test' } })).error)
 })
 
 test('Server gates admission, roles, signals, duplicate access, reconnection, logout and token revocation', async t => {
@@ -189,9 +241,25 @@ test('Room caps and login throttling reject excess requests', async t => {
   const f = await fixture(t)
   const cookie = await f.login()
   for (let index = 0; index < 3; index++) await f.create(cookie)
-  assert.equal((await f.request('/api/rooms', { cookie, method: 'POST', data: { durationMinutes: 40 } })).status, 429)
+  assert.equal((await f.request('/api/rooms', { cookie, method: 'POST', data: { durationMinutes: 40, patientId: 'patient-test' } })).status, 429)
   for (let index = 0; index < 19; index++) await f.request('/api/login', { method: 'POST', data: { username: 'admin', password: 'bad' } })
   assert.equal((await f.request('/api/login', { method: 'POST', data: { username: 'admin', password: 'bad' } })).status, 429)
+})
+
+test('Concurrent creation reserves room slots while remote patient registration is pending', async t => {
+  let created = 0
+  const f = await fixture(t, { createConsultation: async () => {
+    await new Promise(resolve => setTimeout(resolve, 60))
+    created++
+    return { consultationId: `consultation-${created}`, patientName: 'Fixture', lifecycleToken: 'a'.repeat(64) }
+  } })
+  const cookie = await f.login()
+  const responses = await Promise.all(Array.from({ length: 5 }, () => f.request('/api/rooms', {
+    cookie, method: 'POST', data: { patientId: 'patient-test', durationMinutes: 40 },
+  })))
+  assert.equal(responses.filter(response => response.status === 201).length, 3)
+  assert.equal(responses.filter(response => response.status === 429).length, 2)
+  assert.equal(created, 3)
 })
 
 test('Duration accepts 1 through 120 whole minutes and rejects missing, fractional or coerced values', async t => {
@@ -265,7 +333,7 @@ test('Creation refuses a session too old to cover chosen duration and waiting wi
   const f = await fixture(t, { now: () => clock })
   const cookie = await f.login()
   clock += 31 * 60_000
-  assert.equal((await f.request('/api/rooms', { cookie, method: 'POST', data: { durationMinutes: 120 } })).status, 409)
+  assert.equal((await f.request('/api/rooms', { cookie, method: 'POST', data: { durationMinutes: 120, patientId: 'patient-test' } })).status, 409)
 })
 
 test('Invalid public origins and ICE configurations fail explicitly at startup', () => {
@@ -373,7 +441,7 @@ test('Entry listens within 3 seconds when executed directly or imported by a hos
           if (child.exitCode !== null) throw new Error(`Startup exited: ${output}`)
           try {
             const response = await fetch(`${origin}/health`, { signal: AbortSignal.timeout(500) })
-            if (response.ok) { assert.equal((await response.json()).pilot, true); ready = true; break }
+            if (response.ok) { assert.equal(typeof (await response.json()).turnConfigured, 'boolean'); ready = true; break }
           } catch (error) {
             if (error.cause?.code !== 'ECONNREFUSED' && error.name !== 'TimeoutError') throw error
           }

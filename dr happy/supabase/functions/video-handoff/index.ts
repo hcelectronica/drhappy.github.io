@@ -30,7 +30,7 @@ serve(async request => {
       if (!id) return reply(401, { error: 'La sesion de Dr Happy vencio. Volve a iniciar sesion.' })
       const { data, error } = await admin.from('professionals').select('is_admin, active').eq('id', id).maybeSingle()
       if (error) throw error
-      if (data?.is_admin !== true || data.active === false) return reply(403, { error: 'El piloto es exclusivo para administradores.' })
+      if (data?.is_admin !== true || data.active === false) return reply(403, { error: 'La videoconsulta esta habilitada para administradores.' })
       const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')
       const { data: issued, error: issueError } = await admin.rpc('issue_video_handoff', {
         p_token_hash: await hash(token), p_source_hash: await hash(session),

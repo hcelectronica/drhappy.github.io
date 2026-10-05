@@ -2482,7 +2482,8 @@ function App() {
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [, setAppError] = useErrorNotification()
   const [videoAccessBusy, setVideoAccessBusy] = useState(false)
-  async function handleOpenVideoPilot() {
+  async function handleOpenVideoConsultation(context?: { patientId: string; appointmentId?: string }) {
+    if (videoAccessBusy) return
     let popup: Window | null = null
     try {
       const session = readProfessionalSession()
@@ -2494,7 +2495,7 @@ function App() {
       popup.document.body.textContent = 'Preparando tu acceso a la videoconsulta...'
       setVideoAccessBusy(true)
       setAppError(null)
-      const url = await createVideoAccessUrl()
+      const url = await createVideoAccessUrl(context)
       const current = readProfessionalSession()
       if (current?.userId !== session.userId || current.token !== session.token) {
         throw new Error('La cuenta cambió. Abrí la videoconsulta desde la sesión actual.')
@@ -10903,6 +10904,10 @@ function App() {
       key: 'appointments', icon: '📅', label: 'Turnera', hint: 'Agenda y cupos', tone: '#d97706',
       onClick: handleOpenAppointments,
     } : null,
+    isAdminSession ? {
+      key: 'video', icon: '📹', label: 'Videoconsulta', hint: 'Consulta con un paciente', tone: '#0f766e',
+      onClick: () => { void handleOpenVideoConsultation() },
+    } : null,
     {
       key: 'patients', icon: '👥', label: 'Mis pacientes', hint: `${patients.length} fichas`, tone: '#0891b2',
       onClick: () => { stopDictation(); setCommunityOpen(false); setWorkspaceLayer('my-patients'); setAppError(null) },
@@ -11129,17 +11134,6 @@ function App() {
           {isAdminSession ? (
             <button
               type="button"
-              className="ghost video-pilot-link"
-              onClick={() => { void handleOpenVideoPilot() }}
-              disabled={videoAccessBusy}
-              title="Prueba técnica para administradores, sin datos clínicos. Abre en otra pestaña con tu sesión."
-            >
-              Videoconsulta — piloto
-            </button>
-          ) : null}
-          {isAdminSession ? (
-            <button
-              type="button"
               className="ghost"
               style={{ fontSize: '0.78rem', color: '#c0392b' }}
               onClick={() => setPreviewTrialExpired(true)}
@@ -11222,13 +11216,13 @@ function App() {
           {isAdminSession ? (
             <button
               type="button"
-              className="video-pilot-link"
-              title="Videoconsulta — piloto (otra pestaña, solo pruebas)"
-              aria-label="Videoconsulta — piloto, abre en otra pestaña"
-              onClick={() => { void handleOpenVideoPilot() }}
+              className="video-consultation-link"
+              title="Videoconsulta, abre en otra pestaña con tu sesión"
+              aria-label="Videoconsulta, abre en otra pestaña"
+              onClick={() => { void handleOpenVideoConsultation() }}
               disabled={videoAccessBusy}
             >
-              <span aria-hidden="true">📹</span> Videoconsulta — piloto
+              <span aria-hidden="true">📹</span> Videoconsulta
             </button>
           ) : null}
         </nav>
@@ -12790,7 +12784,8 @@ function App() {
               <button
                 key={action.key}
                 type="button"
-                className={`smart-btn${action.wide ? ' wide' : ''}`}
+                className={`smart-btn${action.wide ? ' wide' : ''}${action.key === 'video' ? ' video-consultation-link' : ''}`}
+                disabled={action.key === 'video' && videoAccessBusy}
                 style={{ '--tone': action.tone } as CSSProperties}
                 onClick={action.onClick}
               >
@@ -13692,6 +13687,12 @@ function App() {
                       </div>
 
                       <div className="turnera-card-actions">
+                        {isAdminSession && record.patientId && patients.some(patient => patient.id === record.patientId && patient.ownerUserId === activeUserId) ? (
+                          <button type="button" className="ghost" disabled={videoAccessBusy}
+                            onClick={() => { if (record.patientId) void handleOpenVideoConsultation({ patientId: record.patientId, appointmentId: record.id }) }}>
+                            📹 Videoconsulta
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => handleStartConsultationFromAppointment(record)}
@@ -13872,6 +13873,9 @@ function App() {
                       </div>
                       <div className="patient-directory-actions">
                         <button type="button" onClick={() => handleSelectPatient(patient.id)}>Abrir ficha</button>
+                        {isAdminSession && patient.ownerUserId === activeUserId ? (
+                          <button type="button" className="ghost" disabled={videoAccessBusy} onClick={() => { void handleOpenVideoConsultation({ patientId: patient.id }) }}>📹 Videoconsulta</button>
+                        ) : null}
                         <button type="button" className="ghost" onClick={() => handleNewAppointmentModal(patient)}>Agendar</button>
                         <button type="button" className="ghost" onClick={() => handleEvolvePatient(patient.id)}>{isDentist ? 'Odontograma' : 'Evolucionar'}</button>
                         <button type="button" className="ghost certificate-action" onClick={() => handleOpenCertificateModal(patient)}>📄 Certificado / orden</button>
@@ -13899,6 +13903,9 @@ function App() {
             if (selectedPatientArchived) { setWorkspaceLayer('my-patients'); setShowPatientArchive(true); return }
             handleStartAttentionFlow()
           }} /><section className="panel">
+            {isAdminSession && selectedPatient.ownerUserId === activeUserId && !selectedPatientArchived ? (
+              <button type="button" className="ghost" disabled={videoAccessBusy} onClick={() => { void handleOpenVideoConsultation({ patientId: selectedPatient.id, appointmentId: dentalAppointmentId }) }}>📹 Videoconsulta</button>
+            ) : null}
             <button type="button" className="ghost certificate-action" disabled={dentalSaving || selectedPatientArchived} onClick={() => handleOpenCertificateModal(selectedPatient)}>📄 Certificado / orden</button>
             {selectedPatient.consultations.length ? <details><summary>Registros clínicos anteriores · solo lectura</summary>
               {selectedPatient.consultations.map((entry) => <article key={entry.id}>
@@ -14128,6 +14135,9 @@ function App() {
                 </fieldset>
                 {renderPaperRecords(canManagePaperRecords)}
                 <div className="record-document-actions">
+                  {isAdminSession && selectedPatient?.ownerUserId === activeUserId ? (
+                    <button type="button" className="ghost" disabled={videoAccessBusy} onClick={() => { void handleOpenVideoConsultation({ patientId: selectedPatient.id }) }}>📹 Videoconsulta</button>
+                  ) : null}
                   <button
                     type="button"
                     className="ghost"

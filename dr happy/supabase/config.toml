@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.video-handoff]
 verify_jwt = false
+
+[functions.video-consultations]
+verify_jwt = false

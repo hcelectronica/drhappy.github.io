@@ -48,10 +48,10 @@ Se mantiene la compresión de fotos a JPEG (lado máximo de 1800 px) y el límit
 
 Validar con `node --test tests/patient-document-print.test.mjs`, `npm run build` y `node tests/mobile-session.browser.mjs` contra el build servido mediante `TEST_APP_ORIGIN`. `TEST_PATIENT_DOCUMENTS=1` ejecuta solo el recorrido de documentos. La prueba de navegador comprueba la lista móvil, adjuntos anteriores, PDF de dos páginas vertical/horizontal, selección opcional, exportación real de ocho páginas, persistencia de carga y errores sin impresión incompleta.
 
-## Videoconsulta piloto para administradores
+## Videoconsulta para administradores
 
-La cabecera y la navegación lateral de una sesión administrativa ofrecen
-«Videoconsulta — piloto», que abre `https://video.drhappy.com.ar/` en otra pestaña
+La botonera general de Inicio y la navegación lateral de una sesión administrativa ofrecen
+«Videoconsulta», que abre `https://video.drhappy.com.ar/` en otra pestaña
 con acceso automático, sin enviar contraseña ni sesión permanente por URL
 ni compartir acceso al documento original. Se usa un pase aleatorio de un solo
 uso, válido durante 60 segundos, enviado en el fragmento y eliminado al cargar.
@@ -63,8 +63,11 @@ pase, y `video-access` sigue revalidando el permiso en el servidor de video.
 Los ingresos con Google de la app también tienen sesión profesional y pueden
 usar este acceso automático. El navegador debe permitir abrir otra pestaña.
 Se requiere la migración `20261005010000_video_handoff.sql`, desplegar la función
-`video-handoff` con `verify_jwt=false` y actualizar el servicio de video (ZIP v5
-o posterior). No se necesitan claves nuevas en Hostinger.
+`video-handoff` con `verify_jwt=false` y actualizar el servicio de video. No se necesitan claves nuevas en Hostinger.
+
+El acceso también se ofrece desde el directorio y la ficha de un paciente propio, y desde un turno vinculado a una ficha guardada. El fragmento de acceso puede llevar los ID de paciente y turno para preseleccionarlos; se elimina al cargar y el enlace del invitado no incluye nombres, DNI ni esos ID. La sala vuelve a comprobar en el servidor la propiedad del paciente y la correspondencia del turno; un turno sin ficha vinculada requiere primero crear o vincular la ficha.
+
+La migración `20261005020000_video_consultations.sql` y la función `video-consultations` (`verify_jwt=false`, autorización propia) agregan la selección de pacientes y el registro durable de cada sala: profesional, ID del paciente/turno, duración, creación, primera admisión, finalización y estado. Solo el servicio accede a la tabla; el servidor conserva una capacidad aleatoria de 256 bits para sus eventos, no enviada al navegador y guardada solo como hash en la base. Las fichas archivadas y de otro profesional no se ofrecen. El registro no crea una evolución clínica, no guarda audio, video ni chat y todavía no transcribe. La transcripción futura necesitará consentimiento específico, segmentos con hablante y tiempo común y revisión del resumen por el profesional antes de guardar en la historia.
 
 Pruebas: `tests/video-handoff.sql` ejecuta verificaciones de permisos y caducidad
 en una transacción con rollback. `tests/video-handoff.edge.mjs` prueba el canje
@@ -73,13 +76,13 @@ CLI autenticada, funciones desplegadas y `LIVE_VIDEO_HANDOFF_TEST=1`. Crea una
 cuenta sintética sin contraseña ni datos clínicos y elimina sus sesiones, pases
 y cuenta en `finally`. La prueba usa el puerto local 5197. La suite
 `tests/mobile-session.browser.mjs` verifica el acceso desde la app, aislamiento
-del opener, ventanas bloqueadas, errores y cambios de cuenta.
+del opener, ventanas bloqueadas, errores y cambios de cuenta. `TEST_VIDEO_ACCESS=1` limita ese recorrido a sesiones, navegación y acceso a video, sin las pruebas de flyers y documentos.
 
 El servicio independiente vive en `../video-service`; su README detalla despliegue,
-pruebas, límites, STUN/TURN y cierre de salas. El piloto tiene invitación temporal,
-admisión, audio/video y chat, sin grabación ni Sofía. Sigue restringido a pruebas
-técnicas sin datos clínicos: la aceptación de prueba no reemplaza consentimiento
-informado ni una política de privacidad para atención real.
+pruebas, límites, STUN/TURN y cierre de salas. La sala tiene invitación temporal,
+admisión, audio/video y chat, sin grabación ni transcripción. Se retiraron el cartel y la casilla de prueba técnica; eso no reemplaza las políticas de privacidad ni el consentimiento aplicables a la atención. Mantiene el permiso administrativo y STUN sin TURN: algunas redes pueden impedir conectar.
+
+Validar metadatos con `node --test tests/video-consultations.test.mjs` y `tests/video-consultations.sql` (rollback). `LIVE_VIDEO_CONSULTATIONS_TEST=1 node tests/video-consultations.edge.mjs` comprueba Edge y Node desplegados, paciente/turno propios, admisión y cierre durables, con fixtures sintéticos eliminados en `finally`.
 
 ## Documentos clínicos
 

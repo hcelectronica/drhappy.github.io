@@ -4,6 +4,6 @@ const port = Number(process.env.PORT || 5194)
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT invalido.')
 const app = createVideoServer()
 app.server.listen(port, process.env.PORT ? '0.0.0.0' : '127.0.0.1', () => {
-  console.log(`Dr Happy video: puerto ${port}. Piloto administrativo, sin grabacion ni Sofia.`)
+  console.log(`Dr Happy Videoconsulta: puerto ${port}. Acceso administrativo, sin grabacion ni transcripcion.`)
 })
 for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => app.close().then(() => process.exit(0)))

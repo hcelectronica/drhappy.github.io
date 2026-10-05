@@ -1,8 +1,9 @@
-# Piloto administrativo de videoconsulta Dr Happy
+# Videoconsulta Dr Happy
 
-Servicio independiente de la aplicacion principal, para pruebas tecnicas sin datos
-clinicos. Dos participantes, admision manual, audio/video separados y chat WebRTC
-con confirmacion. No graba, no transcribe y no envia medios a Sofia.
+Servicio independiente de la aplicacion principal para videoconsultas. Dos
+participantes, admision manual, audio/video separados y chat WebRTC con
+confirmacion. No se ofrece transcripcion; cualquier funcion futura requerira
+consentimiento especifico por separado.
 
 ## Despliegue en Hostinger
 
@@ -20,7 +21,7 @@ tests, archivos .env ni claves privilegiadas.
 - Usa el PORT asignado por Hostinger.
 - El origen predeterminado es https://video.drhappy.com.ar.
 - Supabase predeterminado: proyecto Dr Happy stzsobirxdivbgqxwkhc.
-- No requiere variables para esta primera prueba.
+- No requiere variables para la configuracion basica.
 - Las funciones Supabase video-access y video-handoff deben estar desplegadas con verify_jwt=false:
   la propia funcion valida la sesion profesional y el permiso is_admin.
 - No copiar SUPABASE_SERVICE_ROLE_KEY al hosting: permanece en Supabase.
@@ -35,10 +36,11 @@ ser HTTPS, sin ruta ni barra final. Solo se permite HTTP para loopback local.
    Abrir directamente el subdominio conserva el login con usuario/email y
    contrasena de Dr Happy (no de Hostinger); el login directo no incluye OAuth.
    Solo cuentas con is_admin=true y activas.
-2. Elegir duracion entera de 1 a 120 minutos (40 por defecto), crear sala y copiar
-   invitacion. Crear y Entrar son pasos separados, juntos sobre el video.
-   Aceptar prueba y entrar; los dispositivos pueden seguir apagados.
-3. Invitado: abrir el enlace privado, aceptar prueba y entrar.
+2. Elegir paciente de la lista propia y, si corresponde, un turno asociado.
+   Elegir duracion entera de 1 a 120 minutos (40 por defecto), crear sala y
+   copiar invitacion. Crear y Entrar son pasos separados, juntos sobre el video.
+   Los dispositivos pueden seguir apagados.
+3. Invitado: abrir el enlace privado y entrar.
    No necesita cuenta; no puede crear salas ni admitir/finalizar.
 4. Administrador: Admitir invitado. Antes de ese paso no hay medios ni chat remotos.
 5. Finalizar sala revoca ambos enlaces y apaga dispositivos. Cerrar sesion tambien
@@ -60,6 +62,17 @@ y la duracion sigue visible en el reloj. Crear otra requiere finalizar la sala
 anterior. Salir y Finalizar para ambos quedan sobre el video durante la llamada,
 accesibles aunque el chat este abierto. La invitacion queda plegada al entrar y se puede volver a desplegar
 para copiarla o compartirla con el menu del dispositivo cuando este disponible.
+La lista de pacientes y turnos se obtiene solo para la cuenta profesional
+autorizada. Los fragmentos de apertura desde la app pueden incluir identificadores
+de paciente y turno; se consumen al cargar y no se incorporan al enlace privado
+que recibe el invitado. La pantalla amplia el video usando el espacio disponible.
+En moviles apaisados reduce margenes y controles; si Safari no ofrece pantalla
+completa nativa, "Ampliar vista" expande la pagina y mantiene sus controles.
+Camara y microfono se activan individualmente y solo se envian despues de admitir.
+La interfaz carga `GET /api/patients` (`{patients:[{id,name}],appointments:[{id,patientId,label}]}`)
+y crea salas con `POST /api/rooms` (`{durationMinutes,patientId,appointmentId?}`).
+La lista no se solicita para el rol paciente. El nombre devuelto en los metadatos
+de la sala solo se muestra en la vista profesional.
 El enlace nuevo tiene formato https://video.drhappy.com.ar/#p= seguido de
 22 caracteres: 128 bits aleatorios, no un numero de sala predecible. No usa un
 acortador externo ni agrega pasos para el paciente. Su hash se guarda en
@@ -77,6 +90,17 @@ ni agrega altura al documento. Minimizar/Escape devuelve el foco al boton.
 Se reajusta al cambiar pantalla o teclado; si el teclado reduce mucho el area
 visible, el panel puede superponerse temporalmente para mantener el editor
 accesible, sin redimensionar el video por abrir/cerrar el chat.
+En pantalla completa se amplia toda la sala (estado, admision, reloj,
+Salir/Finalizar, medios y chat), no solo el elemento video. El boton de chat
+queda anclado a una esquina; su panel se limita al contenedor de pantalla
+completa y al visual viewport, sin tapar los controles de medios cuando caben.
+El modo ampliado de pagina usa el mismo contenedor. Escape lo cierra, minimiza
+el chat y restaura el scroll y el foco anteriores.
+En horizontal de poca altura (por ejemplo 844x390), ambos modos ajustan la
+sala al alto visible sin scroll: ocultan encabezado, seleccion, enlace y ayuda;
+durante la llamada admitida ocultan tambien identidad, espera y estado. El
+escenario ocupa el alto restante y puede bajar de 220 px; Salir/Finalizar, chat,
+medios y Activar audio quedan visibles. El teclado del chat puede superponerse.
 Cada sala nueva elimina de la interfaz los mensajes y pendientes de lectura de
 la anterior. No se conserva historial al recargar ni se persisten mensajes.
 
@@ -141,7 +165,7 @@ No usar esos valores de ejemplo en produccion. No subir credenciales al repo
 ni compartirlas por chat. El servidor entrega la configuracion solo a
 participantes autorizados. Los participantes WebRTC pueden ver las credenciales
 TURN que usan: limitar cuota y vigencia, utilizar una cuenta exclusiva del
-piloto. Para uso clinico implementar credenciales TURN temporales.
+servicio. Para un despliegue clinico implementar credenciales TURN temporales.
 
 ## Limites deliberados
 
@@ -155,8 +179,30 @@ validarse el permiso se cierran, sin permitir continuar por defecto.
 Desconexion de senalizacion corta medios y requiere readmision al reconectar.
 Fallo de medios apaga dispositivos e informa si falta TURN; no simula exito.
 
-Esta aceptacion tecnica no sustituye consentimiento informado, politica de
-privacidad ni evaluacion legal/clinica. No habilitar aun atencion real.
+El uso del servicio no sustituye consentimiento informado, politica de
+privacidad ni evaluacion legal/clinica. La interfaz no ofrece transcripcion;
+si se incorpora, exigira consentimiento especifico independiente.
+
+## Registro y ciclo de vida
+
+Al crear una sala se guarda una consulta vinculada al paciente del profesional
+y, opcionalmente, a su turno. Se persisten solo metadatos: identificadores,
+duracion, estado y fechas. No se persisten audio, video, mensajes de chat ni
+transcripciones. El nombre del paciente se muestra solo al profesional, nunca
+se incorpora a la invitacion ni a los metadatos enviados al participante paciente.
+
+El servidor guarda el evento de inicio antes de admitir y habilitar los medios.
+Si falla el guardado, la admision no se confirma. Al finalizar manualmente,
+guarda la finalizacion antes de confirmar la accion; un fallo se informa al
+profesional, sin emitir una confirmacion de exito.
+
+Otros cierres revocan primero el acceso y detienen la sala. El servidor intenta
+guardar su estado hasta tres veces, con 300 ms entre reintentos, e informa los
+fallos en sus logs. Las salas y credenciales activas siguen en memoria: un
+reinicio no restaura llamadas. La base reconcilia consultas vencidas al listar
+las consultas del profesional, usando sus fechas de espera/inicio y duracion;
+esto permite cerrar registros pendientes tras interrupciones del servicio.
+No equivale a una garantia de conectividad ni de entrega inmediata de cierres.
 
 ## Desarrollo y pruebas
 
@@ -173,7 +219,15 @@ el runner. El servidor desplegable no contiene un modo de omitir autenticacion.
 La prueba de navegador usa Edge aislado y dispositivos sinteticos para verificar
 frames WebRTC reales, chat, admision, reingreso, cierre y vista movil.
 Comprueba enlaces cortos, entrada sin dispositivos y activacion posterior,
-toolbar a 360/390/768/1280 px, panel debajo del video para ambos roles,
+seleccion de paciente y turno, toolbar a 360/390/768/1280 px, video mayor que
+la altura movil anterior a 390x844 y 844x390, pantalla completa nativa en Edge
+con todos los controles de sala, chat con teclado (visual viewport simulado),
+ajuste sin scroll a 844x390 en pantalla completa nativa (antes y despues de
+admitir) y en modo ampliado, con video completo y controles clicables,
+Escape en modo de pagina ampliada con restauracion de scroll y foco,
 geometria invariable al desplegar chat, contador, scroll interno y foco.
+Los campos y selectores usan al menos 16 px en pantallas moviles o con puntero
+grueso para evitar el zoom de foco de Safari. Conservan min-width:0 y
+max-width:100%; la etiqueta viewport no limita el zoom manual por pellizco.
 La aceptacion final por Internet requiere dos dispositivos en redes diferentes
 con medios reales; no puede inferirse de las pruebas locales.

@@ -1,6 +1,9 @@
 const $ = id => document.getElementById(id)
-let accessToken = new URLSearchParams(location.hash.slice(1)).get('p') || new URLSearchParams(location.hash.slice(1)).get('invite')
-let handoffToken = new URLSearchParams(location.hash.slice(1)).get('handoff')
+const handoffParams = new URLSearchParams(location.hash.slice(1))
+let accessToken = handoffParams.get('p') || handoffParams.get('invite')
+let handoffToken = handoffParams.get('handoff')
+const handoffPatientId = handoffParams.get('patient') || ''
+const handoffAppointmentId = handoffParams.get('appointment') || ''
 history.replaceState(null, '', location.pathname)
 let role = accessToken ? 'patient' : null
 let stream = null
@@ -28,25 +31,32 @@ let disconnectTimer
 const pendingMessages = new Map()
 const seenMessages = new Set()
 let unreadMessages = 0
+let patients = []
+let appointments = []
+let patientsLoaded = false
+let loadingPatients = false
 const report = error => { $('error').textContent = error instanceof Error ? error.message : String(error) }
 const status = text => { $('status').textContent = text }
 function update() {
   $('create').hidden = !admin || role === 'patient' || Boolean(socket)
   $('duration-panel').hidden = !admin || role === 'patient' || Boolean(socket)
+  $('patient-selection').hidden = !admin || role === 'patient' || Boolean(accessToken) || Boolean(socket)
   $('login-panel').hidden = admin || role === 'patient' || authorizing
   $('logout').hidden = !admin || role === 'patient'
-  $('identity').textContent = role ? `Ingresás como ${role === 'professional' ? 'profesional' : 'paciente'}.` : 'Creá una sala para comenzar.'
+  $('identity').textContent = role ? `Ingresás como ${role === 'professional' ? 'profesional' : 'paciente'}.` : 'Elegí un paciente para crear una videoconsulta.'
   $('identity').hidden = Boolean(socket)
-  $('create').disabled = creating || Boolean(accessToken) || Boolean(socket)
-  $('create').textContent = creating ? 'Creando...' : '1. Crear sala'
+  $('create').disabled = creating || Boolean(accessToken) || Boolean(socket) || !patientsLoaded || !$('patient-select').value
+  $('create').textContent = creating ? 'Creando...' : 'Crear sala'
   $('duration').disabled = creating || Boolean(accessToken)
-  $('join').disabled = !accessToken || Boolean(socket) || joining || !$('consent').checked || deviceBusy.size > 0
+  $('patient-select').disabled = loadingPatients || !patientsLoaded || Boolean(accessToken) || Boolean(socket)
+  $('appointment-select').disabled = loadingPatients || !patientsLoaded || !$('patient-select').value || Boolean(accessToken) || Boolean(socket)
+  $('join').disabled = !accessToken || Boolean(socket) || joining || deviceBusy.size > 0
   $('join').textContent = socket ? 'En la sala' : joining ? 'Entrando...' : role === 'professional' ? '2. Entrar' : 'Entrar a la sala'
   for (const [kind, id, name] of [['audio', 'mic', 'micrófono'], ['video', 'camera', 'cámara']]) {
     const track = stream?.getTracks().find(track => track.kind === kind && track.readyState === 'live')
     const enabled = Boolean(track?.enabled)
     const button = $(id)
-    button.disabled = deviceBusy.has(kind) || joining || !$('consent').checked || (!admin && role !== 'patient')
+    button.disabled = deviceBusy.has(kind) || joining || (!admin && role !== 'patient')
     button.setAttribute('aria-pressed', String(enabled))
     const label = `${enabled ? kind === 'audio' ? 'Silenciar' : 'Apagar' : 'Activar'} ${name}`
     button.setAttribute('aria-label', label)
@@ -69,17 +79,33 @@ function update() {
     : 'Disponible después de la admisión. Sin historial al recargar.'
   $('chat-toggle').disabled = channel?.readyState !== 'open' && !$('messages').children.length
 }
+function setInCall(active) {
+  if (document.body.classList.contains('in-call') === active) return
+  document.body.classList.toggle('in-call', active)
+  positionChat()
+}
 function positionChat() {
   if ($('chat-panel').hidden) return
   const dock = $('chat-toggle').getBoundingClientRect()
   const viewport = window.visualViewport
-  const bottom = (viewport?.offsetTop || 0) + (viewport?.height || innerHeight) - 10
-  const top = Math.max(10, Math.min(dock.bottom + 6, bottom - 160))
+  const fullscreen = document.fullscreenElement?.getBoundingClientRect()
+  const leftBound = Math.max(viewport?.offsetLeft || 0, fullscreen?.left || 0) + 10
+  const toolbar = $('room-view').querySelector('.room-toolbar').getBoundingClientRect()
+  const topBound = Math.max(viewport?.offsetTop || 0, fullscreen?.top || 0, toolbar.bottom) + 10
+  const rightBound = Math.min((viewport?.offsetLeft || 0) + (viewport?.width || innerWidth), fullscreen?.right ?? innerWidth) - 10
+  let bottomBound = Math.min((viewport?.offsetTop || 0) + (viewport?.height || innerHeight), fullscreen?.bottom ?? innerHeight) - 10
+  const mediaControls = $('stage').querySelector('.video-controls').getBoundingClientRect()
+  const initialTop = Math.max(topBound, Math.min(dock.bottom + 6, bottomBound - 300))
+  if (mediaControls.bottom > initialTop && mediaControls.top < bottomBound && mediaControls.top - topBound >= 110) {
+    bottomBound = mediaControls.top - 8
+  }
+  const width = Math.max(0, Math.min(dock.width, rightBound - leftBound))
+  const height = Math.min(300, Math.max(0, bottomBound - topBound))
+  const top = Math.max(topBound, Math.min(dock.bottom + 6, bottomBound - height))
   const panel = $('chat-panel')
-  panel.style.left = `${dock.left}px`
-  panel.style.width = `${dock.width}px`
+  panel.style.left = `${Math.max(leftBound, Math.min(dock.left, rightBound - width))}px`
+  panel.style.width = `${width}px`
   panel.style.top = `${top}px`
-  const height = Math.min(300, Math.max(100, bottom - top))
   panel.style.height = `${height}px`
   panel.classList.toggle('compact', height < 220)
 }
@@ -107,8 +133,60 @@ function resetChat() {
 function clearInvitation() {
   $('invite').hidden = true
   $('link').value = ''
+  $('patient-name').textContent = ''
+  $('patient-name').hidden = true
+}
+function updateAppointmentOptions(preferredId = '') {
+  const select = $('appointment-select')
+  const patientId = $('patient-select').value
+  select.replaceChildren(new Option('Sin turno asociado', ''))
+  for (const appointment of appointments.filter(item => item.patientId === patientId)) {
+    select.add(new Option(appointment.label, appointment.id))
+  }
+  select.value = [...select.options].some(option => option.value === preferredId) ? preferredId : ''
+}
+async function loadPatients(preferredPatientId = '', preferredAppointmentId = '') {
+  loadingPatients = true
+  patientsLoaded = false
+  patients = []
+  appointments = []
+  $('patient-select').replaceChildren(new Option('Cargando pacientes...', ''))
+  $('appointment-select').replaceChildren(new Option('Sin turno asociado', ''))
+  update()
+  try {
+    const data = await api('/api/patients')
+    if (!Array.isArray(data.patients) || !Array.isArray(data.appointments)) {
+      throw new Error('La respuesta de pacientes y turnos no tiene el formato esperado.')
+    }
+    if (data.patients.some(item => !item || typeof item.id !== 'string' || !item.id || typeof item.name !== 'string' || !item.name)
+      || data.appointments.some(item => !item || typeof item.id !== 'string' || !item.id
+        || typeof item.patientId !== 'string' || !item.patientId || typeof item.label !== 'string' || !item.label)) {
+      throw new Error('La lista de pacientes o turnos contiene datos inválidos.')
+    }
+    patients = data.patients
+    appointments = data.appointments
+    const patientSelect = $('patient-select')
+    patientSelect.replaceChildren(new Option('Elegí un paciente', ''))
+    for (const patient of patients) patientSelect.add(new Option(patient.name, patient.id))
+    patientSelect.value = patients.some(patient => patient.id === preferredPatientId) ? preferredPatientId : ''
+    updateAppointmentOptions(patientSelect.value === preferredPatientId ? preferredAppointmentId : '')
+    patientsLoaded = true
+    if (!patients.length) report(new Error('No hay pacientes disponibles para crear una videoconsulta.'))
+    else if (preferredPatientId && !patientSelect.value) report(new Error('El paciente recibido desde la app no está disponible. Elegí un paciente de la lista.'))
+    else if (patientSelect.value && preferredAppointmentId && !$('appointment-select').value) {
+      report(new Error('El turno recibido desde la app no está disponible para el paciente elegido.'))
+    } else $('error').textContent = ''
+  } catch (error) {
+    $('patient-select').replaceChildren(new Option('No se pudieron cargar pacientes', ''))
+    report(error)
+  } finally {
+    loadingPatients = false
+    update()
+  }
 }
 $('chat-toggle').onclick = () => setChatOpen($('chat-panel').hidden)
+$('patient-select').onchange = () => { updateAppointmentOptions(); $('error').textContent = ''; update() }
+$('appointment-select').onchange = () => { $('error').textContent = ''; update() }
 $('chat-close').onclick = () => { setChatOpen(false); $('chat-toggle').focus({ preventScroll: true }) }
 $('chat-panel').addEventListener('keydown', event => {
   if (event.key === 'Escape') { event.preventDefault(); setChatOpen(false) }
@@ -137,6 +215,7 @@ function closePeer() {
   update()
 }
 function release() {
+  setInCall(false)
   mediaGeneration++
   closePeer()
   joining = false
@@ -153,6 +232,10 @@ function release() {
   update()
 }
 function showTiming(data) {
+  if (role === 'professional' && typeof data.patientName === 'string' && data.patientName) {
+    $('patient-name').textContent = `Paciente: ${data.patientName}`
+    $('patient-name').hidden = false
+  }
   clearTimeout(expiryTimer)
   clearInterval(countdownTimer)
   const remainingMs = Math.max(0, data.expiresAt - data.serverNow)
@@ -336,12 +419,15 @@ $('create').onclick = async () => {
   update()
   try {
     if (socket || accessToken) throw new Error('Finalizá la sala actual antes de crear otra.')
+    const patientId = $('patient-select').value
+    const appointmentId = $('appointment-select').value
+    if (!patientsLoaded || !patientId) throw new Error('Elegí un paciente antes de crear la videoconsulta.')
     const durationMinutes = Number($('duration').value)
     if (!$('duration').value || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 120) {
       throw new Error('Elegí una duración entera entre 1 y 120 minutos.')
     }
     const data = await api('/api/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ durationMinutes }) })
+      body: JSON.stringify({ durationMinutes, patientId, ...(appointmentId ? { appointmentId } : {}) }) })
     accessToken = data.token
     role = 'professional'
     $('link').value = data.patientLink
@@ -378,7 +464,7 @@ async function toggleDevice(kind) {
   $('error').textContent = ''
   let acquired
   try {
-    if (!$('consent').checked || (!admin && role !== 'patient')) throw new Error('Aceptá la prueba e iniciá sesión o abrí una invitación antes de activar dispositivos.')
+    if (!admin && role !== 'patient') throw new Error('Iniciá sesión o abrí una invitación antes de activar dispositivos.')
     const existing = stream?.getTracks().find(track => track.kind === kind && track.readyState === 'live')
     if (existing && kind === 'audio') {
       existing.enabled = !existing.enabled
@@ -396,7 +482,7 @@ async function toggleDevice(kind) {
       audio: kind === 'audio' ? { echoCancellation: true, noiseSuppression: true } : false,
       video: kind === 'video' ? { width: { ideal: 640, max: 1280 }, height: { ideal: 480, max: 720 }, facingMode: 'user' } : false,
     })
-    if (before !== mediaGeneration || !$('consent').checked) { acquired.getTracks().forEach(track => track.stop()); return }
+    if (before !== mediaGeneration) { acquired.getTracks().forEach(track => track.stop()); return }
     const track = acquired.getTracks()[0]
     if (!track || track.kind !== kind) throw new Error('No se recibió el dispositivo solicitado.')
     const activePeer = peer
@@ -434,7 +520,7 @@ $('mic').onclick = () => toggleDevice('audio')
 $('camera').onclick = () => toggleDevice('video')
 $('join').onclick = async () => {
   if (!accessToken) { report(new Error('Creá una sala o abrí la invitación antes de entrar.')); return }
-  if (!$('consent').checked || joining || socket) return
+  if (joining || socket) return
   $('error').textContent = ''
   stream ??= new MediaStream()
   joining = true
@@ -459,8 +545,8 @@ $('join').onclick = async () => {
   socket.on('identity', data => { role = data.role; update() })
   socket.on('connect', () => { status('Señalización conectada. Esperando admisión.'); update() })
   socket.on('connect_error', error => { report(error); release(); status('No se pudo entrar a la sala.') })
-  socket.on('disconnect', () => { closePeer(); status('Se perdió la señalización. Sin compartir medios; requiere nueva admisión.'); $('admit').hidden = $('reject').hidden = true })
-  socket.on('ended', reason => { release(); accessToken = null; clearInvitation(); $('waiting').textContent = 'Sala finalizada.'; status(reason); update() })
+  socket.on('disconnect', () => { setInCall(false); closePeer(); status('Se perdió la señalización. Sin compartir medios; requiere nueva admisión.'); $('admit').hidden = $('reject').hidden = true })
+  socket.on('ended', reason => { setInCall(false); release(); accessToken = null; clearInvitation(); $('waiting').textContent = 'Sala finalizada.'; status(reason); update() })
   socket.on('state', data => {
     showTiming(data)
     $('waiting').textContent = role === 'patient'
@@ -468,6 +554,7 @@ $('join').onclick = async () => {
       : data.patientPresent ? data.admitted ? 'Paciente admitido.' : 'Tu paciente está esperando: admitilo para conectar.' : 'Esperando que tu paciente abra el enlace y entre.'
     $('admit').hidden = $('reject').hidden = role !== 'professional' || !data.patientPresent || data.admitted
     $('end').hidden = role !== 'professional'
+    setInCall(Boolean(data.admitted && data.professionalPresent && data.patientPresent))
     if (!data.admitted || !data.professionalPresent || !data.patientPresent) {
       closePeer()
       status(role === 'patient' ? 'Sala de espera: esperando admisión del profesional.' : 'Sala abierta: admití al paciente cuando esté listo.')
@@ -529,8 +616,9 @@ $('login').onsubmit = async event => {
       body: JSON.stringify({ username: $('username').value, password: $('password').value }) })
     $('password').value = ''
     admin = true
-    status('Acceso administrativo confirmado. Creá una sala de prueba.')
+    status('Acceso confirmado. Elegí un paciente para crear una videoconsulta.')
     update()
+    await loadPatients(handoffPatientId, handoffAppointmentId)
   } catch (error) { report(error) }
   finally { $('login-submit').disabled = false }
 }
@@ -543,12 +631,64 @@ $('logout').onclick = async () => {
     admin = false
     $('invite').hidden = true
     $('link').value = ''
+    $('patient-name').hidden = true
+    patients = []
+    appointments = []
+    patientsLoaded = false
     resetChat()
     status('Sesión cerrada y salas finalizadas.')
     update()
   } catch (error) { report(error) }
 }
-$('consent').onchange = () => { if (!$('consent').checked) release(); update() }
+let expandedOrigin = null
+function restoreExpandedOrigin() {
+  if (!expandedOrigin) return
+  const { x, y, focus } = expandedOrigin
+  expandedOrigin = null
+  window.scrollTo(x, y)
+  if (focus?.isConnected) focus.focus({ preventScroll: true })
+}
+function updateFullscreenControl() {
+  const expanded = document.fullscreenElement === $('room-view') || document.body.classList.contains('expanded-page')
+  $('fullscreen').setAttribute('aria-pressed', String(expanded))
+  const label = expanded ? 'Salir de la vista ampliada' : 'Ampliar videoconsulta'
+  $('fullscreen').setAttribute('aria-label', label)
+  $('fullscreen').title = label
+  if (!expanded) restoreExpandedOrigin()
+  positionChat()
+}
+function expandPage() {
+  document.body.classList.add('expanded-page')
+  $('room-view').scrollTop = 0
+  $('fullscreen').focus({ preventScroll: true })
+}
+$('fullscreen').onclick = async () => {
+  if (document.fullscreenElement === $('room-view')) {
+    try { await document.exitFullscreen() }
+    catch (error) { report(error) }
+  } else if (document.body.classList.contains('expanded-page')) {
+    document.body.classList.remove('expanded-page')
+  } else {
+    expandedOrigin = { x: scrollX, y: scrollY, focus: document.activeElement }
+    if (document.fullscreenEnabled && $('room-view').requestFullscreen) {
+      try { await $('room-view').requestFullscreen() }
+      catch (error) {
+        report(error)
+        expandPage()
+      }
+    } else expandPage()
+  }
+  updateFullscreenControl()
+}
+document.addEventListener('fullscreenchange', updateFullscreenControl)
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || !document.body.classList.contains('expanded-page')) return
+  event.preventDefault()
+  setChatOpen(false)
+  document.body.classList.remove('expanded-page')
+  updateFullscreenControl()
+})
+$('room-view').addEventListener('scroll', positionChat, { passive: true })
 const preview = $('self-preview')
 let previewPosition = null
 let drag = null
@@ -600,7 +740,8 @@ async function restoreSession() {
       handoffToken = null
       await api('/api/handoff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) })
       admin = true
-      status('Acceso desde Dr Happy confirmado. Creá una sala de prueba.')
+      status('Acceso desde Dr Happy confirmado. Elegí un paciente para crear una videoconsulta.')
+      await loadPatients(handoffPatientId, handoffAppointmentId)
       return
     }
     const response = await fetch('/api/session', { signal: AbortSignal.timeout(15000) })
@@ -608,7 +749,10 @@ async function restoreSession() {
     if (response.status === 401) return
     if (!response.ok) throw new Error(data.error)
     admin = data.admin === true
-    if (admin) status('Sesión administrativa recuperada. Creá una sala.')
+    if (admin) {
+      status('Sesión administrativa recuperada. Elegí un paciente para crear una videoconsulta.')
+      await loadPatients(handoffPatientId, handoffAppointmentId)
+    }
   } catch (error) { status('No se pudo recuperar el acceso. Abrí la videoconsulta otra vez desde Dr Happy o iniciá sesión aquí.'); report(error) }
   finally { authorizing = false; update() }
 }

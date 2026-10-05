@@ -171,7 +171,10 @@ try {
             profile_json:{fullName:prof.full_name,specialty:prof.specialty,email:prof.email},
             patients_json:[{id:'patient-'+id,ownerUserId:id,nombre:'Paciente',apellido:id,dni:id==='account-a'?'11111111':'22222222',
               email:'patient@example.invalid',consultations:[],documents:[],dentalStatus:'provisional',
-              createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}],appointments_json:[],
+              createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}],
+            appointments_json:id==='account-b'?[{id:'appointment-b',patientId:'patient-account-b',patientName:'Paciente account-b',
+              patientEmail:'patient@example.invalid',scheduledDate:new Date().toLocaleDateString('en-CA'),scheduledTime:'12:00',
+              reason:'Videoconsulta fixture',createdAt:new Date().toISOString(),createdByUserId:id,status:'confirmed'}]:[],
             treatment_ledger_json:[],treatment_ledger_initialized:true}};
           if(localStorage.getItem('fixture-medical')){
             if(body.action==='save')localStorage.setItem('fixture-document-patients',JSON.stringify(body.patients));
@@ -186,7 +189,7 @@ try {
   await command('Page.navigate', { url: origin + '/' })
   const ready = (name) => wait(`document.body?.innerText.includes(${JSON.stringify(name)})&&Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Cerrar sesión'))`)
   await ready('Profesional A')
-  assert.equal(await evaluate(`document.querySelectorAll('button.video-pilot-link').length`), 0, 'Non-admin does not see video pilot links')
+  assert.equal(await evaluate(`document.querySelectorAll('button.video-consultation-link').length`), 0, 'Non-admin does not see video links')
   await wait(`performance.getEntriesByType('resource').some(r=>r.name.includes('vademecum.json'))`)
   await wait(`performance.getEntriesByType('resource').some(r=>/cie-10/.test(r.name))`)
   assert(await evaluate(`window.__calls.some(call=>call.slug==='fetch-medical-news')`), 'Clinical resources still load after authenticated restoration')
@@ -261,16 +264,17 @@ try {
   await wait(`document.body.innerText.includes('Herramientas clínicas y protocolos')`)
   await checkTouchLayout('clinical tools')
   await click('Inicio')
-  const videoLinkSelector = 'button.video-pilot-link'
-  assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(videoLinkSelector)}).length`), 2, 'Admin sees header and navigation video links')
+  const videoLinkSelector = 'button.video-consultation-link'
+  assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(videoLinkSelector)}).length`), 2, 'Admin sees quick-action and navigation video links')
+  assert(await evaluate(`!document.querySelector('.topbar .video-consultation-link')`), 'No separate header video button')
   for (const [width, height, mobile] of [[1280, 900, false], [390, 844, true]]) {
     await command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile })
     assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(${JSON.stringify(videoLinkSelector)})).map(a=>({type:a.type,text:a.textContent.includes('Videoconsulta')}))`),
       Array.from({ length: 2 }, () => ({ type: 'button', text: true })))
-    assert(await evaluate(`document.querySelector('button.video-pilot-link.ghost').getBoundingClientRect().height>=44`), 'Header video link has a usable touch target')
+    if (mobile) assert(await evaluate(`document.querySelector('.home-botonera .video-consultation-link').getBoundingClientRect().height>=44`), 'General quick action has a usable touch target')
     await evaluate(`document.querySelector('.sidebar-handle').click()`)
     await wait(`document.querySelector('.app-sidebar').classList.contains('open')`)
-    assert(await evaluate(`(()=>{const a=document.querySelector('.sidebar-nav button.video-pilot-link');a.focus();const r=a.getBoundingClientRect();return document.activeElement===a&&r.width>=42&&r.height>=44&&getComputedStyle(a).display!=='none'})()`), 'Navigation video link is keyboard focusable with a usable touch target')
+    assert(await evaluate(`(()=>{const a=document.querySelector('.sidebar-nav button.video-consultation-link');a.focus();const r=a.getBoundingClientRect();return document.activeElement===a&&r.width>=42&&r.height>=44&&getComputedStyle(a).display!=='none'})()`), 'Navigation video link is keyboard focusable with a usable touch target')
     await command('Page.bringToFront')
     await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r', unmodifiedText: '\r', windowsVirtualKeyCode: 13 })
     await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
@@ -280,7 +284,7 @@ try {
       if (videoTab) break
       await sleep(100)
     }
-    assert(videoTab, 'Video link opens the public pilot in a separate tab: ' + await evaluate(`JSON.stringify({body:document.body.innerText.slice(-1800),calls:window.__calls.filter(call=>call.slug==='video-handoff')})`))
+    assert(videoTab, 'Video link opens videoconsulta in a separate tab: ' + await evaluate(`JSON.stringify({body:document.body.innerText.slice(-1800),calls:window.__calls.filter(call=>call.slug==='video-handoff')})`))
     assert.equal(videoTab.url, `https://video.drhappy.com.ar/#handoff=${'a'.repeat(64)}`, 'Only short-lived pass goes in fragment, never app session/password')
     const attachedVideo = await command('Target.attachToTarget', { targetId: videoTab.targetId, flatten: true })
     const openerCheck = await command('Runtime.evaluate', { expression: 'window.opener===null', returnByValue: true }, attachedVideo.sessionId)
@@ -291,26 +295,40 @@ try {
     await command('Target.closeTarget', { targetId: videoTab.targetId })
     assert.equal(await evaluate(`location.origin`), origin, 'Opening video preserves the app workspace')
   }
-  await evaluate(`window.__savedOpen=window.open;window.open=()=>null;document.querySelector('button.video-pilot-link.ghost').click()`)
+  await evaluate(`window.__savedOpen=window.open;window.open=()=>null;document.querySelector('.home-botonera .video-consultation-link').click()`)
   await wait(`document.body.innerText.includes('El navegador bloqueó la pestaña')`)
-  await evaluate(`window.open=window.__savedOpen;window.__failVideo=true;document.querySelector('button.video-pilot-link.ghost').click()`)
-  await wait(`document.body.innerText.includes('Pase de prueba rechazado.')&&!document.querySelector('button.video-pilot-link.ghost').disabled`)
-  await evaluate(`window.__failVideo=false;window.__delayVideo=true;document.querySelector('button.video-pilot-link.ghost').click()`)
-  await wait(`!!window.__finishVideo&&document.querySelector('button.video-pilot-link.ghost').disabled`)
+  await evaluate(`window.open=window.__savedOpen;window.__failVideo=true;document.querySelector('.home-botonera .video-consultation-link').click()`)
+  await wait(`document.body.innerText.includes('Pase de prueba rechazado.')&&!document.querySelector('.home-botonera .video-consultation-link').disabled`)
+  await evaluate(`window.__failVideo=false;window.__delayVideo=true;document.querySelector('.home-botonera .video-consultation-link').click()`)
+  await wait(`!!window.__finishVideo&&document.querySelector('.home-botonera .video-consultation-link').disabled`)
   await evaluate(`localStorage.setItem('drhappy-session-v2',JSON.stringify({userId:'account-a',token:'token-account-a'}));window.__finishVideo()`)
-  await wait(`!document.querySelector('button.video-pilot-link.ghost').disabled`)
+  await wait(`!document.querySelector('.home-botonera .video-consultation-link').disabled`)
   assert.equal((await command('Target.getTargets')).targetInfos.filter(tab=>tab.url==='about:blank').length, 0, 'Failed/account-changed requests close their blank tabs')
   await evaluate(`window.__delayVideo=false;localStorage.setItem('drhappy-session-v2',JSON.stringify({userId:'account-b',token:'token-account-b'}))`)
-  console.log('Video pilot access passed: permissions, keyboard/mobile entry, one-use fragment, no opener, blocked popup, rejected pass and account-change cleanup.')
+  console.log('Video access passed: permissions, keyboard/mobile entry, one-use fragment, no opener, blocked popup, rejected pass and account-change cleanup.')
   await evaluate(`window.__finishWorkspace()`)
   await sleep(500)
   assert(await evaluate(`document.body.innerText.includes('Profesional B')&&!document.body.innerText.includes('Profesional A')`))
   await click('Mis pacientes')
   await wait(`document.querySelector('.patient-directory-grid')?.textContent.includes('account-b')`)
   assert(await evaluate(`!document.querySelector('.patient-directory-grid').textContent.includes('account-a')`), 'Old account patients cannot reappear')
+  await evaluate(`(()=>{
+    window.__originalVideoOpen=window.open;
+    window.open=()=>({opener:null,closed:false,document:{title:'',body:{textContent:''}},location:{replace:url=>{window.__patientVideoUrl=url}},close(){}});
+    const card=document.querySelector('.patient-directory-card');
+    Array.from(card.querySelectorAll('button')).find(button=>button.textContent.includes('Videoconsulta')).click();
+  })()`)
+  await wait(`!!window.__patientVideoUrl`)
+  assert.equal(await evaluate(`window.__patientVideoUrl`), `https://video.drhappy.com.ar/#handoff=${'a'.repeat(64)}&patient=patient-account-b`, 'Patient action sends only the opaque patient ID and temporary pass, never name/DNI')
+  await click('Turnera')
+  await wait(`Array.from(document.querySelectorAll('.turnera-card-actions button')).some(button=>button.textContent.includes('Videoconsulta'))`)
+  await evaluate(`window.__patientVideoUrl=null;Array.from(document.querySelectorAll('.turnera-card-actions button')).find(button=>button.textContent.includes('Videoconsulta')).click()`)
+  await wait(`!!window.__patientVideoUrl`)
+  assert.equal(await evaluate(`window.__patientVideoUrl`), `https://video.drhappy.com.ar/#handoff=${'a'.repeat(64)}&patient=patient-account-b&appointment=appointment-b`, 'Appointment action preselects its patient and appointment without clinical content in URL')
+  await evaluate(`window.open=window.__originalVideoOpen`)
   await click('Cerrar sesión')
   await wait(`!!document.querySelector('input[name="username"]')`)
-  assert.equal(await evaluate(`document.querySelectorAll('button.video-pilot-link').length`), 0, 'Logout removes admin video access')
+  assert.equal(await evaluate(`document.querySelectorAll('button.video-consultation-link').length`), 0, 'Logout removes admin video access')
   await evaluate(`window.__delayLogin=true`)
   await login('account-a')
   await wait(`!!window.__finishLogin`)
@@ -333,6 +351,7 @@ try {
   console.log('Mobile sessions passed: restore without sessionStorage, resume, reload, account switch with late workspace, concurrent logins, logout and no automatic reentry.')
   console.log('Public entry passed: no splash, no anonymous clinical downloads, authenticated catalog loading preserved.')
   await checkTouchLayout('public entry')
+  if (process.env.TEST_VIDEO_ACCESS !== '1') {
   assert(await evaluate(`!/(user-scalable\\s*=\\s*no|maximum-scale\\s*=\\s*1(?:\\D|$))/.test(document.querySelector('meta[name=viewport]').content)`), 'Viewport never blocks manual accessibility zoom')
   assert.equal(await evaluate(`getComputedStyle(document.documentElement).webkitTextSizeAdjust`), '100%', 'Orientation does not inflate text')
   assert.deepEqual(await evaluate(`Array.from(document.querySelector('.auth-promo-tool-grid').children).slice(0,4).map(e=>e.querySelector(':scope > strong').textContent)`),
@@ -473,7 +492,9 @@ try {
   assert(await evaluate(`!document.querySelector('.public-install-banner')`), 'Standalone app does not offer installation')
   console.log('Public installation passed: Android fallback, native accepted/dismissed/error, persistent button, iPhone guide and standalone suppression.')
   }
+  }
 
+  if (process.env.TEST_VIDEO_ACCESS !== '1') {
   await evaluate(`(()=>{
     localStorage.setItem('fixture-medical','true');
     localStorage.setItem('drhappy-active-user','account-a');
@@ -580,6 +601,7 @@ try {
   await wait(`Array.from(document.querySelectorAll('.app-error-toast p')).some(p=>p.textContent.includes('Cambiaste de paciente'))`)
   assert(await evaluate(`JSON.parse(localStorage.getItem('fixture-document-patients')).every(patient=>patient.documents.every(doc=>doc.name!=='No cruzar pacientes.pdf'))`), 'An upload interrupted by a patient switch is not attached to either record')
   console.log('Patient documents passed: collapsed text list, original preservation, multi-page PDF/color rendering, optional annex selection, eight-page PDF output, isolated patient choices, upload persistence and explicit unreadable-file failure.')
+  }
 } finally {
   if (socket?.readyState === WebSocket.OPEN) socket.close()
   browser.kill()
