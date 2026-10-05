@@ -15,6 +15,8 @@ let activating = false
 let iceServers = []
 let hasTurn = false
 let expiryTimer
+let countdownTimer
+let warningShown = false
 let connectionTimer
 let disconnectTimer
 const pendingMessages = new Map()
@@ -23,6 +25,7 @@ const report = error => { $('error').textContent = error instanceof Error ? erro
 const status = text => { $('status').textContent = text }
 function update() {
   $('create').hidden = !admin || role === 'patient'
+  $('duration-panel').hidden = !admin || role === 'patient'
   $('login-panel').hidden = admin || role === 'patient'
   $('logout').hidden = !admin || role === 'patient'
   $('identity').textContent = role ? `Rol de prueba: ${role === 'professional' ? 'profesional' : 'paciente'}.` : 'Sin sala.'
@@ -55,6 +58,10 @@ function release() {
   closePeer()
   joining = false
   clearTimeout(expiryTimer)
+  clearInterval(countdownTimer)
+  $('countdown').hidden = true
+  $('time-warning').textContent = ''
+  warningShown = false
   if (socket) { socket.disconnect(); socket = null }
   stream?.getTracks().forEach(track => track.stop())
   stream = null
@@ -65,6 +72,32 @@ function release() {
   $('camera').setAttribute('aria-pressed', 'false')
   $('end').hidden = $('admit').hidden = $('reject').hidden = true
   update()
+}
+function showTiming(data) {
+  clearTimeout(expiryTimer)
+  clearInterval(countdownTimer)
+  const remainingMs = Math.max(0, data.expiresAt - data.serverNow)
+  const deadline = performance.now() + remainingMs
+  const render = () => {
+    const remaining = Math.max(0, Math.ceil((deadline - performance.now()) / 1000))
+    const formatted = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
+    $('countdown').hidden = false
+    $('countdown').textContent = data.startedAt === null
+      ? `Consulta de ${data.durationMinutes} minutos. Sin iniciar. Invitación: ${formatted} para admitir al invitado.`
+      : `Consulta de ${data.durationMinutes} minutos · Tiempo restante: ${formatted}`
+    if (data.startedAt !== null && remaining <= 300 && !warningShown) {
+      warningShown = true
+      $('time-warning').textContent = 'Quedan 5 minutos o menos. Al llegar a cero, la sala se cerrará y se apagarán los dispositivos.'
+    }
+  }
+  render()
+  countdownTimer = setInterval(render, 1000)
+  expiryTimer = setTimeout(() => {
+    release()
+    accessToken = null
+    status(data.startedAt === null ? 'La invitación venció sin iniciar la consulta.' : 'La consulta finalizó: se cumplió la duración elegida.')
+    update()
+  }, remainingMs)
 }
 function request(event, data) {
   return new Promise((resolve, reject) => {
@@ -185,12 +218,19 @@ $('create').onclick = async () => {
   $('create').disabled = true
   try {
     if (socket) throw new Error('Salí de la sala actual antes de crear otra.')
-    const data = await api('/api/rooms', { method: 'POST' })
+    const durationMinutes = Number($('duration').value)
+    if (!$('duration').value || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 120) {
+      throw new Error('Elegí una duración entera entre 1 y 120 minutos.')
+    }
+    const data = await api('/api/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ durationMinutes }) })
     accessToken = data.token
     role = 'professional'
     $('link').value = data.patientLink
     $('invite').hidden = false
-    status('Sala creada por 30 minutos. Compartí el enlace privado con tu invitado.')
+    warningShown = false
+    showTiming(data)
+    status(`Sala creada: ${data.durationMinutes} minutos desde la primera admisión. Compartí el enlace privado con tu invitado.`)
     update()
   } catch (error) { report(error) }
   finally { $('create').disabled = false }
@@ -259,8 +299,7 @@ $('join').onclick = async () => {
   socket.on('disconnect', () => { closePeer(); status('Se perdió la señalización. Sin compartir medios; requiere nueva admisión.'); $('admit').hidden = $('reject').hidden = true })
   socket.on('ended', reason => { release(); accessToken = null; status(reason); update() })
   socket.on('state', data => {
-    clearTimeout(expiryTimer)
-    expiryTimer = setTimeout(() => { release(); accessToken = null; status('La sala de prueba venció.'); update() }, Math.max(0, data.expiresAt - Date.now()))
+    showTiming(data)
     $('waiting').textContent = data.patientPresent ? data.admitted ? 'Paciente admitido.' : 'Paciente de prueba esperando admisión.' : 'El paciente todavía no entró.'
     $('admit').hidden = $('reject').hidden = role !== 'professional' || !data.patientPresent || data.admitted
     $('end').hidden = role !== 'professional'
@@ -304,7 +343,7 @@ $('play-audio').onclick = async () => {
 $('admit').onclick = () => request('admit').catch(report)
 $('reject').onclick = () => request('reject').catch(report)
 $('end').onclick = () => request('end').catch(report)
-$('leave').onclick = () => { release(); status('Saliste. Cámara y micrófono apagados.') }
+$('leave').onclick = () => { release(); status('Saliste. Cámara y micrófono apagados. Si la consulta ya comenzó, su tiempo sigue corriendo.') }
 $('chat').onsubmit = event => {
   event.preventDefault()
   const text = $('text').value.trim()

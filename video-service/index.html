@@ -30,10 +30,10 @@
 <body>
 <main>
   <h1>Dr Happy · Videoconsulta piloto</h1>
-  <p class="notice"><strong>Prueba técnica, no atención clínica.</strong> Creación de salas solo para administradores de Dr Happy. El invitado no necesita cuenta. Sin grabación, transcripción ni Sofía. Enlaces de 30 minutos, revocados al finalizar. Un reinicio del servidor cierra las salas. No uses información clínica ni datos de pacientes reales.</p>
+  <p class="notice"><strong>Prueba técnica, no atención clínica.</strong> Creación de salas solo para administradores de Dr Happy. El invitado no necesita cuenta. Sin grabación, transcripción ni Sofía. La invitación permite hasta 30 minutos de espera antes de la primera admisión. Después, la consulta dura los minutos elegidos y el enlace se revoca al finalizar. Un reinicio del servidor cierra las salas. No uses información clínica ni datos de pacientes reales.</p>
   <section id="login-panel" class="panel">
     <h2>Acceso administrativo</h2>
-    <p>Usá tu usuario o email y contraseña de Dr Happy. La sesión de este piloto dura una hora. Las cuentas que usan solo Google necesitan definir su contraseña en Dr Happy.</p>
+    <p>Usá tu usuario o email y contraseña de Dr Happy. La sesión administrativa dura tres horas, para cubrir la espera y consultas de hasta 120 minutos. Las cuentas que usan solo Google necesitan definir su contraseña en Dr Happy.</p>
     <form id="login">
       <label>Usuario o email<input id="username" autocomplete="username" required maxlength="160"></label>
       <label>Contraseña<input id="password" type="password" autocomplete="current-password" required maxlength="256"></label>
@@ -43,10 +43,16 @@
   <div class="controls"><button id="logout" hidden>Cerrar sesión administrativa</button></div>
   <label><input id="consent" type="checkbox"> Entiendo que es una prueba técnica y acepto compartir audio/video con el otro participante únicamente después de la admisión.</label>
   <p id="network" class="muted">Conexión directa con STUN de Google para detectar rutas de red. No envía el audio/video al servidor STUN. Algunas redes necesitan TURN; la configuración se comprueba al entrar.</p>
+  <section id="duration-panel" hidden class="panel">
+    <label>Duración de la consulta (minutos)<input id="duration" type="number" min="1" max="120" step="1" value="40" inputmode="numeric" aria-describedby="duration-help"></label>
+    <p id="duration-help" class="muted">Elegí entre 1 y 120 minutos antes de crear la sala. El tiempo comienza con la primera admisión, continúa durante cortes o reingresos y no se reinicia. Al llegar a cero, se finaliza para ambos. Para cambiar la duración, creá otra sala.</p>
+  </section>
   <div class="controls"><button id="create" hidden class="primary">Crear sala de prueba</button><button id="devices" disabled>Activar cámara y micrófono</button><button id="audio-only" disabled>Activar solo micrófono</button><button id="join" disabled>Entrar a la sala</button></div>
   <p class="muted">Si aparece «device in use», usá cámara en un solo navegador y «Activar solo micrófono» en el otro. No se simula video. Usá auriculares para evitar eco.</p>
   <div id="invite" hidden class="link"><label>Enlace privado para el invitado (no lo publiques)<input id="link" readonly></label><button id="copy">Copiar enlace</button></div>
   <p id="identity">Sin sala.</p>
+  <p id="countdown" hidden></p>
+  <p id="time-warning" role="status"></p>
   <p id="status" role="status">Iniciá sesión como administrador o abrí una invitación.</p>
   <p id="error" role="alert"></p>
   <div class="grid">

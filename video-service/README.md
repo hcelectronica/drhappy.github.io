@@ -34,7 +34,8 @@ ser HTTPS, sin ruta ni barra final. Solo se permite HTTP para loopback local.
    contrasena de Dr Happy. No es la contrasena de Hostinger. Solo cuentas con
    is_admin=true y activas. Las cuentas exclusivamente Google necesitan una
    contrasena definida en Dr Happy; no se incluye OAuth en este piloto.
-2. Crear sala y copiar invitacion. Aceptar prueba, activar dispositivos y entrar.
+2. Elegir duracion entera de 1 a 120 minutos (40 por defecto), crear sala y copiar
+   invitacion. Aceptar prueba, activar dispositivos y entrar.
 3. Invitado: abrir el enlace privado, aceptar prueba, activar dispositivos y entrar.
    No necesita cuenta; no puede crear salas ni admitir/finalizar.
 4. Administrador: Admitir invitado. Antes de ese paso no hay medios ni chat remotos.
@@ -43,10 +44,22 @@ ser HTTPS, sin ruta ni barra final. Solo se permite HTTP para loopback local.
 
 Usar auriculares y dos dispositivos; una misma camara puede estar ocupada si
 se intenta usar desde dos navegadores. Existe entrada solo con microfono.
-No publicar invitaciones. Duran 30 minutos como maximo; son acceso al piloto.
+No publicar invitaciones. Hay hasta 30 minutos de espera desde la creacion para
+la primera admision. Esa espera no consume la duracion elegida. La consulta
+empieza con la primera admision, no con la activacion de la camara ni cuando
+termina de conectar WebRTC. El reloj continua durante desconexiones y reingresos;
+readmitir no lo reinicia. Ambos participantes ven el tiempo restante y un aviso
+cuando quedan 5 minutos o menos. Al cumplir la duracion se cierra la sala,
+se apagan dispositivos y se revocan ambos accesos en el servidor.
+Para cambiar la duracion se necesita una sala nueva.
 Se quita el fragmento de la barra de direcciones al cargar; recargar requiere
 volver a abrir el enlace. El token administrativo de sala requiere tambien
-la cookie HttpOnly del propietario. Sesion de video: una hora.
+la cookie HttpOnly del propietario. Sesion administrativa de video: tres horas.
+El permiso real se sigue revalidando en Supabase. Si la sesion local restante
+no cubre la espera maxima mas la duracion solicitada, se informa que hay que
+volver a iniciar sesion; no se crea una sala que se cortaria prematuramente.
+Los cronometros del navegador usan el tiempo restante enviado por el servidor
+y un reloj monotono para no depender de la fecha configurada en el dispositivo.
 
 ## Redes y TURN
 

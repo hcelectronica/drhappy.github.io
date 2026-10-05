@@ -7,8 +7,10 @@ import { join } from 'node:path'
 import { createVideoServer } from './videoServer.mjs'
 
 const origin = 'http://127.0.0.1:5195'
+let clockOffset = 0
 const app = createVideoServer({
   origin, iceServers: [],
+  now: () => Date.now() + clockOffset,
   login: async (username, password) => {
     if (username !== 'test-admin' || password !== 'test-password') throw Object.assign(new Error('Acceso denegado.'), { status: 401 })
     return 'test-upstream-session'
@@ -101,15 +103,23 @@ try {
   const professional = await attach(tabs.find(tab => tab.type === 'page'))
   await professional.navigate(origin)
   await professional.wait(`!!document.querySelector('#create')`)
+  await professional.wait(`typeof document.querySelector('#login').onsubmit==='function'`)
   assert.equal(await professional.evaluate(`navigator.mediaDevices!==undefined`), true)
   assert.equal(await professional.evaluate(`document.querySelector('#create').hidden`), true, 'Anonymous cannot create a room')
   await professional.evaluate(`document.querySelector('#username').value='test-admin';document.querySelector('#password').value='test-password'`)
   await professional.click('login-submit')
   await professional.wait(`!document.querySelector('#create').hidden`)
+  assert.equal(await professional.evaluate(`document.querySelector('#duration').value`), '40')
+  await professional.evaluate(`document.querySelector('#duration').value='121'`)
+  await professional.click('create')
+  await professional.wait(`document.querySelector('#error').textContent.includes('entre 1 y 120')`)
+  assert.equal(await professional.evaluate(`document.querySelector('#link').value`), '')
+  await professional.evaluate(`document.querySelector('#duration').value='40'`)
   await professional.click('consent')
   await professional.click('create')
   await professional.wait(`document.querySelector('#link').value.includes('#invite=')`)
   const invite = await professional.evaluate(`document.querySelector('#link').value`)
+  assert.match(await professional.evaluate(`document.querySelector('#countdown').textContent`), /40 minutos.*Sin iniciar/)
   const patientTab = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' }).then(response => response.json())
   const patient = await attach(patientTab)
   await patient.navigate(invite)
@@ -123,6 +133,7 @@ try {
   await professional.wait(`!document.querySelector('#admit').hidden`)
   assert.equal(await patient.evaluate(`document.querySelector('#remote').srcObject===null`), true, 'No media before admission')
   assert.equal(await patient.evaluate(`document.querySelector('#send').disabled`), true, 'No chat before admission')
+  assert.match(await patient.evaluate(`document.querySelector('#countdown').textContent`), /40 minutos.*Sin iniciar/)
   const duplicateTab = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' }).then(response => response.json())
   const duplicate = await attach(duplicateTab)
   await duplicate.navigate(invite)
@@ -136,6 +147,7 @@ try {
   await professional.wait(`document.querySelector('#status').textContent.includes('conectados por WebRTC')&&!document.querySelector('#send').disabled`)
   await patient.wait(`document.querySelector('#status').textContent.includes('conectados por WebRTC')&&!document.querySelector('#send').disabled`)
   for (const client of [professional, patient]) {
+    assert.match(await client.evaluate(`document.querySelector('#countdown').textContent`), /40 minutos.*Tiempo restante: (40:00|39:\d\d)/)
     assert.deepEqual(await client.evaluate(`(()=>{const l=document.querySelector('#local').srcObject,r=document.querySelector('#remote').srcObject;return{localAudio:l.getAudioTracks().length,remoteAudio:r.getAudioTracks().length,remoteVideo:r.getVideoTracks().length,separate:l.getAudioTracks()[0]!==r.getAudioTracks()[0]}})()`),
       { localAudio: 1, remoteAudio: 1, remoteVideo: 1, separate: true })
     await client.wait(`document.querySelector('#remote').videoWidth>0`)
@@ -200,12 +212,36 @@ try {
   assert.equal(await patient.evaluate(`document.querySelector('#local').srcObject===null`), true)
   await professional.click('end')
   await professional.wait(`document.querySelector('#status').textContent.includes('finalizo')`)
+  await professional.evaluate(`document.querySelector('#duration').value='1'`)
+  await professional.click('create')
+  await professional.wait(`document.querySelector('#link').value!==${JSON.stringify(nextInvite)}`)
+  const timedInvite = await professional.evaluate(`document.querySelector('#link').value`)
+  await professional.click('devices')
+  await professional.click('join')
+  await patient.navigate(timedInvite)
+  await patient.wait(`document.querySelector('#identity')?.textContent.includes('paciente')`)
+  assert.equal(await patient.evaluate(`document.querySelector('#duration-panel').hidden`), true)
+  await patient.click('consent')
+  await patient.click('devices')
+  await patient.click('join')
+  await professional.wait(`!document.querySelector('#admit').hidden`)
+  await professional.click('admit')
+  for (const client of [professional, patient]) {
+    await client.wait(`document.querySelector('#status').textContent.includes('conectados por WebRTC')`)
+    assert.match(await client.evaluate(`document.querySelector('#time-warning').textContent`), /5 minutos o menos/)
+    await client.evaluate(`void(window.__timedTracks=document.querySelector('#local').srcObject.getTracks())`)
+  }
+  clockOffset += 60_000
+  for (const client of [professional, patient]) {
+    await client.wait(`/duraci[oó]n elegida/.test(document.querySelector('#status').textContent)`)
+    assert.equal(await client.evaluate(`window.__timedTracks.every(t=>t.readyState==='ended')`), true, 'Timed expiry stops all devices')
+  }
   await professional.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
   assert.equal(await professional.evaluate(`document.documentElement.scrollWidth<=390`), true, 'No horizontal overflow on mobile')
   await professional.click('logout')
   await professional.wait(`!document.querySelector('#login-panel').hidden`)
   assert.equal(await professional.evaluate(`document.querySelector('#create').hidden`), true)
-  console.log('PASS: real WebRTC with fake devices between two isolated tabs; waiting gate; duplicate participant denied; separate audio tracks; remote video frames; two-way chat/ack and safe text; mic/camera controls; readmission after leaving; finalization stops tracks and revokes invite; rejection releases devices.')
+  console.log('PASS: duration selection/validation, waiting vs consultation countdown for both roles, final warning and timed closure stops devices; real WebRTC with fake devices, waiting gate, separate audio/video, two-way chat, controls, readmission, rejection, finalization and mobile layout.')
 } finally {
   await app.close()
   for (const socket of sockets) socket.close()

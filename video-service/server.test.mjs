@@ -42,8 +42,8 @@ async function fixture(t, options = {}) {
     assert.match(response.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/)
     return response.cookie
   }
-  const create = async cookie => {
-    const response = await request('/api/rooms', { cookie, method: 'POST' })
+  const create = async (cookie, durationMinutes = 40) => {
+    const response = await request('/api/rooms', { cookie, method: 'POST', data: { durationMinutes } })
     assert.equal(response.status, 201)
     return { ...response.data, patient: response.data.patientLink.split('#invite=')[1] }
   }
@@ -126,7 +126,7 @@ test('Server gates admission, roles, signals, duplicate access, reconnection, lo
 })
 
 test('Reject invalidates invitation; end invalidates both participants; expiry closes active rooms', async t => {
-  const f = await fixture(t, { roomDurationMs: 1500 })
+  const f = await fixture(t, { waitingDurationMs: 1500 })
   const cookie = await f.login()
   let room = await f.create(cookie)
   let professional = (await f.connect(room.token, cookie)).client
@@ -189,9 +189,83 @@ test('Room caps and login throttling reject excess requests', async t => {
   const f = await fixture(t)
   const cookie = await f.login()
   for (let index = 0; index < 3; index++) await f.create(cookie)
-  assert.equal((await f.request('/api/rooms', { cookie, method: 'POST' })).status, 429)
+  assert.equal((await f.request('/api/rooms', { cookie, method: 'POST', data: { durationMinutes: 40 } })).status, 429)
   for (let index = 0; index < 19; index++) await f.request('/api/login', { method: 'POST', data: { username: 'admin', password: 'bad' } })
   assert.equal((await f.request('/api/login', { method: 'POST', data: { username: 'admin', password: 'bad' } })).status, 429)
+})
+
+test('Duration accepts 1 through 120 whole minutes and rejects missing, fractional or coerced values', async t => {
+  const f = await fixture(t)
+  const cookie = await f.login()
+  assert.equal((await f.create(cookie, 1)).durationMinutes, 1)
+  assert.equal((await f.create(cookie, 120)).durationMinutes, 120)
+  for (const value of [undefined, null, 0, -1, 121, 40.5, '40', true]) {
+    const anotherCookie = await f.login()
+    const result = await f.request('/api/rooms', { cookie: anotherCookie, method: 'POST', data: { durationMinutes: value } })
+    assert.equal(result.status, 400, `Invalid duration: ${String(value)}`)
+  }
+})
+
+test('First admission starts selected duration; duplicate admission and reentry do not reset it; expiry revokes access', async t => {
+  let clock = Date.now()
+  const f = await fixture(t, { now: () => clock })
+  const cookie = await f.login()
+  const room = await f.create(cookie, 40)
+  assert.equal(room.startedAt, null)
+  assert.equal(room.expiresAt - room.serverNow, 30 * 60_000)
+  clock += 29 * 60_000
+  const professional = (await f.connect(room.token, cookie)).client
+  const patient = (await f.connect(room.patient)).client
+  const started = event(patient, 'state')
+  await emit(professional, 'admit')
+  const state = await started
+  assert.equal(state.durationMinutes, 40)
+  assert.equal(state.startedAt, clock)
+  assert.equal(state.expiresAt - state.startedAt, 40 * 60_000, 'Wait does not consume consultation time')
+  assert.equal((await emit(professional, 'admit')).ok, true)
+  const left = event(professional, 'state')
+  patient.disconnect()
+  assert.equal((await left).expiresAt, state.expiresAt)
+  clock += 20 * 60_000
+  const rejoined = (await f.connect(room.patient)).client
+  const readmitted = event(rejoined, 'state')
+  await emit(professional, 'admit')
+  const again = await readmitted
+  assert.equal(again.startedAt, state.startedAt)
+  assert.equal(again.expiresAt, state.expiresAt)
+  assert.equal(again.expiresAt - again.serverNow, 20 * 60_000)
+  const ended = event(rejoined, 'ended')
+  clock = state.expiresAt
+  assert.match(await ended, /duracion elegida/)
+  assert((await f.connect(room.patient)).error)
+  assert((await f.connect(room.token, cookie)).error)
+})
+
+test('120-minute consultation is not cut off by the former one-hour administrative session', async t => {
+  let clock = Date.now()
+  const f = await fixture(t, { now: () => clock })
+  const cookie = await f.login()
+  const room = await f.create(cookie, 120)
+  clock += 29 * 60_000
+  const professional = (await f.connect(room.token, cookie)).client
+  const patient = (await f.connect(room.patient)).client
+  const started = event(patient, 'state')
+  await emit(professional, 'admit')
+  const state = await started
+  clock += 119 * 60_000
+  assert.equal((await f.request('/api/session', { cookie })).status, 200)
+  assert.equal((await emit(professional, 'admit')).ok, true)
+  const ended = event(patient, 'ended')
+  clock = state.expiresAt
+  assert.match(await ended, /duracion elegida/)
+})
+
+test('Creation refuses a session too old to cover chosen duration and waiting window', async t => {
+  let clock = Date.now()
+  const f = await fixture(t, { now: () => clock })
+  const cookie = await f.login()
+  clock += 31 * 60_000
+  assert.equal((await f.request('/api/rooms', { cookie, method: 'POST', data: { durationMinutes: 120 } })).status, 409)
 })
 
 test('Invalid public origins and ICE configurations fail explicitly at startup', () => {

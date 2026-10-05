@@ -14,7 +14,8 @@ export function createVideoServer({
   iceServers = JSON.parse(process.env.ICE_SERVERS_JSON || '[{"urls":"stun:stun.l.google.com:19302"}]'),
   login,
   verifyAdmin,
-  roomDurationMs = 30 * 60_000,
+  waitingDurationMs = 30 * 60_000,
+  now = Date.now,
   checkIntervalMs = 30_000,
 } = {}) {
   const parsedOrigin = new URL(origin)
@@ -35,10 +36,10 @@ export function createVideoServer({
   let closing = false
   const hasTurn = iceServers.some(item => (Array.isArray(item.urls) ? item.urls : [item.urls]).some(url => /^turns?:/.test(url)))
   function rate(key, limit, windowMs) {
-    const now = Date.now()
+    const current = now()
     let bucket = buckets.get(key)
-    if (!bucket || now >= bucket.until) {
-      bucket = { count: 0, until: now + windowMs }
+    if (!bucket || current >= bucket.until) {
+      bucket = { count: 0, until: current + windowMs }
       buckets.set(key, bucket)
     }
     if (++bucket.count > limit) throw fail(429, 'Demasiados intentos. Espera un momento y reintenta.')
@@ -82,11 +83,11 @@ export function createVideoServer({
   function getSession(request) {
     const cookie = (request.headers.cookie || '').split(';').map(part => part.trim()).find(part => part.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1)
     const session = validToken(cookie) ? sessions.get(hash(cookie)) : null
-    if (!session || session.expiresAt <= Date.now()) throw fail(401, 'Inicia sesion como administrador para continuar.')
+    if (!session || session.expiresAt <= now()) throw fail(401, 'Inicia sesion como administrador para continuar.')
     return session
   }
   async function authorize(session) {
-    if (sessions.get(session.key) !== session || session.expiresAt <= Date.now()) throw fail(401, 'La sesion administrativa vencio.')
+    if (sessions.get(session.key) !== session || session.expiresAt <= now()) throw fail(401, 'La sesion administrativa vencio.')
     const id = await verifyAdmin(session.upstream)
     if (id !== session.id) throw fail(403, 'La cuenta administrativa cambio.')
     if (sessions.get(session.key) !== session) throw fail(401, 'La sesion se cerro.')
@@ -98,7 +99,7 @@ export function createVideoServer({
   }
   function identity(rawToken) {
     const result = validToken(rawToken) ? tokens.get(hash(rawToken)) : null
-    if (!result || !rooms.has(result.room.id) || result.room.expiresAt <= Date.now()) throw fail(401, 'El acceso no es valido o vencio.')
+    if (!result || !rooms.has(result.room.id) || result.room.expiresAt <= now()) throw fail(401, 'El acceso no es valido o vencio.')
     return result
   }
   async function participant(request, rawToken) {
@@ -146,8 +147,8 @@ export function createVideoServer({
         if (previous) revoke(previous)
         const raw = opaque()
         const key = hash(raw)
-        sessions.set(key, { key, upstream, id, expiresAt: Date.now() + 60 * 60_000 })
-        response.setHeader('Set-Cookie', `${cookieName}=${raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age=3600${local ? '' : '; Secure'}`)
+        sessions.set(key, { key, upstream, id, expiresAt: now() + 3 * 60 * 60_000 })
+        response.setHeader('Set-Cookie', `${cookieName}=${raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age=10800${local ? '' : '; Secure'}`)
         return json(response, 200, { ok: true })
       }
       if (path === '/api/logout' && request.method === 'POST') {
@@ -165,15 +166,23 @@ export function createVideoServer({
         const session = getSession(request)
         rate(`create:${session.key}`, 5, 60_000)
         await authorize(session)
+        const data = await body(request)
+        if (!Number.isInteger(data?.durationMinutes) || data.durationMinutes < 1 || data.durationMinutes > 120) {
+          throw fail(400, 'La duracion debe ser un numero entero entre 1 y 120 minutos.')
+        }
+        if (session.expiresAt < now() + waitingDurationMs + data.durationMinutes * 60_000) {
+          throw fail(409, 'Tu sesion administrativa no alcanza para esta duracion y la espera. Cierra sesion y volve a ingresar antes de crear la sala.')
+        }
         if (rooms.size >= 30 || [...rooms.values()].filter(room => room.owner === session.key).length >= 3) throw fail(429, 'Finaliza las salas anteriores antes de crear otra.')
         const id = opaque()
         const professional = opaque()
         const patient = opaque()
-        const room = { id, owner: session.key, professional: hash(professional), patient: hash(patient), expiresAt: Date.now() + roomDurationMs, admitted: false, sockets: {} }
+        const room = { id, owner: session.key, professional: hash(professional), patient: hash(patient),
+          durationMinutes: data.durationMinutes, startedAt: null, expiresAt: now() + waitingDurationMs, admitted: false, sockets: {} }
         rooms.set(id, room)
         tokens.set(room.professional, { room, role: 'professional' })
         tokens.set(room.patient, { room, role: 'patient' })
-        return json(response, 201, { token: professional, patientLink: `${origin}/#invite=${patient}`, expiresAt: room.expiresAt })
+        return json(response, 201, { token: professional, patientLink: `${origin}/#invite=${patient}`, ...timing(room) })
       }
       if (path === '/api/ice' && request.method === 'GET') {
         rate('ice-global', 120, 60_000)
@@ -217,8 +226,11 @@ export function createVideoServer({
     }
   })
   function snapshot(room) {
-    const state = { professionalPresent: Boolean(room.sockets.professional), patientPresent: Boolean(room.sockets.patient), admitted: room.admitted, expiresAt: room.expiresAt }
+    const state = { professionalPresent: Boolean(room.sockets.professional), patientPresent: Boolean(room.sockets.patient), admitted: room.admitted, ...timing(room) }
     for (const socket of Object.values(room.sockets)) socket.emit('state', state)
+  }
+  function timing(room) {
+    return { durationMinutes: room.durationMinutes, startedAt: room.startedAt, expiresAt: room.expiresAt, serverNow: now() }
   }
   function endRoom(room, reason) {
     tokens.delete(room.professional)
@@ -232,9 +244,9 @@ export function createVideoServer({
   io.on('connection', socket => {
     const { room, role } = socket.data.identity
     socket.emit('identity', { role })
-    snapshot(room)
+    if (rooms.has(room.id)) snapshot(room)
     const active = () => {
-      if (!rooms.has(room.id) || room.expiresAt <= Date.now() || room.sockets[role] !== socket) throw fail(401, 'La sala vencio o se cerro.')
+      if (!rooms.has(room.id) || room.expiresAt <= now() || room.sockets[role] !== socket) throw fail(401, 'La sala vencio o se cerro.')
     }
     const privileged = async () => {
       active()
@@ -258,7 +270,14 @@ export function createVideoServer({
     }
     socket.on('admit', action(ack => {
       if (!room.sockets.patient) return ack({ error: 'El paciente todavia no entro.' })
-      if (!room.admitted) { room.admitted = true; snapshot(room) }
+      if (!room.admitted) {
+        if (room.startedAt === null) {
+          room.startedAt = now()
+          room.expiresAt = room.startedAt + room.durationMinutes * 60_000
+        }
+        room.admitted = true
+        snapshot(room)
+      }
       ack({ ok: true })
     }))
     socket.on('end', action(ack => {
@@ -296,17 +315,18 @@ export function createVideoServer({
       if (room.sockets[role] === socket) {
         delete room.sockets[role]
         room.admitted = false
-        snapshot(room)
+        if (rooms.has(room.id)) snapshot(room)
       }
       buckets.delete(`action:${socket.id}`)
       buckets.delete(`signal:${socket.id}`)
     })
   })
   const expiry = setInterval(() => {
-    const now = Date.now()
-    for (const room of rooms.values()) if (room.expiresAt <= now) endRoom(room, 'La sala de prueba vencio.')
-    for (const session of sessions.values()) if (session.expiresAt <= now) revoke(session)
-    for (const [key, bucket] of buckets) if (now >= bucket.until) buckets.delete(key)
+    const current = now()
+    for (const room of rooms.values()) if (room.expiresAt <= current) endRoom(room,
+      room.startedAt === null ? 'La invitacion vencio sin iniciar la consulta.' : 'La consulta finalizo: se cumplio la duracion elegida.')
+    for (const session of sessions.values()) if (session.expiresAt <= current) revoke(session)
+    for (const [key, bucket] of buckets) if (current >= bucket.until) buckets.delete(key)
   }, 1000)
   let checking = false
   const check = setInterval(async () => {
