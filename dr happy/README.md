@@ -30,6 +30,12 @@ El inicio muestra la oferta y el formulario de acceso sin la espera de la bienve
 
 Validar con `npm run build` y `node tests/mobile-session.browser.mjs` contra el servidor local (`TEST_APP_ORIGIN` permite probar el build). La prueba comprueba cargas clínicas tras restaurar sesión y su ausencia al volver al inicio público.
 
+## Formularios y gestos en iPhone
+
+En pantallas menores a 900 px o dispositivos con puntero táctil, los campos de texto, selectores y áreas de texto tienen un mínimo de 16 px para evitar el zoom automático al enfocarlos en Safari. Los tamaños mayores se conservan y los controles nativos pueden contraerse dentro de su contenedor. El ajuste automático de texto se fija en 100% para estabilizar la orientación; el zoom manual sigue permitido, también dentro del modal de turnos. Se mantienen los desplazamientos internos del odontograma y las tablas, sin ocultar globalmente los desbordes.
+
+`node tests/mobile-session.browser.mjs` comprueba fuentes y ancho del documento a 320, 375, 390, 430 y 844 px con entrada táctil emulada: inicio, pacientes, nueva ficha, odontograma, perfil, turnera, modal de turno, herramientas, acceso, registro y recuperación. Usa Edge/Chromium; no sustituye una prueba de Safari en iPhone real con teclado abierto, rotación y zoom manual.
+
 ## Videoconsulta piloto para administradores
 
 La cabecera y la navegación lateral de una sesión administrativa ofrecen

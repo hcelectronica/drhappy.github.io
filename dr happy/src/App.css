@@ -5327,7 +5327,7 @@ body.theme-night .turnera-card-actions {
   overflow-y: auto !important;
   overflow-x: hidden;
   overscroll-behavior: contain;
-  touch-action: pan-y;
+  touch-action: pan-y pinch-zoom;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -5833,5 +5833,16 @@ body.theme-night .turnera-card-actions {
   .paper-record-thumb {
     width: 72px;
     height: 92px;
+  }
+}
+
+/* Safari amplía al enfocar campos con texto menor a 16 px. */
+@media (max-width: 899px), (any-pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em) !important;
+    min-width: 0;
+    max-width: 100%;
   }
 }

@@ -60,7 +60,26 @@ try {
     }
     throw new Error('UI timeout: ' + expression + '\n' + await evaluate('document.body.innerText.slice(-2000)'))
   }
+  const checkTouchLayout = async label => {
+    for (const [width, height] of [[320, 568], [375, 667], [390, 844], [430, 932], [844, 390]]) {
+      await command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true })
+      await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`)
+      const layout = await evaluate(`(()=>{
+        const visible=e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+        const fields=Array.from(document.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]):not([type=file]):not([type=color]),select,textarea')).filter(visible);
+        return {width:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth,
+          smallFields:fields.filter(e=>parseFloat(getComputedStyle(e).fontSize)<16).slice(0,10).map(e=>({name:e.name||e.getAttribute('aria-label')||e.placeholder,cls:e.className,font:getComputedStyle(e).fontSize})),
+          overflow:Array.from(document.querySelectorAll('main *,.app *')).filter(visible).filter(e=>e.getBoundingClientRect().right>${width}+1).slice(0,10).map(e=>({tag:e.tagName,cls:typeof e.className==='string'?e.className:'SVG',right:Math.round(e.getBoundingClientRect().right)}))};
+      })()`)
+      const description = `${label} ${width}px: ${JSON.stringify(layout)}`
+      assert.equal(layout.smallFields.length, 0, 'Touch fields must not trigger Safari auto-zoom: ' + description)
+      assert(layout.scroll <= width + 1, 'Page must not escape viewport: ' + description)
+    }
+    await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+    console.log('Touch layout passed: ' + label)
+  }
   await command('Page.enable')
+  await command('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
   await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
   await command('Page.addScriptToEvaluateOnNewDocument', { source: `
     if(location.origin===${JSON.stringify(origin)}){
@@ -105,6 +124,7 @@ try {
         const prof=account(id);
         window.__calls.push({slug:url.split('/').pop(),action:body.action,id,token});
         let data={success:true};
+        if(url.endsWith('/dental-records'))data={success:true,record:null,revision:0,history:[]};
         if(url.endsWith('/video-handoff')){
           if(window.__delayVideo)await new Promise(resolve=>{window.__finishVideo=resolve});
           if(window.__failVideo)return new Response(JSON.stringify({error:'Pase de prueba rechazado.'}),{status:403,headers:{'content-type':'application/json'}});
@@ -155,6 +175,31 @@ try {
     await wait(`Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes(${JSON.stringify(text)})&&!b.disabled)`)
     await evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes(${JSON.stringify(text)})&&!b.disabled).click()`)
   }
+  await checkTouchLayout('authenticated home')
+  await click('Mis pacientes')
+  await wait(`document.querySelector('.patient-directory-grid')?.textContent.includes('account-a')`)
+  await checkTouchLayout('patient directory')
+  await click('+ Nuevo paciente')
+  await wait(`!!document.querySelector('.dental-new-patient')`)
+  await checkTouchLayout('new patient form')
+  await click('Volver a pacientes')
+  await click('Mis pacientes')
+  await click('Abrir ficha')
+  await wait(`!!document.querySelector('.dental-preview')`)
+  await checkTouchLayout('dental chart')
+  await click('Mis pacientes')
+  await click('Perfil')
+  await wait(`!!document.querySelector('.profile-stage')`)
+  await checkTouchLayout('professional profile')
+  await click('Turnera')
+  await wait(`!!document.querySelector('.turnera-view-switch')||document.body.innerText.includes('Turnera Médica')`)
+  await checkTouchLayout('appointments')
+  await click('Nuevo turno')
+  await wait(`!!document.querySelector('#appointment-modal-title')`)
+  await checkTouchLayout('appointment modal')
+  assert(await evaluate(`getComputedStyle(document.querySelector('.turnera-modal-card')).touchAction.includes('pinch-zoom')`), 'Modal scrolling preserves pinch zoom')
+  await evaluate(`document.querySelector('.turnera-modal-card .drhappy-modal-close-btn').click()`)
+  await wait(`!document.querySelector('#appointment-modal-title')`)
   await click('Mis pacientes')
   await wait(`document.querySelector('.patient-directory-grid')?.textContent.includes('account-a')`)
   await evaluate(`window.__delayWorkspace=true`)
@@ -181,6 +226,11 @@ try {
   await evaluate(`window.__delayWorkspace=false`)
   await login('account-b')
   await ready('Profesional B')
+  await checkTouchLayout('administrator home')
+  await click('Herramientas')
+  await wait(`document.body.innerText.includes('Herramientas clínicas y protocolos')`)
+  await checkTouchLayout('clinical tools')
+  await click('Inicio')
   const videoLinkSelector = 'button.video-pilot-link'
   assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(videoLinkSelector)}).length`), 2, 'Admin sees header and navigation video links')
   for (const [width, height, mobile] of [[1280, 900, false], [390, 844, true]]) {
@@ -252,6 +302,9 @@ try {
   assert(await evaluate(`!window.__calls.some(call=>call.slug==='fetch-medical-news')`), 'Anonymous entry does not request medical news')
   console.log('Mobile sessions passed: restore without sessionStorage, resume, reload, account switch with late workspace, concurrent logins, logout and no automatic reentry.')
   console.log('Public entry passed: no splash, no anonymous clinical downloads, authenticated catalog loading preserved.')
+  await checkTouchLayout('public entry')
+  assert(await evaluate(`!/(user-scalable\\s*=\\s*no|maximum-scale\\s*=\\s*1(?:\\D|$))/.test(document.querySelector('meta[name=viewport]').content)`), 'Viewport never blocks manual accessibility zoom')
+  assert.equal(await evaluate(`getComputedStyle(document.documentElement).webkitTextSizeAdjust`), '100%', 'Orientation does not inflate text')
   assert.deepEqual(await evaluate(`Array.from(document.querySelector('.auth-promo-tool-grid').children).slice(0,4).map(e=>e.querySelector(':scope > strong').textContent)`),
     ['Atención médica', 'Odontograma interactivo', 'Turnera', 'Modo ambulancia'])
   await command('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] })
@@ -308,10 +361,12 @@ try {
   assert(await evaluate(`document.querySelector('#auth-login-panel').hidden`), 'Public login starts collapsed')
   await click('Iniciar sesión')
   assert(await evaluate(`!document.querySelector('#auth-login-panel').hidden`))
+  await checkTouchLayout('expanded login')
   await click('Cerrar acceso')
   assert(await evaluate(`document.querySelector('#auth-login-panel').hidden`))
   await click('Iniciar sesión')
   await click('Crear usuario')
+  await checkTouchLayout('registration')
   for (const [width, height] of [[390, 844], [320, 568]]) {
     await command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true })
     const layout = await evaluate(`(()=>{const e=document.querySelector('.register-modal-card'),f=e.querySelector('form'),r=e.getBoundingClientRect();return{top:r.top,bottom:r.bottom,viewport:innerHeight,scroll:f.scrollHeight,client:f.clientHeight}})()`)
@@ -334,6 +389,7 @@ try {
   assert(await evaluate(`!document.querySelector('#auth-login-panel').hidden`))
   await click('¿Olvidaste tu contraseña?')
   await wait(`document.body.innerText.includes('Recuperar contraseña')`)
+  await checkTouchLayout('password recovery')
   await click('Volver a iniciar sesión')
   assert(await evaluate(`!document.querySelector('#auth-login-panel').hidden`))
   await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
