@@ -233,7 +233,7 @@ try {
   for (const [width, height, mobile] of [[360, 740, true], [390, 844, true], [768, 1024, false], [1280, 900, false]]) {
     await professional.command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile })
     assert.equal(await professional.evaluate(`document.documentElement.scrollWidth<=${width}`), true, 'Compact creation toolbar never overflows viewport')
-    assert(await professional.evaluate(`(()=>{const c=document.querySelector('#create').getBoundingClientRect(),j=document.querySelector('#join').getBoundingClientRect(),s=document.querySelector('#stage').getBoundingClientRect(),d=document.querySelector('#duration').getBoundingClientRect();return Math.abs(c.top-j.top)<1&&s.top>=c.bottom&&s.top-c.bottom<20&&d.width<=72})()`), 'Create/Enter stay together immediately above video and duration stays compact')
+    assert(await professional.evaluate(`(()=>{const c=document.querySelector('#create').getBoundingClientRect(),j=document.querySelector('#join').getBoundingClientRect(),s=document.querySelector('#stage').getBoundingClientRect(),d=document.querySelector('#duration').getBoundingClientRect();return Math.abs(c.top-j.top)<1&&c.top>=s.bottom&&c.top-s.bottom<20&&d.width<=72})()`), 'Create/Enter stay together immediately below video and duration stays compact')
     if (process.env.VIDEO_SCREENSHOT_DIR) {
       const image = await professional.command('Page.captureScreenshot', { format: 'png' })
       await writeFile(join(process.env.VIDEO_SCREENSHOT_DIR, `video-v6-room-${width}.png`), Buffer.from(image.data, 'base64'))
@@ -448,10 +448,10 @@ try {
     await professional.command('Page.bringToFront')
     await professional.command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile })
     await professional.evaluate(`window.scrollTo(0,0)`)
-    await professional.wait(`(()=>{const p=document.querySelector('#chat-panel').getBoundingClientRect(),d=document.querySelector('#chat-toggle').getBoundingClientRect();return p.bottom<=${height}&&Math.abs(p.width-d.width)<1})()`)
+    await professional.wait(`(()=>{const p=document.querySelector('#chat-panel').getBoundingClientRect();return p.bottom<=${height}&&p.width>0&&p.width<=340&&p.left>=0&&p.right<=${width}})()`)
     const panel = await professional.evaluate(`(()=>{const p=document.querySelector('#chat-panel').getBoundingClientRect(),s=document.querySelector('#stage').getBoundingClientRect();return{top:p.top,bottom:p.bottom,stageBottom:s.bottom}})()`)
     assert(panel.top >= 0 && panel.bottom <= height, 'Professional floating chat stays within viewport: ' + JSON.stringify({ width, height, ...panel }))
-    assert(await professional.evaluate(`document.querySelector('#end').getBoundingClientRect().bottom<=document.querySelector('#stage').getBoundingClientRect().top`), 'Open chat never covers finalization control above video')
+    assert(await professional.evaluate(`(()=>{const p=document.querySelector('#chat-panel').getBoundingClientRect(),e=document.querySelector('#end').getBoundingClientRect();return e.right<=p.left||e.left>=p.right||e.bottom<=p.top||e.top>=p.bottom})()`), 'Open chat never covers finalization control')
   }
   await professional.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
   for (const [width, height, mobile] of [[390, 844, true], [1280, 900, false]]) {

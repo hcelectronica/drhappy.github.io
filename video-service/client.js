@@ -53,8 +53,9 @@ function update() {
   $('patient-selection').hidden = !admin || role === 'patient' || Boolean(accessToken) || Boolean(socket)
   $('login-panel').hidden = admin || role === 'patient' || authorizing
   $('logout').hidden = !admin || role === 'patient'
-  $('identity').textContent = role ? `Ingresás como ${role === 'professional' ? 'profesional' : 'paciente'}.` : 'Elegí un paciente para crear una videoconsulta.'
-  $('identity').hidden = Boolean(socket)
+  $('identity').textContent = role ? `Ingresás como ${role === 'professional' ? 'profesional' : 'paciente'}.` : ''
+  $('identity').hidden = Boolean(socket) || !role
+  $('waiting').hidden = !accessToken && !socket && $('waiting').textContent === 'Sin participantes conectados.'
   $('create').disabled = creating || Boolean(accessToken) || Boolean(socket) || !patientsLoaded || !$('patient-select').value
   $('create').textContent = creating ? 'Creando...' : 'Crear sala'
   $('duration').disabled = creating || Boolean(accessToken)
@@ -137,20 +138,31 @@ function positionChat() {
   const viewport = window.visualViewport
   const fullscreen = document.fullscreenElement?.getBoundingClientRect()
   const leftBound = Math.max(viewport?.offsetLeft || 0, fullscreen?.left || 0) + 10
-  const toolbar = $('room-view').querySelector('.room-toolbar').getBoundingClientRect()
-  const topBound = Math.max(viewport?.offsetTop || 0, fullscreen?.top || 0, toolbar.bottom) + 10
+  const topBound = Math.max(viewport?.offsetTop || 0, fullscreen?.top || 0) + 10
   const rightBound = Math.min((viewport?.offsetLeft || 0) + (viewport?.width || innerWidth), fullscreen?.right ?? innerWidth) - 10
-  let bottomBound = Math.min((viewport?.offsetTop || 0) + (viewport?.height || innerHeight), fullscreen?.bottom ?? innerHeight) - 10
-  const mediaControls = $('stage').querySelector('.video-controls').getBoundingClientRect()
-  const initialTop = Math.max(topBound, Math.min(dock.bottom + 6, bottomBound - 300))
-  if (mediaControls.bottom > initialTop && mediaControls.top < bottomBound && mediaControls.top - topBound >= 110) {
-    bottomBound = mediaControls.top - 8
+  const bottomBound = Math.min((viewport?.offsetTop || 0) + (viewport?.height || innerHeight), fullscreen?.bottom ?? innerHeight) - 10
+  const width = Math.max(0, Math.min(340, rightBound - leftBound))
+  const left = Math.max(leftBound, Math.min(dock.right - width, rightBound - width))
+  const spaceAbove = Math.min(dock.top - 6, bottomBound) - topBound
+  const spaceBelow = bottomBound - (dock.bottom + 6)
+  let top
+  let height
+  // El chat se abre hacia arriba desde la barra de botones, sin tapar los controles del video.
+  if (spaceAbove >= 160 || spaceAbove >= spaceBelow) {
+    let bottom = Math.min(dock.top - 6, bottomBound)
+    const controls = $('stage').querySelector('.video-controls').getBoundingClientRect()
+    const overlapsControls = left < controls.right && left + width > controls.left
+    if (overlapsControls && controls.top < bottom && controls.bottom > bottom - 320 && controls.top - 8 - topBound >= 110) {
+      bottom = controls.top - 8
+    }
+    height = Math.max(0, Math.min(320, bottom - topBound))
+    top = bottom - height
+  } else {
+    top = Math.max(topBound, dock.bottom + 6)
+    height = Math.max(0, Math.min(300, bottomBound - top))
   }
-  const width = Math.max(0, Math.min(dock.width, rightBound - leftBound))
-  const height = Math.min(300, Math.max(0, bottomBound - topBound))
-  const top = Math.max(topBound, Math.min(dock.bottom + 6, bottomBound - height))
   const panel = $('chat-panel')
-  panel.style.left = `${Math.max(leftBound, Math.min(dock.left, rightBound - width))}px`
+  panel.style.left = `${left}px`
   panel.style.width = `${width}px`
   panel.style.top = `${top}px`
   panel.style.height = `${height}px`
