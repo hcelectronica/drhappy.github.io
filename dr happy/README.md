@@ -84,6 +84,17 @@ admisión, audio/video y chat, sin grabación; la transcripción local es opcion
 
 Validar metadatos con `node --test tests/video-consultations.test.mjs` y `tests/video-consultations.sql` (rollback). `LIVE_VIDEO_CONSULTATIONS_TEST=1 node tests/video-consultations.edge.mjs` comprueba Edge y Node desplegados, paciente/turno propios, admisión y cierre durables, con fixtures sintéticos eliminados en `finally`.
 
+## Consulta virtual asistida (piloto)
+
+Solo para las cuentas de `VIRTUAL_CONSULT_PILOT_EMAILS` (`src/virtualConsultService.ts` y `PILOT_EMAILS` en la función). El profesional la activa desde **💬 Consultas virtuales**, fija el valor y comparte `https://drhappy.com.ar/consulta/<slug>`.
+
+- `public/consulta/index.html`: formulario público con aviso visible de servicio **pago y no obligatorio**, filtro de señales de alarma (deriva a guardia/107 antes de cobrar), hasta 3 fotos/PDF y pago con Mercado Pago del profesional. Con `?s=<token>` muestra el seguimiento y la descarga del PDF.
+- `supabase/functions/virtual-consultations`: acciones públicas (`get-page`, `submit`, `status`) y del profesional (`get-settings`, `save-settings`, `list`, `attachments`, `mark-paid`, `draft`, `publish`, `decline`, `mark-recorded`). El envío también se guarda en `patient_invite_submissions`, por lo que el paciente se incorpora o completa por DNI. `draft` usa un cupo de Sofía; `publish` genera el PDF "Devolución de consulta virtual asistida" firmado (`pdf-lib`) y avisa por email.
+- `mercadopago-patient-webhook` acredita las referencias `vc_<id>` y avisa al profesional.
+- Al visar, la app agrega a la historia clínica la evolución `virtual-<id>`. Los reembolsos de consultas derivadas a presencial se hacen manualmente desde Mercado Pago.
+
+Desplegar con la migración `20261006010000_virtual_consultations.sql` y `supabase functions deploy virtual-consultations --no-verify-jwt` (más `mercadopago-patient-webhook`).
+
 ## Documentos clínicos
 
 Desde la ficha del paciente, **Emitir certificado** permite elegir entre un certificado médico y una orden de estudios complementarios. En la orden se busca entre estudios frecuentes codificados o se agrega uno en texto libre; el profesional debe indicar el motivo clínico, puede añadir observaciones y revisar el borrador antes de emitir. Si el contenido no cabe en el PDF, se informa el error antes de guardar la orden. Ambos documentos se guardan en la historia clínica con firma, PDF y QR; las órdenes se identifican como tales en el historial, la descarga y el envío.

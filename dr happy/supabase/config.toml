@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.video-consultations]
 verify_jwt = false
+
+[functions.virtual-consultations]
+verify_jwt = false

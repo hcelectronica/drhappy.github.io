@@ -48,6 +48,46 @@ Deno.serve(async (request) => {
   const payment = await paymentResponse.json().catch(() => null)
   if (!paymentResponse.ok || !payment) return jsonResponse(502, { success: false, message: 'No se pudo validar el pago.' })
   const externalReference = String(payment.external_reference || '').trim()
+  if (externalReference.startsWith('vc_')) {
+    const consultId = externalReference.slice(3)
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(consultId)) return jsonResponse(200, { success: true, ignored: true })
+    const paymentStatus = String(payment.status || 'pending')
+    if (paymentStatus !== 'approved') {
+      await admin.from('virtual_consultations').update({ payment_status: paymentStatus, payment_id: paymentId, updated_at: new Date().toISOString() })
+        .eq('id', consultId).eq('professional_id', account.professional_id).eq('status', 'pending_payment')
+      return jsonResponse(200, { success: true, paymentStatus })
+    }
+    const paidAt = new Date().toISOString()
+    const { data: paid, error: paidError } = await admin.from('virtual_consultations').update({
+      status: 'pending_review', payment_status: 'approved', payment_id: paymentId, paid_at: paidAt, updated_at: paidAt,
+    }).eq('id', consultId).eq('professional_id', account.professional_id).in('status', ['pending_payment', 'cancelled'])
+      .select('nombre, apellido, email, phone').maybeSingle()
+    if (paidError) return jsonResponse(500, { success: false, message: 'No se pudo registrar el pago de la consulta virtual.' })
+    if (paid) {
+      const [{ data: professional }, { data: workspace }] = await Promise.all([
+        admin.from('professionals').select('full_name, email').eq('id', account.professional_id).maybeSingle(),
+        admin.from('user_workspaces').select('profile_json').eq('user_id', account.professional_id).maybeSingle(),
+      ])
+      const profile = (workspace?.profile_json ?? {}) as Record<string, unknown>
+      const to = (typeof profile.email === 'string' && profile.email.trim()) || String(professional?.email || '')
+      const text = [
+        `Hola ${professional?.full_name || 'profesional'},`, '',
+        'Recibiste una nueva consulta virtual asistida (pago aprobado).', '',
+        `Paciente: ${paid.apellido}, ${paid.nombre}`,
+        `Email: ${paid.email}`, ...(paid.phone ? [`Teléfono: ${paid.phone}`] : []), '',
+        'Ingresá a Dr Happy > Consultas virtuales para revisarla, preparar la respuesta con Sofía y visarla.',
+        'https://www.drhappy.com.ar/',
+      ].join('\n')
+      const escaped = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+      await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, subject: 'Dr Happy - Nueva consulta virtual para revisar', type: 'custom', text, templateData: { message: escaped.replaceAll('\n', '<br>') } }),
+        signal: AbortSignal.timeout(10000),
+      }).catch((error) => console.error('[mercadopago-patient-webhook] Aviso de consulta virtual no enviado', error))
+    }
+    return jsonResponse(200, { success: true, paymentStatus })
+  }
   const { data: reservation } = await admin.from('public_booking_reservations').select('id, appointment_id, professional_id, patient_name, patient_dni, patient_email, patient_phone, slot_date, slot_time, amount_to_charge, amount_concept, modality, payment_status, status').eq('professional_id', account.professional_id).eq('appointment_id', externalReference).maybeSingle()
   if (!reservation) return jsonResponse(200, { success: true, ignored: true })
   if (reservation.status === 'cancelled') return jsonResponse(200, { success: true, ignored: true })

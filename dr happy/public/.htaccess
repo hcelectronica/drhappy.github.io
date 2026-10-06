@@ -9,4 +9,6 @@
   RewriteRule ^turnera/([a-z0-9-]+)/?$ /turnos/?p=$1 [R=302,L,QSA]
   # Invitación para que el paciente se registre: /registro/token -> formulario público.
   RewriteRule ^registro/([a-z0-9-]+)/?$ /registro/?t=$1 [R=302,L,QSA]
+  # Consulta virtual asistida: /consulta/slug -> formulario público pago.
+  RewriteRule ^consulta/([a-z0-9-]+)/?$ /consulta/?p=$1 [R=302,L,QSA]
 </IfModule>

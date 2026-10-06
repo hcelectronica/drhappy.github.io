@@ -29,6 +29,9 @@ import { AdminSupportInbox } from './AdminSupportInbox'
 import { SignaturePad } from './SignaturePad'
 import { blobToBase64, buildCertificatePdf, buildQrDataUrl, certificateFileName, certificateSignedContent, formatCertificateDate } from './medicalCertificate'
 import { acknowledgePatientInviteSubmissions, buildPatientInviteUrl, getPatientInviteLink, pullPatientInviteSubmissions } from './patientInviteService'
+import { VirtualConsultInbox } from './VirtualConsultInbox'
+import { isVirtualConsultPilotEmail, listVirtualConsults } from './virtualConsultService'
+import type { VirtualConsult } from './virtualConsultService'
 import type { CertificateEntry } from './medicalCertificate'
 import { STUDY_CATALOG } from './studyCatalog'
 import type { OrderedStudy } from './studyCatalog'
@@ -2808,6 +2811,8 @@ function App() {
   const [ambulanceNewPatient, setAmbulanceNewPatient] = useState<{ nombre: string; apellido: string; dni: string } | null>(null)
   const [previewTrialExpired, setPreviewTrialExpired] = useState(false)
   const [subscriptionAccountOpen, setSubscriptionAccountOpen] = useState(false)
+  const [virtualConsultOpen, setVirtualConsultOpen] = useState(false)
+  const [virtualConsultPending, setVirtualConsultPending] = useState(0)
   const [subscriptionCheckoutLoading, setSubscriptionCheckoutLoading] = useState<SubscriptionPlan | null>(null)
   const [adminBusyUserId, setAdminBusyUserId] = useState<string | null>(null)
   const [passwordChangeDraft, setPasswordChangeDraft] = useState({
@@ -3025,6 +3030,19 @@ function App() {
     return () => window.clearInterval(intervalId)
   }, [activeUser, profile])
   const isAdminSession = isAdminUser(activeUser)
+  const isVirtualConsultPilot = isVirtualConsultPilotEmail(activeUser?.email)
+  useEffect(() => {
+    if (!isVirtualConsultPilot || !isSupabaseConfigured) return
+    let cancelled = false
+    const refresh = () => {
+      void listVirtualConsults().then((result) => {
+        if (!cancelled && result.success) setVirtualConsultPending((result.consults ?? []).filter((item) => item.status === 'pending_review').length)
+      })
+    }
+    refresh()
+    const intervalId = window.setInterval(refresh, 5 * 60_000)
+    return () => { cancelled = true; window.clearInterval(intervalId) }
+  }, [isVirtualConsultPilot])
   const isDentist = normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('odont')
   // Acceso a la Turnera Premium (calendario de ocupación + estadísticas): solo suscripción activa,
   // no incluye usuarios en período de prueba (trial) ni vencidos.
@@ -9885,6 +9903,78 @@ function App() {
     }
   }
 
+  // Registra en la historia clínica una consulta virtual visada; si el paciente no existe (por DNI) lo crea.
+  async function handleRecordVirtualConsult(consult: VirtualConsult, responseText: string, clinicalSummary: string): Promise<boolean> {
+    if (!activeUserId || !profile) return false
+    const dni = consult.dni.replace(/\D/g, '')
+    const now = new Date().toISOString()
+    const existing = patients.find((patient) => patient.dni.replace(/\D/g, '') === dni)
+    const entryId = `virtual-${consult.id}`
+    if (existing?.consultations.some((entry) => entry.id === entryId)) return true
+    const entry: ConsultationEntry = {
+      id: entryId,
+      date: consult.answered_at || now,
+      motivoConsulta: `[CONSULTA VIRTUAL ASISTIDA] ${consult.question.replace(/\s+/g, ' ').slice(0, 140)}`,
+      detalleAtencion: [
+        'Consulta virtual asincrónica (servicio pago, no obligatorio). Devolución asistida por IA y revisada/visada por el profesional.',
+        '', 'Consulta del paciente:', consult.question,
+        consult.attachmentCount ? `\nAdjuntos enviados: ${consult.attachmentCount}` : '',
+        clinicalSummary ? `\nResumen clínico:\n${clinicalSummary}` : '',
+      ].filter((line) => line !== '').join('\n'),
+      pensamientoMedico: '',
+      planManejo: `Devolución enviada al paciente (PDF visado):\n${responseText}`,
+      professionalSignature: {
+        fullName: profile.fullName,
+        licenseNumber: profile.licenseNumber,
+        signatureText: profile.signatureText,
+        signatureImageDataUrl: profile.signatureImage?.dataUrl,
+      },
+    }
+    let record: PatientRecord
+    if (existing) {
+      record = {
+        ...existing,
+        email: existing.email || consult.email || '',
+        telefono: existing.telefono || consult.phone || '',
+        obraSocial: existing.obraSocial || consult.obra_social || '',
+        birthDate: existing.birthDate || consult.birth_date || '',
+        consultations: [entry, ...existing.consultations],
+        updatedAt: now,
+      }
+      record.edad = calculateAge(record.birthDate)
+    } else {
+      const birthDate = consult.birth_date || ''
+      record = {
+        id: crypto.randomUUID(),
+        ownerUserId: activeUserId,
+        nombre: consult.nombre,
+        apellido: consult.apellido,
+        dni,
+        email: consult.email || '',
+        telefono: consult.phone || '',
+        obraSocial: consult.obra_social || '',
+        numeroAfiliado: '',
+        plan: '',
+        birthDate,
+        edad: calculateAge(birthDate),
+        diagnosticoPrincipal: '',
+        patologiasConocidas: '',
+        patologiasCronicas: '',
+        ultimaInternacion: '',
+        cirugiasPrevias: '',
+        direccion: '',
+        documents: [],
+        consultations: [entry],
+        registeredViaInviteAt: consult.created_at,
+        ...(isDentist ? { dentalStatus: 'provisional' as const } : {}),
+        createdAt: now,
+        updatedAt: now,
+      }
+    }
+    persistPatientsBatch([record])
+    return true
+  }
+
   function handleOpenPrescriptionModal(): void {
     if (!selectedPatient) {
       setAppError('Selecciona un paciente para emitir una receta.')
@@ -10970,6 +11060,11 @@ function App() {
       key: 'invite', icon: '📨', label: 'Invitar paciente', hint: 'Link de registro', tone: '#0f766e',
       onClick: handleOpenInvitePatient,
     },
+    isVirtualConsultPilot ? {
+      key: 'virtual-consult', icon: '💬', label: 'Consultas virtuales', hint: virtualConsultPending ? `${virtualConsultPending} para revisar` : 'Asistidas por Sofía', tone: '#0d9488',
+      badge: virtualConsultPending || undefined,
+      onClick: () => setVirtualConsultOpen(true),
+    } : null,
     isModuleEnabled('tools') ? {
       key: 'tools', icon: '💊', label: normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') ? 'Vademécum' : 'Herramientas', hint: normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') ? 'Consulta farmacológica' : 'Protocolos y vademécum', tone: '#7c3aed',
       onClick: handleOpenTools,
@@ -11247,6 +11342,11 @@ function App() {
           <button type="button" title="Invitar paciente" className={inviteModalOpen ? 'active' : ''} onClick={handleOpenInvitePatient}>
             <span>📨</span> Invitar paciente
           </button>
+          {isVirtualConsultPilot ? (
+            <button type="button" title="Consultas virtuales" className={virtualConsultOpen ? 'active' : ''} onClick={() => { setVirtualConsultOpen(true); setSidebarOpen(false) }}>
+              <span>💬</span> Consultas virtuales {virtualConsultPending ? <small>{virtualConsultPending}</small> : null}
+            </button>
+          ) : null}
           {isModuleEnabled('appointments') ? (
             <button type="button" title="Turnera" className={workspaceLayer === 'appointments' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setSidebarOpen(false) }}>
               <span>📅</span> Turnera
@@ -16846,6 +16946,13 @@ function App() {
           onClose={() => setSubscriptionAccountOpen(false)}
           onSubscribe={(plan) => { void handleStartSubscriptionCheckout(plan) }}
           busy={subscriptionCheckoutLoading}
+        />
+      ) : null}
+      {virtualConsultOpen && isVirtualConsultPilot ? (
+        <VirtualConsultInbox
+          onClose={() => setVirtualConsultOpen(false)}
+          onRecordInChart={handleRecordVirtualConsult}
+          onPendingCountChange={setVirtualConsultPending}
         />
       ) : null}
       {sofiaOpen ? (
