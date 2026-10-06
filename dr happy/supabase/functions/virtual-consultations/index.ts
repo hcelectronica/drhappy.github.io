@@ -263,6 +263,9 @@ Deno.serve(async (request) => {
         await admin.storage.from(BUCKET).remove(attachments.map((entry) => String(entry.path)))
         throw insertError
       }
+      // Un reintento del mismo paciente reemplaza a las consultas que dejó sin pagar (si alguna se paga igual, el webhook la reactiva).
+      await admin.from('virtual_consultations').update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('professional_id', settings.professional_id).eq('dni', dni).eq('status', 'pending_payment').neq('id', consultId)
 
       // El paciente queda en la base del profesional; la app lo incorpora por DNI sin duplicar fichas.
       const { error: registryError } = await admin.from('patient_invite_submissions').insert({

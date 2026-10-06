@@ -112,6 +112,10 @@
           <li><strong>No es para urgencias.</strong> Ante una urgencia, andá a la guardia o llamá al 107.</li>
         </ul>
       </div>
+      <div class="notice" id="resumeBox" role="status" hidden>
+        <strong>Tenés una consulta enviada con el pago pendiente.</strong> Tus datos y adjuntos ya están guardados: no hace falta cargarlos de nuevo.
+        <div style="margin-top:10px"><a class="submit" id="resumeLink" href="#" style="min-height:46px;font-size:.95rem">Retomar el pago de esa consulta</a></div>
+      </div>
       <div class="steps" aria-hidden="true">
         <div class="step"><b>1</b>Escribís tu consulta</div>
         <div class="step"><b>2</b>Pagás con Mercado Pago</div>
@@ -311,7 +315,7 @@
           return;
         }
         el('trackTitle').textContent = 'Falta completar el pago';
-        el('trackText').textContent = 'Tu consulta todavía no fue enviada al profesional porque el pago no está acreditado. Si ya pagaste, esperá unos minutos y volvé a abrir este link.';
+        el('trackText').textContent = 'Tu consulta y tus adjuntos quedaron guardados, pero todavía no llegan al profesional porque el pago no está acreditado. Completá el pago con el botón de abajo (no hace falta volver a cargar la consulta). Si ya pagaste, esperá unos minutos y volvé a abrir este link.';
         if (consult.paymentUrl) {
           var pay = document.createElement('a');
           pay.className = 'submit';
@@ -335,6 +339,22 @@
       }).catch(function () { fail('No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.'); });
     }
 
+    // Si quedó una consulta propia sin pagar en este dispositivo, se ofrece retomarla en vez de cargar todo de nuevo.
+    function checkPendingConsult() {
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem('drhappy-virtual-consult-last') || 'null'); } catch (error) { saved = null; }
+      if (!saved || !saved.token || saved.slug !== slug || !/^[a-f0-9]{64}$/.test(saved.token)) return;
+      call({ action: 'status', trackingToken: saved.token }).then(function (result) {
+        if (!result.success || !result.consult || result.consult.status !== 'pending_payment') return;
+        var link = el('resumeLink');
+        link.href = '/consulta/?s=' + saved.token;
+        el('resumeBox').hidden = false;
+      }).catch(function () { /* sin aviso */ });
+    }
+
+    // Al volver con el botón "atrás", algunos navegadores restauran la página congelada: se recarga para mostrar el estado real.
+    window.addEventListener('pageshow', function (event) { if (event.persisted) window.location.reload(); });
+
     if (trackingToken) {
       el('loadingText').textContent = 'Buscando tu consulta...';
       loadTracking();
@@ -354,6 +374,7 @@
         document.title = 'Consulta virtual — ' + heading;
         if (!page.paymentReady) { fail('El profesional todavía no habilitó el cobro en línea para la consulta virtual.'); return; }
         show('formCard');
+        checkPendingConsult();
       }).catch(function () { fail('No pudimos cargar la consulta virtual. Revisá tu conexión e intentá de nuevo.'); });
     }
 
@@ -393,7 +414,9 @@
           button.textContent = label;
           return;
         }
-        try { localStorage.setItem('drhappy-virtual-consult-last', result.trackingToken); } catch (error) { /* sin almacenamiento local */ }
+        try { localStorage.setItem('drhappy-virtual-consult-last', JSON.stringify({ token: result.trackingToken, slug: slug })); } catch (error) { /* sin almacenamiento local */ }
+        // Si el paciente vuelve atrás desde Mercado Pago, llega al seguimiento de esta misma consulta (con sus adjuntos) y no a un formulario vacío.
+        try { history.replaceState(null, '', '/consulta/?s=' + result.trackingToken); } catch (error) { /* navegador sin History API */ }
         window.location.href = result.paymentUrl;
       }).catch(function () {
         msg.textContent = 'No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.';
