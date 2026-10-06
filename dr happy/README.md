@@ -91,7 +91,7 @@ Solo para las cuentas de `VIRTUAL_CONSULT_PILOT_EMAILS` (`src/virtualConsultServ
 - `public/consulta/index.html`: formulario público con aviso visible de servicio **pago y no obligatorio**, filtro de señales de alarma (deriva a guardia/107 antes de cobrar), hasta 3 fotos/PDF y pago con Mercado Pago del profesional. Con `?s=<token>` muestra el seguimiento y la descarga del PDF.
 - `supabase/functions/virtual-consultations`: acciones públicas (`get-page`, `submit`, `status`) y del profesional (`get-settings`, `save-settings`, `list`, `attachments`, `mark-paid`, `draft`, `publish`, `decline`, `mark-recorded`). El envío también se guarda en `patient_invite_submissions`, por lo que el paciente se incorpora o completa por DNI. `draft` usa un cupo de Sofía; `publish` genera el PDF "Devolución de consulta virtual asistida" firmado (`pdf-lib`) y avisa por email.
 - `mercadopago-patient-webhook` acredita las referencias `vc_<id>` y avisa al profesional.
-- Al visar, la app agrega a la historia clínica la evolución `virtual-<id>`. Los reembolsos de consultas derivadas a presencial se hacen manualmente desde Mercado Pago.
+- Al visar, la app agrega a la historia clínica la evolución `virtual-<id>` y suma al **Balance de pagos** el cobro (`virtual-<id>`, total = abonado) de las consultas respondidas con pago aprobado o manual; al abrir la bandeja se completan las que falten. Los reembolsos de consultas derivadas a presencial se hacen manualmente desde Mercado Pago.
 
 Desplegar con la migración `20261006010000_virtual_consultations.sql` y `supabase functions deploy virtual-consultations --no-verify-jwt` (más `mercadopago-patient-webhook`).
 

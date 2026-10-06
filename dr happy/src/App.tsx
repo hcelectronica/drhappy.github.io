@@ -9910,7 +9910,10 @@ function App() {
     const now = new Date().toISOString()
     const existing = patients.find((patient) => patient.dni.replace(/\D/g, '') === dni)
     const entryId = `virtual-${consult.id}`
-    if (existing?.consultations.some((entry) => entry.id === entryId)) return true
+    if (existing?.consultations.some((entry) => entry.id === entryId)) {
+      await handleSyncVirtualConsultLedger([{ ...consult, status: 'answered' }])
+      return true
+    }
     const entry: ConsultationEntry = {
       id: entryId,
       date: consult.answered_at || now,
@@ -9972,7 +9975,40 @@ function App() {
       }
     }
     persistPatientsBatch([record])
+    await handleSyncVirtualConsultLedger([{ ...consult, status: 'answered' }], [record])
     return true
+  }
+
+  // Suma al balance de pagos, una sola vez, cada consulta virtual cobrada y respondida.
+  async function handleSyncVirtualConsultLedger(consults: VirtualConsult[], extraPatients: PatientRecord[] = []): Promise<void> {
+    if (!activeUserId) return
+    const known = new Set(treatmentLedger.map((entry) => entry.id))
+    const pool = [...extraPatients, ...patients]
+    const now = new Date().toISOString()
+    const additions: TreatmentLedgerEntry[] = []
+    for (const consult of consults) {
+      const amount = Number(consult.amount)
+      const id = `virtual-${consult.id}`
+      if (consult.status !== 'answered' || !(amount > 0) || known.has(id)) continue
+      if (consult.payment_status !== 'approved' && consult.payment_status !== 'manual') continue
+      const dni = consult.dni.replace(/\D/g, '')
+      const patient = pool.find((item) => item.dni.replace(/\D/g, '') === dni)
+      if (!patient) continue
+      known.add(id)
+      additions.push({
+        id,
+        patientId: patient.id,
+        patientName: `${patient.apellido}${patient.nombre ? `, ${patient.nombre}` : ''}`.trim(),
+        date: new Date(consult.paid_at || consult.answered_at || consult.created_at).toLocaleDateString('en-CA'),
+        intervention: 'Consulta virtual asistida',
+        totalAmount: amount,
+        paidAmount: amount,
+        notes: consult.payment_status === 'manual' ? 'Pago marcado manualmente en la bandeja de consultas virtuales.' : 'Cobrado con Mercado Pago (consulta virtual).',
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+    if (additions.length) await persistTreatmentLedger([...additions, ...treatmentLedger])
   }
 
   function handleOpenPrescriptionModal(): void {
@@ -16953,6 +16989,7 @@ function App() {
           onClose={() => setVirtualConsultOpen(false)}
           onRecordInChart={handleRecordVirtualConsult}
           onPendingCountChange={setVirtualConsultPending}
+          onSyncLedger={(consults) => { void handleSyncVirtualConsultLedger(consults) }}
         />
       ) : null}
       {sofiaOpen ? (

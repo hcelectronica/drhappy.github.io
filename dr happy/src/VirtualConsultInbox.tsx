@@ -30,11 +30,14 @@ const ageLabel = (birthDate: string | null) => {
   return Number.isFinite(age) && age >= 0 ? `${age} años` : ''
 }
 
-export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountChange }: {
+export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountChange, onSyncLedger }: {
   onClose: () => void
   onRecordInChart: (consult: VirtualConsult, responseText: string, clinicalSummary: string) => Promise<boolean>
   onPendingCountChange: (count: number) => void
+  onSyncLedger: (consults: VirtualConsult[]) => void
 }) {
+  const syncLedgerRef = useRef(onSyncLedger)
+  syncLedgerRef.current = onSyncLedger
   const [settings, setSettings] = useState<VirtualConsultSettings | null>(null)
   const [priceInput, setPriceInput] = useState('')
   const [consults, setConsults] = useState<VirtualConsult[] | null>(null)
@@ -64,6 +67,7 @@ export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountCh
     const list = listResult.consults ?? []
     setConsults(list)
     onPendingCountChange(list.filter((item) => item.status === 'pending_review').length)
+    syncLedgerRef.current(list)
   }, [onPendingCountChange])
 
   useEffect(() => {
