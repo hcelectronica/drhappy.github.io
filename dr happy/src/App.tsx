@@ -63,7 +63,8 @@ import {
 import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBookingSettings } from './publicBookingService'
 import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
-import { askSofia, transcribePaperRecord } from './aiAssistantService'
+import { askSofia, polishDictation, transcribePaperRecord } from './aiAssistantService'
+import { DICTATION_COMMANDS_HINT, formatDictation, joinDictation } from './dictation'
 import { loadWorkspaceData, saveWorkspaceData, saveTreatmentLedgerData, updatePatientArchive } from './workspaceService'
 import { readPatientArchives } from './patientArchive'
 import type { ArchivedPatient } from './patientArchive'
@@ -2753,6 +2754,8 @@ function App() {
   const [patientPrintBusy, setPatientPrintBusy] = useState(false)
   const [optionalPrintDocuments, setOptionalPrintDocuments] = useState<{ patientId: string | null; ids: string[] }>({ patientId: null, ids: [] })
   const [paperRecordBusyId, setPaperRecordBusyId] = useState<string | null>(null)
+  const [polishingDictationField, setPolishingDictationField] = useState<DictationConsultationField | null>(null)
+  const [dictationPolishUndo, setDictationPolishUndo] = useState<{ field: DictationConsultationField; previous: string; polished: string } | null>(null)
   const [paperTranscriptionDrafts, setPaperTranscriptionDrafts] = useState<Record<string, { text: string; truncated?: boolean }>>({})
   const [paperRecordIllegibleIds, setPaperRecordIllegibleIds] = useState<string[]>([])
   const patientDocumentContext = useRef(0)
@@ -6986,7 +6989,7 @@ function App() {
           const base = dictationBaseTextRef.current
           setConsultationDraft((current) => ({
             ...current,
-            [field]: [base, dictationCommittedTextRef.current].filter(Boolean).join(' ').trim(),
+            [field]: joinDictation(base, formatDictation(dictationCommittedTextRef.current, base)),
           }))
         }
         return
@@ -7012,11 +7015,10 @@ function App() {
       }
 
       const base = dictationBaseTextRef.current
-      const finalText = finalFragments.join(' ').trim()
-      const interimText = interimFragments.join(' ').trim()
+      const spokenText = [...finalFragments, ...interimFragments].join(' ').trim()
       setConsultationDraft((current) => ({
         ...current,
-        [field]: [base, finalText, interimText].filter(Boolean).join(' ').trim(),
+        [field]: joinDictation(base, formatDictation(spokenText, base)),
       }))
     }
 
@@ -8825,6 +8827,58 @@ function App() {
     } finally {
       setPaperRecordBusyId(null)
     }
+  }
+
+  async function handlePolishDictation(field: DictationConsultationField): Promise<void> {
+    const original = consultationDraft[field]
+    if (polishingDictationField || dictating || !original.trim()) return
+    setAppError(null)
+    setPolishingDictationField(field)
+    try {
+      const result = await polishDictation({ text: original, professionalName: profile?.fullName || activeUser?.fullName })
+      if (!result.success || !result.text) {
+        setAppError(`Sofía no pudo pulir el texto: ${result.message || 'intentá nuevamente.'}`)
+        return
+      }
+      const polished = result.text
+      setConsultationDraft((current) => ({ ...current, [field]: polished }))
+      setDictationPolishUndo({ field, previous: original, polished })
+      setAppNotice(result.truncated
+        ? 'Sofía pulió el texto pero la respuesta quedó cortada. Revisalo o tocá "Deshacer pulido".'
+        : 'Sofía pulió el texto. Revisalo; si no te convence, tocá "Deshacer pulido".')
+    } finally {
+      setPolishingDictationField(null)
+    }
+  }
+
+  function undoDictationPolish(): void {
+    if (!dictationPolishUndo) return
+    const { field, previous } = dictationPolishUndo
+    setConsultationDraft((current) => ({ ...current, [field]: previous }))
+    setDictationPolishUndo(null)
+    setAppNotice('Se restauró el texto anterior al pulido.')
+  }
+
+  function renderDictationPolishActions(field: DictationConsultationField): ReactNode {
+    const canUndo = dictationPolishUndo?.field === field && consultationDraft[field] === dictationPolishUndo.polished
+    return (
+      <>
+        <button
+          type="button"
+          className="ghost compact"
+          title="Sofía corrige puntuación, ortografía y términos médicos sin cambiar el contenido. Usa 1 consulta."
+          onClick={() => { void handlePolishDictation(field) }}
+          disabled={dictating || Boolean(polishingDictationField) || !consultationDraft[field].trim()}
+        >
+          {polishingDictationField === field ? 'Puliendo...' : '✨ Pulir con Sofía'}
+        </button>
+        {canUndo ? (
+          <button type="button" className="ghost compact" onClick={undoDictationPolish}>
+            ↩ Deshacer pulido
+          </button>
+        ) : null}
+      </>
+    )
   }
 
   function discardPaperTranscriptionDraft(documentId: string): void {
@@ -14353,6 +14407,7 @@ function App() {
                       >
                         Detener
                       </button>
+                      {renderDictationPolishActions('pensamientoMedico')}
                     </span>
                   </span>
                   <textarea
@@ -14362,7 +14417,7 @@ function App() {
                     placeholder="Reflexión profesional sobre el caso."
                   />
                   {dictating && dictationField === 'pensamientoMedico' ? (
-                    <small>Dictando en este recuadro...</small>
+                    <small>{DICTATION_COMMANDS_HINT}</small>
                   ) : null}
                 </label>
 
@@ -14396,6 +14451,7 @@ function App() {
                         >
                           Detener
                         </button>
+                        {renderDictationPolishActions('detalleAtencion')}
                       </span>
                     </span>
                     <textarea
@@ -14405,7 +14461,7 @@ function App() {
                       placeholder="Relato del paciente, dictado de la consulta o notas libres."
                     />
                     {dictating && dictationField === 'detalleAtencion' ? (
-                      <small>Dictando en este recuadro...</small>
+                      <small>{DICTATION_COMMANDS_HINT}</small>
                     ) : null}
                     {!dictationAvailable ? (
                       <small>Tu navegador no soporta transcripción por voz nativa.</small>
@@ -15198,7 +15254,7 @@ function App() {
                           const result = ev.results[i] ?? ev.results.item(i)
                           if (result && result.isFinal) {
                             const fragment = result[0].transcript.trim()
-                            setAmbulanceDraft((c) => ({ ...c, diagnosticoFinal: (c.diagnosticoFinal + ` ` + fragment).trim() }))
+                            setAmbulanceDraft((c) => ({ ...c, diagnosticoFinal: joinDictation(c.diagnosticoFinal, formatDictation(fragment, c.diagnosticoFinal)) }))
                           }
                         }
                       }

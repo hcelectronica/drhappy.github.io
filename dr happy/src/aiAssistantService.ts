@@ -50,11 +50,34 @@ export async function transcribePaperRecord(params: {
   return { success: true, transcription: text, truncated: result.truncated === true }
 }
 
+export const DICTATION_POLISH_MAX_LENGTH = 12000
+
+/** Pide a Sofía que corrija puntuación, ortografía y términos de un texto dictado, sin cambiar su contenido. */
+export async function polishDictation(params: {
+  text: string
+  professionalName?: string
+}): Promise<{ success: boolean; message?: string; text?: string; truncated?: boolean }> {
+  const text = params.text.trim()
+  if (!text) return { success: false, message: 'No hay texto para pulir.' }
+  if (text.length > DICTATION_POLISH_MAX_LENGTH) {
+    return { success: false, message: `El texto supera los ${DICTATION_POLISH_MAX_LENGTH} caracteres que Sofía puede pulir de una vez.` }
+  }
+  const result = await askSofia({
+    mode: 'dictation-polish',
+    professionalName: params.professionalName,
+    messages: [{ role: 'user', content: text }],
+  })
+  if (!result.success) return { success: false, message: result.message }
+  const polished = (result.reply || '').trim()
+  if (!polished) return { success: false, message: 'Sofía devolvió una respuesta vacía.' }
+  return { success: true, text: polished, truncated: result.truncated === true }
+}
+
 export async function askSofia(params: {
   messages: AssistantMessage[]
   professionalName?: string
   context?: string
-  mode?: 'paper-record-transcription'
+  mode?: 'paper-record-transcription' | 'dictation-polish'
   confirmation?: { action: string; input: Record<string, unknown> }
 }): Promise<AssistantResult> {
   if (!isSupabaseConfigured || !supabase) {

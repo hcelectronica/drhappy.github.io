@@ -1069,6 +1069,14 @@ const PAPER_RECORD_SYSTEM_PROMPT = [
   'Marcá cada palabra o fragmento dudoso como [ilegible] o [¿palabra?]. Usá texto plano con saltos de línea; podés usar títulos simples en mayúsculas seguidos de dos puntos si el documento tiene secciones.',
   'Si el documento no es una ficha o texto clínico, o si en general es ilegible y no podés transcribir contenido útil, respondé únicamente: ILEGIBLE',
 ].join('\n')
+const DICTATION_POLISH_MAX_TOKENS = 4000
+const DICTATION_POLISH_SYSTEM_PROMPT = [
+  'Sos Sofía, asistente de Dr Happy. Recibís un texto clínico dictado por voz por un profesional de la salud, reconocido automáticamente por el navegador.',
+  'Devolvé el mismo texto corregido: puntuación, signos de pregunta y exclamación de apertura y cierre, mayúsculas, ortografía, tildes y palabras mal reconocidas, sobre todo nombres de medicamentos, términos médicos y unidades (mg, ml, mmHg, °C).',
+  'No resumas, no reordenes, no agregues ni quites información, no interpretes ni sumes diagnósticos o sugerencias. Respetá la primera o tercera persona y las abreviaturas que use el profesional. Separá en párrafos solo si el texto cambia claramente de tema.',
+  'Si una palabra no se puede deducir con seguridad, dejala como está y marcala con [¿palabra?].',
+  'Respondé únicamente con el texto corregido, en texto plano, sin comillas, títulos, comentarios ni explicaciones.',
+].join('\n')
 
 function cleanMessages(value: unknown): AssistantMessage[] {
   if (!Array.isArray(value)) return []
@@ -1217,12 +1225,18 @@ Deno.serve(async (request) => {
   let inputTokens = 0
   let outputTokens = 0
   try {
-  // Transcripción de fichas en papel: una sola llamada, sin herramientas y con más espacio de respuesta.
-  if (payload.mode === 'paper-record-transcription') {
+  // Transcripción de fichas en papel y pulido de dictados: una sola llamada, sin herramientas y con más espacio de respuesta.
+  if (payload.mode === 'paper-record-transcription' || payload.mode === 'dictation-polish') {
+    const polish = payload.mode === 'dictation-polish'
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model, max_tokens: PAPER_RECORD_MAX_TOKENS, system: PAPER_RECORD_SYSTEM_PROMPT, messages }),
+      body: JSON.stringify({
+        model,
+        max_tokens: polish ? DICTATION_POLISH_MAX_TOKENS : PAPER_RECORD_MAX_TOKENS,
+        system: polish ? DICTATION_POLISH_SYSTEM_PROMPT : PAPER_RECORD_SYSTEM_PROMPT,
+        messages: polish ? messages.slice(-1) : messages,
+      }),
     })
     const result = await response.json().catch(() => null)
     if (!response.ok) {

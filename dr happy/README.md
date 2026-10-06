@@ -96,6 +96,16 @@ En la ficha del paciente (también al crearlo), **📷 Subir ficha papel** adjun
 
 **✨ Transcribir con Sofía** usa el modo `paper-record-transcription` de `ai-assistant` (sin herramientas, hasta 4000 tokens de salida) y consume una consulta de Sofía. La transcripción es literal, marca lo dudoso como `[ilegible]` o `[¿palabra?]` y no agrega diagnósticos. El profesional la revisa y edita antes de guardarla. Si Sofía responde que la ficha es ilegible, queda guardada solo como foto. Las fichas y sus transcripciones se ven en la vista clínica y se incluyen en la impresión de la historia.
 
+### Dictado por voz
+
+El dictado usa el reconocimiento de voz del navegador (Edge puntúa mejor que Chrome en PC). `src/dictation.ts` procesa el texto en el equipo, sin costo, antes de escribirlo en Interrogatorio, Pensamiento médico y Diagnóstico final de ambulancia:
+
+- Comandos: «coma», «punto», «punto y seguido», «punto y aparte» / «nuevo párrafo», «nueva línea», «punto y coma», «dos puntos», «abrir/cerrar pregunta» (o «signo de pregunta»), «abrir/cerrar exclamación», «abrir/cerrar paréntesis». «Coma» y «punto» no se convierten en contextos clínicos como «coma diabético» o «punto doloroso».
+- Mayúscula al inicio de cada oración, signo `¿`/`¡` de apertura automático y espacios corregidos.
+- Diccionario médico ampliable (`MEDICAL_CORRECTIONS`): medicamentos que el reconocedor separa mal, siglas (HTA, ACV, EPOC) y unidades (mg, ml, mcg, mmHg, °C).
+
+**✨ Pulir con Sofía** (en Interrogatorio y Pensamiento médico) usa el modo `dictation-polish` de `ai-assistant` y consume una consulta. Corrige puntuación, ortografía y términos sin agregar ni quitar contenido (hasta 12 000 caracteres). **↩ Deshacer pulido** restaura el texto anterior mientras no se lo edite.
+
 ## Turneras y pacientes
 
 Los horarios de consultorio (turnos manuales), la turnera gratuita y la turnera particular se configuran por separado; ninguna impone un límite horario a las otras. El cupo de una reserva pública se libera al cancelar el turno desde la agenda, incluso para los enlaces de turnos antiguos. La cancelación y la confirmación tardía de pagos se coordinan en la base de datos mediante `20261002010000_cancel_public_booking_appointment.sql`; aplicar esa migración antes de desplegar `public-booking` y `mercadopago-patient-webhook`.
