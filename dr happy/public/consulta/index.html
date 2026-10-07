@@ -142,8 +142,8 @@
           <legend>Tu consulta</legend>
           <label>Contanos con detalle qué te pasa o qué querés consultar
             <textarea id="question" maxlength="4000" placeholder="Por ejemplo: desde cuándo empezó, en qué parte lo sentís, cómo es y cuánto molesta, si empeora o mejora con algo, qué otros síntomas tenés, si tomás medicación o tenés antecedentes importantes, y qué necesitás saber."></textarea>
-            <span class="hint">Escribí al menos 120 caracteres (unas cuantas líneas). Cuanto más contexto aportes, mejor podrá evaluarlo tu profesional.</span>
-            <span class="hint" id="counter" aria-live="polite">0 / 4000 · faltan 120 para el mínimo</span>
+            <span class="hint">Escribí al menos 120 caracteres y 20 palabras, en unas cuantas líneas. Cuanto más contexto aportes, mejor podrá evaluarlo tu profesional.</span>
+            <span class="hint" id="counter" aria-live="polite">0 / 4000 · mínimo: 120 caracteres y 20 palabras</span>
           </label>
           <div class="notice" role="note">
             <strong>Para ayudar a que tu profesional entienda mejor la situación, incluí:</strong>
@@ -198,6 +198,7 @@
     var MAX_FILES = 3;
     var MAX_BYTES = 5 * 1024 * 1024;
     var MIN_QUESTION_LENGTH = 120;
+    var MIN_QUESTION_WORDS = 20;
     var params = new URLSearchParams(window.location.search);
     var pathSlug = (window.location.pathname.match(/\/consulta\/([a-z0-9-]+)\/?$/i) || [])[1] || '';
     var slug = (params.get('p') || pathSlug || '').toLowerCase();
@@ -283,9 +284,13 @@
     });
 
     el('question').addEventListener('input', function () {
-      var length = this.value.trim().length;
-      var remaining = Math.max(0, MIN_QUESTION_LENGTH - length);
-      el('counter').textContent = length + ' / 4000' + (remaining ? ' · faltan ' + remaining + ' para el mínimo' : ' · detalle suficiente');
+      var trimmed = this.value.trim();
+      var length = trimmed.length;
+      var words = trimmed ? trimmed.split(/\s+/).length : 0;
+      var missingChars = Math.max(0, MIN_QUESTION_LENGTH - length);
+      var missingWords = Math.max(0, MIN_QUESTION_WORDS - words);
+      el('counter').textContent = length + ' / 4000 · ' + words + ' palabras'
+        + (missingChars || missingWords ? ' · faltan ' + missingChars + ' caracteres y ' + missingWords + ' palabras' : ' · detalle suficiente');
     });
     el('dni').addEventListener('input', function () { this.value = this.value.replace(/\D/g, ''); });
     el('birthDate').max = new Date().toISOString().slice(0, 10);
@@ -416,8 +421,9 @@
         : !data.consent ? 'Para continuar, aceptá el registro de tus datos.'
         : '';
       if (problem) { msg.textContent = problem; msg.hidden = false; return; }
-      if (data.question.trim().length < MIN_QUESTION_LENGTH) {
-        msg.textContent = 'Contanos tu situación con más contexto: escribí al menos ' + MIN_QUESTION_LENGTH + ' caracteres e incluí cuándo empezó, cómo es y qué otros síntomas o antecedentes son importantes.';
+      var questionWords = data.question.trim().split(/\s+/).filter(Boolean).length;
+      if (data.question.trim().length < MIN_QUESTION_LENGTH || questionWords < MIN_QUESTION_WORDS) {
+        msg.textContent = 'Contanos tu situación con más contexto: escribí al menos ' + MIN_QUESTION_LENGTH + ' caracteres y ' + MIN_QUESTION_WORDS + ' palabras, e incluí cuándo empezó, cómo es y qué otros síntomas o antecedentes son importantes.';
         msg.hidden = false;
         el('question').focus();
         return;

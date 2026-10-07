@@ -23,6 +23,7 @@ const BUCKET = 'virtual-consults'
 const MAX_ATTACHMENTS = 3
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
 const MIN_QUESTION_LENGTH = 120
+const MIN_QUESTION_WORDS = 20
 const ATTACHMENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
 const PER_PROFESSIONAL_HOURLY_LIMIT = 30
 const PER_DNI_DAILY_LIMIT = 3
@@ -297,8 +298,9 @@ Deno.serve(async (request) => {
       if (!isValidBirthDate(birthDate)) return reply(400, { success: false, message: 'Ingresá una fecha de nacimiento válida.' })
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return reply(400, { success: false, message: 'Ingresá un email válido: ahí te enviamos la devolución.' })
       if (phone.replace(/\D/g, '').length < 8) return reply(400, { success: false, message: 'Ingresá un teléfono de contacto válido.' })
-      if (question.length < MIN_QUESTION_LENGTH) {
-        return reply(400, { success: false, message: `Contanos tu situación con más contexto: escribí al menos ${MIN_QUESTION_LENGTH} caracteres e incluí cuándo empezó, cómo es y qué otros síntomas o antecedentes son importantes.` })
+      const questionWords = question.split(/\s+/).filter(Boolean).length
+      if (question.length < MIN_QUESTION_LENGTH || questionWords < MIN_QUESTION_WORDS) {
+        return reply(400, { success: false, message: `Contanos tu situación con más contexto: escribí al menos ${MIN_QUESTION_LENGTH} caracteres y ${MIN_QUESTION_WORDS} palabras, e incluí cuándo empezó, cómo es y qué otros síntomas o antecedentes son importantes.` })
       }
       if (body.consent !== true || body.acceptTerms !== true) return reply(400, { success: false, message: 'Necesitamos que aceptes las condiciones del servicio y el registro de tus datos.' })
 
