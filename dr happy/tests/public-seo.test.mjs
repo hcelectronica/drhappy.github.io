@@ -30,8 +30,29 @@ test('search and social descriptions remain consistent', () => {
   assert(home.includes(`<meta property="og:description" content="${description}" />`))
   assert(home.includes(`<meta name="twitter:description" content="${description}" />`))
   const schema = JSON.parse(home.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1])
-  assert.equal(schema.description, description)
-  assert.equal(schema.url, 'https://www.drhappy.com.ar/')
+  const page = schema['@graph'].find(entity => entity['@type'] === 'WebPage')
+  const app = schema['@graph'].find(entity => entity['@type'] === 'WebApplication')
+  assert.equal(page.description, description)
+  assert.equal(app.description, description)
+  assert.equal(page.url, 'https://www.drhappy.com.ar/')
+})
+
+test('structured identity describes a website and application, not a medical practice', () => {
+  const schema = JSON.parse(home.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1])
+  assert.equal(schema['@context'], 'https://schema.org')
+  const graph = schema['@graph']
+  assert.deepEqual(graph.map(entity => entity['@type']), ['WebSite', 'WebPage', 'WebApplication'])
+  assert.equal(new Set(graph.map(entity => entity['@id'])).size, 3)
+  const [website, page, app] = graph
+  assert.equal(website.name, 'Dr Happy')
+  assert.equal(website.url, 'https://www.drhappy.com.ar/')
+  assert.equal(page.isPartOf['@id'], website['@id'])
+  assert.equal(page.mainEntity['@id'], app['@id'])
+  assert.equal(app.name, 'Dr Happy')
+  assert.equal(app.applicationCategory, 'HealthApplication')
+  assert.equal(app.operatingSystem, 'Web')
+  assert(!home.includes('MedicalBusiness'))
+  assert(!home.includes('MedicalWebPage'))
 })
 
 test('public favicons use a stable PNG URL and declared square dimensions', () => {

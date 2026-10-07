@@ -10292,7 +10292,7 @@ function App() {
             <div className="flyer-intro">
               <span className="auth-promo-eyebrow">UN ESPACIO DE TRABAJO, MUCHAS SOLUCIONES</span>
               <h2 id="auth-tools-title">Todo lo que acompaña tu día</h2>
-              <p>Organizá la atención, la agenda y las herramientas que usás en el consultorio.</p>
+              <p>Dr Happy es una plataforma de gestión de consultorios para profesionales de la salud en Argentina. Reúne historia clínica digital, turnos, odontograma interactivo, balance de pagos y asistencia con Sofía IA en un solo lugar.</p>
             </div>
             <div className="flyer-grid auth-promo-tool-grid">
               <article className="flyer-tool auth-promo-tool auth-promo-tool--blue">

@@ -33,17 +33,36 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "MedicalWebPage",
-      "name": "Dr Happy",
-      "url": "https://www.drhappy.com.ar/",
-      "description": "Organizá tu consultorio con Dr Happy: historia clínica digital, odontograma interactivo, turnos y asistente Sofía IA. Probá gratis por 7 días.",
-      "inLanguage": "es-AR",
-      "about": {
-        "@type": "MedicalBusiness",
-        "name": "Dr Happy"
-      },
-      "applicationCategory": "HealthApplication",
-      "operatingSystem": "Web"
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://www.drhappy.com.ar/#website",
+          "name": "Dr Happy",
+          "alternateName": "DrHappy",
+          "url": "https://www.drhappy.com.ar/",
+          "inLanguage": "es-AR"
+        },
+        {
+          "@type": "WebPage",
+          "@id": "https://www.drhappy.com.ar/#webpage",
+          "name": "Dr Happy | Historia clínica digital y Turnos",
+          "url": "https://www.drhappy.com.ar/",
+          "description": "Organizá tu consultorio con Dr Happy: historia clínica digital, odontograma interactivo, turnos y asistente Sofía IA. Probá gratis por 7 días.",
+          "inLanguage": "es-AR",
+          "isPartOf": { "@id": "https://www.drhappy.com.ar/#website" },
+          "mainEntity": { "@id": "https://www.drhappy.com.ar/#app" }
+        },
+        {
+          "@type": "WebApplication",
+          "@id": "https://www.drhappy.com.ar/#app",
+          "name": "Dr Happy",
+          "url": "https://www.drhappy.com.ar/",
+          "description": "Organizá tu consultorio con Dr Happy: historia clínica digital, odontograma interactivo, turnos y asistente Sofía IA. Probá gratis por 7 días.",
+          "applicationCategory": "HealthApplication",
+          "operatingSystem": "Web",
+          "inLanguage": "es-AR"
+        }
+      ]
     }
     </script>
     <meta name="mobile-web-app-capable" content="yes" />

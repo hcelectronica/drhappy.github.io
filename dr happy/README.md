@@ -24,6 +24,8 @@ El título SEO y las vistas previas al compartir usan «Dr Happy | Historia clí
 
 `index.html` define el título, la descripción para buscadores, Open Graph/Twitter y los datos estructurados. Al cambiar la descripción, mantener esas referencias coherentes. Los textos visibles de los servicios están en la portada de `src/App.tsx` y sus componentes promocionales; Google también puede usarlos para generar el fragmento. Los módulos privados no son páginas comerciales independientes para indexar.
 
+La introducción pública identifica expresamente a Dr Happy como plataforma de gestión de consultorios para profesionales de la salud en Argentina. Los datos estructurados conectan `WebSite`, `WebPage` y `WebApplication` mediante identificadores estables: la marca es un producto de software, no un consultorio declarado como `MedicalBusiness`. Esta descripción no garantiza resultados enriquecidos, posiciones ni que Google seleccione la portada para cada búsqueda.
+
 La portada y `public/privacidad.html` declaran su URL canónica con `https://www.drhappy.com.ar/`. Las versiones sin `www` siguen funcionando sin redirección global para preservar sesiones y retornos de la app. Que Search Console excluya la versión HTTP por redirección o la versión sin `www` como alternativa canónica es esperado; inspeccionar la URL HTTPS con `www` para evaluar la indexación de la portada.
 
 `public/robots.txt` anuncia `public/sitemap.xml`, que incluye únicamente portada y privacidad. Actualizar `lastmod` cuando cambie realmente cada página, no con cada compilación. No agregar historias clínicas, formularios con tokens ni pantallas privadas. Las páginas nuevas de servicios necesitarían contenido público propio antes de incorporarse al sitemap.
