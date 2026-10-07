@@ -4,7 +4,9 @@ import { readFile } from 'node:fs/promises'
 import {
   appendMedication, bmiLabel, calculateBmi, followUpLines,
   normalizeClinicalBaseline, positiveMeasurement, validateClinicalMeasurements,
+  mergeClinicalPathologies,
 } from '../src/clinicalFollowUp.ts'
+import { clinicalMedicationLine, clinicalMedicationSuggestions } from '../src/clinicalMedication.ts'
 
 test('IMC uses kg and cm, including decimal commas', () => {
   assert.equal(calculateBmi('72,5', '170'), 72.5 / 1.7 ** 2)
@@ -62,5 +64,35 @@ test('normalization, backup import, signature and printing are wired to clinical
   assert(app.includes('contentToSign: {'))
   assert(app.includes('...followUp,'))
   assert(app.includes('followUpLines(entry).map(([label, value]) => `<p>'))
-  assert(app.includes('canEditSelectedPatientRecord && consultationDraft.incorporarFarmacos'))
+  assert(!app.includes('incorporarFarmacos'))
+  assert(app.includes("medicacionHabitual: baseline.medicacionHabitual || ''"))
+})
+
+test('old known and chronic pathologies merge without discarding either field', () => {
+  assert.equal(mergeClinicalPathologies('HTA', 'Diabetes'), 'HTA\nDiabetes')
+  assert.equal(mergeClinicalPathologies('HTA', 'HTA'), 'HTA')
+  assert.equal(mergeClinicalPathologies('', ''), '')
+})
+
+test('medication search offers distinct strengths and presentations, never a patient regimen by default', async () => {
+  const catalog = JSON.parse(await readFile(new URL('../public/vademecum.json', import.meta.url), 'utf8'))
+  const suggestions = clinicalMedicationSuggestions(catalog, 'losartan 50')
+  assert(suggestions.length > 0)
+  assert(suggestions.every(item => item.presentation.includes('50')))
+  assert(suggestions.some(item => item.dosage))
+  assert.equal(clinicalMedicationSuggestions(catalog, 'l').length, 0)
+  const selected = suggestions[0]
+  assert.equal(clinicalMedicationLine(selected, ''), `${selected.drug} · ${selected.presentation}`)
+  assert.equal(clinicalMedicationLine(selected, '1 comprimido cada 24 h'), `${selected.drug} · ${selected.presentation} · 1 comprimido cada 24 h`)
+})
+
+test('AI review mode uses the no-tools branch and keeps approval optional', async () => {
+  const backend = await readFile(new URL('../supabase/functions/ai-assistant/index.ts', import.meta.url), 'utf8')
+  const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
+  assert(backend.includes("payload.mode === 'clinical-evolution-review'"))
+  const branch = backend.slice(backend.indexOf("if (payload.mode === 'paper-record-transcription'"), backend.indexOf('for (let', backend.indexOf("if (payload.mode === 'paper-record-transcription'")))
+  assert(!branch.includes('system, tools, messages'))
+  assert(app.includes("mode: 'clinical-evolution-review'"))
+  assert(app.includes("resumenSofia: consultationDraft.incluirResumenSofia ?"))
+  assert(app.includes('originalDraft !== clinicalDraftRef.current'))
 })

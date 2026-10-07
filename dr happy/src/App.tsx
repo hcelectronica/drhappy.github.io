@@ -9,9 +9,11 @@ import type {
 import JsBarcode from 'jsbarcode'
 import { createPortal } from 'react-dom'
 import './App.css'
+import './clinicalCompact.css'
 import { BrandMark } from './BrandMark'
 import { ClinicalMedicationField } from './ClinicalMedicationField'
-import { appendMedication, bmiLabel, followUpLines, normalizeClinicalBaseline, positiveMeasurement, validateClinicalMeasurements } from './clinicalFollowUp'
+import { ClinicalDiagnosisField } from './ClinicalDiagnosisField'
+import { bmiLabel, followUpLines, mergeClinicalPathologies, normalizeClinicalBaseline, positiveMeasurement, validateClinicalMeasurements } from './clinicalFollowUp'
 import type { PatientClinicalBaseline, ConsultationFollowUp } from './clinicalFollowUp'
 import { buildPatientAttachmentsMarkup, patientDocumentLabel, selectPatientPrintAttachments, waitForPatientPrintImages } from './patientDocumentPrint'
 import { useErrorNotification } from './useErrorNotification'
@@ -79,7 +81,6 @@ import { clearProfessionalSession, storeProfessionalSession, restoreProfessional
   PROFESSIONAL_SESSION_KEY, GOOGLE_LOGIN_PENDING_KEY, GOOGLE_AUTO_LOGIN_BLOCKED_KEY } from './professionalSession'
 import { disconnectMercadoPago, getMercadoPagoConnectionStatus, startMercadoPagoConnection, verifyMercadoPagoConnection } from './mercadoPagoConnectService'
 import { communityRequest } from './communityService'
-import { parseClinicalSummary } from './clinicalSummaryParser'
 import { loadProfessionals, loadOwnProfessional, updateOwnProfessionalProfile } from './professionalsService'
 import type { AssistantContentBlock, AssistantMessage, AssistantPendingConfirmation } from './aiAssistantService'
 import { SofiaAvatar } from './SofiaAvatar'
@@ -204,7 +205,7 @@ interface AmbulanceDraft {
   diagnosticoCie10: string
   diagnosticoFinal: string
 }
-type DictationConsultationField = 'detalleAtencion' | 'pensamientoMedico'
+type DictationConsultationField = 'enfermedadActual'
 type ThemeMode = 'light' | 'night'
 type LiveScanTarget = 'dni' | 'credential'
 
@@ -428,7 +429,7 @@ interface PatientDraft extends PatientClinicalBaseline {
 }
 
 interface ConsultationDraft extends ConsultationFollowUp {
-  incorporarFarmacos?: boolean
+  incluirResumenSofia?: boolean
   motivoConsulta: string
   diagnostico: string
   detalleAtencion: string
@@ -1513,8 +1514,8 @@ function patientToDraft(patient: PatientRecord): PatientDraft {
     plan: patient.plan,
     birthDate: patient.birthDate,
     diagnosticoPrincipal: patient.diagnosticoPrincipal ?? '',
-    patologiasConocidas: patient.patologiasConocidas,
-    patologiasCronicas: patient.patologiasCronicas,
+    patologiasConocidas: '',
+    patologiasCronicas: mergeClinicalPathologies(patient.patologiasConocidas, patient.patologiasCronicas),
     ultimaInternacion: patient.ultimaInternacion,
     cirugiasPrevias: patient.cirugiasPrevias,
     ...normalizeClinicalBaseline(patient),
@@ -2771,9 +2772,13 @@ function App() {
   const [consultationDraft, setConsultationDraft] =
     useState<ConsultationDraft>(emptyConsultationDraft)
   const [clinicalSummaryBusy, setClinicalSummaryBusy] = useState(false)
+  const [clinicalAttachment, setClinicalAttachment] = useState<{ name: string; block?: AssistantContentBlock; text?: string; file: StoredFile } | null>(null)
+  const [clinicalDocumentBusy, setClinicalDocumentBusy] = useState(false)
+  const clinicalDraftRef = useRef(consultationDraft)
+  clinicalDraftRef.current = consultationDraft
   const consultationDiagnosisVisibleList = useMemo(
-    () => buildDiagnosisSuggestions(diagnosisCatalog, consultationDraft.motivoConsulta, 10),
-    [consultationDraft.motivoConsulta, diagnosisCatalog],
+    () => consultationDraft.impresionDiagnostica.trim().length >= 2 ? buildDiagnosisSuggestions(diagnosisCatalog, consultationDraft.impresionDiagnostica, 8) : [],
+    [consultationDraft.impresionDiagnostica, diagnosisCatalog],
   )
   const [communityOpen, setCommunityOpen] = useState(false)
   const [communityTargetId, setCommunityTargetId] = useState<string | null>(null)
@@ -2791,6 +2796,14 @@ function App() {
   useEffect(() => {
     patientDocumentContext.current += 1
   }, [activeUserId, selectedPatientId, workspaceLayer])
+  useEffect(() => {
+    setClinicalAttachment(null)
+    setDictationPolishUndo(null)
+    setConsultationDraft(current => ({ ...current, resumenSofia: '', incluirResumenSofia: false }))
+  }, [activeUserId, selectedPatientId])
+  useEffect(() => {
+    setConsultationDraft(current => current.incluirResumenSofia ? { ...current, incluirResumenSofia: false } : current)
+  }, [consultationDraft.motivoConsulta, consultationDraft.enfermedadActual, consultationDraft.impresionDiagnostica, consultationDraft.planManejo, consultationDraft.pesoActual, consultationDraft.farmacosAgregados, consultationDraft.estudiosComplementarios, clinicalAttachment])
   const [dictationAvailable, setDictationAvailable] = useState(false)
   const [dictating, setDictating] = useState(false)
   const [dictationField, setDictationField] = useState<DictationConsultationField | null>(null)
@@ -3332,11 +3345,11 @@ function App() {
     if (toConsultation) {
       setConsultationDraft((prev) => ({
         ...prev,
-        pensamientoMedico: prev.pensamientoMedico
-          ? `${prev.pensamientoMedico}\n\n[Guía Clínica Aplicada]:\n${template}`
+        planManejo: prev.planManejo
+          ? `${prev.planManejo}\n\n[Guía Clínica Aplicada]:\n${template}`
           : `[Guía Clínica Aplicada]:\n${template}`,
       }))
-      setProtocolCopiedNotice('¡Conducta copiada al pensamiento médico de la consulta!')
+      setProtocolCopiedNotice('¡Conducta copiada al tratamiento de la consulta!')
     } else {
       setProtocolCopiedNotice('¡Conducta clínica copiada al portapapeles!')
     }
@@ -6757,6 +6770,10 @@ function App() {
       setAppError('Seleccioná un paciente antes de subir un laboratorio a Sofía.')
       return
     }
+    if (clinicalDocumentBusy || clinicalSummaryBusy) {
+      setAppError('Esperá a que termine la carga o la revisión actual antes de adjuntar otro archivo.')
+      return
+    }
     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
     const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx$/i.test(file.name)
     const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(file.name)
@@ -6764,68 +6781,51 @@ function App() {
       setAppError('Sofía puede leer laboratorios en PDF, DOCX, imágenes, TXT, CSV, MD o JSON.')
       return
     }
-    if (isImage || isPdf) {
+    const contextVersion = patientDocumentContext.current
+    setClinicalDocumentBusy(true)
+    try {
+      if (file.size > 10 * 1024 * 1024) throw new Error('El archivo supera el límite de 10 MB.')
+      if (isImage && !/^image\/(jpeg|png|webp|gif)$/.test(file.type)) throw new Error('Para Sofía, convertí la imagen a JPG, PNG, WebP o GIF.')
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => resolve(String(reader.result || ''))
         reader.onerror = () => reject(new Error('No se pudo preparar el archivo.'))
         reader.readAsDataURL(file)
       })
-      const [, data] = dataUrl.split(',', 2)
-      if (!data) {
-        setAppError('El archivo no contiene datos legibles.')
+      const storedFile: StoredFile = {
+        id: crypto.randomUUID(), name: file.name, type: file.type || (isPdf ? 'application/pdf' : 'text/plain'),
+        dataUrl, size: file.size, uploadedAt: new Date().toISOString(),
+      }
+      if (isImage || isPdf) {
+        const [, data] = dataUrl.split(',', 2)
+        if (!data) throw new Error('El archivo no contiene datos legibles.')
+        if (contextVersion !== patientDocumentContext.current) throw new Error('Cambiaste de paciente o pantalla. Volvé a adjuntar el archivo en la evolución correcta.')
+        setClinicalAttachment({
+          name: file.name,
+          file: storedFile,
+          block: isImage
+            ? { type: 'image', source: { type: 'base64', media_type: file.type, data } }
+            : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } },
+        })
+        setAppNotice(`${file.name} quedó listo para que Sofía lo interprete al resumir la evolución.`)
         return
       }
-      setSofiaAttachment({
-        name: file.name,
-        block: isImage
-          ? { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data } }
-          : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } },
-      })
-      setConsultationDraft((current) => ({
-        ...current,
-        detalleAtencion: [current.detalleAtencion.trim(), `Archivo mostrado a Sofía (${file.name}).`].filter(Boolean).join('\n\n'),
-      }))
-      setAppNotice(`${file.name} quedó listo para que Sofía lo interprete al resumir la evolución.`)
-      return
-    }
-    let text = ''
-    if (isDocx) {
-      const { default: mammoth } = await import('mammoth')
-      const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })
-      text = result.value.trim()
-    } else if (isImage) {
-      setAppNotice(`Sofía está leyendo ${file.name}. Esto puede tardar unos segundos.`)
-      const { createWorker } = await import('tesseract.js')
-      const worker = await createWorker('spa')
-      try {
-        const result = await worker.recognize(file)
-        text = result.data.text.trim()
-      } finally {
-        await worker.terminate()
+      let text = ''
+      if (isDocx) {
+        const { default: mammoth } = await import('mammoth')
+        text = (await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })).value.trim()
+      } else {
+        text = (await file.text()).trim()
       }
-    } else if (isPdf) {
-      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
-      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise
-      const pages: string[] = []
-      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-        const page = await pdf.getPage(pageNumber)
-        const content = await page.getTextContent()
-        pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '))
-      }
-      text = pages.join('\n\n').trim()
-    } else {
-      text = (await file.text()).trim()
+      if (!text) throw new Error('El archivo no contiene texto legible.')
+      if (contextVersion !== patientDocumentContext.current) throw new Error('Cambiaste de paciente o pantalla. Volvé a adjuntar el archivo en la evolución correcta.')
+      setClinicalAttachment({ name: file.name, text, file: storedFile })
+      setAppNotice(`${file.name} listo para revisar con Sofía. ${canEditSelectedPatientRecord ? 'El original se adjunta al guardar esta evolución.' : 'El original no se adjunta a fichas compartidas de otro profesional.'}`)
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : 'No se pudo leer el archivo clínico.')
+    } finally {
+      setClinicalDocumentBusy(false)
     }
-    if (!text) {
-      setAppError('El archivo no contiene texto legible.')
-      return
-    }
-    setConsultationDraft((current) => ({
-      ...current,
-      detalleAtencion: [current.detalleAtencion.trim(), `Laboratorio adjunto (${file.name}):\n${text}`].filter(Boolean).join('\n\n'),
-    }))
-    setAppNotice(`Laboratorio ${file.name} cargado en el borrador. Usá Sofía para ordenarlo y luego guardá la evolución.`)
   }
 
   async function handleSofiaDocumentUpload(event: ChangeEvent<HTMLInputElement>): Promise<void> {
@@ -6887,19 +6887,39 @@ function App() {
   }
 
   async function summarizeClinicalInterview(): Promise<void> {
-    if (!selectedPatient || !consultationDraft.detalleAtencion.trim() || clinicalSummaryBusy) {
-      setAppError('Transcribí primero el interrogatorio del paciente antes de pedir el resumen.')
+    if (!selectedPatient || !consultationDraft.motivoConsulta.trim() || clinicalSummaryBusy || clinicalDocumentBusy) {
+      setAppError('Completá al menos el motivo de consulta antes de pedir la revisión.')
       return
     }
     setClinicalSummaryBusy(true)
     setAppError(null)
+    const contextVersion = patientDocumentContext.current
+    const originalDraft = consultationDraft
     try {
+      const baselineForSummary = canEditSelectedPatientRecord ? patientDraft : selectedPatient
       const patientName = `${selectedPatient.apellido}, ${selectedPatient.nombre}`.trim()
-      const summaryText = `Convertí la entrevista en una evolución clínica revisable. No inventes datos, no diagnostiques ni indiques tratamientos. Devolvé exactamente: MOTIVO:, ENFERMEDAD ACTUAL:, EXAMEN FÍSICO:, IMPRESIÓN DIAGNÓSTICA:, PLAN DE MANEJO:, ANTECEDENTES RELEVANTES: y PENSAMIENTO:. MOTIVO debe ser una etiqueta breve de 1 a 4 palabras. ENFERMEDAD ACTUAL debe contener solo lo relatado hoy. En examen, impresión y plan indicá No consignado o A revisar si faltan datos. ${patientName}. Transcripción:\n${consultationDraft.detalleAtencion.trim()}`
-      const summaryContent: AssistantMessage['content'] = sofiaAttachment
-        ? [{ type: 'text', text: summaryText }, sofiaAttachment.block]
+      const summaryText = `Revisá toda la evolución escrita por el profesional. Ordenala en un RESUMEN CLÍNICO, conservando motivo, enfermedad actual, sospecha diagnóstica, tratamiento, fármacos, estudios solicitados y mediciones aportadas. Después agregá REFLEXIÓN / ASPECTOS A REVISAR: sugerencias prudentes para consideración del profesional, separadas de los hechos. No inventes datos, no confirmes diagnósticos ni agregues prescripciones. Si hay archivo, transcribí datos legibles con unidades y señalá incertidumbres. La medicación habitual es antecedente, no una nueva indicación. Paciente: ${patientName}.
+Antecedentes: ${mergeClinicalPathologies(baselineForSummary.patologiasConocidas, baselineForSummary.patologiasCronicas)}
+Medicación habitual: ${baselineForSummary.medicacionHabitual || 'No consignada'}
+Edad: ${baselineForSummary.birthDate ? calculateAge(baselineForSummary.birthDate) : 'No consignada'}
+Peso inicial (kg): ${baselineForSummary.pesoInicial || 'No consignado'}
+Tensión arterial inicial (mmHg): ${baselineForSummary.tensionArterial || 'No consignada'}
+Motivo: ${consultationDraft.motivoConsulta}
+Enfermedad actual: ${consultationDraft.enfermedadActual}
+Sospecha diagnóstica: ${consultationDraft.impresionDiagnostica}
+Tratamiento: ${consultationDraft.planManejo}
+Fármacos agregados: ${consultationDraft.farmacosAgregados || ''}
+Estudios complementarios: ${consultationDraft.estudiosComplementarios || ''}
+Peso actual (kg): ${consultationDraft.pesoActual || ''}
+Talla (cm): ${(canEditSelectedPatientRecord ? patientDraft : selectedPatient).tallaCm || ''}
+IMC actual: ${bmiLabel(consultationDraft.pesoActual, baselineForSummary.tallaCm)}
+${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAttachment.text}` : ''}`
+      if (summaryText.length > 12000) throw new Error('La evolución y el texto adjunto superan los 12.000 caracteres de esta revisión. Reducí el texto o adjuntá el estudio como PDF; no se envió una versión recortada.')
+      const summaryContent: AssistantMessage['content'] = clinicalAttachment?.block
+        ? [{ type: 'text', text: summaryText }, clinicalAttachment.block]
         : summaryText
       const result = await askSofia({
+        mode: 'clinical-evolution-review',
         professionalName: profile?.fullName || activeUser?.fullName,
         messages: [{
           role: 'user',
@@ -6911,24 +6931,18 @@ function App() {
         setAppError(result.message || 'No se pudo preparar el resumen clínico.')
         return
       }
-      const parsedSummary = parseClinicalSummary(result.reply)
-      const { motivo, enfermedadActual, examenFisico, impresionDiagnostica, planManejo, antecedentes, pensamiento } = parsedSummary
-      if (!enfermedadActual && !pensamiento) {
-        setAppError('Sofía respondió, pero no pudo separar el borrador en secciones. Conservé la transcripción original para que la revises.')
+      if (contextVersion !== patientDocumentContext.current || originalDraft !== clinicalDraftRef.current) {
+        setAppError('La evolución cambió mientras Sofía la revisaba. No se incorporó el resultado; volvé a valorar la versión actual.')
         return
       }
       setConsultationDraft((current) => ({
         ...current,
-        motivoConsulta: motivo || current.motivoConsulta,
-        detalleAtencion: enfermedadActual ? `${enfermedadActual}${antecedentes ? `\n\nAntecedentes relevantes:\n${antecedentes}` : ''}` : current.detalleAtencion,
-        enfermedadActual: enfermedadActual || current.enfermedadActual,
-        examenFisico: examenFisico || current.examenFisico,
-        impresionDiagnostica: impresionDiagnostica || current.impresionDiagnostica,
-        planManejo: planManejo || current.planManejo,
-        pensamientoMedico: pensamiento || current.pensamientoMedico,
+        resumenSofia: result.reply,
+        incluirResumenSofia: false,
       }))
-      setSofiaAttachment(null)
-      setAppNotice('Sofía preparó un borrador. Revisalo antes de guardar la evolución.')
+      setAppNotice(result.truncated ? 'La respuesta de Sofía quedó cortada. Revisala y pedí una nueva valoración antes de adjuntarla.' : 'Sofía preparó un resumen separado. Revisalo y elegí si querés adjuntarlo; tus campos no cambiaron.')
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : 'No se pudo revisar la evolución con Sofía.')
     } finally {
       setClinicalSummaryBusy(false)
     }
@@ -6967,8 +6981,7 @@ function App() {
     }
 
     setAppError(null)
-    const fieldLabel =
-      field === 'detalleAtencion' ? 'resumen de atención' : 'pensamiento médico'
+    const fieldLabel = 'enfermedad actual'
     setAppNotice(`Dictado activado en ${fieldLabel}. Habla para transcribir.`)
     dictationBaseTextRef.current = consultationDraft[field].trim()
     dictationCommittedTextRef.current = ''
@@ -7113,6 +7126,7 @@ function App() {
     setDentalAppointmentId(undefined)
     setSelectedPatientId(patientId)
     setWorkspaceLayer('patient-record')
+    if (patientId !== selectedPatientId) setConsultationDraft(emptyConsultationDraft)
     setAppError(null)
   }
 
@@ -7191,6 +7205,7 @@ function App() {
     setPendingAttentionAppointmentId(null)
     setSelectedPatientId(patientId)
     setDentalAppointmentId(undefined)
+    setConsultationDraft(emptyConsultationDraft)
     setWorkspaceLayer(isDentist ? 'patient-record' : 'clinical')
     setAppError(null)
   }
@@ -8677,6 +8692,7 @@ function App() {
     }
     const measurementError = validateClinicalMeasurements(patientDraft)
     if (measurementError) { setAppError(measurementError); return }
+    if (patientDraft.diagnosticoPrincipal.trim()) persistCustomDiagnosis(patientDraft.diagnosticoPrincipal)
     setAppError(null)
 
     const now = new Date().toISOString()
@@ -8688,9 +8704,11 @@ function App() {
       ? appointmentPatientId
       : crypto.randomUUID()
     const record: PatientRecord = {
+      ...existing,
       id: existing?.id ?? newPatientId,
       ownerUserId: existing?.ownerUserId ?? activeUserId,
       ...patientDraft,
+      patologiasConocidas: '',
       numeroAfiliado: patientDraft.numeroAfiliado.trim(),
       plan: patientDraft.plan.trim(),
       diagnosticoPrincipal: patientDraft.diagnosticoPrincipal.trim(),
@@ -8861,6 +8879,7 @@ function App() {
     if (polishingDictationField || dictating || !original.trim()) return
     setAppError(null)
     setPolishingDictationField(field)
+    const contextVersion = patientDocumentContext.current
     try {
       const result = await polishDictation({ text: original, professionalName: profile?.fullName || activeUser?.fullName })
       if (!result.success || !result.text) {
@@ -8868,6 +8887,10 @@ function App() {
         return
       }
       const polished = result.text
+      if (contextVersion !== patientDocumentContext.current || clinicalDraftRef.current[field] !== original) {
+        setAppError('El texto o el paciente cambió durante el pulido. No se reemplazó la enfermedad actual.')
+        return
+      }
       setConsultationDraft((current) => ({ ...current, [field]: polished }))
       setDictationPolishUndo({ field, previous: original, polished })
       setAppNotice(result.truncated
@@ -9116,6 +9139,7 @@ function App() {
     }
 
     const nextMotivo = consultationDraft.motivoConsulta.trim()
+    if (clinicalSummaryBusy || clinicalDocumentBusy) { setAppError('Esperá a que termine la revisión o la carga del archivo antes de guardar.'); return }
     if (!nextMotivo) {
       setAppError('El motivo de consulta es obligatorio.')
       return
@@ -9128,11 +9152,10 @@ function App() {
       tallaCmEnConsulta: consultationDraft.pesoActual?.trim() ? baseline.tallaCm?.trim() || '' : '',
       farmacosAgregados: consultationDraft.farmacosAgregados?.trim() || '',
       estudiosComplementarios: consultationDraft.estudiosComplementarios?.trim() || '',
+      resumenSofia: consultationDraft.incluirResumenSofia ? consultationDraft.resumenSofia?.trim() || '' : '',
     }
 
-    if (!diagnosisCatalog.some((entry) => normalizeSearchText(entry) === normalizeSearchText(nextMotivo))) {
-      persistCustomDiagnosis(nextMotivo)
-    }
+    if (consultationDraft.impresionDiagnostica.trim()) persistCustomDiagnosis(consultationDraft.impresionDiagnostica)
 
     setAppError(null)
     const signatureImageDataUrl = profile.signatureImage?.dataUrl
@@ -9144,8 +9167,11 @@ function App() {
         patientId: selectedPatient.id,
         patientDni: selectedPatient.dni,
         motivoConsulta: nextMotivo,
-        detalleAtencion: consultationDraft.detalleAtencion,
+        detalleAtencion: consultationDraft.enfermedadActual,
         pensamientoMedico: consultationDraft.pensamientoMedico,
+        enfermedadActual: consultationDraft.enfermedadActual,
+        impresionDiagnostica: consultationDraft.impresionDiagnostica,
+        planManejo: consultationDraft.planManejo,
         ...followUp,
         signatureImageDataUrl: signatureImageDataUrl ?? '',
       },
@@ -9158,8 +9184,8 @@ function App() {
       id: crypto.randomUUID(),
       date: new Date().toISOString(),
       motivoConsulta: nextMotivo,
-      diagnostico: nextMotivo,
-      detalleAtencion: consultationDraft.detalleAtencion,
+      diagnostico: consultationDraft.impresionDiagnostica.trim(),
+      detalleAtencion: consultationDraft.enfermedadActual,
       pensamientoMedico: consultationDraft.pensamientoMedico,
       enfermedadActual: consultationDraft.enfermedadActual,
       examenFisico: consultationDraft.examenFisico,
@@ -9180,6 +9206,7 @@ function App() {
       ...(canEditSelectedPatientRecord
         ? {
             ...patientDraft,
+            patologiasConocidas: '',
             numeroAfiliado: patientDraft.numeroAfiliado.trim(),
             plan: patientDraft.plan.trim(),
             diagnosticoPrincipal: patientDraft.diagnosticoPrincipal.trim(),
@@ -9187,14 +9214,16 @@ function App() {
           }
         : {}),
       consultations: [entry, ...selectedPatient.consultations],
-      medicacionHabitual: canEditSelectedPatientRecord && consultationDraft.incorporarFarmacos
-        ? appendMedication(baseline.medicacionHabitual || '', followUp.farmacosAgregados || '')
-        : baseline.medicacionHabitual || '',
+      medicacionHabitual: baseline.medicacionHabitual || '',
+      documents: clinicalAttachment && canEditSelectedPatientRecord
+        ? [...(canEditSelectedPatientRecord ? patientDraft.documents : selectedPatient.documents), clinicalAttachment.file]
+        : canEditSelectedPatientRecord ? patientDraft.documents : selectedPatient.documents,
       updatedAt: new Date().toISOString(),
     }
     persistPatient(record)
     if (canEditSelectedPatientRecord) setPatientDraft(patientToDraft(record))
     setConsultationDraft(emptyConsultationDraft)
+    setClinicalAttachment(null)
     setAppNotice('Consulta guardada con firma electrónica (sello de integridad incluido).')
     showSavedFloatingNotice()
   }
@@ -9394,9 +9423,12 @@ function App() {
                 <article style="border:1px solid #d8e2ee; border-radius:8px; padding:10px; margin-bottom:10px;">
                   <h3 style="margin:0 0 6px; font-size:15px;">Atención ${index + 1} - ${escapeHtml(formatDate(entry.date))}</h3>
                   <p><strong>Motivo de consulta:</strong> ${escapeHtml(entry.motivoConsulta)}</p>
-                  <p><strong>Diagnóstico:</strong> ${escapeHtml(entry.diagnostico || 'No informado')}</p>
+                  ${entry.diagnostico && entry.diagnostico !== entry.impresionDiagnostica ? `<p><strong>Diagnóstico:</strong> ${escapeHtml(entry.diagnostico)}</p>` : ''}
                   <p><strong>Resumen de atención:</strong><br />${escapeHtml(entry.detalleAtencion).replaceAll('\n', '<br />')}</p>
-                  <p><strong>Pensamiento médico:</strong><br />${escapeHtml(entry.pensamientoMedico).replaceAll('\n', '<br />')}</p>
+                  ${entry.impresionDiagnostica ? `<p><strong>Sospecha diagnóstica:</strong> ${escapeHtml(entry.impresionDiagnostica)}</p>` : ''}
+                  ${entry.planManejo ? `<p><strong>Tratamiento:</strong><br />${escapeHtml(entry.planManejo).replaceAll('\n', '<br />')}</p>` : ''}
+                  ${entry.examenFisico ? `<p><strong>Examen físico (registro anterior):</strong><br />${escapeHtml(entry.examenFisico).replaceAll('\n', '<br />')}</p>` : ''}
+                  ${entry.pensamientoMedico ? `<p><strong>Pensamiento médico (registro anterior):</strong><br />${escapeHtml(entry.pensamientoMedico).replaceAll('\n', '<br />')}</p>` : ''}
                   ${followUpLines(entry).map(([label, value]) => `<p><strong>${escapeHtml(label)}:</strong><br />${escapeHtml(value).replaceAll('\n', '<br />')}</p>`).join('')}
                   <p><strong>Firma:</strong> ${escapeHtml(entry.professionalSignature.fullName)} - Matrícula ${escapeHtml(entry.professionalSignature.licenseNumber)}</p>
                   <p>${escapeHtml(entry.professionalSignature.signatureText)}</p>
@@ -9491,8 +9523,7 @@ function App() {
       <p><strong>Peso inicial:</strong> ${escapeHtml(patientForPrint.pesoInicial || 'No informado')} kg · <strong>Talla:</strong> ${escapeHtml(patientForPrint.tallaCm || 'No informado')} cm · <strong>IMC inicial:</strong> ${escapeHtml(bmiLabel(patientForPrint.pesoInicial, patientForPrint.tallaCm))}</p>
       <p><strong>Tensión arterial inicial:</strong> ${escapeHtml(patientForPrint.tensionArterial || 'No informado')} mmHg</p>
       <p><strong>Medicación habitual del paciente:</strong><br />${escapeHtml(patientForPrint.medicacionHabitual || 'No informada').replaceAll('\n', '<br />')}</p>
-      <p><strong>Patologías conocidas:</strong><br />${escapeHtml(patientForPrint.patologiasConocidas).replaceAll('\n', '<br />') || 'No informado'}</p>
-      <p><strong>Patologías crónicas:</strong><br />${escapeHtml(patientForPrint.patologiasCronicas).replaceAll('\n', '<br />') || 'No informado'}</p>
+      <p><strong>Patologías / antecedentes:</strong><br />${escapeHtml(mergeClinicalPathologies(patientForPrint.patologiasConocidas, patientForPrint.patologiasCronicas)).replaceAll('\n', '<br />') || 'No informado'}</p>
       <p><strong>Última internación:</strong><br />${escapeHtml(patientForPrint.ultimaInternacion).replaceAll('\n', '<br />') || 'No informado'}</p>
       <p><strong>Cirugías previas:</strong><br />${escapeHtml(patientForPrint.cirugiasPrevias).replaceAll('\n', '<br />') || 'No informado'}</p>
     </section>
@@ -10247,8 +10278,10 @@ function App() {
 
     const hasDraftConsultation = Boolean(
       consultationDraft.motivoConsulta.trim() ||
-        consultationDraft.detalleAtencion.trim() ||
-        consultationDraft.pensamientoMedico.trim(),
+        consultationDraft.enfermedadActual.trim() ||
+        consultationDraft.planManejo.trim() ||
+        consultationDraft.farmacosAgregados?.trim() ||
+        consultationDraft.estudiosComplementarios?.trim(),
     )
 
     const consultationEntriesForPrint = hasDraftConsultation
@@ -10257,8 +10290,16 @@ function App() {
             id: 'draft',
             date: new Date().toISOString(),
             motivoConsulta: consultationDraft.motivoConsulta || 'Atención en edición',
-            detalleAtencion: consultationDraft.detalleAtencion,
+            detalleAtencion: consultationDraft.enfermedadActual,
             pensamientoMedico: consultationDraft.pensamientoMedico,
+            enfermedadActual: consultationDraft.enfermedadActual,
+            impresionDiagnostica: consultationDraft.impresionDiagnostica,
+            planManejo: consultationDraft.planManejo,
+            pesoActual: consultationDraft.pesoActual,
+            tallaCmEnConsulta: patientForPrint.tallaCm,
+            farmacosAgregados: consultationDraft.farmacosAgregados,
+            estudiosComplementarios: consultationDraft.estudiosComplementarios,
+            resumenSofia: consultationDraft.incluirResumenSofia ? consultationDraft.resumenSofia : '',
             professionalSignature: {
               fullName: profile.fullName,
               licenseNumber: profile.licenseNumber,
@@ -14159,8 +14200,8 @@ function App() {
       ) : null}
 
       {!isDentist && workspaceLayer === 'patient-record' ? (
-        <div className="screen-stage">
-          <section className="panel layer-header">
+        <div className="screen-stage clinical-compact">
+          <section className="panel layer-header clinical-toolbar">
             <div>
               <h2>Ficha del paciente</h2>
               <p className="flow-hint">
@@ -14188,12 +14229,13 @@ function App() {
               >
                 + Evolucionar paciente
               </button>
+              {canEditPatientForm ? <button type="submit" form="clinical-patient-form" className="clinical-primary-action">Guardar ficha</button> : null}
             </div>
           </section>
 
           <section className="workspace single-column">
             <section className="panel patient-record-panel">
-              <form className="grid" onSubmit={handleSavePatient}>
+              <form id="clinical-patient-form" className="grid" onSubmit={handleSavePatient}>
                 {!canEditSelectedPatientRecord && selectedPatient ? (
                   <p className="access-note">
                     Esta historia está compartida por otro profesional. Puedes agregar consultas
@@ -14270,7 +14312,7 @@ function App() {
                 <fieldset className="patient-edit-fieldset" disabled={!canEditPatientForm}>
                   <section className="patient-form-block">
                     <h4 className="block-title">📋 Datos filiatorios</h4>
-                    <div className="grid two-col">
+                    <div className="grid two-col clinical-identity-grid">
                       <label>
                         Nombre
                         <input name="nombre" value={patientDraft.nombre} onChange={handlePatientDraftChange} />
@@ -14307,7 +14349,7 @@ function App() {
                   </section>
                   <section className="patient-form-block">
                     <h4 className="block-title">🏥 Datos de afiliación</h4>
-                    <div className="grid two-col">
+                    <div className="grid two-col clinical-insurance-grid">
                       <label>
                         Obra social
                         <input name="obraSocial" value={patientDraft.obraSocial} onChange={handlePatientDraftChange} />
@@ -14324,31 +14366,21 @@ function App() {
                   </section>
                   <section className="patient-form-block">
                     <h4 className="block-title">🩺 Antecedentes clínicos</h4>
-                    <div className="grid">
+                    <div className="clinical-measurements">
                       <label>Peso inicial (kg, opcional)<input name="pesoInicial" inputMode="decimal" value={patientDraft.pesoInicial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 72,5" /></label>
                       <label>Talla (cm, opcional)<input name="tallaCm" inputMode="decimal" value={patientDraft.tallaCm || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 170" /></label>
-                      <label>Tensión arterial inicial (mmHg, opcional)<input name="tensionArterial" value={patientDraft.tensionArterial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 120/80" /></label>
+                      <label>TA inicial (mmHg)<input name="tensionArterial" value={patientDraft.tensionArterial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 120/80" /></label>
                       <p>IMC inicial: <strong>{bmiLabel(patientDraft.pesoInicial, patientDraft.tallaCm)}</strong></p>
                     </div>
-                    <ClinicalMedicationField label="Medicación habitual del paciente" value={patientDraft.medicacionHabitual || ''} catalog={medicationCatalog} onChange={medicacionHabitual => setPatientDraft(current => ({ ...current, medicacionHabitual }))} />
+                    <ClinicalDiagnosisField label="Diagnóstico principal" name="diagnosticoPrincipal" value={patientDraft.diagnosticoPrincipal}
+                      onChange={diagnosticoPrincipal => setPatientDraft(current => ({ ...current, diagnosticoPrincipal }))}
+                      suggestions={patientDraft.diagnosticoPrincipal.trim().length >= 2 ? buildDiagnosisSuggestions(diagnosisCatalog, patientDraft.diagnosticoPrincipal, 8) : []} />
+                    <div className="clinical-history-grid">
                     <label>
-                      Diagnóstico principal
-                      <input
-                        name="diagnosticoPrincipal"
-                        value={patientDraft.diagnosticoPrincipal}
-                        onChange={handlePatientDraftChange}
-                        placeholder="Escriba el diagnóstico principal..."
-                        autoComplete="off"
-                      />
-                    </label>
-                    <label>
-                      Patologías conocidas
-                      <textarea name="patologiasConocidas" value={patientDraft.patologiasConocidas} onChange={handlePatientDraftChange} />
-                    </label>
-                    <label>
-                      Patologías crónicas
+                      Patologías / antecedentes (HTA, diabetes, etc.)
                       <textarea name="patologiasCronicas" value={patientDraft.patologiasCronicas} onChange={handlePatientDraftChange} />
                     </label>
+                    <ClinicalMedicationField label="Medicación habitual del paciente" value={patientDraft.medicacionHabitual || ''} catalog={medicationCatalog} onChange={medicacionHabitual => setPatientDraft(current => ({ ...current, medicacionHabitual }))} />
                     <label>
                       Última internación
                       <textarea name="ultimaInternacion" value={patientDraft.ultimaInternacion} onChange={handlePatientDraftChange} />
@@ -14357,9 +14389,9 @@ function App() {
                       Cirugías previas
                       <textarea name="cirugiasPrevias" value={patientDraft.cirugiasPrevias} onChange={handlePatientDraftChange} />
                     </label>
+                    </div>
                   </section>
-                  <button type="submit">Guardar ficha</button>
-                  <small>Cada paciente se almacena de forma individual en su archivo plano local.</small>
+                  <div className="clinical-save-row"><button type="submit">Guardar ficha</button><small>Los campos clínicos son opcionales.</small></div>
                 </fieldset>
                 {renderPaperRecords(canManagePaperRecords)}
                 <div className="record-document-actions">
@@ -14433,8 +14465,8 @@ function App() {
       ) : null}
 
       {!isDentist && workspaceLayer === 'clinical' ? (
-        <div className="screen-stage">
-          <section className="panel layer-header">
+        <div className="screen-stage clinical-compact">
+          <section className="panel layer-header clinical-toolbar">
             <div>
               <h2>Evolucionar paciente</h2>
               {selectedPatient ? (
@@ -14492,8 +14524,8 @@ function App() {
                       <strong>{selectedPatient.edad || calculateAge(selectedPatient.birthDate)}</strong>
                     </div>
                     <div>
-                      <span>Patologías crónicas</span>
-                      <strong>{selectedPatient.patologiasCronicas || 'Sin dato'}</strong>
+                      <span>Patologías / antecedentes</span>
+                      <strong>{mergeClinicalPathologies(selectedPatient.patologiasConocidas, selectedPatient.patologiasCronicas) || 'Sin dato'}</strong>
                     </div>
                     <div>
                       <span>Última internación</span>
@@ -14502,32 +14534,21 @@ function App() {
                   </div>
                 </section>
               )}
-              {selectedPatient ? renderPaperRecords(false) : null}
               {selectedPatient ? (
-                <section className="patient-form-block">
+                <section className="patient-form-block clinical-baseline-strip">
                   <h4>Control de peso y medicación habitual</h4>
                   <p>Peso inicial: {selectedPatient.pesoInicial || 'Sin dato'} kg · Talla: {selectedPatient.tallaCm || 'Sin dato'} cm · IMC inicial: {bmiLabel(selectedPatient.pesoInicial, selectedPatient.tallaCm)}</p>
                   <p>Tensión arterial inicial: {selectedPatient.tensionArterial || 'Sin dato'} mmHg</p>
                   <p style={{ whiteSpace: 'pre-wrap' }}><strong>Medicación habitual:</strong> {selectedPatient.medicacionHabitual || 'No informada'}</p>
-                  <ul>{[...selectedPatient.consultations].filter(entry => entry.pesoActual).sort((a, b) => a.date.localeCompare(b.date)).map(entry => {
+                  <details><summary>Seguimiento de peso por fecha</summary><ul>{[...selectedPatient.consultations].filter(entry => entry.pesoActual).sort((a, b) => a.date.localeCompare(b.date)).map(entry => {
                     const initial = positiveMeasurement(selectedPatient.pesoInicial)
                     const current = positiveMeasurement(entry.pesoActual)
                     return <li key={entry.id}>{formatDate(entry.date)}: {entry.pesoActual} kg · IMC: {bmiLabel(entry.pesoActual, entry.tallaCmEnConsulta)}{initial !== null && current !== null ? ` · Cambio desde peso inicial: ${(current - initial).toFixed(2)} kg` : ''}</li>
-                  })}</ul>
+                  })}</ul></details>
                   <small>El IMC usa la talla guardada en cada evolución. No se interpretan categorías automáticamente.</small>
                 </section>
               ) : null}
               <form className="evolution-form" onSubmit={handleSaveConsultation}>
-                <label className="evolution-field evolution-field--wide">
-                  Peso actual (kg, opcional)
-                  <input name="pesoActual" inputMode="decimal" value={consultationDraft.pesoActual || ''} onChange={handleConsultationDraftChange} placeholder="Ej.: 71,2" />
-                  <small>IMC actual: {bmiLabel(consultationDraft.pesoActual, (canEditSelectedPatientRecord ? patientDraft : selectedPatient)?.tallaCm)}. La talla se toma de la ficha y se conserva con esta evolución.</small>
-                </label>
-                <ClinicalMedicationField label="Agregado de fármacos" value={consultationDraft.farmacosAgregados || ''} catalog={medicationCatalog} onChange={farmacosAgregados => setConsultationDraft(current => ({ ...current, farmacosAgregados }))} />
-                {canEditSelectedPatientRecord ? <label className="evolution-field evolution-field--wide"><span><input type="checkbox" checked={Boolean(consultationDraft.incorporarFarmacos)} onChange={event => setConsultationDraft(current => ({ ...current, incorporarFarmacos: event.target.checked }))} /> Incorporar estos fármacos a la medicación habitual al guardar</span></label> : null}
-                <label className="evolution-field evolution-field--wide">Estudios complementarios solicitados
-                  <textarea name="estudiosComplementarios" value={consultationDraft.estudiosComplementarios || ''} onChange={handleConsultationDraftChange} placeholder="Estudios pedidos, motivo y pendientes para revisar en el próximo control." />
-                </label>
                 <label className="evolution-field evolution-field--wide">
                   Motivo de consulta
                   <input
@@ -14535,136 +14556,48 @@ function App() {
                     value={consultationDraft.motivoConsulta}
                     onChange={handleConsultationDraftChange}
                     required
-                    placeholder="Escriba el diagnóstico o elija una sugerencia..."
+                    placeholder="Motivo de la consulta de hoy"
                     autoComplete="off"
-                    list="diagnosis-suggestions-list"
                   />
-                  <datalist id="diagnosis-suggestions-list">
-                    {consultationDiagnosisVisibleList.map((diagnosis) => (
-                      <option key={diagnosis} value={diagnosis} />
-                    ))}
-                  </datalist>
-                  {consultationDiagnosisVisibleList.length > 0 ? (
-                    <div className="diagnosis-picker-panel">
-                      <p className="search-empty">Sugerencias con aproximación</p>
-                      <ul className="search-suggestions">
-                        {consultationDiagnosisVisibleList.map((diagnosis) => (
-                          <li key={diagnosis}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setConsultationDraft((current) => ({
-                                  ...current,
-                                  motivoConsulta: diagnosis,
-                                }))
-                              }}
-                            >
-                              {diagnosis}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
                 </label>
                 <label className="evolution-field evolution-field--wide">
-                  Enfermedad actual
-                  <textarea name="enfermedadActual" value={consultationDraft.enfermedadActual} onChange={handleConsultationDraftChange} placeholder="Relato cronológico de la novedad de hoy..." />
-                </label>
-                <label className="evolution-field">
-                  Signos y síntomas
-                  <textarea name="examenFisico" value={consultationDraft.examenFisico} onChange={handleConsultationDraftChange} placeholder="Signos vitales, síntomas referidos y hallazgos del examen." />
-                </label>
-                <label className="evolution-field">
-                  Diagnóstico
-                  <textarea name="impresionDiagnostica" value={consultationDraft.impresionDiagnostica} onChange={handleConsultationDraftChange} placeholder="Diagnóstico o diferenciales a revisar." />
-                </label>
-                <label className="evolution-field evolution-field--wide">
-                  Tratamiento
-                  <textarea name="planManejo" value={consultationDraft.planManejo} onChange={handleConsultationDraftChange} placeholder="Indicaciones, estudios solicitados, pautas de alarma y control." />
-                </label>
-                <label className="evolution-field evolution-field--wide">
-                  <span className="evolution-field-head">
-                    Pensamiento médico
+                  <span className="evolution-field-head">Enfermedad actual
                     <span className="dictation-actions">
-                      <button
-                        type="button"
-                        className="ghost compact"
-                        onClick={() => {
-                          void startDictationForConsultationField('pensamientoMedico')
-                        }}
-                        disabled={!dictationAvailable || dictating}
-                      >
-                        🎙 Dictar
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost compact"
-                        onClick={stopDictation}
-                        disabled={!dictationAvailable || !dictating}
-                      >
-                        Detener
-                      </button>
-                      {renderDictationPolishActions('pensamientoMedico')}
+                      <button type="button" className="ghost compact" onClick={() => { void startDictationForConsultationField('enfermedadActual') }} disabled={!dictationAvailable || dictating}>🎙 Dictar</button>
+                      <button type="button" className="ghost compact" onClick={stopDictation} disabled={!dictating}>Detener</button>
+                      {renderDictationPolishActions('enfermedadActual')}
                     </span>
                   </span>
-                  <textarea
-                    name="pensamientoMedico"
-                    value={consultationDraft.pensamientoMedico}
-                    onChange={handleConsultationDraftChange}
-                    placeholder="Reflexión profesional sobre el caso."
-                  />
-                  {dictating && dictationField === 'pensamientoMedico' ? (
-                    <small>{DICTATION_COMMANDS_HINT}</small>
-                  ) : null}
+                  <textarea name="enfermedadActual" value={consultationDraft.enfermedadActual} onChange={handleConsultationDraftChange} placeholder="Relato cronológico de la novedad de hoy..." />
+                  {dictating && dictationField === 'enfermedadActual' ? <small>{DICTATION_COMMANDS_HINT}</small> : null}
+                  {!dictationAvailable ? <small>Este navegador no admite dictado por voz nativo.</small> : null}
                 </label>
+                <div className="evolution-field evolution-field--wide">
+                  <ClinicalDiagnosisField label="Sospecha diagnóstica" name="impresionDiagnostica" value={consultationDraft.impresionDiagnostica}
+                    onChange={impresionDiagnostica => setConsultationDraft(current => ({ ...current, impresionDiagnostica }))}
+                    suggestions={consultationDiagnosisVisibleList} />
+                </div>
+                <label className="evolution-field">
+                  Tratamiento
+                  <textarea name="planManejo" value={consultationDraft.planManejo} onChange={handleConsultationDraftChange} placeholder="Indicaciones, pautas de alarma y control." />
+                </label>
+                <ClinicalMedicationField label="Agregado de fármacos" value={consultationDraft.farmacosAgregados || ''} catalog={medicationCatalog} onChange={farmacosAgregados => setConsultationDraft(current => ({ ...current, farmacosAgregados }))} />
+                <label className="evolution-field evolution-field--wide">Estudios complementarios solicitados
+                  <textarea name="estudiosComplementarios" value={consultationDraft.estudiosComplementarios || ''} onChange={handleConsultationDraftChange} placeholder="Laboratorio, imágenes u otros estudios. Texto libre." />
+                </label>
+                <div className="clinical-measurements evolution-field--wide">
+                  <label>Peso actual (kg, opcional)<input name="pesoActual" inputMode="decimal" value={consultationDraft.pesoActual || ''} onChange={handleConsultationDraftChange} placeholder="Ej.: 71,2" /></label>
+                  <p>IMC actual: <strong>{bmiLabel(consultationDraft.pesoActual, (canEditSelectedPatientRecord ? patientDraft : selectedPatient)?.tallaCm)}</strong></p>
+                </div>
 
                 <section className="evolution-sofia-panel">
                   <header>
                     <span className="sofia-face" aria-hidden="true" style={{ width: 34, height: 34 }} />
                     <div>
                       <strong>Asistencia de Sofía</strong>
-                      <small>Dictá o pegá el interrogatorio y Sofía arma un borrador de la evolución. Nada se guarda solo.</small>
+                      <small>Revisa toda la evolución y el archivo adjunto. No reemplaza tus campos ni guarda nada automáticamente.</small>
                     </div>
                   </header>
-                  <label className="evolution-field">
-                    <span className="evolution-field-head">
-                      Interrogatorio
-                      <span className="dictation-actions">
-                        <button
-                          type="button"
-                          className="ghost compact"
-                          onClick={() => {
-                            void startDictationForConsultationField('detalleAtencion')
-                          }}
-                          disabled={!dictationAvailable || dictating}
-                        >
-                          🎙 Dictar
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost compact"
-                          onClick={stopDictation}
-                          disabled={!dictationAvailable || !dictating}
-                        >
-                          Detener
-                        </button>
-                        {renderDictationPolishActions('detalleAtencion')}
-                      </span>
-                    </span>
-                    <textarea
-                      name="detalleAtencion"
-                      value={consultationDraft.detalleAtencion}
-                      onChange={handleConsultationDraftChange}
-                      placeholder="Relato del paciente, dictado de la consulta o notas libres."
-                    />
-                    {dictating && dictationField === 'detalleAtencion' ? (
-                      <small>{DICTATION_COMMANDS_HINT}</small>
-                    ) : null}
-                    {!dictationAvailable ? (
-                      <small>Tu navegador no soporta transcripción por voz nativa.</small>
-                    ) : null}
-                  </label>
                   <div className="evolution-sofia-actions">
                     <label htmlFor="sofia-clinical-document" className="evolution-sofia-button">
                       <span className="sofia-face" aria-hidden="true" style={{ width: 24, height: 24 }} />
@@ -14675,23 +14608,37 @@ function App() {
                       className="file-input-hidden"
                       type="file"
                       accept=".pdf,.docx,.txt,.csv,.md,.json,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/json"
+                      disabled={clinicalDocumentBusy || clinicalSummaryBusy}
                       onChange={(event) => { void handleSofiaClinicalDocumentUpload(event) }}
                     />
                     <button
                       type="button"
                       className="evolution-sofia-button primary"
                       onClick={() => { void summarizeClinicalInterview() }}
-                      disabled={clinicalSummaryBusy || !consultationDraft.detalleAtencion.trim()}
+                      disabled={clinicalSummaryBusy || clinicalDocumentBusy || dictating || !consultationDraft.motivoConsulta.trim()}
                     >
                       <span className="sofia-face" aria-hidden="true" style={{ width: 24, height: 24 }} />
-                      {clinicalSummaryBusy ? 'Sofía está valorando...' : 'Valorar interrogatorio con Sofía'}
+                      {clinicalSummaryBusy ? 'Sofía está valorando...' : 'Valorar evolución con Sofía'}
                     </button>
                   </div>
-                  <small>Laboratorios, estudios o imágenes (PDF, DOCX o foto). Revisá el borrador antes de guardar la evolución.</small>
+                  {clinicalAttachment ? <p className="clinical-inline-actions">Archivo: {clinicalAttachment.name} <button type="button" className="ghost compact" disabled={clinicalSummaryBusy} onClick={() => setClinicalAttachment(null)}>Quitar archivo</button><small>{canEditSelectedPatientRecord ? 'El original se adjuntará a la ficha al guardar.' : 'Archivo solo para esta revisión. Solo el dueño puede agregar documentos a la ficha compartida.'}</small></p> : null}
+                  {consultationDraft.resumenSofia ? <div className="clinical-sofia-review">
+                    <label>Resumen y reflexión de Sofía — revisá y editá antes de adjuntar
+                      <textarea name="resumenSofia" value={consultationDraft.resumenSofia} onChange={handleConsultationDraftChange} rows={5} />
+                    </label>
+                    <div className="clinical-inline-actions">
+                      <button type="button" className={consultationDraft.incluirResumenSofia ? 'ghost compact' : ''} onClick={() => setConsultationDraft(current => ({ ...current, incluirResumenSofia: !current.incluirResumenSofia }))}>
+                        {consultationDraft.incluirResumenSofia ? 'No adjuntar resumen' : 'Adjuntar resumen al guardar'}
+                      </button>
+                      <button type="button" className="ghost compact" onClick={() => setConsultationDraft(current => ({ ...current, resumenSofia: '', incluirResumenSofia: false }))}>Descartar resumen</button>
+                      <span role="status">{consultationDraft.incluirResumenSofia ? 'Se adjuntará con la evolución.' : 'No se adjuntará. Se guardará solo lo escrito por vos.'}</span>
+                    </div>
+                  </div> : null}
                 </section>
 
-                <button type="submit" className="evolution-save-button">Guardar evolución</button>
+                <button type="submit" className="evolution-save-button" disabled={clinicalSummaryBusy || clinicalDocumentBusy}>Guardar evolución</button>
               </form>
+              {selectedPatient ? renderPaperRecords(false) : null}
               <ul className="consultation-list">
                 {selectedPatient?.consultations.map((entry) => (
                   <li key={entry.id}>
@@ -14699,15 +14646,15 @@ function App() {
                       <strong>{formatDate(entry.date)}</strong>
                       <span>Motivo: {entry.motivoConsulta}</span>
                     </header>
-                    {entry.diagnostico ? <p><strong>Diagnóstico:</strong> {entry.diagnostico}</p> : null}
+                    {entry.diagnostico && entry.diagnostico !== entry.impresionDiagnostica ? <p><strong>Diagnóstico:</strong> {entry.diagnostico}</p> : null}
                     {entry.enfermedadActual ? <p><strong>Enfermedad actual:</strong> {entry.enfermedadActual}</p> : <p>{entry.detalleAtencion}</p>}
                     {entry.examenFisico ? <p><strong>Signos y síntomas:</strong> {entry.examenFisico}</p> : null}
-                    {entry.impresionDiagnostica ? <p><strong>Diagnóstico:</strong> {entry.impresionDiagnostica}</p> : null}
+                    {entry.impresionDiagnostica ? <p><strong>Sospecha diagnóstica:</strong> {entry.impresionDiagnostica}</p> : null}
                     {entry.planManejo ? <p><strong>Tratamiento:</strong> {entry.planManejo}</p> : null}
                     {followUpLines(entry).map(([label, value]) => <p key={label} style={{ whiteSpace: 'pre-wrap' }}><strong>{label}:</strong> {value}</p>)}
-                    <p>
+                    {entry.pensamientoMedico ? <p>
                       <strong>Pensamiento médico:</strong> {entry.pensamientoMedico}
-                    </p>
+                    </p> : null}
                     <footer>
                       <p>
                         Firma: {entry.professionalSignature.fullName} (Matrícula{' '}

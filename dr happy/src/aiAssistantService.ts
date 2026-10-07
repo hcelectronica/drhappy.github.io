@@ -77,7 +77,7 @@ export async function askSofia(params: {
   messages: AssistantMessage[]
   professionalName?: string
   context?: string
-  mode?: 'paper-record-transcription' | 'dictation-polish'
+  mode?: 'paper-record-transcription' | 'dictation-polish' | 'clinical-evolution-review'
   confirmation?: { action: string; input: Record<string, unknown> }
 }): Promise<AssistantResult> {
   if (!isSupabaseConfigured || !supabase) {

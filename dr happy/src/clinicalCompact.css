@@ -1,0 +1,74 @@
+.clinical-compact { --clinical-gap: 10px; }
+.clinical-compact .panel { padding: 16px; }
+.clinical-compact .workspace { gap: 12px; }
+.clinical-compact .clinical-toolbar {
+  position: sticky; top: 8px; z-index: 30; padding: 12px 16px;
+  backdrop-filter: blur(12px); box-shadow: 0 3px 14px #1434511a;
+}
+.clinical-compact .clinical-toolbar h2 { font-size: 1.15rem; margin: 0; }
+.clinical-compact .clinical-toolbar .flow-hint { margin: 3px 0 0; font-size: .82rem; }
+.clinical-compact .layer-actions { gap: 6px; flex-wrap: wrap; }
+.clinical-compact button { min-height: 36px; padding: 7px 12px; border-radius: 9px; box-shadow: none; }
+.clinical-compact .clinical-primary-action { font-weight: 800; }
+.clinical-compact .patient-summary-card { padding: 10px 12px; gap: 8px; margin-bottom: 8px; }
+.clinical-compact .patient-summary-card h3 { font-size: 1rem; margin: 0; }
+.clinical-compact .patient-summary-label { margin: 0 0 2px; font-size: .65rem; }
+.clinical-compact .patient-summary-grid { grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 4px 10px; }
+.clinical-compact .patient-summary-grid span { font-size: .7rem; }
+.clinical-compact .patient-summary-grid strong { font-size: .82rem; overflow-wrap: anywhere; }
+.clinical-compact .patient-summary-grid div { align-content: start; }
+.clinical-compact .patient-record-panel > form { gap: 8px; }
+.clinical-compact .patient-edit-fieldset { min-width: 0; display: grid; gap: 8px; }
+.clinical-compact .patient-form-block { padding: 10px; margin: 0; }
+.clinical-compact .block-title { margin-bottom: 8px; padding-bottom: 5px; font-size: .85rem; }
+.clinical-compact label { display: grid; gap: 4px; font-size: .82rem; min-width: 0; }
+.clinical-compact input:not([type=checkbox]):not([type=file]), .clinical-compact textarea {
+  width: 100%; box-sizing: border-box; min-width: 0; padding: 7px 9px; border-radius: 8px;
+}
+.clinical-compact textarea { min-height: 62px; height: 68px; resize: vertical; }
+.clinical-compact .clinical-identity-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 12px; }
+.clinical-compact .clinical-insurance-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 12px; }
+.clinical-compact .clinical-measurements { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.clinical-compact .clinical-measurements label { flex: 0 1 160px; }
+.clinical-compact .clinical-measurements p { margin: 0; padding: 7px 0; font-size: .84rem; }
+.clinical-compact .clinical-history-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; margin-top: 8px; align-items: start; }
+.clinical-compact .clinical-medication-field { min-width: 0; display: grid; gap: 5px; font-weight: 400; align-content: start; }
+.clinical-compact .clinical-medication-choice { padding: 8px; border: 1px solid var(--border); border-radius: 8px; display: grid; gap: 6px; font-size: .82rem; }
+.clinical-compact .clinical-medication-choice p { margin: 6px 0; }
+.clinical-compact .clinical-diagnosis-field { min-width: 0; position: relative; }
+.clinical-compact .clinical-diagnosis-field .clinical-suggestions { position: absolute; top: 100%; left: 0; right: 0; z-index: 35; background: var(--surface); box-shadow: 0 6px 18px #14345126; }
+.clinical-compact .clinical-suggestions { max-height: 210px; overflow-y: auto; margin: 4px 0; padding: 4px; border: 1px solid var(--border); border-radius: 8px; }
+.clinical-compact .clinical-suggestions button { width: 100%; text-align: left; justify-content: start; white-space: normal; font-size: .82rem; }
+.clinical-compact .clinical-suggestions span { display: block; font-weight: 400; }
+.clinical-compact .clinical-inline-actions, .clinical-compact .clinical-save-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.clinical-compact .clinical-save-row button { width: auto; min-width: 140px; justify-self: start; }
+.clinical-compact .record-mode-actions { margin: 0; }
+.clinical-compact .record-document-actions { gap: 6px; margin-top: 8px; }
+.clinical-compact .paper-record-block { margin-top: 8px; }
+.clinical-compact .patient-clinical-section > h2 { font-size: 1rem; margin: 0 0 8px; }
+.clinical-compact .patient-clinical-section { gap: 8px; }
+.clinical-compact .clinical-baseline-strip { font-size: .82rem; margin: 8px 0; }
+.clinical-compact .clinical-baseline-strip h4 { font-size: .84rem; margin: 0 0 4px; }
+.clinical-compact .clinical-baseline-strip p { margin: 3px 0; }
+.clinical-compact .clinical-baseline-strip small { font-size: .73rem; }
+.clinical-compact .evolution-form { max-width: none; gap: 10px 14px; margin-top: 10px; }
+.clinical-compact .evolution-sofia-panel { padding: 10px 12px; gap: 8px; border-radius: 10px; }
+.clinical-compact .evolution-sofia-panel > header small { font-size: .76rem; }
+.clinical-compact .evolution-sofia-button { min-height: 36px; padding: 6px 10px; font-size: .82rem; }
+.clinical-compact .evolution-save-button { min-width: 160px; justify-self: start; }
+.clinical-compact .clinical-sofia-review { display: grid; gap: 8px; }
+.clinical-compact .clinical-sofia-review textarea { height: 160px; }
+.clinical-compact .consultation-list { margin-top: 12px; }
+@media (max-width: 720px) {
+  .clinical-compact .clinical-toolbar { position: static; }
+  .clinical-compact .clinical-identity-grid, .clinical-compact .clinical-insurance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .clinical-compact .clinical-history-grid { grid-template-columns: minmax(0, 1fr); }
+  .clinical-compact .clinical-measurements label { flex: 1 1 105px; }
+  .clinical-compact .clinical-measurements p { flex: 1 1 100%; }
+  .clinical-compact .layer-actions button, .clinical-compact button { min-height: 44px; }
+  .clinical-compact input:not([type=checkbox]):not([type=file]), .clinical-compact textarea { font-size: 16px; }
+  .clinical-compact .evolution-sofia-button { flex: 1 1 160px; }
+}
+@media (max-width: 380px) {
+  .clinical-compact .clinical-insurance-grid { grid-template-columns: minmax(0, 1fr); }
+}

@@ -10,6 +10,7 @@ export interface ConsultationFollowUp {
   tallaCmEnConsulta?: string
   farmacosAgregados?: string
   estudiosComplementarios?: string
+  resumenSofia?: string
 }
 
 export function positiveMeasurement(value: string | undefined): number | null {
@@ -60,6 +61,10 @@ export function appendMedication(current: string, addition: string): string {
   return [current.trim(), addition.trim()].filter(Boolean).join('\n')
 }
 
+export function mergeClinicalPathologies(known: string, chronic: string): string {
+  return [...new Set([known.trim(), chronic.trim()].filter(Boolean))].join('\n')
+}
+
 export function followUpLines(entry: ConsultationFollowUp): Array<[string, string]> {
   return [
     ['Peso actual (kg)', entry.pesoActual || ''],
@@ -67,5 +72,6 @@ export function followUpLines(entry: ConsultationFollowUp): Array<[string, strin
     ['IMC', entry.pesoActual && entry.tallaCmEnConsulta ? bmiLabel(entry.pesoActual, entry.tallaCmEnConsulta) : ''],
     ['Agregado de fármacos', entry.farmacosAgregados || ''],
     ['Estudios complementarios solicitados', entry.estudiosComplementarios || ''],
+    ['Resumen y reflexión de Sofía (revisado por el profesional)', entry.resumenSofia || ''],
   ].filter((line): line is [string, string] => Boolean(line[1]))
 }
