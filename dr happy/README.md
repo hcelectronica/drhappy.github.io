@@ -20,6 +20,18 @@ El inicio público ofrece «Instalar app» en celulares sin exigir una sesión. 
 
 El título SEO y las vistas previas al compartir usan «Dr Happy | Historia clínica digital y Turnos», sin restringir la marca a odontología. La descripción incluye odontograma, turnos, Sofía IA y la prueba de 7 días. Google puede elegir otro título o fragmento y necesita volver a rastrear la portada para reflejar los cambios.
 
+### Google Search Console y textos públicos
+
+`index.html` define el título, la descripción para buscadores, Open Graph/Twitter y los datos estructurados. Al cambiar la descripción, mantener esas referencias coherentes. Los textos visibles de los servicios están en la portada de `src/App.tsx` y sus componentes promocionales; Google también puede usarlos para generar el fragmento. Los módulos privados no son páginas comerciales independientes para indexar.
+
+La portada y `public/privacidad.html` declaran su URL canónica con `https://www.drhappy.com.ar/`. Las versiones sin `www` siguen funcionando sin redirección global para preservar sesiones y retornos de la app. Que Search Console excluya la versión HTTP por redirección o la versión sin `www` como alternativa canónica es esperado; inspeccionar la URL HTTPS con `www` para evaluar la indexación de la portada.
+
+`public/robots.txt` anuncia `public/sitemap.xml`, que incluye únicamente portada y privacidad. Actualizar `lastmod` cuando cambie realmente cada página, no con cada compilación. No agregar historias clínicas, formularios con tokens ni pantallas privadas. Las páginas nuevas de servicios necesitarían contenido público propio antes de incorporarse al sitemap.
+
+La portada y privacidad usan `public/icon-192.png` como favicon PNG cuadrado, con URL estable y el monograma nuevo. El SVG sigue disponible para la identidad de la app y los iconos de instalación conservan su configuración. Google puede tardar días o semanas en volver a rastrear y procesar el icono; cambiarlo no garantiza su aparición inmediata ni una posición en las búsquedas.
+
+Tras publicar, inspeccionar `https://www.drhappy.com.ar/` en Search Console, probar la URL publicada y solicitar indexación. El sitemap conserva `https://www.drhappy.com.ar/sitemap.xml`; se puede reenviar si persiste un error de procesamiento. No usar retiradas de URLs para resolver variantes canónicas. Validar los archivos fuente con `node --test tests/public-seo.test.mjs`; después de `npm run build`, repetir con `SEO_BUILD_DIR=dist` para verificar los archivos publicados.
+
 Los primeros flyers son Atención médica (para médicos), Odontograma, Turnera y Ambulancia; Sofía y las demás herramientas continúan debajo. El flyer dental reproduce una demostración ilustrativa de 12 segundos al pasar el mouse o tocarlo: cursor, selección de la pieza 36, ampliación y marcas por superficie en rojo y azul. La demostración ocupa el recuadro completo sin cambiar su tamaño, abrir ventanas, consultar pacientes ni guardar datos. Al retirar el mouse, perder el foco o presionar Escape vuelve la promoción; otro toque reinicia la secuencia. Esta demostración activada por el visitante reproduce la secuencia completa incluso con «reducir movimiento»; las demás animaciones de la app conservan esa preferencia.
 
 El acceso comienza plegado en «Iniciar sesión» y despliega el formulario al tocarlo. Recuperación y confirmación de email se muestran automáticamente cuando corresponden. «Crear usuario» abre todos los campos del registro en dos columnas, sin scroll interno del formulario; el fondo del modal admite desplazamiento únicamente si la pantalla o el teclado reducen el espacio disponible. El envío sigue usando el circuito de confirmación por código de email.
