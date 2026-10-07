@@ -133,6 +133,14 @@ try {
   await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
   await command('Page.addScriptToEvaluateOnNewDocument', { source: `
     if(location.origin===${JSON.stringify(origin)}){
+      if(${process.env.TEST_CLINICAL_FOLLOW_UP === '1'}){
+        window.__speechSessions=[];
+        window.SpeechRecognition=class{
+          start(){window.__speechSessions.push(this)}
+          stop(){this.stopped=true}
+          emit(parts){const results=parts.map(([transcript,isFinal])=>({0:{transcript},isFinal}));results.item=index=>results[index];this.onresult?.({resultIndex:0,results})}
+        };
+      }
       window.__instance=crypto.randomUUID();
       window.addEventListener('beforeinstallprompt',event=>{
         if(!event.fixture){event.preventDefault();event.stopImmediatePropagation()}
@@ -649,7 +657,11 @@ try {
     await sleep(50)
   }
   const storedClinicalPatient = `JSON.parse(localStorage.getItem('fixture-document-patients')).find(p=>p.id==='patient-second')`
+  assert.equal(await evaluate(`document.querySelector('.clinical-identity-details').open`), false, 'Existing identity starts collapsed')
   await click('Modificar datos del paciente')
+  await evaluate(`document.querySelector('.clinical-identity-details summary').click()`)
+  assert.equal(await evaluate(`document.querySelector('.clinical-identity-details').open`), true, 'Identity and insurance expand together')
+  await setClinicalField('input[name=numeroAfiliado]', '12345678901234567890')
   assert.equal(await evaluate(`document.querySelector('[name=patologiasCronicas]').value`),'HTA histórica\nDiabetes histórica','Known and chronic antecedents remain visible together')
   await setClinicalField('input[name=pesoInicial]', '72,5')
   await setClinicalField('input[name=tallaCm]', '170')
@@ -676,15 +688,61 @@ try {
   assert(Math.max(...baselineLayout.tops)-Math.min(...baselineLayout.tops)<2, 'Measurements share one desktop row')
   assert(baselineLayout.widths.every(width=>width<200), 'Measurements use small fields')
   assert(baselineLayout.saveWidth<240, 'Save is not full-width')
+  const identityWidths=await evaluate(`Object.fromEntries(['nombre','apellido','obraSocial','numeroAfiliado','plan'].map(name=>[name,document.querySelector('input[name='+name+']').getBoundingClientRect().width]))`)
+  for(const [name,width] of Object.entries(identityWidths)) assert(width>=140&&width<=250,'Real bounded input width for '+name+': '+width)
+  assert.equal(await evaluate(`document.querySelector('[name=numeroAfiliado]').maxLength`), -1, 'Visual width does not truncate affiliate numbers')
+  await setClinicalField('.patient-record-panel .clinical-medication-field input', 'losartan 50')
+  await wait(`!!document.querySelector('.patient-record-panel .clinical-medication-field .search-suggestions button')`)
+  await evaluate(`document.querySelector('.patient-record-panel .clinical-medication-field .search-suggestions button').click()`)
+  await wait(`!!document.querySelector('.clinical-medication-choice')`)
+  const historyGap=await evaluate(`(()=>{const first=document.querySelector('[name=patologiasCronicas]').getBoundingClientRect();const next=document.querySelector('[name=ultimaInternacion]').closest('label').getBoundingClientRect();return next.top-first.bottom})()`)
+  assert(historyGap<=12,'Medication selector must not create a blank row below pathologies: '+historyGap)
+  await click('Cancelar')
+  await evaluate(`document.querySelector('.clinical-identity-details summary').click()`)
   console.log('Compact initial layout: '+JSON.stringify(baselineLayout))
   await captureClinicalScreen('Ficha-inicial')
   await click('Guardar ficha')
   await wait(`${storedClinicalPatient}.pesoInicial==='72,5'`)
+  assert.equal(await evaluate(`${storedClinicalPatient}.numeroAfiliado`),'12345678901234567890','Bounded visual field preserves all characters')
   await click('+ Evolucionar paciente')
   await wait(`!!document.querySelector('.evolution-form')`)
   await setClinicalField('.evolution-form input[name=pesoActual]', '70')
   assert(await evaluate(`document.querySelector('.evolution-form').textContent.includes('24.22 kg/m²')`))
-  assert.equal(await evaluate(`document.querySelector('.evolution-form input').name`), 'motivoConsulta', 'Reason is the first form field')
+  assert.equal(await evaluate(`document.querySelector('.evolution-form input').name`), 'pesoActual', 'Weight precedes reason')
+  await setClinicalField('.evolution-form input[name=tensionArterial]', '130/85')
+  assert(await evaluate(`document.querySelector('.evolution-form [name=tensionArterial]').getBoundingClientRect().top<document.querySelector('.evolution-form [name=motivoConsulta]').getBoundingClientRect().top`), 'Current blood pressure precedes reason')
+  assert.equal(await evaluate(`document.querySelectorAll('.clinical-dictation-toggle').length`),1,'Only one dictation toggle')
+  assert(!await evaluate(`document.querySelector('.evolution-form').textContent.includes('Pulir con Sofía')`),'No redundant AI polish button')
+  await setClinicalField('.evolution-form textarea[name=enfermedadActual]', 'Texto previo.')
+  for(const android of [false,true]){
+    await evaluate(`Object.defineProperty(navigator,'userAgent',{configurable:true,value:${JSON.stringify(android ? 'Android Chrome' : 'Desktop Edge')}})`)
+    await click('🎙 Dictar')
+    assert(await evaluate(`window.__speechSessions.at(-1).interimResults===true&&document.querySelector('.clinical-dictation-toggle').getAttribute('aria-pressed')==='true'`),'Interim transcription enabled on '+(android?'Android':'desktop'))
+    await evaluate(`window.__speechSessions.at(-1).emit([['paciente con',false]])`)
+    await wait(`document.querySelector('[name=enfermedadActual]').value.includes('Paciente con')`)
+    await evaluate(`window.__speechSessions.at(-1).emit([['paciente con fiebre',false]])`)
+    await wait(`document.querySelector('[name=enfermedadActual]').value.includes('Paciente con fiebre')`)
+    await evaluate(`window.__speechSessions.at(-1).emit([['paciente con fiebre',true],['desde ayer',false]])`)
+    await wait(`document.querySelector('[name=enfermedadActual]').value.toLowerCase().includes('desde ayer')`)
+    const visibleDictation=await evaluate(`document.querySelector('[name=enfermedadActual]').value`)
+    assert.equal((visibleDictation.match(/Paciente con fiebre/g)||[]).length,1,'Interim revisions do not duplicate words')
+    await click('⏹ Detener dictado')
+    assert(await evaluate(`window.__speechSessions.at(-1).stopped&&document.querySelector('.clinical-dictation-toggle').getAttribute('aria-pressed')==='false'`),'Same button stops recognizer')
+    await evaluate(`window.__speechSessions.at(-1).emit([['respuesta tardía no guardar',true]])`)
+    assert.equal(await evaluate(`document.querySelector('[name=enfermedadActual]').value`),visibleDictation,'Stopping freezes visible interim text')
+    await click('🎙 Dictar')
+    await evaluate(`window.__speechSessions.at(-2).onend()`)
+    assert(await evaluate(`document.querySelector('.clinical-dictation-toggle').getAttribute('aria-pressed')==='true'`),'Old onend cannot stop new session')
+    await setClinicalField('[name=enfermedadActual]','Corrección manual.')
+    await evaluate(`window.__speechSessions.at(-1).emit([['no sobrescribir',true]])`)
+    assert.equal(await evaluate(`document.querySelector('[name=enfermedadActual]').value`),'Corrección manual.','Manual edits stop dictation and survive late events')
+    await setClinicalField('[name=enfermedadActual]','Texto previo.')
+  }
+  await click('🎙 Dictar')
+  await evaluate(`window.__speechSessions.at(-1).onerror({error:'not-allowed'})`)
+  await wait(`document.querySelector('.clinical-dictation-toggle').getAttribute('aria-pressed')==='false'`)
+  await wait(`Array.from(document.querySelectorAll('.app-error-toast p')).some(p=>p.textContent.includes('Permiso de micrófono denegado'))`)
+  await evaluate(`document.querySelectorAll('.app-error-toast button').forEach(button=>button.click())`)
   assert.equal(await evaluate(`document.querySelectorAll('.evolution-form [name=examenFisico],.evolution-form [name=pensamientoMedico],.evolution-form [name=detalleAtencion]').length`), 0, 'Removed fields are absent')
   assert.equal(await evaluate(`document.querySelectorAll('.evolution-form input[type=checkbox]').length`), 0, 'No habitual medication checkbox')
   await setClinicalField('.evolution-form textarea[name=enfermedadActual]', 'Buen estado general. Control de peso y adherencia al tratamiento.')
@@ -709,6 +767,8 @@ try {
   await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false })
   await sleep(300)
   const evolutionHeight=await evaluate(`document.querySelector('.screen-stage.clinical-compact').getBoundingClientRect().height`)
+  assert(await evaluate(`document.querySelector('[name=motivoConsulta]').getBoundingClientRect().width<=530`),'Reason has bounded width, not the whole screen')
+  assert(await evaluate(`document.querySelector('.evolution-form [name=tensionArterial]').getBoundingClientRect().width<=150`),'Blood pressure is a small field')
   assert(evolutionHeight<1900, 'Evolution must be substantially shorter than previous 3198px capture: '+evolutionHeight)
   console.log('Compact evolution height: '+evolutionHeight)
   await captureClinicalScreen('Evolucion')
@@ -722,6 +782,8 @@ try {
   assert.equal(await evaluate(`${storedClinicalPatient}.medicacionHabitual`), 'Metformina 500 mg cada 12 h', 'Drug additions stay only in dated evolution')
   assert.equal(await evaluate(`${storedClinicalPatient}.consultations[0].resumenSofia`), '', 'Unapproved AI review is not saved')
   assert.equal(await evaluate(`${storedClinicalPatient}.consultations[0].tallaCmEnConsulta`), '170')
+  assert.equal(await evaluate(`${storedClinicalPatient}.consultations[0].tensionArterial`), '130/85')
+  assert.equal(await evaluate(`${storedClinicalPatient}.tensionArterial`), '120/80', 'Current blood pressure never overwrites baseline')
   assert(await evaluate(`document.querySelector('.consultation-list').textContent.includes('Revisar resultados')`))
   await setClinicalField('.evolution-form input[name=pesoActual]', '0')
   await setClinicalField('.evolution-form input[name=motivoConsulta]', 'Segundo control')
@@ -729,6 +791,11 @@ try {
   await wait(`Array.from(document.querySelectorAll('.app-error-toast p')).some(p=>p.textContent.includes('Peso actual'))`)
   assert.equal(await evaluate(`${storedClinicalPatient}.consultations.length`), 1, 'Invalid weight cannot be saved')
   await setClinicalField('.evolution-form input[name=pesoActual]', '69,5')
+  await setClinicalField('.evolution-form input[name=tensionArterial]', '120')
+  await click('Guardar evolución')
+  await wait(`Array.from(document.querySelectorAll('.app-error-toast p')).some(p=>p.textContent.includes('Tensión arterial'))`)
+  assert.equal(await evaluate(`${storedClinicalPatient}.consultations.length`),1,'Malformed current blood pressure cannot be saved')
+  await setClinicalField('.evolution-form input[name=tensionArterial]', '125/80')
   await setClinicalField(`${drugField} textarea`, 'Losartán 50 mg por día')
   await setClinicalField('.evolution-form textarea[name=enfermedadActual]', 'Segundo control sin eventos nuevos.')
   await evaluate(`(()=>{
@@ -757,6 +824,7 @@ try {
   await wait(`${storedClinicalPatient}.consultations.length===2`)
   assert.equal(await evaluate(`${storedClinicalPatient}.medicacionHabitual`), 'Metformina 500 mg cada 12 h')
   assert.equal(await evaluate(`${storedClinicalPatient}.consultations[0].resumenSofia`), 'Resumen revisado y editado por el profesional.')
+  assert.equal(await evaluate(`${storedClinicalPatient}.consultations[0].tensionArterial`), '125/80')
   assert(await evaluate(`${storedClinicalPatient}.documents.some(file=>file.name==='Laboratorio-ficticio.txt'&&file.dataUrl.startsWith('data:text/plain'))`),'Original lab is stored on save')
   assert(await evaluate(`(async()=>{
     const {verifySignatureSeal}=await import('/src/signatureSeal.ts');
@@ -764,12 +832,13 @@ try {
     const content={patientId:patient.id,patientDni:patient.dni,motivoConsulta:entry.motivoConsulta,
       detalleAtencion:entry.detalleAtencion,pensamientoMedico:entry.pensamientoMedico,
       enfermedadActual:entry.enfermedadActual,impresionDiagnostica:entry.impresionDiagnostica,planManejo:entry.planManejo,
-      pesoActual:entry.pesoActual,tallaCmEnConsulta:entry.tallaCmEnConsulta,
+      pesoActual:entry.pesoActual,tensionArterial:entry.tensionArterial,tallaCmEnConsulta:entry.tallaCmEnConsulta,
       farmacosAgregados:entry.farmacosAgregados,estudiosComplementarios:entry.estudiosComplementarios,
       resumenSofia:entry.resumenSofia,
       signatureImageDataUrl:entry.professionalSignature.signatureImageDataUrl||''};
     return await verifySignatureSeal({contentToVerify:content,seal:entry.signatureSeal})&&
-      !await verifySignatureSeal({contentToVerify:{...content,pesoActual:'99'},seal:entry.signatureSeal});
+      !await verifySignatureSeal({contentToVerify:{...content,pesoActual:'99'},seal:entry.signatureSeal})&&
+      !await verifySignatureSeal({contentToVerify:{...content,tensionArterial:'150/90'},seal:entry.signatureSeal});
   })()`), 'Signed measurements verify and detect tampering')
   await command('Page.reload')
   await ready('Profesional A')
@@ -794,13 +863,14 @@ try {
   })()`)
   await wait(`window.__clinicalPrintCount===1`)
   assert(await evaluate(`window.__clinicalPrintWindow.document.body.textContent.includes('Losartán 50 mg por día')`), 'Evolution PDF includes added medication')
+  assert(await evaluate(`window.__clinicalPrintWindow.document.body.textContent.includes('125/80')`), 'Current blood pressure survives reload and evolution printing')
   await evaluate(`window.__clinicalPrintWindow.close()`)
   await click('Volver a la ficha')
   assert.equal(await evaluate(`document.querySelector('.patient-record-panel .clinical-medication-field textarea').value`), 'Metformina 500 mg cada 12 h', 'Habitual medication survives cloud reload unchanged')
   await click('Imprimir resumen (PDF)')
   await wait(`window.__clinicalPrintCount===2`)
   const summaryText = await evaluate(`window.__clinicalPrintWindow.document.body.textContent`)
-  for (const text of ['Peso inicial:', '72,5', '120/80', 'Metformina 500 mg', 'Enalapril 5 mg por día', 'Revisar resultados en el próximo control']) {
+  for (const text of ['Peso inicial:', '72,5', '120/80', '130/85', '125/80', 'Metformina 500 mg', 'Enalapril 5 mg por día', 'Revisar resultados en el próximo control']) {
     assert(summaryText.includes(text), 'History PDF retains baseline and every dated instruction: ' + text)
   }
   await evaluate(`window.__clinicalPrintWindow.close()`)
@@ -815,10 +885,13 @@ try {
   await evaluate(`window.__delayClinicalAi=true;window.__finishClinicalAi=null`)
   await click('Valorar evolución con Sofía')
   await wait(`typeof window.__finishClinicalAi==='function'`)
+  await click('🎙 Dictar')
   await click('Mis pacientes')
   await wait(`!!document.querySelector('.patient-directory-grid')`)
   await evaluate(`Array.from(document.querySelectorAll('.patient-directory-card')).find(card=>card.textContent.includes('account-a')).querySelector('button').click()`)
   await wait(`!!document.querySelector('input[name=tallaCm]')`)
+  assert(await evaluate(`window.__speechSessions.at(-1).stopped`),'Leaving a patient stops the microphone')
+  await evaluate(`window.__speechSessions.at(-1).emit([['dictado del paciente anterior',true]])`)
   await evaluate(`window.__delayClinicalAi=false;window.__finishClinicalAi()`)
   await wait(`Array.from(document.querySelectorAll('.app-error-toast p')).some(p=>p.textContent.includes('La evolución cambió'))`)
   await click('+ Evolucionar paciente')
@@ -827,7 +900,7 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('[name=resumenSofia]').length`),0,'AI response cannot cross patients')
   await setClinicalField('[name=impresionDiagnostica]', 'Diagnóstico propio de prueba compacta')
   await wait(`document.querySelector('.evolution-form .clinical-suggestions')?.textContent.includes('Diagnóstico propio de prueba compacta')`)
-  console.log('Compact clinical screens passed: measured size reduction, one-row vitals, mobile layout, CIE10 and remembered diagnosis, catalogue strength/presentation/regimen, optional AI review, unchanged manual content and habitual medication, signature, reload, weight comparison and PDF.')
+  console.log('Compact clinical screens passed: collapsed identity, bounded input widths without length limits, independent history columns, small weight/current BP above reason, interim desktop/Android dictation and same-button stop, late-event/manual-edit/patient-switch protection, visible mic errors, mobile layout, CIE10, medication, optional AI review, BP validation/signature/reload/PDF and unchanged baseline.')
   }
 } finally {
   if (socket?.readyState === WebSocket.OPEN) socket.close()

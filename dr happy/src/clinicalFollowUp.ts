@@ -7,6 +7,7 @@ export interface PatientClinicalBaseline {
 
 export interface ConsultationFollowUp {
   pesoActual?: string
+  tensionArterial?: string
   tallaCmEnConsulta?: string
   farmacosAgregados?: string
   estudiosComplementarios?: string
@@ -68,6 +69,7 @@ export function mergeClinicalPathologies(known: string, chronic: string): string
 export function followUpLines(entry: ConsultationFollowUp): Array<[string, string]> {
   return [
     ['Peso actual (kg)', entry.pesoActual || ''],
+    ['Tensión arterial (mmHg)', entry.tensionArterial || ''],
     ['Talla utilizada para IMC (cm)', entry.pesoActual ? entry.tallaCmEnConsulta || '' : ''],
     ['IMC', entry.pesoActual && entry.tallaCmEnConsulta ? bmiLabel(entry.pesoActual, entry.tallaCmEnConsulta) : ''],
     ['Agregado de fármacos', entry.farmacosAgregados || ''],

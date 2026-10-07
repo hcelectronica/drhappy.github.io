@@ -573,6 +573,7 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
             farmacosAgregados: consultation.farmacosAgregados,
             estudiosComplementarios: consultation.estudiosComplementarios,
             pesoActual: consultation.pesoActual,
+            tensionArterial: consultation.tensionArterial,
             tallaCmEnConsulta: consultation.tallaCmEnConsulta,
             resumenSofia: consultation.resumenSofia,
           }))

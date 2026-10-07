@@ -19,19 +19,33 @@
 .clinical-compact .patient-summary-grid div { align-content: start; }
 .clinical-compact .patient-record-panel > form { gap: 8px; }
 .clinical-compact .patient-edit-fieldset { min-width: 0; display: grid; gap: 8px; }
-.clinical-compact .patient-form-block { padding: 10px; margin: 0; }
+.clinical-compact .patient-form-block { padding: 10px; margin: 0; min-width: 0; box-sizing: border-box; }
 .clinical-compact .block-title { margin-bottom: 8px; padding-bottom: 5px; font-size: .85rem; }
 .clinical-compact label { display: grid; gap: 4px; font-size: .82rem; min-width: 0; }
 .clinical-compact input:not([type=checkbox]):not([type=file]), .clinical-compact textarea {
   width: 100%; box-sizing: border-box; min-width: 0; padding: 7px 9px; border-radius: 8px;
 }
 .clinical-compact textarea { min-height: 62px; height: 68px; resize: vertical; }
-.clinical-compact .clinical-identity-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 12px; }
-.clinical-compact .clinical-insurance-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 12px; }
+.clinical-compact .clinical-identity-details > summary { cursor: pointer; font-size: .9rem; font-weight: 700; }
+.clinical-compact .clinical-identity-details > summary small { font-weight: 400; margin-left: 8px; }
+.clinical-compact .clinical-identity-details[open] > .block-title { margin-top: 12px; }
+.clinical-compact .clinical-identity-grid, .clinical-compact .clinical-insurance-grid { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.clinical-compact .clinical-identity-grid > label { width: 220px; max-width: 100%; flex: 0 1 auto; }
+.clinical-compact .clinical-identity-grid > label:has([name=dni]) { width: 150px; }
+.clinical-compact .clinical-identity-grid > label:has([name=birthDate]) { width: 180px; }
+.clinical-compact .clinical-identity-grid > label:has([readonly]) { width: 90px; }
+.clinical-compact .clinical-identity-grid > label:has([name=direccion]) { width: 320px; }
+.clinical-compact .clinical-identity-grid > label:has([name=email]) { width: 280px; }
+.clinical-compact .clinical-identity-grid > label:has([name=telefono]) { width: 180px; }
+.clinical-compact .clinical-insurance-grid > label { width: 240px; max-width: 100%; flex: 0 1 auto; }
+.clinical-compact .clinical-insurance-grid > label:has([name=numeroAfiliado]) { width: 180px; }
+.clinical-compact .clinical-insurance-grid > label:has([name=plan]) { width: 160px; }
 .clinical-compact .clinical-measurements { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
-.clinical-compact .clinical-measurements label { flex: 0 1 160px; }
+.clinical-compact .clinical-measurements label { flex: 0 1 140px; }
 .clinical-compact .clinical-measurements p { margin: 0; padding: 7px 0; font-size: .84rem; }
 .clinical-compact .clinical-history-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; margin-top: 8px; align-items: start; }
+.clinical-compact .clinical-history-stack { display: grid; align-content: start; gap: 8px; min-width: 0; }
+.clinical-compact .patient-form-block > .clinical-diagnosis-field { width: 620px; max-width: 100%; }
 .clinical-compact .clinical-medication-field { min-width: 0; display: grid; gap: 5px; font-weight: 400; align-content: start; }
 .clinical-compact .clinical-medication-choice { padding: 8px; border: 1px solid var(--border); border-radius: 8px; display: grid; gap: 6px; font-size: .82rem; }
 .clinical-compact .clinical-medication-choice p { margin: 6px 0; }
@@ -52,6 +66,8 @@
 .clinical-compact .clinical-baseline-strip p { margin: 3px 0; }
 .clinical-compact .clinical-baseline-strip small { font-size: .73rem; }
 .clinical-compact .evolution-form { max-width: none; gap: 10px 14px; margin-top: 10px; }
+.clinical-compact .clinical-reason-field { width: 520px; max-width: 100%; }
+.clinical-compact .clinical-diagnosis-row { width: 620px; max-width: 100%; }
 .clinical-compact .evolution-sofia-panel { padding: 10px 12px; gap: 8px; border-radius: 10px; }
 .clinical-compact .evolution-sofia-panel > header small { font-size: .76rem; }
 .clinical-compact .evolution-sofia-button { min-height: 36px; padding: 6px 10px; font-size: .82rem; }
@@ -61,14 +77,11 @@
 .clinical-compact .consultation-list { margin-top: 12px; }
 @media (max-width: 720px) {
   .clinical-compact .clinical-toolbar { position: static; }
-  .clinical-compact .clinical-identity-grid, .clinical-compact .clinical-insurance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .clinical-compact .clinical-identity-grid > label, .clinical-compact .clinical-insurance-grid > label { max-width: 100%; }
   .clinical-compact .clinical-history-grid { grid-template-columns: minmax(0, 1fr); }
-  .clinical-compact .clinical-measurements label { flex: 1 1 105px; }
+  .clinical-compact .clinical-measurements label { flex: 0 1 130px; }
   .clinical-compact .clinical-measurements p { flex: 1 1 100%; }
   .clinical-compact .layer-actions button, .clinical-compact button { min-height: 44px; }
   .clinical-compact input:not([type=checkbox]):not([type=file]), .clinical-compact textarea { font-size: 16px; }
   .clinical-compact .evolution-sofia-button { flex: 1 1 160px; }
-}
-@media (max-width: 380px) {
-  .clinical-compact .clinical-insurance-grid { grid-template-columns: minmax(0, 1fr); }
 }

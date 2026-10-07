@@ -71,7 +71,7 @@ import {
 import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBookingSettings } from './publicBookingService'
 import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
-import { askSofia, polishDictation, transcribePaperRecord } from './aiAssistantService'
+import { askSofia, transcribePaperRecord } from './aiAssistantService'
 import { DICTATION_COMMANDS_HINT, formatDictation, joinDictation } from './dictation'
 import { loadWorkspaceData, saveWorkspaceData, saveTreatmentLedgerData, updatePatientArchive } from './workspaceService'
 import { readPatientArchives } from './patientArchive'
@@ -2764,8 +2764,6 @@ function App() {
   const [patientPrintBusy, setPatientPrintBusy] = useState(false)
   const [optionalPrintDocuments, setOptionalPrintDocuments] = useState<{ patientId: string | null; ids: string[] }>({ patientId: null, ids: [] })
   const [paperRecordBusyId, setPaperRecordBusyId] = useState<string | null>(null)
-  const [polishingDictationField, setPolishingDictationField] = useState<DictationConsultationField | null>(null)
-  const [dictationPolishUndo, setDictationPolishUndo] = useState<{ field: DictationConsultationField; previous: string; polished: string } | null>(null)
   const [paperTranscriptionDrafts, setPaperTranscriptionDrafts] = useState<Record<string, { text: string; truncated?: boolean }>>({})
   const [paperRecordIllegibleIds, setPaperRecordIllegibleIds] = useState<string[]>([])
   const patientDocumentContext = useRef(0)
@@ -2798,19 +2796,24 @@ function App() {
   }, [activeUserId, selectedPatientId, workspaceLayer])
   useEffect(() => {
     setClinicalAttachment(null)
-    setDictationPolishUndo(null)
     setConsultationDraft(current => ({ ...current, resumenSofia: '', incluirResumenSofia: false }))
   }, [activeUserId, selectedPatientId])
   useEffect(() => {
     setConsultationDraft(current => current.incluirResumenSofia ? { ...current, incluirResumenSofia: false } : current)
-  }, [consultationDraft.motivoConsulta, consultationDraft.enfermedadActual, consultationDraft.impresionDiagnostica, consultationDraft.planManejo, consultationDraft.pesoActual, consultationDraft.farmacosAgregados, consultationDraft.estudiosComplementarios, clinicalAttachment])
+  }, [consultationDraft.motivoConsulta, consultationDraft.enfermedadActual, consultationDraft.impresionDiagnostica, consultationDraft.planManejo, consultationDraft.pesoActual, consultationDraft.tensionArterial, consultationDraft.farmacosAgregados, consultationDraft.estudiosComplementarios, clinicalAttachment])
   const [dictationAvailable, setDictationAvailable] = useState(false)
   const [dictating, setDictating] = useState(false)
   const [dictationField, setDictationField] = useState<DictationConsultationField | null>(null)
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null)
-  const dictationBaseTextRef = useRef('')
-  const dictationCommittedTextRef = useRef('')
-  const dictationHadErrorRef = useRef(false)
+  useEffect(() => {
+    return () => {
+      const recognition = recognitionRef.current
+      recognitionRef.current = null
+      recognition?.stop()
+      setDictating(false)
+      setDictationField(null)
+    }
+  }, [activeUserId, selectedPatientId, workspaceLayer])
   const floatingTimerRef = useRef<number | null>(null)
   const lastCommunityNotifiedAtRef = useRef<string>('')
   const [liveScanTarget, setLiveScanTarget] = useState<LiveScanTarget | null>(null)
@@ -6911,6 +6914,7 @@ Tratamiento: ${consultationDraft.planManejo}
 Fármacos agregados: ${consultationDraft.farmacosAgregados || ''}
 Estudios complementarios: ${consultationDraft.estudiosComplementarios || ''}
 Peso actual (kg): ${consultationDraft.pesoActual || ''}
+Tensión arterial actual (mmHg): ${consultationDraft.tensionArterial || ''}
 Talla (cm): ${(canEditSelectedPatientRecord ? patientDraft : selectedPatient).tallaCm || ''}
 IMC actual: ${bmiLabel(consultationDraft.pesoActual, baselineForSummary.tallaCm)}
 ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAttachment.text}` : ''}`
@@ -6955,84 +6959,32 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     }
     recognitionRef.current = null
     recognition.stop()
-    dictationCommittedTextRef.current = ''
     setDictating(false)
     setDictationField(null)
     setAppNotice('Dictado detenido.')
   }
 
-  async function startDictationForConsultationField(
+  function startDictationForConsultationField(
     field: DictationConsultationField,
-  ): Promise<void> {
+  ): void {
     const SpeechRecognitionApi = window.SpeechRecognition ?? window.webkitSpeechRecognition
     if (!SpeechRecognitionApi) {
       setAppError('Este navegador no soporta dictado por voz.')
       return
     }
 
-    try {
-      if (navigator.mediaDevices?.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        stream.getTracks().forEach((track) => track.stop())
-      }
-    } catch {
-      setAppError('No se pudo acceder al micrófono. Revisa permisos del navegador.')
-      return
-    }
-
+    if (recognitionRef.current) return
     setAppError(null)
-    const fieldLabel = 'enfermedad actual'
-    setAppNotice(`Dictado activado en ${fieldLabel}. Habla para transcribir.`)
-    dictationBaseTextRef.current = consultationDraft[field].trim()
-    dictationCommittedTextRef.current = ''
-    dictationHadErrorRef.current = false
-
-    const previous = recognitionRef.current
-    recognitionRef.current = null
-    previous?.stop()
-
+    const base = consultationDraft[field].trim()
+    const contextVersion = patientDocumentContext.current
     const recognition = new SpeechRecognitionApi()
-    const isAndroidDevice = /Android/i.test(window.navigator.userAgent)
     recognition.lang = 'es-AR'
-    recognition.interimResults = !isAndroidDevice
+    recognition.interimResults = true
     recognition.continuous = true
     recognition.maxAlternatives = 1
 
     recognition.onresult = (event) => {
-      if (isAndroidDevice) {
-        let appendedAny = false
-        for (let index = event.resultIndex; index < event.results.length; index += 1) {
-          const result = event.results[index] ?? event.results.item(index)
-          if (!result || !result.isFinal) {
-            continue
-          }
-
-          const fragment = result[0].transcript.trim().replace(/\s+/g, ' ')
-          if (!fragment) {
-            continue
-          }
-
-          const currentCommitted = dictationCommittedTextRef.current.trim()
-          if (currentCommitted.endsWith(fragment)) {
-            continue
-          }
-
-          dictationCommittedTextRef.current = currentCommitted
-            ? `${currentCommitted} ${fragment}`.trim()
-            : fragment
-          appendedAny = true
-        }
-
-        if (appendedAny) {
-          const base = dictationBaseTextRef.current
-          setConsultationDraft((current) => ({
-            ...current,
-            [field]: joinDictation(base, formatDictation(dictationCommittedTextRef.current, base)),
-          }))
-        }
-        return
-      }
-
+      if (recognitionRef.current !== recognition || contextVersion !== patientDocumentContext.current) return
       const finalFragments: string[] = []
       const interimFragments: string[] = []
       for (let index = 0; index < event.results.length; index += 1) {
@@ -7052,7 +7004,6 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         }
       }
 
-      const base = dictationBaseTextRef.current
       const spokenText = [...finalFragments, ...interimFragments].join(' ').trim()
       setConsultationDraft((current) => ({
         ...current,
@@ -7061,19 +7012,21 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     }
 
     recognition.onerror = (event) => {
-      dictationHadErrorRef.current = true
+      if (recognitionRef.current !== recognition) return
+      recognitionRef.current = null
+      recognition.stop()
       setDictating(false)
       setDictationField(null)
+      setAppNotice(null)
       setAppError(mapDictationError(event.error))
     }
 
     recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return
+      recognitionRef.current = null
       setDictating(false)
       setDictationField(null)
-      dictationCommittedTextRef.current = ''
-      if (!dictationHadErrorRef.current) {
-        setAppNotice('Dictado finalizado.')
-      }
+      setAppNotice('Dictado finalizado. Se conserva el texto transcrito.')
     }
 
     recognitionRef.current = recognition
@@ -7081,7 +7034,9 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       recognition.start()
       setDictating(true)
       setDictationField(field)
+      setAppNotice('Dictado activado. El texto aparece mientras hablás; tocá el mismo botón para detener.')
     } catch {
+      recognitionRef.current = null
       setAppError('No se pudo iniciar el dictado. Intenta nuevamente.')
       setDictating(false)
       setDictationField(null)
@@ -8874,63 +8829,6 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     }
   }
 
-  async function handlePolishDictation(field: DictationConsultationField): Promise<void> {
-    const original = consultationDraft[field]
-    if (polishingDictationField || dictating || !original.trim()) return
-    setAppError(null)
-    setPolishingDictationField(field)
-    const contextVersion = patientDocumentContext.current
-    try {
-      const result = await polishDictation({ text: original, professionalName: profile?.fullName || activeUser?.fullName })
-      if (!result.success || !result.text) {
-        setAppError(`Sofía no pudo pulir el texto: ${result.message || 'intentá nuevamente.'}`)
-        return
-      }
-      const polished = result.text
-      if (contextVersion !== patientDocumentContext.current || clinicalDraftRef.current[field] !== original) {
-        setAppError('El texto o el paciente cambió durante el pulido. No se reemplazó la enfermedad actual.')
-        return
-      }
-      setConsultationDraft((current) => ({ ...current, [field]: polished }))
-      setDictationPolishUndo({ field, previous: original, polished })
-      setAppNotice(result.truncated
-        ? 'Sofía pulió el texto pero la respuesta quedó cortada. Revisalo o tocá "Deshacer pulido".'
-        : 'Sofía pulió el texto. Revisalo; si no te convence, tocá "Deshacer pulido".')
-    } finally {
-      setPolishingDictationField(null)
-    }
-  }
-
-  function undoDictationPolish(): void {
-    if (!dictationPolishUndo) return
-    const { field, previous } = dictationPolishUndo
-    setConsultationDraft((current) => ({ ...current, [field]: previous }))
-    setDictationPolishUndo(null)
-    setAppNotice('Se restauró el texto anterior al pulido.')
-  }
-
-  function renderDictationPolishActions(field: DictationConsultationField): ReactNode {
-    const canUndo = dictationPolishUndo?.field === field && consultationDraft[field] === dictationPolishUndo.polished
-    return (
-      <>
-        <button
-          type="button"
-          className="ghost compact"
-          title="Sofía corrige puntuación, ortografía y términos médicos sin cambiar el contenido. Usa 1 consulta."
-          onClick={() => { void handlePolishDictation(field) }}
-          disabled={dictating || Boolean(polishingDictationField) || !consultationDraft[field].trim()}
-        >
-          {polishingDictationField === field ? 'Puliendo...' : '✨ Pulir con Sofía'}
-        </button>
-        {canUndo ? (
-          <button type="button" className="ghost compact" onClick={undoDictationPolish}>
-            ↩ Deshacer pulido
-          </button>
-        ) : null}
-      </>
-    )
-  }
-
   function discardPaperTranscriptionDraft(documentId: string): void {
     setPaperTranscriptionDrafts((current) => {
       const next = { ...current }
@@ -9146,9 +9044,11 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     }
     const baseline = canEditSelectedPatientRecord ? patientDraft : selectedPatient
     const measurementError = validateClinicalMeasurements(baseline, consultationDraft.pesoActual)
+      || validateClinicalMeasurements({ tensionArterial: consultationDraft.tensionArterial })
     if (measurementError) { setAppError(measurementError); return }
     const followUp: ConsultationFollowUp = {
       pesoActual: consultationDraft.pesoActual?.trim() || '',
+      tensionArterial: consultationDraft.tensionArterial?.trim() || '',
       tallaCmEnConsulta: consultationDraft.pesoActual?.trim() ? baseline.tallaCm?.trim() || '' : '',
       farmacosAgregados: consultationDraft.farmacosAgregados?.trim() || '',
       estudiosComplementarios: consultationDraft.estudiosComplementarios?.trim() || '',
@@ -10296,6 +10196,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             impresionDiagnostica: consultationDraft.impresionDiagnostica,
             planManejo: consultationDraft.planManejo,
             pesoActual: consultationDraft.pesoActual,
+            tensionArterial: consultationDraft.tensionArterial,
             tallaCmEnConsulta: patientForPrint.tallaCm,
             farmacosAgregados: consultationDraft.farmacosAgregados,
             estudiosComplementarios: consultationDraft.estudiosComplementarios,
@@ -14310,8 +14211,10 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                   </div>
                 ) : null}
                 <fieldset className="patient-edit-fieldset" disabled={!canEditPatientForm}>
-                  <section className="patient-form-block">
-                    <h4 className="block-title">📋 Datos filiatorios</h4>
+                  <details className="patient-form-block clinical-identity-details" key={selectedPatient?.id || 'new-patient'} open={!selectedPatient ? true : undefined}
+                    onInvalidCapture={(event) => { event.currentTarget.open = true }}>
+                    <summary>📋 Datos filiatorios y afiliación <small>Mostrar / ocultar</small></summary>
+                    <h4 className="block-title">Datos filiatorios</h4>
                     <div className="grid two-col clinical-identity-grid">
                       <label>
                         Nombre
@@ -14346,8 +14249,6 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                         <input type="tel" name="telefono" value={patientDraft.telefono} onChange={handlePatientDraftChange} />
                       </label>
                     </div>
-                  </section>
-                  <section className="patient-form-block">
                     <h4 className="block-title">🏥 Datos de afiliación</h4>
                     <div className="grid two-col clinical-insurance-grid">
                       <label>
@@ -14363,12 +14264,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                         <input name="plan" value={patientDraft.plan} onChange={handlePatientDraftChange} />
                       </label>
                     </div>
-                  </section>
+                  </details>
                   <section className="patient-form-block">
                     <h4 className="block-title">🩺 Antecedentes clínicos</h4>
                     <div className="clinical-measurements">
-                      <label>Peso inicial (kg, opcional)<input name="pesoInicial" inputMode="decimal" value={patientDraft.pesoInicial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 72,5" /></label>
-                      <label>Talla (cm, opcional)<input name="tallaCm" inputMode="decimal" value={patientDraft.tallaCm || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 170" /></label>
+                      <label>Peso inicial (kg)<input name="pesoInicial" inputMode="decimal" value={patientDraft.pesoInicial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 72,5" /></label>
+                      <label>Talla (cm)<input name="tallaCm" inputMode="decimal" value={patientDraft.tallaCm || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 170" /></label>
                       <label>TA inicial (mmHg)<input name="tensionArterial" value={patientDraft.tensionArterial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 120/80" /></label>
                       <p>IMC inicial: <strong>{bmiLabel(patientDraft.pesoInicial, patientDraft.tallaCm)}</strong></p>
                     </div>
@@ -14376,11 +14277,11 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       onChange={diagnosticoPrincipal => setPatientDraft(current => ({ ...current, diagnosticoPrincipal }))}
                       suggestions={patientDraft.diagnosticoPrincipal.trim().length >= 2 ? buildDiagnosisSuggestions(diagnosisCatalog, patientDraft.diagnosticoPrincipal, 8) : []} />
                     <div className="clinical-history-grid">
+                    <div className="clinical-history-stack">
                     <label>
                       Patologías / antecedentes (HTA, diabetes, etc.)
                       <textarea name="patologiasCronicas" value={patientDraft.patologiasCronicas} onChange={handlePatientDraftChange} />
                     </label>
-                    <ClinicalMedicationField label="Medicación habitual del paciente" value={patientDraft.medicacionHabitual || ''} catalog={medicationCatalog} onChange={medicacionHabitual => setPatientDraft(current => ({ ...current, medicacionHabitual }))} />
                     <label>
                       Última internación
                       <textarea name="ultimaInternacion" value={patientDraft.ultimaInternacion} onChange={handlePatientDraftChange} />
@@ -14389,6 +14290,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       Cirugías previas
                       <textarea name="cirugiasPrevias" value={patientDraft.cirugiasPrevias} onChange={handlePatientDraftChange} />
                     </label>
+                    </div>
+                    <ClinicalMedicationField label="Medicación habitual del paciente" value={patientDraft.medicacionHabitual || ''} catalog={medicationCatalog} onChange={medicacionHabitual => setPatientDraft(current => ({ ...current, medicacionHabitual }))} />
                     </div>
                   </section>
                   <div className="clinical-save-row"><button type="submit">Guardar ficha</button><small>Los campos clínicos son opcionales.</small></div>
@@ -14549,7 +14452,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 </section>
               ) : null}
               <form className="evolution-form" onSubmit={handleSaveConsultation}>
-                <label className="evolution-field evolution-field--wide">
+                <div className="clinical-measurements evolution-field--wide">
+                  <label>Peso actual (kg)<input name="pesoActual" inputMode="decimal" value={consultationDraft.pesoActual || ''} onChange={handleConsultationDraftChange} placeholder="Ej.: 71,2" /></label>
+                  <label>TA actual (mmHg)<input name="tensionArterial" value={consultationDraft.tensionArterial || ''} onChange={handleConsultationDraftChange} placeholder="Ej.: 120/80" /></label>
+                  <p>IMC actual: <strong>{bmiLabel(consultationDraft.pesoActual, (canEditSelectedPatientRecord ? patientDraft : selectedPatient)?.tallaCm)}</strong><small> · Medidas opcionales</small></p>
+                </div>
+                <label className="evolution-field evolution-field--wide clinical-reason-field">
                   Motivo de consulta
                   <input
                     name="motivoConsulta"
@@ -14563,31 +14471,31 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 <label className="evolution-field evolution-field--wide">
                   <span className="evolution-field-head">Enfermedad actual
                     <span className="dictation-actions">
-                      <button type="button" className="ghost compact" onClick={() => { void startDictationForConsultationField('enfermedadActual') }} disabled={!dictationAvailable || dictating}>🎙 Dictar</button>
-                      <button type="button" className="ghost compact" onClick={stopDictation} disabled={!dictating}>Detener</button>
-                      {renderDictationPolishActions('enfermedadActual')}
+                      <button type="button" className="ghost compact clinical-dictation-toggle" aria-pressed={dictating} onClick={() => { if (dictating) stopDictation(); else startDictationForConsultationField('enfermedadActual') }} disabled={!dictationAvailable}>
+                        {dictating ? '⏹ Detener dictado' : '🎙 Dictar'}
+                      </button>
                     </span>
                   </span>
-                  <textarea name="enfermedadActual" value={consultationDraft.enfermedadActual} onChange={handleConsultationDraftChange} placeholder="Relato cronológico de la novedad de hoy..." />
+                  <textarea name="enfermedadActual" value={consultationDraft.enfermedadActual} onChange={(event) => { stopDictation(); handleConsultationDraftChange(event) }} placeholder="Relato cronológico de la novedad de hoy..." />
                   {dictating && dictationField === 'enfermedadActual' ? <small>{DICTATION_COMMANDS_HINT}</small> : null}
                   {!dictationAvailable ? <small>Este navegador no admite dictado por voz nativo.</small> : null}
                 </label>
-                <div className="evolution-field evolution-field--wide">
+                <div className="evolution-field evolution-field--wide clinical-diagnosis-row">
                   <ClinicalDiagnosisField label="Sospecha diagnóstica" name="impresionDiagnostica" value={consultationDraft.impresionDiagnostica}
                     onChange={impresionDiagnostica => setConsultationDraft(current => ({ ...current, impresionDiagnostica }))}
                     suggestions={consultationDiagnosisVisibleList} />
                 </div>
+                <div className="clinical-history-grid evolution-field--wide">
+                <div className="clinical-history-stack">
                 <label className="evolution-field">
                   Tratamiento
                   <textarea name="planManejo" value={consultationDraft.planManejo} onChange={handleConsultationDraftChange} placeholder="Indicaciones, pautas de alarma y control." />
                 </label>
-                <ClinicalMedicationField label="Agregado de fármacos" value={consultationDraft.farmacosAgregados || ''} catalog={medicationCatalog} onChange={farmacosAgregados => setConsultationDraft(current => ({ ...current, farmacosAgregados }))} />
-                <label className="evolution-field evolution-field--wide">Estudios complementarios solicitados
+                <label className="evolution-field">Estudios complementarios solicitados
                   <textarea name="estudiosComplementarios" value={consultationDraft.estudiosComplementarios || ''} onChange={handleConsultationDraftChange} placeholder="Laboratorio, imágenes u otros estudios. Texto libre." />
                 </label>
-                <div className="clinical-measurements evolution-field--wide">
-                  <label>Peso actual (kg, opcional)<input name="pesoActual" inputMode="decimal" value={consultationDraft.pesoActual || ''} onChange={handleConsultationDraftChange} placeholder="Ej.: 71,2" /></label>
-                  <p>IMC actual: <strong>{bmiLabel(consultationDraft.pesoActual, (canEditSelectedPatientRecord ? patientDraft : selectedPatient)?.tallaCm)}</strong></p>
+                </div>
+                <ClinicalMedicationField label="Agregado de fármacos" value={consultationDraft.farmacosAgregados || ''} catalog={medicationCatalog} onChange={farmacosAgregados => setConsultationDraft(current => ({ ...current, farmacosAgregados }))} />
                 </div>
 
                 <section className="evolution-sofia-panel">

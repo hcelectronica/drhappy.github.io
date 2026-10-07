@@ -41,11 +41,12 @@ test('baseline normalizes legacy records and survives JSON roundtrip', () => {
 })
 
 test('a dated evolution retains its own height and clinical instructions', () => {
-  const entry = { pesoActual: '70', tallaCmEnConsulta: '170', farmacosAgregados: 'Enalapril 5 mg', estudiosComplementarios: 'Hemograma\nControl próximo' }
+  const entry = { pesoActual: '70', tensionArterial: '130/85', tallaCmEnConsulta: '170', farmacosAgregados: 'Enalapril 5 mg', estudiosComplementarios: 'Hemograma\nControl próximo' }
   const baseline = { tallaCm: '170' }
   baseline.tallaCm = '180'
   assert.equal(followUpLines(entry).find(([label]) => label === 'IMC')[1], '24.22 kg/m²')
   assert(followUpLines(entry).some(([label, value]) => label === 'Estudios complementarios solicitados' && value === entry.estudiosComplementarios))
+  assert(followUpLines(entry).some(([label, value]) => label === 'Tensión arterial (mmHg)' && value === '130/85'))
   assert.deepEqual(followUpLines({}), [])
   assert(!followUpLines({ pesoActual: '70' }).some(([label]) => label === 'IMC'))
 })
