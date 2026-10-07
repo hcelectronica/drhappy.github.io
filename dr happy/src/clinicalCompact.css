@@ -75,6 +75,22 @@ body.theme-night .clinical-compact .clinical-identity-details > summary { backgr
 .clinical-compact .clinical-baseline-strip h4 { font-size: .84rem; margin: 0 0 4px; }
 .clinical-compact .clinical-baseline-strip p { margin: 3px 0; }
 .clinical-compact .clinical-baseline-strip small { font-size: .73rem; }
+.clinical-compact .clinical-baseline-values { display: flex; flex-wrap: wrap; align-items: start; gap: 6px 18px; }
+.clinical-compact .clinical-baseline-values p { display: flex; flex-wrap: wrap; gap: 4px; max-width: 100%; }
+.clinical-compact .clinical-baseline-values strong { overflow-wrap: anywhere; }
+.clinical-compact .clinical-weight-review { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .8rem; min-width: 0; width: 100%; }
+.clinical-compact .clinical-weight-review small { flex-basis: 100%; }
+.clinical-compact .clinical-weight-alert { padding: 8px 10px; border: 1px solid #b56a19; border-radius: 8px; background: #fff3d6; color: #623707; font-weight: 700; width: 100%; box-sizing: border-box; }
+.clinical-compact .clinical-field-lock[data-locked=true] input,
+.clinical-compact .clinical-field-lock[data-locked=true] textarea { pointer-events: none; }
+.clinical-compact .clinical-field-lock[data-locked=true] label { cursor: pointer; }
+.clinical-compact .clinical-field-lock[data-locked=true] label:has([readonly]) { cursor: default; }
+.clinical-compact .clinical-edit-hint { margin: 0; font-size: .8rem; }
+.clinical-compact .clinical-edit-toast { position: fixed; right: 20px; bottom: 100px; z-index: 220; width: min(380px, calc(100vw - 40px)); box-sizing: border-box; display: grid; gap: 10px; padding: 16px; border: 2px solid #4978a8; border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 8px 32px #1434514d; }
+.clinical-compact .clinical-study-field { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; width: 100%; }
+.clinical-compact .clinical-study-search { position: relative; width: 620px; max-width: 100%; }
+.clinical-compact .clinical-study-search .clinical-suggestions { position: absolute; z-index: 35; left: 0; right: 0; background: var(--surface); box-shadow: 0 6px 18px #14345126; }
+.clinical-compact .clinical-study-search .clinical-suggestions button { display: grid; overflow-wrap: anywhere; }
 .clinical-compact .evolution-form { max-width: none; gap: 10px 14px; margin-top: 10px; }
 .clinical-compact .clinical-reason-field { width: 520px; max-width: 100%; }
 .clinical-compact .clinical-diagnosis-row { width: 620px; max-width: 100%; }

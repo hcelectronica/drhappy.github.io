@@ -536,6 +536,7 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
         patologiasCronicas: patient.patologiasCronicas,
         medicacionHabitual: patient.medicacionHabitual,
         pesoInicial: patient.pesoInicial,
+        pesoInicialFecha: patient.pesoInicialFecha,
         tallaCm: patient.tallaCm,
         tensionArterial: patient.tensionArterial,
         appointments: appointments.filter((appointment) => appointment.patientId === patient.id && appointment.status !== 'cancelled').map((appointment) => ({

@@ -5471,6 +5471,21 @@ body.theme-night .turnera-card-actions {
   .app-sidebar button:has(+ button:hover) { transform: translateY(-4px) scale(1.16); z-index: 2; }
 }
 
+@media (min-width: 900px) and (hover: hover) and (pointer: fine) {
+  .app { padding-bottom: 44px; }
+  .app-sidebar, .app-sidebar.open {
+    transform: translate(-50%, calc(100% + 30px));
+    opacity: 0; pointer-events: none;
+    transition: transform 200ms ease, opacity 160ms ease;
+  }
+  .app-sidebar[data-desktop-visible=true], .app-sidebar:has(:focus-visible) {
+    transform: translateX(-50%); opacity: 1; pointer-events: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar { transition: none; }
+}
+
 @media (max-width: 720px) {
   .app { padding: 10px; }
   .topbar { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 0; padding: 9px 12px; border-radius: 16px; }

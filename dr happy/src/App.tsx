@@ -13,7 +13,9 @@ import './clinicalCompact.css'
 import { BrandMark } from './BrandMark'
 import { ClinicalMedicationField } from './ClinicalMedicationField'
 import { ClinicalDiagnosisField } from './ClinicalDiagnosisField'
-import { bmiLabel, followUpLines, mergeClinicalPathologies, normalizeClinicalBaseline, positiveMeasurement, validateClinicalMeasurements } from './clinicalFollowUp'
+import { bmiLabel, classifiedBmiLabel, followUpLines, mergeClinicalPathologies, normalizeClinicalBaseline, validateClinicalMeasurements } from './clinicalFollowUp'
+import { ClinicalWeightReview } from './ClinicalWeightReview'
+import { useDesktopDock } from './useDesktopDock'
 import type { PatientClinicalBaseline, ConsultationFollowUp } from './clinicalFollowUp'
 import { buildPatientAttachmentsMarkup, patientDocumentLabel, selectPatientPrintAttachments, waitForPatientPrintImages } from './patientDocumentPrint'
 import { useErrorNotification } from './useErrorNotification'
@@ -38,8 +40,9 @@ import { VirtualConsultInbox } from './VirtualConsultInbox'
 import { isVirtualConsultPilotEmail, listVirtualConsults } from './virtualConsultService'
 import type { VirtualConsult } from './virtualConsultService'
 import type { CertificateEntry } from './medicalCertificate'
-import { STUDY_CATALOG } from './studyCatalog'
-import type { OrderedStudy } from './studyCatalog'
+import { STUDY_CATALOG, findStudySuggestions, formatOrderedStudy, loadStudyNomenclatorFromJson, studyCodeLabel } from './studyCatalog'
+import type { CatalogStudy, OrderedStudy } from './studyCatalog'
+import { ClinicalStudyField } from './ClinicalStudyField'
 import {
   getNotificationPermission,
   getPushSubscriptionsCount,
@@ -2711,8 +2714,12 @@ function App() {
   const [patientSearchQuery, setPatientSearchQuery] = useState('')
   const [myPatientsQuery, setMyPatientsQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const desktopDock = useDesktopDock()
   const [diagnosisCatalog, setDiagnosisCatalog] = useState<string[]>([])
   const [medicationCatalog, setMedicationCatalog] = useState<MedicationEntry[]>([])
+  const [studyCatalog, setStudyCatalog] = useState<CatalogStudy[]>(STUDY_CATALOG)
+  const [studyCatalogLoading, setStudyCatalogLoading] = useState(false)
+  const [studyCatalogError, setStudyCatalogError] = useState<string | null>(null)
   const [medicalNewsLoading, setMedicalNewsLoading] = useState(false)
   const [medicalNews, setMedicalNews] = useState<MedicalNewsItem[]>([])
   const [currentMedicalNewsIndex, setCurrentMedicalNewsIndex] = useState(0)
@@ -2761,6 +2768,8 @@ function App() {
 
   const [patientDraft, setPatientDraft] = useState<PatientDraft>(emptyPatientDraft)
   const [patientFormUnlocked, setPatientFormUnlocked] = useState(true)
+  const [patientEditPrompt, setPatientEditPrompt] = useState(false)
+  const patientEditTargetRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
   const [paperRecordUploading, setPaperRecordUploading] = useState(false)
   const [patientPrintBusy, setPatientPrintBusy] = useState(false)
   const [optionalPrintDocuments, setOptionalPrintDocuments] = useState<{ patientId: string | null; ids: string[] }>({ patientId: null, ids: [] })
@@ -2792,6 +2801,7 @@ function App() {
     Record<string, number>
   >({})
   const [workspaceLayer, setWorkspaceLayer] = useState<WorkspaceLayer>('overview')
+  useEffect(() => { setPatientEditPrompt(false); patientEditTargetRef.current = null }, [activeUserId, selectedPatientId, workspaceLayer])
   useEffect(() => {
     patientDocumentContext.current += 1
   }, [activeUserId, selectedPatientId, workspaceLayer])
@@ -4610,6 +4620,22 @@ function App() {
     })
     return () => { cancelled = true }
   }, [clinicalResourcesEnabled, setAppError])
+
+  useEffect(() => {
+    if (!clinicalResourcesEnabled) return
+    const controller = new AbortController()
+    setStudyCatalogLoading(true)
+    setStudyCatalogError(null)
+    void fetch(`${import.meta.env.BASE_URL}study-nomenclator.json`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error(`No se pudo cargar el nomenclador (HTTP ${response.status}).`)
+        const practices = loadStudyNomenclatorFromJson(await response.json())
+        if (!controller.signal.aborted) setStudyCatalog([...practices, ...STUDY_CATALOG])
+      }).catch((error: unknown) => {
+        if (!controller.signal.aborted) setStudyCatalogError(error instanceof Error ? error.message : 'No se pudo cargar el nomenclador.')
+      }).finally(() => { if (!controller.signal.aborted) setStudyCatalogLoading(false) })
+    return () => controller.abort()
+  }, [clinicalResourcesEnabled])
 
   useEffect(() => {
     if (!clinicalResourcesEnabled) return
@@ -6758,7 +6784,9 @@ function App() {
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ): void {
     const { name, value } = event.target
-    setPatientDraft((current) => ({ ...current, [name]: value }))
+    setPatientDraft((current) => ({ ...current, [name]: value,
+      ...(name === 'pesoInicial' && value !== current.pesoInicial ? { pesoInicialFecha: value.trim() ? todayLocalISO() : '' } : {}),
+    }))
   }
 
   function handleConsultationDraftChange(
@@ -6909,6 +6937,7 @@ Antecedentes: ${mergeClinicalPathologies(baselineForSummary.patologiasConocidas,
 Medicación habitual: ${baselineForSummary.medicacionHabitual || 'No consignada'}
 Edad: ${baselineForSummary.birthDate ? calculateAge(baselineForSummary.birthDate) : 'No consignada'}
 Peso inicial (kg): ${baselineForSummary.pesoInicial || 'No consignado'}
+Fecha del peso inicial: ${baselineForSummary.pesoInicialFecha || 'No consignada'}
 Tensión arterial inicial (mmHg): ${baselineForSummary.tensionArterial || 'No consignada'}
 Motivo: ${consultationDraft.motivoConsulta}
 Enfermedad actual: ${consultationDraft.enfermedadActual}
@@ -9368,7 +9397,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                   ${entry.planManejo ? `<p><strong>Tratamiento:</strong><br />${escapeHtml(entry.planManejo).replaceAll('\n', '<br />')}</p>` : ''}
                   ${entry.examenFisico ? `<p><strong>Examen físico (registro anterior):</strong><br />${escapeHtml(entry.examenFisico).replaceAll('\n', '<br />')}</p>` : ''}
                   ${entry.pensamientoMedico ? `<p><strong>Pensamiento médico (registro anterior):</strong><br />${escapeHtml(entry.pensamientoMedico).replaceAll('\n', '<br />')}</p>` : ''}
-                  ${followUpLines(entry).map(([label, value]) => `<p><strong>${escapeHtml(label)}:</strong><br />${escapeHtml(value).replaceAll('\n', '<br />')}</p>`).join('')}
+                  ${followUpLines(entry, patientForPrint.birthDate).map(([label, value]) => `<p><strong>${escapeHtml(label)}:</strong><br />${escapeHtml(value).replaceAll('\n', '<br />')}</p>`).join('')}
                   <p><strong>Firma:</strong> ${escapeHtml(entry.professionalSignature.fullName)} - Matrícula ${escapeHtml(entry.professionalSignature.licenseNumber)}</p>
                   <p>${escapeHtml(entry.professionalSignature.signatureText)}</p>
                   ${signatureImage}
@@ -9459,7 +9488,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
 
     <section>
       <h2>Antecedentes clínicos</h2>
-      <p><strong>Peso inicial:</strong> ${escapeHtml(patientForPrint.pesoInicial || 'No informado')} kg · <strong>Talla:</strong> ${escapeHtml(patientForPrint.tallaCm || 'No informado')} cm · <strong>IMC inicial:</strong> ${escapeHtml(bmiLabel(patientForPrint.pesoInicial, patientForPrint.tallaCm))}</p>
+      <p><strong>Peso inicial:</strong> ${escapeHtml(patientForPrint.pesoInicial || 'No informado')} kg · <strong>Fecha de medición:</strong> ${escapeHtml(patientForPrint.pesoInicialFecha || 'No informada')} · <strong>Talla:</strong> ${escapeHtml(patientForPrint.tallaCm || 'No informado')} cm · <strong>IMC inicial:</strong> ${escapeHtml(classifiedBmiLabel(patientForPrint.pesoInicial, patientForPrint.tallaCm, patientForPrint.birthDate, patientForPrint.pesoInicialFecha || ''))}</p>
       <p><strong>Tensión arterial inicial:</strong> ${escapeHtml(patientForPrint.tensionArterial || 'No informado')} mmHg</p>
       <p><strong>Medicación habitual del paciente:</strong><br />${escapeHtml(patientForPrint.medicacionHabitual || 'No informada').replaceAll('\n', '<br />')}</p>
       <p><strong>Patologías / antecedentes:</strong><br />${escapeHtml(mergeClinicalPathologies(patientForPrint.patologiasConocidas, patientForPrint.patologiasCronicas)).replaceAll('\n', '<br />') || 'No informado'}</p>
@@ -9570,7 +9599,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     const isStudyOrder = certificateDocumentType === 'study-order'
     const diagnostico = certificateDraft.diagnostico.trim()
     const body = isStudyOrder
-      ? `${orderedStudies.map((study) => `• ${study.term}${study.code ? ` (SNOMED CT ${study.code})` : ' (texto libre)'}`).join('\n')}${studyNotes.trim() ? `\n\nObservaciones: ${studyNotes.trim()}` : ''}`
+      ? `${orderedStudies.map((study) => `• ${formatOrderedStudy(study)}`).join('\n')}${studyNotes.trim() ? `\n\nObservaciones: ${studyNotes.trim()}` : ''}`
       : certificateDraft.body.trim()
     if (!diagnostico) {
       setCertificateError(isStudyOrder ? 'Indicá el motivo clínico de la orden.' : 'Indicá el diagnóstico del certificado.')
@@ -11355,7 +11384,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         </div>
       </header>
 
-      <aside className={`app-sidebar${sidebarOpen ? ' open' : ''}`} aria-label="Navegación principal">
+      <aside ref={desktopDock.ref} data-desktop-visible={desktopDock.visible} className={`app-sidebar${sidebarOpen ? ' open' : ''}`} aria-label="Navegación principal">
         <div className="app-sidebar-header">
           <div>
             <span className="sidebar-eyebrow">Espacio profesional</span>
@@ -14113,7 +14142,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 <h3>{formatDate(entry.date)}</h3>
                 <p>{entry.motivoConsulta}</p><p>{entry.diagnostico}</p><p>{entry.enfermedadActual || entry.detalleAtencion}</p>
                 <p>{entry.examenFisico}</p><p>{entry.impresionDiagnostica}</p><p>{entry.planManejo}</p><p>{entry.pensamientoMedico}</p>
-                {followUpLines(entry).map(([label, value]) => <p key={label} style={{ whiteSpace: 'pre-wrap' }}><strong>{label}:</strong> {value}</p>)}
+                {followUpLines(entry, selectedPatient.birthDate).map(([label, value]) => <p key={label} style={{ whiteSpace: 'pre-wrap' }}><strong>{label}:</strong> {value}</p>)}
                 <button type="button" className="ghost" onClick={() => printSingleConsultation(entry)}>Imprimir esta atención</button>
               </article>)}
             </details> : null}
@@ -14228,27 +14257,26 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     </div>
                   </section>
                 ) : null}
-                {!selectedPatient || canEditSelectedPatientRecord ? (
-                  <div className="record-mode-actions">
-                    {selectedPatient ? (
-                      !patientFormUnlocked ? (
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => {
-                            setPatientFormUnlocked(true)
-                          }}
-                        >
-                          Modificar datos del paciente
-                        </button>
-                      ) : (
-                        <p className="access-note">
-                          Estás editando la ficha base. Guarda los cambios para volver a bloquearla.
-                        </p>
-                      )
-                    ) : null}
-                  </div>
-                ) : null}
+                {selectedPatient && canEditSelectedPatientRecord ? <p className="clinical-edit-hint">
+                  {patientFormUnlocked ? 'Estás editando la ficha base. Guardá para volver a bloquearla.' : 'Tocá un campo para solicitar la edición de los datos iniciales.'}
+                </p> : null}
+                <div className="clinical-field-lock" data-locked={!canEditPatientForm}
+                  tabIndex={!canEditPatientForm && canEditSelectedPatientRecord ? 0 : undefined}
+                  aria-label={!canEditPatientForm && canEditSelectedPatientRecord ? 'Ficha bloqueada. Presioná Enter para solicitar la edición.' : undefined}
+                  onKeyDown={event => {
+                    if (event.target !== event.currentTarget || canEditPatientForm || !canEditSelectedPatientRecord || !['Enter', ' '].includes(event.key)) return
+                    event.preventDefault()
+                    patientEditTargetRef.current = event.currentTarget.querySelector<HTMLInputElement>('input:not([readonly])')
+                    setPatientEditPrompt(true)
+                  }}
+                  onClickCapture={event => {
+                    if (canEditPatientForm || !canEditSelectedPatientRecord || !(event.target instanceof HTMLElement)) return
+                    const field = event.target.closest('label')?.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea')
+                    if (!field || field.readOnly) return
+                    event.preventDefault()
+                    patientEditTargetRef.current = field
+                    setPatientEditPrompt(true)
+                  }}>
                 <fieldset className="patient-edit-fieldset" disabled={!canEditPatientForm}>
                   <details className="patient-form-block clinical-identity-details" key={selectedPatient?.id || 'new-patient'} open={!selectedPatient ? true : undefined}
                     onInvalidCapture={(event) => { event.currentTarget.open = true }}>
@@ -14310,7 +14338,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       <label>Peso inicial (kg)<input name="pesoInicial" inputMode="decimal" value={patientDraft.pesoInicial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 72,5" /></label>
                       <label>Talla (cm)<input name="tallaCm" inputMode="decimal" value={patientDraft.tallaCm || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 170" /></label>
                       <label>TA inicial (mmHg)<input name="tensionArterial" value={patientDraft.tensionArterial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 120/80" /></label>
-                      <p>IMC inicial: <strong>{bmiLabel(patientDraft.pesoInicial, patientDraft.tallaCm)}</strong></p>
+                      <label>Fecha del peso inicial<input type="date" name="pesoInicialFecha" value={patientDraft.pesoInicialFecha || ''} onChange={handlePatientDraftChange} max={todayLocalISO()} /></label>
+                      <p>IMC inicial: <strong>{classifiedBmiLabel(patientDraft.pesoInicial, patientDraft.tallaCm, patientDraft.birthDate, patientDraft.pesoInicialFecha || '')}</strong></p>
                     </div>
                     <ClinicalDiagnosisField label="Diagnóstico principal" name="diagnosticoPrincipal" value={patientDraft.diagnosticoPrincipal}
                       onChange={diagnosticoPrincipal => setPatientDraft(current => ({ ...current, diagnosticoPrincipal }))}
@@ -14333,8 +14362,20 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     <ClinicalMedicationField label="Medicación habitual del paciente" value={patientDraft.medicacionHabitual || ''} catalog={medicationCatalog} onChange={medicacionHabitual => setPatientDraft(current => ({ ...current, medicacionHabitual }))} />
                     </div>
                   </section>
-                  <div className="clinical-save-row"><button type="submit">Guardar ficha</button><small>Los campos clínicos son opcionales.</small></div>
+                  <small>Los campos clínicos son opcionales. La fecha corresponde a la medición del peso, no a la creación de la ficha.</small>
                 </fieldset>
+                </div>
+                {patientEditPrompt ? <div className="clinical-edit-toast" role="alertdialog" aria-modal="false" aria-labelledby="clinical-edit-question">
+                  <strong id="clinical-edit-question">¿Querés modificar los datos iniciales del paciente?</strong>
+                  <small>Los cambios se aplicarán a la ficha base cuando guardes.</small>
+                  <div className="clinical-inline-actions">
+                    <button type="button" autoFocus onClick={() => {
+                      setPatientFormUnlocked(true); setPatientEditPrompt(false)
+                      requestAnimationFrame(() => patientEditTargetRef.current?.focus())
+                    }}>Sí, modificar</button>
+                    <button type="button" className="ghost" onClick={() => setPatientEditPrompt(false)}>Cancelar</button>
+                  </div>
+                </div> : null}
                 {renderPaperRecords(canManagePaperRecords)}
                 <div className="record-document-actions">
                   {isAdminSession && selectedPatient?.ownerUserId === activeUserId ? (
@@ -14479,22 +14520,28 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
               {selectedPatient ? (
                 <section className="patient-form-block clinical-baseline-strip">
                   <h4>Control de peso y medicación habitual</h4>
-                  <p>Peso inicial: {selectedPatient.pesoInicial || 'Sin dato'} kg · Talla: {selectedPatient.tallaCm || 'Sin dato'} cm · IMC inicial: {bmiLabel(selectedPatient.pesoInicial, selectedPatient.tallaCm)}</p>
-                  <p>Tensión arterial inicial: {selectedPatient.tensionArterial || 'Sin dato'} mmHg</p>
-                  <p style={{ whiteSpace: 'pre-wrap' }}><strong>Medicación habitual:</strong> {selectedPatient.medicacionHabitual || 'No informada'}</p>
+                  <div className="clinical-baseline-values">
+                    <p>Peso inicial <strong>{selectedPatient.pesoInicial ? `${selectedPatient.pesoInicial} kg` : 'Sin dato'}</strong></p>
+                    <p>Talla <strong>{selectedPatient.tallaCm ? `${selectedPatient.tallaCm} cm` : 'Sin dato'}</strong></p>
+                    <p>IMC inicial <strong>{classifiedBmiLabel(selectedPatient.pesoInicial, selectedPatient.tallaCm, selectedPatient.birthDate, selectedPatient.pesoInicialFecha || '')}</strong></p>
+                    <p>TA inicial <strong>{selectedPatient.tensionArterial ? `${selectedPatient.tensionArterial} mmHg` : 'Sin dato'}</strong></p>
+                    <p>Medicación habitual <strong style={{ whiteSpace: 'pre-wrap' }}>{selectedPatient.medicacionHabitual || 'No informada'}</strong></p>
+                  </div>
                   <details><summary>Seguimiento de peso por fecha</summary><ul>{[...selectedPatient.consultations].filter(entry => entry.pesoActual).sort((a, b) => a.date.localeCompare(b.date)).map(entry => {
-                    const initial = positiveMeasurement(selectedPatient.pesoInicial)
-                    const current = positiveMeasurement(entry.pesoActual)
-                    return <li key={entry.id}>{formatDate(entry.date)}: {entry.pesoActual} kg · IMC: {bmiLabel(entry.pesoActual, entry.tallaCmEnConsulta)}{initial !== null && current !== null ? ` · Cambio desde peso inicial: ${(current - initial).toFixed(2)} kg` : ''}</li>
+                    return <li key={entry.id}><strong>{formatDate(entry.date)} · {entry.pesoActual} kg</strong>
+                      <ClinicalWeightReview baseline={selectedPatient} history={selectedPatient.consultations} current={entry} birthDate={selectedPatient.birthDate} compact />
+                    </li>
                   })}</ul></details>
-                  <small>El IMC usa la talla guardada en cada evolución. No se interpretan categorías automáticamente.</small>
+                  <small>El IMC histórico usa la talla guardada en cada evolución. Los avisos orientan la revisión clínica; no confirman enfermedades.</small>
                 </section>
               ) : null}
               <form className="evolution-form" onSubmit={handleSaveConsultation}>
                 <div className="clinical-measurements evolution-field--wide">
                   <label>Peso actual (kg)<input name="pesoActual" inputMode="decimal" value={consultationDraft.pesoActual || ''} onChange={handleConsultationDraftChange} placeholder="Ej.: 71,2" /></label>
                   <label>TA actual (mmHg)<input name="tensionArterial" value={consultationDraft.tensionArterial || ''} onChange={handleConsultationDraftChange} placeholder="Ej.: 120/80" /></label>
-                  <p>IMC actual: <strong>{bmiLabel(consultationDraft.pesoActual, (canEditSelectedPatientRecord ? patientDraft : selectedPatient)?.tallaCm)}</strong><small> · Medidas opcionales</small></p>
+                  <ClinicalWeightReview baseline={(canEditSelectedPatientRecord ? patientDraft : selectedPatient) || {}}
+                    history={selectedPatient?.consultations || []} birthDate={(canEditSelectedPatientRecord ? patientDraft : selectedPatient)?.birthDate}
+                    current={{ pesoActual: consultationDraft.pesoActual, tallaCmEnConsulta: (canEditSelectedPatientRecord ? patientDraft : selectedPatient)?.tallaCm, date: todayLocalISO() }} />
                 </div>
                 <label className="evolution-field evolution-field--wide clinical-reason-field">
                   Motivo de consulta
@@ -14524,9 +14571,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     onChange={impresionDiagnostica => setConsultationDraft(current => ({ ...current, impresionDiagnostica }))}
                     suggestions={consultationDiagnosisVisibleList} />
                 </div>
-                <label className="evolution-field evolution-field--wide">Estudios complementarios solicitados (si corresponde)
-                  <textarea name="estudiosComplementarios" value={consultationDraft.estudiosComplementarios || ''} onChange={handleConsultationDraftChange} placeholder="Laboratorio, imágenes u otros estudios. Texto libre." />
-                </label>
+                <ClinicalStudyField value={consultationDraft.estudiosComplementarios || ''} onChange={value => setConsultationDraft(draft => ({ ...draft, estudiosComplementarios: value }))} catalog={studyCatalog} loading={studyCatalogLoading} error={studyCatalogError} />
                 <div className="clinical-history-grid evolution-field--wide">
                 <label className="evolution-field">
                   Tratamiento
@@ -14596,7 +14641,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     {entry.examenFisico ? <p><strong>Signos y síntomas:</strong> {entry.examenFisico}</p> : null}
                     {entry.impresionDiagnostica ? <p><strong>Sospecha diagnóstica:</strong> {entry.impresionDiagnostica}</p> : null}
                     {entry.planManejo ? <p><strong>Tratamiento:</strong> {entry.planManejo}</p> : null}
-                    {followUpLines(entry).map(([label, value]) => <p key={label} style={{ whiteSpace: 'pre-wrap' }}><strong>{label}:</strong> {value}</p>)}
+                    {followUpLines(entry, selectedPatient?.birthDate).map(([label, value]) => <p key={label} style={{ whiteSpace: 'pre-wrap' }}><strong>{label}:</strong> {value}</p>)}
                     {entry.pensamientoMedico ? <p>
                       <strong>Pensamiento médico:</strong> {entry.pensamientoMedico}
                     </p> : null}
@@ -16747,13 +16792,13 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                         id="study-search"
                         value={studyQuery}
                         autoComplete="off"
-                        placeholder="Buscá ecografía, tomografía, región..."
+                        placeholder="Nombre, código, RX, TC, ecografía…"
                         onChange={(event) => setStudyQuery(event.target.value)}
                       />
                       {studyQuery.trim() ? (
                         <ul className="study-suggestions">
-                          {STUDY_CATALOG.filter((study) => normalizeSearchText(study.term).includes(normalizeSearchText(studyQuery))).map((study) => (
-                            <li key={study.code}><button type="button" onClick={() => addOrderedStudy(study)}>{study.term} <small>SNOMED CT {study.code}</small></button></li>
+                          {findStudySuggestions(studyCatalog, studyQuery).map((study) => (
+                            <li key={`${study.codeSystem || 'snomed'}-${study.code}`}><button type="button" onClick={() => addOrderedStudy(study)}>{study.term} <small>{studyCodeLabel(study)}</small></button></li>
                           ))}
                           <li><button type="button" onClick={() => addOrderedStudy({ term: studyQuery.trim().slice(0, 120) })}>Agregar «{studyQuery.trim().slice(0, 120)}» como texto libre</button></li>
                         </ul>
@@ -16761,11 +16806,13 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       {orderedStudies.length ? (
                         <ul className="study-selected">
                           {orderedStudies.map((study) => (
-                            <li key={study.code ?? study.term}><span>{study.term} <small>{study.code ? `SNOMED CT ${study.code}` : 'Texto libre'}</small></span><button type="button" className="ghost compact" aria-label={`Quitar ${study.term}`} onClick={() => setOrderedStudies((current) => current.filter((item) => item !== study))}>✕</button></li>
+                            <li key={`${study.codeSystem || 'snomed'}-${study.code || study.term}`}><span>{study.term} <small>{studyCodeLabel(study)}</small></span><button type="button" className="ghost compact" aria-label={`Quitar ${study.term}`} onClick={() => setOrderedStudies((current) => current.filter((item) => item !== study))}>✕</button></li>
                           ))}
                         </ul>
                       ) : null}
-                      <small>Selección de conceptos activos consultados en Snowstorm Test (Ministerio de Salud, rama MAIN). No es el catálogo completo de SNOMED CT-AR; el texto libre no se codifica.</small>
+                      <small>Nomenclador: páginas 9–98, excluidas prácticas en internación clínica. Incluye prácticas ambulatorias, imágenes y laboratorio de internación del rango. También disponible selección SNOMED CT AR; el texto libre no se codifica.</small>
+                      {studyCatalogLoading ? <p role="status">Cargando nomenclador…</p> : null}
+                      {studyCatalogError ? <p role="alert">{studyCatalogError} Podés agregar prácticas en texto libre.</p> : null}
                       <label htmlFor="study-notes">Observaciones <small>(opcional)</small></label>
                       <textarea id="study-notes" rows={2} maxLength={300} value={studyNotes} onChange={(event) => setStudyNotes(event.target.value)} placeholder="Región, lateralidad, contraste u otras indicaciones" />
                       {orderedStudies.length ? (
@@ -16773,7 +16820,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                           <strong>Vista previa de la orden</strong>
                           <span>{`${certificatePatient.nombre} ${certificatePatient.apellido}`.trim()} · {formatCertificateDate(certificateDraft.date || todayLocalISO())}</span>
                           <span><b>Indicación clínica:</b> {certificateDraft.diagnostico.trim() || 'Pendiente de completar'}</span>
-                          <ul>{orderedStudies.map((study) => <li key={study.code ?? study.term}>{study.term}{study.code ? ` · SNOMED CT ${study.code}` : ' · texto libre'}</li>)}</ul>
+                          <ul>{orderedStudies.map((study) => <li key={`${study.codeSystem || 'snomed'}-${study.code || study.term}`}>{formatOrderedStudy(study)}</li>)}</ul>
                           {studyNotes.trim() ? <span><b>Observaciones:</b> {studyNotes.trim()}</span> : null}
                           <small>Borrador para revisar; se firma al emitir.</small>
                         </div>

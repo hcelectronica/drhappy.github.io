@@ -669,8 +669,20 @@ try {
     await sleep(50)
   }
   const storedClinicalPatient = `JSON.parse(localStorage.getItem('fixture-document-patients')).find(p=>p.id==='patient-second')`
+  const unlockClinicalField = async (selector = 'input[name=tallaCm]', approve = true) => {
+    const point = await evaluate(`(()=>{const field=document.querySelector(${JSON.stringify(selector)});field.scrollIntoView({block:'center'});const r=field.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`)
+    await command('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 })
+    await command('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 })
+    await wait(`!!document.querySelector('.clinical-edit-toast')`)
+    assert(await evaluate(`document.querySelector('input[name=tallaCm]').matches(':disabled')`), 'Field remains locked before confirmation')
+    await click(approve ? 'Sí, modificar' : 'Cancelar')
+    await wait(`!document.querySelector('.clinical-edit-toast')`)
+  }
   assert.equal(await evaluate(`document.querySelector('.clinical-identity-details').open`), false, 'Existing identity starts collapsed')
-  await click('Modificar datos del paciente')
+  assert(!await evaluate(`document.body.innerText.includes('Modificar datos del paciente')`), 'Redundant edit button removed')
+  await unlockClinicalField('input[name=tallaCm]', false)
+  assert(await evaluate(`document.querySelector('input[name=tallaCm]').matches(':disabled')`), 'Cancel leaves baseline locked')
+  await unlockClinicalField()
   await evaluate(`document.querySelector('.clinical-identity-details summary').click()`)
   assert.equal(await evaluate(`document.querySelector('.clinical-identity-details').open`), true, 'Identity and insurance expand together')
   assert(await evaluate(`(()=>{const summary=document.querySelector('.clinical-identity-details summary');const css=getComputedStyle(summary);return summary.getBoundingClientRect().height>=44&&css.borderTopStyle==='solid'&&css.backgroundColor!=='rgba(0, 0, 0, 0)'})()`),'Identity toggle is a visible, touch-sized bordered control')
@@ -679,6 +691,8 @@ try {
   await setClinicalField('input[name=pesoInicial]', '72,5')
   await setClinicalField('input[name=tallaCm]', '170')
   await setClinicalField('input[name=tensionArterial]', '120/80')
+  await setClinicalField('input[name=birthDate]', '1980-01-01')
+  await setClinicalField('input[name=pesoInicialFecha]', await evaluate(`(()=>{const d=new Date();d.setDate(d.getDate()-30);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})()`))
   await setClinicalField('.patient-record-panel .clinical-medication-field textarea', 'Metformina 500 mg cada 12 h')
   await setClinicalField('textarea[name=patologiasCronicas]', 'Hipertensión arterial\nDiabetes')
   assert.equal(await evaluate(`document.querySelectorAll('textarea[name=patologiasConocidas]').length`), 0, 'Only one pathology field')
@@ -695,12 +709,33 @@ try {
   const baselineLayout = await evaluate(`(()=>{
     const fields=['pesoInicial','tallaCm','tensionArterial'].map(name=>document.querySelector('input[name='+name+']').getBoundingClientRect());
     return {height:document.querySelector('.screen-stage.clinical-compact').getBoundingClientRect().height,
-      tops:fields.map(r=>r.top),widths:fields.map(r=>r.width),saveWidth:document.querySelector('.clinical-save-row button').getBoundingClientRect().width};
+      tops:fields.map(r=>r.top),widths:fields.map(r=>r.width),saveWidth:document.querySelector('button[form="clinical-patient-form"]').getBoundingClientRect().width};
   })()`)
   assert(baselineLayout.height < 1700, 'Initial record must be substantially shorter than previous 2637px capture: '+JSON.stringify(baselineLayout))
   assert(Math.max(...baselineLayout.tops)-Math.min(...baselineLayout.tops)<2, 'Measurements share one desktop row')
   assert(baselineLayout.widths.every(width=>width<200), 'Measurements use small fields')
   assert(baselineLayout.saveWidth<240, 'Save is not full-width')
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll('button')).filter(button=>button.textContent.trim()==='Guardar ficha').length`),1,'Exactly one save button')
+  assert(await evaluate(`document.body.innerText.includes('Sobrepeso')`), 'WHO category displayed beside initial BMI')
+  await command('Emulation.setTouchEmulationEnabled', { enabled: false })
+  await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 20, y: 20 })
+  await evaluate(`document.activeElement.blur()`)
+  await sleep(550)
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.app-sidebar')).opacity`),'0','Dock hides away from lower edge')
+  await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 700, y: 996 })
+  await sleep(350)
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.app-sidebar')).opacity`),'1','Mouse proximity reveals dock')
+  await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 700, y: 955 })
+  await sleep(550)
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.app-sidebar')).opacity`),'1','Hover retains dock')
+  await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 20, y: 20 })
+  await sleep(550)
+  await evaluate(`document.querySelector('.app-sidebar .sidebar-nav button').focus()`)
+  await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+  await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+  await sleep(350)
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.app-sidebar')).opacity`),'1','Keyboard focus reveals dock')
+  await evaluate(`document.activeElement.blur()`)
   const identityWidths=await evaluate(`Object.fromEntries(['nombre','apellido','obraSocial','numeroAfiliado','plan'].map(name=>[name,document.querySelector('input[name='+name+']').getBoundingClientRect().width]))`)
   for(const [name,width] of Object.entries(identityWidths)) assert(width>=140&&width<=250,'Real bounded input width for '+name+': '+width)
   assert.equal(await evaluate(`document.querySelector('[name=numeroAfiliado]').maxLength`), -1, 'Visual width does not truncate affiliate numbers')
@@ -719,7 +754,10 @@ try {
   assert.equal(await evaluate(`${storedClinicalPatient}.numeroAfiliado`),'12345678901234567890','Bounded visual field preserves all characters')
   await click('+ Evolucionar paciente')
   await wait(`!!document.querySelector('.evolution-form')`)
+  await setClinicalField('.evolution-form input[name=pesoActual]', '68')
+  assert(await evaluate(`document.querySelector('.evolution-form .clinical-weight-alert')?.textContent.includes('si fue intencional')`),'Dated relevant weight loss prompts clinical assessment')
   await setClinicalField('.evolution-form input[name=pesoActual]', '70')
+  assert(!await evaluate(`!!document.querySelector('.evolution-form .clinical-weight-alert')`),'Loss below 5% does not trigger alert')
   assert(await evaluate(`document.querySelector('.evolution-form').textContent.includes('24.22 kg/m²')`))
   assert.equal(await evaluate(`document.querySelector('.evolution-form input').name`), 'pesoActual', 'Weight precedes reason')
   await setClinicalField('.evolution-form input[name=tensionArterial]', '130/85')
@@ -777,6 +815,13 @@ try {
   assert(await evaluate(`document.querySelector(${JSON.stringify(drugField + ' textarea')}).value.toLowerCase().includes('enalapril')`), 'Generic is selected from the real vademecum')
   await setClinicalField(`${drugField} textarea`, 'Enalapril 5 mg por día')
   await setClinicalField('.evolution-form textarea[name=estudiosComplementarios]', 'Hemograma\nRevisar resultados en el próximo control')
+  await setClinicalField('.clinical-study-search input', '660475')
+  await wait(`document.querySelector('.clinical-study-search .clinical-suggestions')?.textContent.includes('Nomenclador 660475')`)
+  await evaluate(`document.querySelector('.clinical-study-search .clinical-suggestions button').click()`)
+  assert(await evaluate(`document.querySelector('[name=estudiosComplementarios]').value.includes('Nomenclador 660475 · Ambulatorio')`),'Evolution inserts code without replacing free text')
+  await setClinicalField('.clinical-study-search input', '250102')
+  await wait(`document.querySelector('.clinical-study-search .clinical-suggestions')?.textContent.includes('KINESIOTERAPIA')`)
+  await evaluate(`document.querySelector('.clinical-study-search input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`)
   await setClinicalField('.evolution-form input[name=motivoConsulta]', 'Control de peso')
   await checkTouchLayout('clinical evolution')
   await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false })
@@ -802,7 +847,7 @@ try {
   assert.equal(await evaluate(`document.querySelector('.consultation-email-button').disabled`),true,'No email: send stays disabled with explanation')
   assert(await evaluate(`document.querySelector('.consultation-list').textContent.includes('Registrá y guardá un email válido')`))
   await click('Volver a la ficha')
-  await click('Modificar datos del paciente')
+  await unlockClinicalField()
   await evaluate(`document.querySelector('.clinical-identity-details').open=true`)
   await setClinicalField('input[name=email]','patient@example.invalid')
   await click('Guardar ficha')
@@ -906,7 +951,7 @@ try {
   await evaluate(`Array.from(document.querySelectorAll('.patient-directory-card')).find(card=>card.textContent.includes('Segundo')).querySelector('button').click()`)
   await wait(`!!document.querySelector('input[name=tallaCm]')`)
   assert.equal(await evaluate(`document.querySelector('input[name=tallaCm]').value`), '170', 'Baseline survives cloud reload normalization')
-  await click('Modificar datos del paciente')
+  await unlockClinicalField()
   await setClinicalField('input[name=tallaCm]', '180')
   await click('Guardar ficha')
   await wait(`${storedClinicalPatient}.tallaCm==='180'`)
@@ -960,6 +1005,42 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('[name=resumenSofia]').length`),0,'AI response cannot cross patients')
   await setClinicalField('[name=impresionDiagnostica]', 'Diagnóstico propio de prueba compacta')
   await wait(`document.querySelector('.evolution-form .clinical-suggestions')?.textContent.includes('Diagnóstico propio de prueba compacta')`)
+  await click('Mis pacientes')
+  await wait(`!!document.querySelector('.patient-directory-grid .certificate-action')`)
+  await evaluate(`document.querySelector('.patient-directory-grid .certificate-action').click()`)
+  await wait(`!!document.querySelector('.certificate-document-type')`)
+  await click('Orden de estudios')
+  await setClinicalField('#study-search', '660475')
+  await wait(`document.querySelector('.study-suggestions')?.textContent.includes('Nomenclador 660475')`)
+  await evaluate(`document.querySelector('.study-suggestions button').click()`)
+  assert(await evaluate(`document.querySelector('.study-order-preview').textContent.includes('Nomenclador 660475 · Ambulatorio')`),'Orders use the same code system as evolution')
+  assert(!await evaluate(`document.querySelector('.study-order-preview').textContent.includes('SNOMED CT 660475')`),'Nomenclator codes are never labelled SNOMED')
+  await setClinicalField('#study-search', '250102')
+  await wait(`document.querySelector('.study-suggestions')?.textContent.includes('KINESIOTERAPIA')`)
+  await evaluate(`document.querySelector('.study-suggestions button').click()`)
+  await setClinicalField('#study-search', 'Práctica manual fixture')
+  await evaluate(`document.querySelector('.study-suggestions button').click()`)
+  assert(await evaluate(`document.querySelector('.study-selected').textContent.includes('Texto libre')`),'Manual practices remain available')
+  await setClinicalField('#study-search', '')
+  await checkTouchLayout('nomenclator order selector')
+  const codedPdf = await evaluate(`(async()=>{
+    const {buildCertificatePdf,certificateSignedContent}=await import('/src/medicalCertificate.ts');
+    const {formatOrderedStudy,loadStudyNomenclatorFromJson}=await import('/src/studyCatalog.ts');
+    const {buildSignatureSeal}=await import('/src/signatureSeal.ts');
+    const catalog=loadStudyNomenclatorFromJson(await fetch('/study-nomenclator.json').then(r=>r.json()));
+    const studies=[catalog.find(s=>s.code==='660475'),catalog.find(s=>s.code==='250102')];
+    const entry={documentType:'study-order',studies,id:'fixture-nomenclator-order',issuedAt:new Date().toISOString(),certificateDate:'2026-10-07',letterhead:'Consultorio fixture',diagnostico:'Control fixture',
+      body:studies.map(s=>'• '+formatOrderedStudy(s)).join('\\n'),patient:{fullName:'Paciente ficticio',dni:'11111111',birthDate:'1980-01-01',obraSocial:'',plan:'',numeroAfiliado:''},
+      professional:{fullName:'Profesional ficticio',licenseNumber:'TEST',specialty:'Medicina general',signatureImageDataUrl:''}};
+    entry.signatureSeal=await buildSignatureSeal({contentToSign:certificateSignedContent(entry),signerUserId:'account-a',signerFullName:'Profesional ficticio',signerLicense:'TEST'});
+    const original=CanvasRenderingContext2D.prototype.fillText,texts=[];
+    CanvasRenderingContext2D.prototype.fillText=function(text,...args){texts.push(text);return original.call(this,text,...args)};
+    try{const pdf=await buildCertificatePdf(entry);return{size:pdf.size,type:pdf.type,text:texts.join(' ')}}
+    finally{CanvasRenderingContext2D.prototype.fillText=original}
+  })()`)
+  assert(codedPdf.size > 1000 && codedPdf.type === 'application/pdf','Coded practices generate a real PDF')
+  assert(codedPdf.text.includes('Nomenclador 660475') && codedPdf.text.includes('Nomenclador 250102'),'Rendered PDF preserves nomenclator labels and kinesiotherapy')
+  assert(!codedPdf.text.includes('SNOMED CT 660475'),'PDF never mislabels nomenclator code')
   console.log('Compact clinical screens passed: visible collapsed identity, bounded widths, requested clinical field order, saved-only instructions email with confirmation/cancellation, missing-email and empty-content guards, cloud/provider/invalid-response errors, single pending send, privacy-filtered content, mobile layout, dictation, CIE10, medication, optional AI review, BP signature/reload/PDF and unchanged baseline.')
   }
 } finally {

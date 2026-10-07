@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import {
   appendMedication, bmiLabel, calculateBmi, followUpLines,
   normalizeClinicalBaseline, positiveMeasurement, validateClinicalMeasurements,
-  mergeClinicalPathologies,
+  mergeClinicalPathologies, adultAtMeasurement, adultBmiCategory, classifiedBmiLabel, relevantWeightLoss, weightComparison,
 } from '../src/clinicalFollowUp.ts'
 import { clinicalMedicationLine, clinicalMedicationSuggestions } from '../src/clinicalMedication.ts'
 
@@ -35,8 +35,8 @@ test('blood pressure is optional but validates both components', () => {
 })
 
 test('baseline normalizes legacy records and survives JSON roundtrip', () => {
-  assert.deepEqual(normalizeClinicalBaseline({}), { pesoInicial: '', tallaCm: '', tensionArterial: '', medicacionHabitual: '' })
-  const data = { pesoInicial: '72,5', tallaCm: '170', tensionArterial: '120/80', medicacionHabitual: 'Metformina 500 mg' }
+  assert.deepEqual(normalizeClinicalBaseline({}), { pesoInicial: '', pesoInicialFecha: '', tallaCm: '', tensionArterial: '', medicacionHabitual: '' })
+  const data = { pesoInicial: '72,5', pesoInicialFecha: '2026-01-12', tallaCm: '170', tensionArterial: '120/80', medicacionHabitual: 'Metformina 500 mg' }
   assert.deepEqual(normalizeClinicalBaseline(JSON.parse(JSON.stringify(data))), data)
 })
 
@@ -64,9 +64,63 @@ test('normalization, backup import, signature and printing are wired to clinical
   assert(app.includes('...normalizeClinicalBaseline(incoming)'))
   assert(app.includes('contentToSign: {'))
   assert(app.includes('...followUp,'))
-  assert(app.includes('followUpLines(entry).map(([label, value]) => `<p>'))
+  assert(app.includes('followUpLines(entry, patientForPrint.birthDate).map(([label, value]) => `<p>'))
   assert(!app.includes('incorporarFarmacos'))
   assert(app.includes("medicacionHabitual: baseline.medicacionHabitual || ''"))
+})
+
+test('WHO adult categories use exact unrounded BMI cutoffs', () => {
+  for (const [value, category] of [
+    [18.4999, 'Bajo peso'], [18.5, 'Normopeso'], [24.9999, 'Normopeso'],
+    [25, 'Sobrepeso'], [29.9999, 'Sobrepeso'], [30, 'Obesidad clase I'], [34.9999, 'Obesidad clase I'],
+    [35, 'Obesidad clase II'], [39.9999, 'Obesidad clase II'], [40, 'Obesidad clase III'],
+  ]) assert.equal(adultBmiCategory(value), category)
+  for (const value of [null, 0, -1, NaN, Infinity]) assert.equal(adultBmiCategory(value), null)
+  assert.match(classifiedBmiLabel('18.4999', '100', '1980-01-01', '2026-01-01'), /18.50 kg\/m² · Bajo peso/)
+})
+
+test('adult categories require real dates and adulthood at the measurement, not current age', () => {
+  assert.equal(adultAtMeasurement('2008-06-20', '2026-06-19'), false)
+  assert.equal(adultAtMeasurement('2008-06-20', '2026-06-20'), true)
+  for (const birth of [undefined, '', 'bad', '2026-02-30', '2030-01-01']) assert.equal(adultAtMeasurement(birth, '2026-06-20'), false)
+  for (const date of ['', '2026-02-30', '2026-06-20garbage']) assert.equal(adultAtMeasurement('1980-01-01', date), false)
+  assert.equal(adultAtMeasurement('2008-06-20', '2026-06-20T01:00:00Z'), false, 'Consultations use Argentina calendar day')
+  assert.equal(classifiedBmiLabel('70', '170', '2015-01-01', '2026-01-01'), '24.22 kg/m²')
+  assert.equal(classifiedBmiLabel('70', '170', undefined, '2026-01-01'), '24.22 kg/m²')
+})
+
+test('weight-loss alert requires >=5% between different dated adult measurements within six calendar months', () => {
+  const adult = '1980-01-01'
+  const baseline = { pesoInicial: '100', pesoInicialFecha: '2026-01-31' }
+  const current = { pesoActual: '95', date: '2026-07-31' }
+  assert.equal(relevantWeightLoss(baseline, [], current, adult)?.percent, 5)
+  assert.equal(relevantWeightLoss(baseline, [], { ...current, pesoActual: '95.01' }, adult), null)
+  assert.equal(relevantWeightLoss(baseline, [], { ...current, date: '2026-08-01' }, adult), null)
+  assert.equal(relevantWeightLoss({ pesoInicial: '100' }, [], current, adult), null)
+  assert.equal(relevantWeightLoss({ ...baseline, pesoInicialFecha: current.date }, [], current, adult), null)
+  assert.equal(relevantWeightLoss(baseline, [], current), null)
+  assert.equal(relevantWeightLoss(baseline, [], current, '2015-01-01'), null)
+  assert.equal(relevantWeightLoss(baseline, [], { ...current, pesoActual: '-10' }, adult), null)
+  assert.equal(relevantWeightLoss({ ...baseline, pesoInicialFecha: '2026-02-30' }, [], current, adult), null)
+  assert.equal(relevantWeightLoss({ pesoInicial: '100', pesoInicialFecha: '2025-08-28' }, [], { pesoActual: '95', date: '2026-02-28' }, adult)?.percent, 5)
+})
+
+test('weight-loss history uses the highest eligible prior weight, ignores future/undated/self entries, and preserves baseline delta', () => {
+  const history = [
+    { id: 'a', pesoActual: '100', date: '2026-04-01' },
+    { id: 'b', pesoActual: '110', date: '2026-06-01' },
+    { id: 'c', pesoActual: '200', date: '2026-09-01' },
+    { id: 'd', pesoActual: '200', date: '' },
+    { id: 'current', pesoActual: '200', date: '2026-06-20' },
+  ]
+  const baseline = { pesoInicial: '100', tallaCm: '170' }
+  const current = { id: 'current', pesoActual: '99', tallaCmEnConsulta: '180', date: '2026-07-01' }
+  const loss = relevantWeightLoss(baseline, history, current, '1980-01-01')
+  assert.equal(loss?.referenceWeight, 110)
+  assert.equal(loss?.percent, 10)
+  assert.match(weightComparison(baseline, current), /-1.00 kg \(-1.00%\).*34.60.*30.56/)
+  assert.equal(weightComparison({}, current), null)
+  assert.match(validateClinicalMeasurements({ pesoInicialFecha: '2026-02-30' }), /Fecha/)
 })
 
 test('old known and chronic pathologies merge without discarding either field', () => {
