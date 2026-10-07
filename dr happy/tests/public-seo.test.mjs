@@ -77,6 +77,26 @@ test('robots announces the canonical sitemap and does not block its resources', 
   assert(!/^Disallow:\s*\S+/m.test(robots))
 })
 
+test('shared links advertise the same new brand PNG at its actual dimensions', () => {
+  const imageUrl = 'https://www.drhappy.com.ar/social-preview-drh-08.png'
+  const registration = readFileSync(join(publicRoot, 'registro', 'index.html'), 'utf8')
+  const consultation = readFileSync(join(publicRoot, 'consulta', 'index.html'), 'utf8')
+  for (const html of [home, registration, consultation]) {
+    assert(html.includes(`<meta property="og:image" content="${imageUrl}" />`))
+    assert(html.includes(`<meta property="og:image:secure_url" content="${imageUrl}" />`))
+    assert(html.includes('<meta property="og:image:type" content="image/png" />'))
+    assert(html.includes('<meta property="og:image:width" content="1200" />'))
+    assert(html.includes('<meta property="og:image:height" content="630" />'))
+    assert(html.includes(`<meta name="twitter:image" content="${imageUrl}" />`))
+    assert(!html.includes('store-feature-graphic.png'))
+  }
+  assert.match(registration, /<meta name="robots" content="noindex,\s*nofollow"\s*\/?>/)
+  const png = readFileSync(join(publicRoot, 'social-preview-drh-08.png'))
+  assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a')
+  assert.equal(png.readUInt32BE(16), 1200)
+  assert.equal(png.readUInt32BE(20), 630)
+})
+
 test('patient consultation remains noindex and absent from the sitemap', () => {
   const consultation = readFileSync(join(publicRoot, 'consulta', 'index.html'), 'utf8')
   assert.match(consultation, /<meta name="robots" content="noindex,\s*nofollow"\s*\/?>/)
