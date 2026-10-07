@@ -10,6 +10,9 @@ import JsBarcode from 'jsbarcode'
 import { createPortal } from 'react-dom'
 import './App.css'
 import { BrandMark } from './BrandMark'
+import { ClinicalMedicationField } from './ClinicalMedicationField'
+import { appendMedication, bmiLabel, followUpLines, normalizeClinicalBaseline, positiveMeasurement, validateClinicalMeasurements } from './clinicalFollowUp'
+import type { PatientClinicalBaseline, ConsultationFollowUp } from './clinicalFollowUp'
 import { buildPatientAttachmentsMarkup, patientDocumentLabel, selectPatientPrintAttachments, waitForPatientPrintImages } from './patientDocumentPrint'
 import { useErrorNotification } from './useErrorNotification'
 import { isSupabaseConfigured, supabase } from './supabaseClient'
@@ -321,7 +324,7 @@ interface ProfessionalProfile {
   appointmentEndTime?: string
 }
 
-interface ConsultationEntry {
+interface ConsultationEntry extends ConsultationFollowUp {
   id: string
   date: string
   motivoConsulta: string
@@ -371,7 +374,7 @@ interface PrescriptionEntry {
   signatureSeal?: import('./signatureSeal').SignatureSeal
 }
 
-interface PatientRecord {
+interface PatientRecord extends PatientClinicalBaseline {
   id: string
   ownerUserId: string
   nombre: string
@@ -403,7 +406,7 @@ interface PatientRecord {
   updatedAt: string
 }
 
-interface PatientDraft {
+interface PatientDraft extends PatientClinicalBaseline {
   nombre: string
   apellido: string
   dni: string
@@ -424,7 +427,8 @@ interface PatientDraft {
   documents: StoredFile[]
 }
 
-interface ConsultationDraft {
+interface ConsultationDraft extends ConsultationFollowUp {
+  incorporarFarmacos?: boolean
   motivoConsulta: string
   diagnostico: string
   detalleAtencion: string
@@ -1359,6 +1363,7 @@ function normalizeRemotePatient(raw: unknown, ownerUserId: string): PatientRecor
     ultimaInternacion:
       typeof candidate.ultimaInternacion === 'string' ? candidate.ultimaInternacion : '',
     cirugiasPrevias: typeof candidate.cirugiasPrevias === 'string' ? candidate.cirugiasPrevias : '',
+    ...normalizeClinicalBaseline(candidate),
     direccion: typeof candidate.direccion === 'string' ? candidate.direccion : '',
     photoCarnet: normalizeStoredFile(candidate.photoCarnet) ?? undefined,
     dniPhoto: normalizeStoredFile(candidate.dniPhoto) ?? undefined,
@@ -1512,6 +1517,7 @@ function patientToDraft(patient: PatientRecord): PatientDraft {
     patologiasCronicas: patient.patologiasCronicas,
     ultimaInternacion: patient.ultimaInternacion,
     cirugiasPrevias: patient.cirugiasPrevias,
+    ...normalizeClinicalBaseline(patient),
     direccion: patient.direccion,
     photoCarnet: patient.photoCarnet,
     dniPhoto: patient.dniPhoto,
@@ -4478,6 +4484,7 @@ function App() {
                   rawPatient.patologiasCronicas ?? currentPatient?.patologiasCronicas ?? '',
                 ultimaInternacion: rawPatient.ultimaInternacion ?? currentPatient?.ultimaInternacion ?? '',
                 cirugiasPrevias: rawPatient.cirugiasPrevias ?? currentPatient?.cirugiasPrevias ?? '',
+                ...normalizeClinicalBaseline({ ...normalizeClinicalBaseline(currentPatient ?? {}), ...rawPatient }),
                 direccion: typeof rawPatient.direccion === 'string' ? rawPatient.direccion : (currentPatient?.direccion ?? ''),
                 photoCarnet: rawPatient.photoCarnet ?? currentPatient?.photoCarnet,
                 dniPhoto: rawPatient.dniPhoto ?? currentPatient?.dniPhoto,
@@ -8668,6 +8675,8 @@ function App() {
       setAppError('El turno ya no está disponible. Volvé a abrirlo desde la agenda.')
       return
     }
+    const measurementError = validateClinicalMeasurements(patientDraft)
+    if (measurementError) { setAppError(measurementError); return }
     setAppError(null)
 
     const now = new Date().toISOString()
@@ -9111,6 +9120,15 @@ function App() {
       setAppError('El motivo de consulta es obligatorio.')
       return
     }
+    const baseline = canEditSelectedPatientRecord ? patientDraft : selectedPatient
+    const measurementError = validateClinicalMeasurements(baseline, consultationDraft.pesoActual)
+    if (measurementError) { setAppError(measurementError); return }
+    const followUp: ConsultationFollowUp = {
+      pesoActual: consultationDraft.pesoActual?.trim() || '',
+      tallaCmEnConsulta: consultationDraft.pesoActual?.trim() ? baseline.tallaCm?.trim() || '' : '',
+      farmacosAgregados: consultationDraft.farmacosAgregados?.trim() || '',
+      estudiosComplementarios: consultationDraft.estudiosComplementarios?.trim() || '',
+    }
 
     if (!diagnosisCatalog.some((entry) => normalizeSearchText(entry) === normalizeSearchText(nextMotivo))) {
       persistCustomDiagnosis(nextMotivo)
@@ -9128,6 +9146,7 @@ function App() {
         motivoConsulta: nextMotivo,
         detalleAtencion: consultationDraft.detalleAtencion,
         pensamientoMedico: consultationDraft.pensamientoMedico,
+        ...followUp,
         signatureImageDataUrl: signatureImageDataUrl ?? '',
       },
       signerUserId: activeUserId ?? '',
@@ -9146,6 +9165,7 @@ function App() {
       examenFisico: consultationDraft.examenFisico,
       impresionDiagnostica: consultationDraft.impresionDiagnostica,
       planManejo: consultationDraft.planManejo,
+      ...followUp,
       professionalSignature: {
         fullName: profile.fullName,
         licenseNumber: profile.licenseNumber,
@@ -9167,9 +9187,13 @@ function App() {
           }
         : {}),
       consultations: [entry, ...selectedPatient.consultations],
+      medicacionHabitual: canEditSelectedPatientRecord && consultationDraft.incorporarFarmacos
+        ? appendMedication(baseline.medicacionHabitual || '', followUp.farmacosAgregados || '')
+        : baseline.medicacionHabitual || '',
       updatedAt: new Date().toISOString(),
     }
     persistPatient(record)
+    if (canEditSelectedPatientRecord) setPatientDraft(patientToDraft(record))
     setConsultationDraft(emptyConsultationDraft)
     setAppNotice('Consulta guardada con firma electrónica (sello de integridad incluido).')
     showSavedFloatingNotice()
@@ -9219,6 +9243,7 @@ function App() {
         patologiasCronicas: incoming.patologiasCronicas ?? '',
         ultimaInternacion: incoming.ultimaInternacion ?? '',
         cirugiasPrevias: incoming.cirugiasPrevias ?? '',
+        ...normalizeClinicalBaseline(incoming),
         direccion: incoming.direccion ?? '',
         photoCarnet: incoming.photoCarnet,
         dniPhoto: incoming.dniPhoto,
@@ -9372,6 +9397,7 @@ function App() {
                   <p><strong>Diagnóstico:</strong> ${escapeHtml(entry.diagnostico || 'No informado')}</p>
                   <p><strong>Resumen de atención:</strong><br />${escapeHtml(entry.detalleAtencion).replaceAll('\n', '<br />')}</p>
                   <p><strong>Pensamiento médico:</strong><br />${escapeHtml(entry.pensamientoMedico).replaceAll('\n', '<br />')}</p>
+                  ${followUpLines(entry).map(([label, value]) => `<p><strong>${escapeHtml(label)}:</strong><br />${escapeHtml(value).replaceAll('\n', '<br />')}</p>`).join('')}
                   <p><strong>Firma:</strong> ${escapeHtml(entry.professionalSignature.fullName)} - Matrícula ${escapeHtml(entry.professionalSignature.licenseNumber)}</p>
                   <p>${escapeHtml(entry.professionalSignature.signatureText)}</p>
                   ${signatureImage}
@@ -9462,6 +9488,9 @@ function App() {
 
     <section>
       <h2>Antecedentes clínicos</h2>
+      <p><strong>Peso inicial:</strong> ${escapeHtml(patientForPrint.pesoInicial || 'No informado')} kg · <strong>Talla:</strong> ${escapeHtml(patientForPrint.tallaCm || 'No informado')} cm · <strong>IMC inicial:</strong> ${escapeHtml(bmiLabel(patientForPrint.pesoInicial, patientForPrint.tallaCm))}</p>
+      <p><strong>Tensión arterial inicial:</strong> ${escapeHtml(patientForPrint.tensionArterial || 'No informado')} mmHg</p>
+      <p><strong>Medicación habitual del paciente:</strong><br />${escapeHtml(patientForPrint.medicacionHabitual || 'No informada').replaceAll('\n', '<br />')}</p>
       <p><strong>Patologías conocidas:</strong><br />${escapeHtml(patientForPrint.patologiasConocidas).replaceAll('\n', '<br />') || 'No informado'}</p>
       <p><strong>Patologías crónicas:</strong><br />${escapeHtml(patientForPrint.patologiasCronicas).replaceAll('\n', '<br />') || 'No informado'}</p>
       <p><strong>Última internación:</strong><br />${escapeHtml(patientForPrint.ultimaInternacion).replaceAll('\n', '<br />') || 'No informado'}</p>
@@ -14103,6 +14132,7 @@ function App() {
                 <h3>{formatDate(entry.date)}</h3>
                 <p>{entry.motivoConsulta}</p><p>{entry.diagnostico}</p><p>{entry.enfermedadActual || entry.detalleAtencion}</p>
                 <p>{entry.examenFisico}</p><p>{entry.impresionDiagnostica}</p><p>{entry.planManejo}</p><p>{entry.pensamientoMedico}</p>
+                {followUpLines(entry).map(([label, value]) => <p key={label} style={{ whiteSpace: 'pre-wrap' }}><strong>{label}:</strong> {value}</p>)}
                 <button type="button" className="ghost" onClick={() => printSingleConsultation(entry)}>Imprimir esta atención</button>
               </article>)}
             </details> : null}
@@ -14294,6 +14324,13 @@ function App() {
                   </section>
                   <section className="patient-form-block">
                     <h4 className="block-title">🩺 Antecedentes clínicos</h4>
+                    <div className="grid">
+                      <label>Peso inicial (kg, opcional)<input name="pesoInicial" inputMode="decimal" value={patientDraft.pesoInicial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 72,5" /></label>
+                      <label>Talla (cm, opcional)<input name="tallaCm" inputMode="decimal" value={patientDraft.tallaCm || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 170" /></label>
+                      <label>Tensión arterial inicial (mmHg, opcional)<input name="tensionArterial" value={patientDraft.tensionArterial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 120/80" /></label>
+                      <p>IMC inicial: <strong>{bmiLabel(patientDraft.pesoInicial, patientDraft.tallaCm)}</strong></p>
+                    </div>
+                    <ClinicalMedicationField label="Medicación habitual del paciente" value={patientDraft.medicacionHabitual || ''} catalog={medicationCatalog} onChange={medicacionHabitual => setPatientDraft(current => ({ ...current, medicacionHabitual }))} />
                     <label>
                       Diagnóstico principal
                       <input
@@ -14466,7 +14503,31 @@ function App() {
                 </section>
               )}
               {selectedPatient ? renderPaperRecords(false) : null}
+              {selectedPatient ? (
+                <section className="patient-form-block">
+                  <h4>Control de peso y medicación habitual</h4>
+                  <p>Peso inicial: {selectedPatient.pesoInicial || 'Sin dato'} kg · Talla: {selectedPatient.tallaCm || 'Sin dato'} cm · IMC inicial: {bmiLabel(selectedPatient.pesoInicial, selectedPatient.tallaCm)}</p>
+                  <p>Tensión arterial inicial: {selectedPatient.tensionArterial || 'Sin dato'} mmHg</p>
+                  <p style={{ whiteSpace: 'pre-wrap' }}><strong>Medicación habitual:</strong> {selectedPatient.medicacionHabitual || 'No informada'}</p>
+                  <ul>{[...selectedPatient.consultations].filter(entry => entry.pesoActual).sort((a, b) => a.date.localeCompare(b.date)).map(entry => {
+                    const initial = positiveMeasurement(selectedPatient.pesoInicial)
+                    const current = positiveMeasurement(entry.pesoActual)
+                    return <li key={entry.id}>{formatDate(entry.date)}: {entry.pesoActual} kg · IMC: {bmiLabel(entry.pesoActual, entry.tallaCmEnConsulta)}{initial !== null && current !== null ? ` · Cambio desde peso inicial: ${(current - initial).toFixed(2)} kg` : ''}</li>
+                  })}</ul>
+                  <small>El IMC usa la talla guardada en cada evolución. No se interpretan categorías automáticamente.</small>
+                </section>
+              ) : null}
               <form className="evolution-form" onSubmit={handleSaveConsultation}>
+                <label className="evolution-field evolution-field--wide">
+                  Peso actual (kg, opcional)
+                  <input name="pesoActual" inputMode="decimal" value={consultationDraft.pesoActual || ''} onChange={handleConsultationDraftChange} placeholder="Ej.: 71,2" />
+                  <small>IMC actual: {bmiLabel(consultationDraft.pesoActual, (canEditSelectedPatientRecord ? patientDraft : selectedPatient)?.tallaCm)}. La talla se toma de la ficha y se conserva con esta evolución.</small>
+                </label>
+                <ClinicalMedicationField label="Agregado de fármacos" value={consultationDraft.farmacosAgregados || ''} catalog={medicationCatalog} onChange={farmacosAgregados => setConsultationDraft(current => ({ ...current, farmacosAgregados }))} />
+                {canEditSelectedPatientRecord ? <label className="evolution-field evolution-field--wide"><span><input type="checkbox" checked={Boolean(consultationDraft.incorporarFarmacos)} onChange={event => setConsultationDraft(current => ({ ...current, incorporarFarmacos: event.target.checked }))} /> Incorporar estos fármacos a la medicación habitual al guardar</span></label> : null}
+                <label className="evolution-field evolution-field--wide">Estudios complementarios solicitados
+                  <textarea name="estudiosComplementarios" value={consultationDraft.estudiosComplementarios || ''} onChange={handleConsultationDraftChange} placeholder="Estudios pedidos, motivo y pendientes para revisar en el próximo control." />
+                </label>
                 <label className="evolution-field evolution-field--wide">
                   Motivo de consulta
                   <input
@@ -14643,6 +14704,7 @@ function App() {
                     {entry.examenFisico ? <p><strong>Signos y síntomas:</strong> {entry.examenFisico}</p> : null}
                     {entry.impresionDiagnostica ? <p><strong>Diagnóstico:</strong> {entry.impresionDiagnostica}</p> : null}
                     {entry.planManejo ? <p><strong>Tratamiento:</strong> {entry.planManejo}</p> : null}
+                    {followUpLines(entry).map(([label, value]) => <p key={label} style={{ whiteSpace: 'pre-wrap' }}><strong>{label}:</strong> {value}</p>)}
                     <p>
                       <strong>Pensamiento médico:</strong> {entry.pensamientoMedico}
                     </p>

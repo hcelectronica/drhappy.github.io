@@ -207,7 +207,7 @@ try {
     await wait(`Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes(${JSON.stringify(text)})&&!b.disabled)`)
     await evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes(${JSON.stringify(text)})&&!b.disabled).click()`)
   }
-  if (process.env.TEST_PATIENT_DOCUMENTS !== '1') {
+  if (process.env.TEST_PATIENT_DOCUMENTS !== '1' && process.env.TEST_CLINICAL_FOLLOW_UP !== '1') {
   await checkTouchLayout('authenticated home')
   await click('Mis pacientes')
   await wait(`document.querySelector('.patient-directory-grid')?.textContent.includes('account-a')`)
@@ -520,6 +520,7 @@ try {
   await wait(`document.querySelector('.patient-directory-grid')?.textContent.includes('account-a')`)
   await click('Abrir ficha')
   await wait(`!!document.querySelector('.patient-documents-folder')`)
+  if (process.env.TEST_CLINICAL_FOLLOW_UP !== '1') {
   assert(await evaluate(`!document.querySelector('.patient-documents-folder').open`), 'Documents start collapsed')
   assert.equal(await evaluate(`document.querySelectorAll('.paper-record-list img').length`), 0, 'No accumulated image thumbnails')
   await evaluate(`document.querySelector('.patient-documents-folder').open=true`)
@@ -601,6 +602,112 @@ try {
   await wait(`Array.from(document.querySelectorAll('.app-error-toast p')).some(p=>p.textContent.includes('Cambiaste de paciente'))`)
   assert(await evaluate(`JSON.parse(localStorage.getItem('fixture-document-patients')).every(patient=>patient.documents.every(doc=>doc.name!=='No cruzar pacientes.pdf'))`), 'An upload interrupted by a patient switch is not attached to either record')
   console.log('Patient documents passed: collapsed text list, original preservation, multi-page PDF/color rendering, optional annex selection, eight-page PDF output, isolated patient choices, upload persistence and explicit unreadable-file failure.')
+  } else {
+    await click('Mis pacientes')
+    await wait(`document.querySelector('.patient-directory-grid')?.textContent.includes('Segundo')`)
+    await evaluate(`Array.from(document.querySelectorAll('.patient-directory-card')).find(card=>card.textContent.includes('Segundo')).querySelector('button').click()`)
+    await wait(`!!document.querySelector('input[name=tallaCm]')`)
+  }
+  const setClinicalField = async (selector, value) => {
+    await evaluate(`(()=>{
+      const input=document.querySelector(${JSON.stringify(selector)});
+      if(!input)throw new Error('Missing clinical field: '+${JSON.stringify(selector)});
+      Object.getOwnPropertyDescriptor(input.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+    })()`)
+    await sleep(50)
+  }
+  const storedClinicalPatient = `JSON.parse(localStorage.getItem('fixture-document-patients')).find(p=>p.id==='patient-second')`
+  await click('Modificar datos del paciente')
+  await setClinicalField('input[name=pesoInicial]', '72,5')
+  await setClinicalField('input[name=tallaCm]', '170')
+  await setClinicalField('input[name=tensionArterial]', '120/80')
+  await setClinicalField('.patient-record-panel .evolution-field textarea', 'Metformina 500 mg cada 12 h')
+  assert(await evaluate(`document.body.innerText.includes('25.09 kg/m²')`), 'Initial IMC updates from comma decimals')
+  await checkTouchLayout('clinical baseline and habitual medication')
+  await click('Guardar ficha')
+  await wait(`${storedClinicalPatient}.pesoInicial==='72,5'`)
+  await click('+ Evolucionar paciente')
+  await wait(`!!document.querySelector('.evolution-form')`)
+  await setClinicalField('.evolution-form input[name=pesoActual]', '70')
+  assert(await evaluate(`document.querySelector('.evolution-form').textContent.includes('24.22 kg/m²')`))
+  const drugField = '.evolution-form .evolution-field:has(textarea:not([name]))'
+  await setClinicalField(`${drugField} input`, 'enalapril')
+  await wait(`!!document.querySelector(${JSON.stringify(drugField + ' .search-suggestions button')})`)
+  await evaluate(`document.querySelector(${JSON.stringify(drugField + ' .search-suggestions button')}).click()`)
+  assert(await evaluate(`document.querySelector(${JSON.stringify(drugField + ' textarea')}).value.toLowerCase().includes('enalapril')`), 'Generic is selected from the real vademecum')
+  await setClinicalField(`${drugField} textarea`, 'Enalapril 5 mg por día')
+  await setClinicalField('.evolution-form textarea[name=estudiosComplementarios]', 'Hemograma\nRevisar resultados en el próximo control')
+  await setClinicalField('.evolution-form input[name=motivoConsulta]', 'Control de peso')
+  assert.equal(await evaluate(`document.querySelector('.evolution-form input[type=checkbox]').checked`), false, 'Adding habitual medication is opt-in')
+  await checkTouchLayout('clinical evolution')
+  await click('Guardar evolución')
+  await wait(`${storedClinicalPatient}.consultations.length===1`)
+  assert.equal(await evaluate(`${storedClinicalPatient}.medicacionHabitual`), 'Metformina 500 mg cada 12 h', 'Unchecked additions stay only in the dated evolution')
+  assert.equal(await evaluate(`${storedClinicalPatient}.consultations[0].tallaCmEnConsulta`), '170')
+  assert(await evaluate(`document.querySelector('.consultation-list').textContent.includes('Revisar resultados')`))
+  await setClinicalField('.evolution-form input[name=pesoActual]', '0')
+  await setClinicalField('.evolution-form input[name=motivoConsulta]', 'Segundo control')
+  await click('Guardar evolución')
+  await wait(`Array.from(document.querySelectorAll('.app-error-toast p')).some(p=>p.textContent.includes('Peso actual'))`)
+  assert.equal(await evaluate(`${storedClinicalPatient}.consultations.length`), 1, 'Invalid weight cannot be saved')
+  await setClinicalField('.evolution-form input[name=pesoActual]', '69,5')
+  await setClinicalField(`${drugField} textarea`, 'Losartán 50 mg por día')
+  await evaluate(`document.querySelector('.evolution-form input[type=checkbox]').click()`)
+  await click('Guardar evolución')
+  await wait(`${storedClinicalPatient}.consultations.length===2`)
+  assert.equal(await evaluate(`${storedClinicalPatient}.medicacionHabitual`), 'Metformina 500 mg cada 12 h\nLosartán 50 mg por día')
+  assert(await evaluate(`(async()=>{
+    const {verifySignatureSeal}=await import('/src/signatureSeal.ts');
+    const patient=${storedClinicalPatient};const entry=patient.consultations[0];
+    const content={patientId:patient.id,patientDni:patient.dni,motivoConsulta:entry.motivoConsulta,
+      detalleAtencion:entry.detalleAtencion,pensamientoMedico:entry.pensamientoMedico,
+      pesoActual:entry.pesoActual,tallaCmEnConsulta:entry.tallaCmEnConsulta,
+      farmacosAgregados:entry.farmacosAgregados,estudiosComplementarios:entry.estudiosComplementarios,
+      signatureImageDataUrl:entry.professionalSignature.signatureImageDataUrl||''};
+    return await verifySignatureSeal({contentToVerify:content,seal:entry.signatureSeal})&&
+      !await verifySignatureSeal({contentToVerify:{...content,pesoActual:'99'},seal:entry.signatureSeal});
+  })()`), 'Signed measurements verify and detect tampering')
+  await command('Page.reload')
+  await ready('Profesional A')
+  await click('Mis pacientes')
+  await wait(`document.querySelector('.patient-directory-grid')?.textContent.includes('Segundo')`)
+  await evaluate(`Array.from(document.querySelectorAll('.patient-directory-card')).find(card=>card.textContent.includes('Segundo')).querySelector('button').click()`)
+  await wait(`!!document.querySelector('input[name=tallaCm]')`)
+  assert.equal(await evaluate(`document.querySelector('input[name=tallaCm]').value`), '170', 'Baseline survives cloud reload normalization')
+  await click('Modificar datos del paciente')
+  await setClinicalField('input[name=tallaCm]', '180')
+  await click('Guardar ficha')
+  await wait(`${storedClinicalPatient}.tallaCm==='180'`)
+  await click('+ Evolucionar paciente')
+  await wait(`!!document.querySelector('.consultation-list')`)
+  assert(await evaluate(`document.querySelector('.consultation-list').textContent.includes('24.22 kg/m²')`), 'Editing baseline height does not rewrite old IMC')
+  assert(await evaluate(`document.body.innerText.includes('-3.00 kg')`), 'Current weight is compared with initial weight')
+  await evaluate(`(()=>{
+    const open=window.open.bind(window);window.__clinicalPrintCount=0;
+    window.open=(...args)=>{const popup=open(...args);if(popup){window.__clinicalPrintWindow=popup;popup.print=()=>{window.__clinicalPrintCount++};popup.focus=()=>{}}return popup};
+    document.querySelector('.consultation-list button').click();
+  })()`)
+  await wait(`window.__clinicalPrintCount===1`)
+  assert(await evaluate(`window.__clinicalPrintWindow.document.body.textContent.includes('Losartán 50 mg por día')`), 'Evolution PDF includes added medication')
+  await evaluate(`window.__clinicalPrintWindow.close()`)
+  await click('Volver a la ficha')
+  assert(await evaluate(`document.querySelector('.patient-record-panel .evolution-field textarea').value.includes('Losartán 50 mg por día')`), 'Habitual medication survives cloud reload and baseline editing')
+  await click('Imprimir resumen (PDF)')
+  await wait(`window.__clinicalPrintCount===2`)
+  const summaryText = await evaluate(`window.__clinicalPrintWindow.document.body.textContent`)
+  for (const text of ['Peso inicial:', '72,5', '120/80', 'Metformina 500 mg', 'Enalapril 5 mg por día', 'Revisar resultados en el próximo control']) {
+    assert(summaryText.includes(text), 'History PDF retains baseline and every dated instruction: ' + text)
+  }
+  await evaluate(`window.__clinicalPrintWindow.close()`)
+  await click('+ Evolucionar paciente')
+  await wait(`!!document.querySelector('.evolution-form')`)
+  await setClinicalField('.evolution-form input[name=motivoConsulta]', 'Control sin antropometría')
+  await click('Guardar evolución')
+  await wait(`${storedClinicalPatient}.consultations.length===3`)
+  assert.equal(await evaluate(`${storedClinicalPatient}.consultations[0].pesoActual`), '', 'Measurement remains optional')
+  assert.equal(await evaluate(`${storedClinicalPatient}.consultations[2].tallaCmEnConsulta`), '170', 'Subsequent controls never overwrite previous snapshots')
+  console.log('Clinical follow-up passed: optional baseline, decimal IMC, generic selection, dated studies/drugs, opt-in habitual medication, invalid-weight rejection, signature integrity, cloud reload, historical height snapshot, comparison and printing.')
   }
 } finally {
   if (socket?.readyState === WebSocket.OPEN) socket.close()

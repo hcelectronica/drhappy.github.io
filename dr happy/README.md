@@ -8,6 +8,16 @@ Web app base en React + TypeScript para:
 - Importación masiva de padrón desde Excel.
 - Comunidad médica con mensajería privada asíncrona.
 
+## Ficha clínica y seguimiento
+
+La ficha médica admite peso inicial (kg), talla (cm), tensión arterial inicial (sistólica/diastólica en mmHg) y medicación habitual; todos son opcionales. Peso y talla aceptan coma o punto decimal, pero no cero, valores negativos ni texto. El IMC es peso / talla en metros al cuadrado; se muestra numéricamente, sin aplicar categorías de adultos a menores.
+
+Cada evolución admite peso actual, agregado de fármacos y estudios complementarios solicitados. Al guardarla se conserva la talla utilizada para su IMC, de modo que editar la talla de la ficha no recalcula atenciones anteriores. El seguimiento muestra las mediciones por fecha, el IMC inicial y la diferencia de peso respecto del inicial. Si falta talla puede registrarse peso sin inventar un IMC.
+
+Los dos campos de medicación permiten escribir manualmente dosis/frecuencia u incorporar genéricos del vademécum existente. «Incorporar estos fármacos a la medicación habitual al guardar» es optativo, comienza desmarcado y solo está disponible al dueño de la ficha. Agrega texto sin reemplazar la lista habitual; el profesional debe revisar dosis, duplicados y tratamientos suspendidos. El agregado queda fechado en la evolución independientemente de esta opción. Los estudios solicitados se conservan en el historial para revisar en el próximo control; no crean automáticamente órdenes ni un estado de realizado/pendiente.
+
+Los campos se guardan en el JSON de pacientes existente, se conservan al recargar e importar/exportar respaldos y aparecen en la impresión/PDF de la historia y de cada evolución. Los nuevos datos de seguimiento integran el sello de las nuevas evoluciones; no se modifica el contenido ni la firma de evoluciones anteriores. No requiere migración de base de datos.
+
 ## Identidad visual
 
 El modelo 08 (monograma Dr. H con sonrisa, sin caduceo) es la identidad principal. `public/brand-mark.svg` es el original vectorial; `BrandMark` muestra su copia `public/favicon.svg` en el acceso, la cabecera y la bienvenida. Los iconos PNG de 192/512 px, el icono maskable y el Apple touch icon usan el mismo diseño. La variante maskable deja el monograma dentro de la zona segura central para recortes circulares.
