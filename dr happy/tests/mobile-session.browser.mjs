@@ -199,6 +199,7 @@ try {
         }
         if(url.endsWith('/professionals-data'))data={success:true,professional:prof,professionals:[account('account-a'),account('account-b')]};
         if(url.endsWith('/workspace-data')){
+          if(body.action==='save'&&window.__failInstructionsSync)return Response.json({success:false,message:'Sincronización simulada fallida'});
           if(window.__delayWorkspace)await new Promise(resolve=>{window.__finishWorkspace=resolve});
           data={success:true,professional:prof,archivedPatients:[],workspace:{user_id:id,
             profile_json:{fullName:prof.full_name,specialty:prof.specialty,email:prof.email},
@@ -215,6 +216,17 @@ try {
           }
         }
         if(url.endsWith('/patient-invite'))data={success:true,submissions:[]};
+        if(url.endsWith('/consultation-instructions')){
+          window.__instructionCalls=(window.__instructionCalls||0)+1;
+          window.__instructionBody=body;
+          if(window.__delayInstructions)await new Promise(resolve=>{window.__finishInstructions=resolve});
+          if(window.__failInstructions)return Response.json({success:false,message:'Correo simulado rechazado. Verificá con el paciente antes de reintentar.'},{status:502});
+          if(window.__invalidInstructionsResponse)return Response.json({});
+          const {buildConsultationInstructions}=await import('/supabase/functions/_shared/consultationInstructions.ts');
+          const payload=buildConsultationInstructions({professionalId:id,patients:JSON.parse(localStorage.getItem('fixture-document-patients')),...body});
+          window.__instructionPayload=payload;
+          data={success:true,recipient:payload.to};
+        }
         if(url.endsWith('/ai-assistant')){
           window.__clinicalAiBody=body;
           if(window.__delayClinicalAi)await new Promise(resolve=>{window.__finishClinicalAi=resolve});
@@ -661,6 +673,7 @@ try {
   await click('Modificar datos del paciente')
   await evaluate(`document.querySelector('.clinical-identity-details summary').click()`)
   assert.equal(await evaluate(`document.querySelector('.clinical-identity-details').open`), true, 'Identity and insurance expand together')
+  assert(await evaluate(`(()=>{const summary=document.querySelector('.clinical-identity-details summary');const css=getComputedStyle(summary);return summary.getBoundingClientRect().height>=44&&css.borderTopStyle==='solid'&&css.backgroundColor!=='rgba(0, 0, 0, 0)'})()`),'Identity toggle is a visible, touch-sized bordered control')
   await setClinicalField('input[name=numeroAfiliado]', '12345678901234567890')
   assert.equal(await evaluate(`document.querySelector('[name=patologiasCronicas]').value`),'HTA histórica\nDiabetes histórica','Known and chronic antecedents remain visible together')
   await setClinicalField('input[name=pesoInicial]', '72,5')
@@ -745,6 +758,8 @@ try {
   await evaluate(`document.querySelectorAll('.app-error-toast button').forEach(button=>button.click())`)
   assert.equal(await evaluate(`document.querySelectorAll('.evolution-form [name=examenFisico],.evolution-form [name=pensamientoMedico],.evolution-form [name=detalleAtencion]').length`), 0, 'Removed fields are absent')
   assert.equal(await evaluate(`document.querySelectorAll('.evolution-form input[type=checkbox]').length`), 0, 'No habitual medication checkbox')
+  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('.evolution-form input[name],.evolution-form textarea[name]')).map(field=>field.name)`),
+    ['pesoActual','tensionArterial','motivoConsulta','enfermedadActual','impresionDiagnostica','estudiosComplementarios','planManejo'],'Studies precede treatment, which is the last named clinical field')
   await setClinicalField('.evolution-form textarea[name=enfermedadActual]', 'Buen estado general. Control de peso y adherencia al tratamiento.')
   await setClinicalField('.evolution-form input[name=impresionDiagnostica]', 'Diagnóstico propio de prueba compacta')
   await evaluate(`document.querySelector('.evolution-form input[name=impresionDiagnostica]').focus()`)
@@ -784,6 +799,50 @@ try {
   assert.equal(await evaluate(`${storedClinicalPatient}.consultations[0].tallaCmEnConsulta`), '170')
   assert.equal(await evaluate(`${storedClinicalPatient}.consultations[0].tensionArterial`), '130/85')
   assert.equal(await evaluate(`${storedClinicalPatient}.tensionArterial`), '120/80', 'Current blood pressure never overwrites baseline')
+  assert.equal(await evaluate(`document.querySelector('.consultation-email-button').disabled`),true,'No email: send stays disabled with explanation')
+  assert(await evaluate(`document.querySelector('.consultation-list').textContent.includes('Registrá y guardá un email válido')`))
+  await click('Volver a la ficha')
+  await click('Modificar datos del paciente')
+  await evaluate(`document.querySelector('.clinical-identity-details').open=true`)
+  await setClinicalField('input[name=email]','patient@example.invalid')
+  await click('Guardar ficha')
+  await wait(`${storedClinicalPatient}.email==='patient@example.invalid'`)
+  await click('+ Evolucionar paciente')
+  await wait(`!!document.querySelector('.consultation-email-button')`)
+  await setClinicalField('[name=planManejo]','BORRADOR NO GUARDADO NO ENVIAR')
+  await evaluate(`window.confirm=message=>{window.__instructionConfirmation=message;return window.__confirmInstructions!==false};window.__confirmInstructions=false`)
+  await evaluate(`document.querySelector('.consultation-email-button').click()`)
+  assert.equal(await evaluate(`window.__instructionCalls||0`),0,'Cancelling confirmation never sends')
+  assert(await evaluate(`window.__instructionConfirmation.includes('patient@example.invalid')&&!window.__instructionConfirmation.includes('BORRADOR NO GUARDADO')`),'Confirmation previews saved instructions, not draft')
+  await evaluate(`window.__confirmInstructions=true;window.__failInstructionsSync=true`)
+  await evaluate(`document.querySelector('.consultation-email-button').click()`)
+  await wait(`Array.from(document.querySelectorAll('.app-error-toast p')).some(p=>p.textContent.includes('No se pudo sincronizar la evolución'))`)
+  assert.equal(await evaluate(`window.__instructionCalls||0`),0,'Failed cloud sync prevents email')
+  await evaluate(`window.__failInstructionsSync=false;window.__failInstructions=true`)
+  await evaluate(`document.querySelector('.consultation-email-button').click()`)
+  await wait(`Array.from(document.querySelectorAll('.app-error-toast p')).some(p=>p.textContent.includes('Correo simulado rechazado'))`)
+  assert.equal(await evaluate(`document.querySelector('.consultation-email-button').disabled`),false,'Provider error releases send control')
+  await evaluate(`window.__failInstructions=false;window.__invalidInstructionsResponse=true`)
+  await evaluate(`document.querySelector('.consultation-email-button').click()`)
+  await wait(`Array.from(document.querySelectorAll('.app-error-toast p')).some(p=>p.textContent.includes('El servicio no confirmó el envío'))`)
+  await evaluate(`window.__invalidInstructionsResponse=false;window.__delayInstructions=true;window.__finishInstructions=null`)
+  await evaluate(`document.querySelector('.consultation-email-button').click()`)
+  await wait(`typeof window.__finishInstructions==='function'`)
+  const instructionsPendingCalls=await evaluate(`window.__instructionCalls`)
+  await evaluate(`document.querySelector('.consultation-email-button').click()`)
+  assert.equal(await evaluate(`window.__instructionCalls`),instructionsPendingCalls,'Repeated clicks cannot duplicate pending send')
+  await evaluate(`window.__delayInstructions=false;window.__finishInstructions()`)
+  await wait(`document.body.textContent.includes('El servicio de correo aceptó las indicaciones')`)
+  assert.deepEqual(await evaluate(`Object.keys(window.__instructionBody).sort()`),['consultationId','expectedEmail','patientId'],'Only saved IDs and recipient confirmation reach backend')
+  const emailPayload=await evaluate(`window.__instructionPayload`)
+  assert.equal(emailPayload.to,'patient@example.invalid')
+  for(const text of ['Control clínico y seguimiento.','Enalapril 5 mg por día','Hemograma'])assert(emailPayload.text.includes(text),'Mail includes saved instruction: '+text)
+  for(const text of ['BORRADOR NO GUARDADO','Buen estado general','Diagnóstico propio de prueba compacta','Metformina 500 mg','120/80','130/85'])assert(!JSON.stringify(emailPayload).includes(text),'Mail excludes unrelated clinical field: '+text)
+  assert.equal(await evaluate(`document.querySelector('[name=planManejo]').value`),'BORRADOR NO GUARDADO NO ENVIAR','Sending never mutates draft')
+  assert.equal(await evaluate(`${storedClinicalPatient}.consultations.length`),1,'Sending does not create another evolution')
+  await checkTouchLayout('saved evolution with instructions email control')
+  await setClinicalField('[name=planManejo]','')
+  await evaluate(`document.querySelectorAll('.app-error-toast button').forEach(button=>button.click())`)
   assert(await evaluate(`document.querySelector('.consultation-list').textContent.includes('Revisar resultados')`))
   await setClinicalField('.evolution-form input[name=pesoActual]', '0')
   await setClinicalField('.evolution-form input[name=motivoConsulta]', 'Segundo control')
@@ -880,6 +939,7 @@ try {
   await click('Guardar evolución')
   await wait(`${storedClinicalPatient}.consultations.length===3`)
   assert.equal(await evaluate(`${storedClinicalPatient}.consultations[0].pesoActual`), '', 'Measurement remains optional')
+  assert.equal(await evaluate(`document.querySelector('.consultation-email-button').disabled`),true,'Saved evolution without instructions cannot send an empty email')
   assert.equal(await evaluate(`${storedClinicalPatient}.consultations[2].tallaCmEnConsulta`), '170', 'Subsequent controls never overwrite previous snapshots')
   await setClinicalField('.evolution-form input[name=motivoConsulta]', 'Borrador que no debe cruzar pacientes')
   await evaluate(`window.__delayClinicalAi=true;window.__finishClinicalAi=null`)
@@ -900,7 +960,7 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('[name=resumenSofia]').length`),0,'AI response cannot cross patients')
   await setClinicalField('[name=impresionDiagnostica]', 'Diagnóstico propio de prueba compacta')
   await wait(`document.querySelector('.evolution-form .clinical-suggestions')?.textContent.includes('Diagnóstico propio de prueba compacta')`)
-  console.log('Compact clinical screens passed: collapsed identity, bounded input widths without length limits, independent history columns, small weight/current BP above reason, interim desktop/Android dictation and same-button stop, late-event/manual-edit/patient-switch protection, visible mic errors, mobile layout, CIE10, medication, optional AI review, BP validation/signature/reload/PDF and unchanged baseline.')
+  console.log('Compact clinical screens passed: visible collapsed identity, bounded widths, requested clinical field order, saved-only instructions email with confirmation/cancellation, missing-email and empty-content guards, cloud/provider/invalid-response errors, single pending send, privacy-filtered content, mobile layout, dictation, CIE10, medication, optional AI review, BP signature/reload/PDF and unchanged baseline.')
   }
 } finally {
   if (socket?.readyState === WebSocket.OPEN) socket.close()

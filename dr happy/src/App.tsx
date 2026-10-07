@@ -74,6 +74,7 @@ import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
 import { askSofia, transcribePaperRecord } from './aiAssistantService'
 import { DICTATION_COMMANDS_HINT, formatDictation, joinDictation } from './dictation'
 import { loadWorkspaceData, saveWorkspaceData, saveTreatmentLedgerData, updatePatientArchive } from './workspaceService'
+import { sendConsultationInstructions } from './consultationInstructionsService'
 import { readPatientArchives } from './patientArchive'
 import type { ArchivedPatient } from './patientArchive'
 import { PatientArchivePanel } from './PatientArchivePanel'
@@ -2802,6 +2803,8 @@ function App() {
     setConsultationDraft(current => current.incluirResumenSofia ? { ...current, incluirResumenSofia: false } : current)
   }, [consultationDraft.motivoConsulta, consultationDraft.enfermedadActual, consultationDraft.impresionDiagnostica, consultationDraft.planManejo, consultationDraft.pesoActual, consultationDraft.tensionArterial, consultationDraft.farmacosAgregados, consultationDraft.estudiosComplementarios, clinicalAttachment])
   const [dictationAvailable, setDictationAvailable] = useState(false)
+  const [consultationEmailBusyId, setConsultationEmailBusyId] = useState<string | null>(null)
+  const consultationEmailBusyRef = useRef(false)
   const [dictating, setDictating] = useState(false)
   const [dictationField, setDictationField] = useState<DictationConsultationField | null>(null)
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null)
@@ -9128,6 +9131,42 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     showSavedFloatingNotice()
   }
 
+  async function handleEmailConsultationInstructions(entry: ConsultationEntry): Promise<void> {
+    if (consultationEmailBusyRef.current) return
+    const patient = selectedPatient
+    if (!patient || !profile || !activeUserId) { setAppError('Seleccioná una ficha y volvé a iniciar sesión.'); return }
+    const email = patient.email.trim()
+    if (!isValidEmail(email)) { setAppError('El paciente no tiene un email válido. Completalo y guardá su ficha.'); return }
+    if (![entry.planManejo, entry.farmacosAgregados, entry.estudiosComplementarios].some(value => value?.trim())) {
+      setAppError('Esta evolución no tiene tratamiento, fármacos ni estudios para enviar.'); return
+    }
+    const preview = [
+      `Enviar las indicaciones de la consulta del ${formatDate(entry.date)} a ${email}?`,
+      entry.estudiosComplementarios?.trim() ? `Estudios solicitados:\n${entry.estudiosComplementarios}` : '',
+      entry.planManejo?.trim() ? `Tratamiento:\n${entry.planManejo}` : '',
+      entry.farmacosAgregados?.trim() ? `Fármacos y pauta:\n${entry.farmacosAgregados}` : '',
+      'Solo se enviarán estos campos. Revisá que las dosis y frecuencias estén completas. No es una receta ni una orden de estudios.',
+    ].filter(Boolean).join('\n\n')
+    if (!window.confirm(preview)) return
+    const contextVersion = patientDocumentContext.current
+    consultationEmailBusyRef.current = true
+    setConsultationEmailBusyId(entry.id)
+    try {
+      const saved = await persistWorkspaceRemote(activeUserId, profile, patients, appointments)
+      if (!saved) throw new Error('No se pudo sincronizar la evolución. No se envió el correo; reintentá cuando haya conexión.')
+      if (contextVersion !== patientDocumentContext.current) throw new Error('Cambiaste de paciente o pantalla. No se envió el correo.')
+      const result = await sendConsultationInstructions({ patientId: patient.id, consultationId: entry.id, expectedEmail: email })
+      if (contextVersion === patientDocumentContext.current) {
+        setAppNotice(`El servicio de correo aceptó las indicaciones del ${formatDate(entry.date)} para ${result.recipient}. La recepción depende del correo del paciente.`)
+      }
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : 'No se pudo confirmar el envío. Verificá con el paciente antes de reintentar.')
+    } finally {
+      consultationEmailBusyRef.current = false
+      setConsultationEmailBusyId(null)
+    }
+  }
+
   async function handleImportPatient(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     if (!activeUserId) {
       return
@@ -14213,7 +14252,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 <fieldset className="patient-edit-fieldset" disabled={!canEditPatientForm}>
                   <details className="patient-form-block clinical-identity-details" key={selectedPatient?.id || 'new-patient'} open={!selectedPatient ? true : undefined}
                     onInvalidCapture={(event) => { event.currentTarget.open = true }}>
-                    <summary>📋 Datos filiatorios y afiliación <small>Mostrar / ocultar</small></summary>
+                    <summary>📋 Ver / ocultar datos filiatorios y afiliación</summary>
                     <h4 className="block-title">Datos filiatorios</h4>
                     <div className="grid two-col clinical-identity-grid">
                       <label>
@@ -14485,16 +14524,14 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     onChange={impresionDiagnostica => setConsultationDraft(current => ({ ...current, impresionDiagnostica }))}
                     suggestions={consultationDiagnosisVisibleList} />
                 </div>
+                <label className="evolution-field evolution-field--wide">Estudios complementarios solicitados (si corresponde)
+                  <textarea name="estudiosComplementarios" value={consultationDraft.estudiosComplementarios || ''} onChange={handleConsultationDraftChange} placeholder="Laboratorio, imágenes u otros estudios. Texto libre." />
+                </label>
                 <div className="clinical-history-grid evolution-field--wide">
-                <div className="clinical-history-stack">
                 <label className="evolution-field">
                   Tratamiento
                   <textarea name="planManejo" value={consultationDraft.planManejo} onChange={handleConsultationDraftChange} placeholder="Indicaciones, pautas de alarma y control." />
                 </label>
-                <label className="evolution-field">Estudios complementarios solicitados
-                  <textarea name="estudiosComplementarios" value={consultationDraft.estudiosComplementarios || ''} onChange={handleConsultationDraftChange} placeholder="Laboratorio, imágenes u otros estudios. Texto libre." />
-                </label>
-                </div>
                 <ClinicalMedicationField label="Agregado de fármacos" value={consultationDraft.farmacosAgregados || ''} catalog={medicationCatalog} onChange={farmacosAgregados => setConsultationDraft(current => ({ ...current, farmacosAgregados }))} />
                 </div>
 
@@ -14599,6 +14636,19 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       >
                         Imprimir esta atención
                       </button>
+                      <div className="clinical-inline-actions">
+                        <button type="button" className="ghost consultation-email-button"
+                          disabled={Boolean(consultationEmailBusyId) || !isValidEmail(selectedPatient.email.trim())
+                            || ![entry.planManejo, entry.farmacosAgregados, entry.estudiosComplementarios].some(value => value?.trim())
+                            || (selectedPatient.ownerUserId !== activeUserId && entry.signatureSeal?.signedByUserId !== activeUserId)}
+                          onClick={() => { void handleEmailConsultationInstructions(entry) }}>
+                          {consultationEmailBusyId === entry.id ? 'Enviando indicaciones...' : 'Enviar por mail tratamiento y estudios solicitados'}
+                        </button>
+                        <small>{!isValidEmail(selectedPatient.email.trim()) ? 'Registrá y guardá un email válido en la ficha para enviar.'
+                          : ![entry.planManejo, entry.farmacosAgregados, entry.estudiosComplementarios].some(value => value?.trim()) ? 'Sin indicaciones para enviar.'
+                          : selectedPatient.ownerUserId !== activeUserId && entry.signatureSeal?.signedByUserId !== activeUserId ? 'Solo podés enviar tus propias evoluciones en una ficha compartida.'
+                          : `Destino: ${selectedPatient.email}. Solo tratamiento, fármacos y estudios; sin diagnóstico.`}</small>
+                      </div>
                       {entry.certificateId && selectedPatient ? (() => {
                         const certificate = selectedPatient.certificates?.find((item) => item.id === entry.certificateId)
                         return certificate ? (

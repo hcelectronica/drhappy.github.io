@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.virtual-consultations]
 verify_jwt = false
+
+[functions.consultation-instructions]
+verify_jwt = false
