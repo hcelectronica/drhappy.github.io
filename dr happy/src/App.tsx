@@ -9932,6 +9932,7 @@ function App() {
         signatureText: profile.signatureText,
         signatureImageDataUrl: profile.signatureImage?.dataUrl,
       },
+      signatureSeal: consult.signature_seal ?? undefined,
     }
     let record: PatientRecord
     if (existing) {

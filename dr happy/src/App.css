@@ -5793,6 +5793,15 @@ body.theme-night .turnera-card-actions {
 .vc-settings-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .vc-settings-row label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
 .vc-settings-row input { width: 110px; }
+.vc-branding { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid #d9e5f0; }
+.vc-branding-field { display: grid; gap: 5px; font-weight: 700; }
+.vc-branding-field input { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 10px; font: inherit; }
+.vc-branding-logo { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.vc-branding-logo > img, .vc-branding-logo > span { width: 88px; height: 64px; object-fit: contain; border: 1px dashed #b8c7d8; border-radius: 10px; background: #fff; }
+.vc-branding-logo > span { display: grid; place-items: center; color: #64748b; font-size: .8rem; }
+.vc-branding-logo > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.vc-file-label { display: inline-flex; align-items: center; min-height: 38px; padding: 0 12px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; color: #173451; font-weight: 700; cursor: pointer; }
+.vc-file-label input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 .vc-link { flex: 1 1 220px; padding: 8px 10px; border-radius: 10px; background: #fff; border: 1px solid #d9e5f0; font-size: .85rem; word-break: break-all; }
 .vc-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
 .vc-tabs button { padding: 8px 14px; border-radius: 999px; border: 1px solid #d9e5f0; background: #fff; color: #173451; font-weight: 700; }
@@ -5820,7 +5829,9 @@ body.theme-night .turnera-card-actions {
 .vc-detail textarea { width: 100%; box-sizing: border-box; padding: 12px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; line-height: 1.5; resize: vertical; }
 .vc-sofia { justify-self: start; background: linear-gradient(135deg, #7c3aed, #2563eb); color: #fff; }
 .vc-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.vc-pdf-link { display: inline-flex; align-items: center; gap: 6px; width: fit-content; padding: 9px 12px; border: 1px solid #b8d7d1; border-radius: 10px; background: #effaf7; color: #075e55; font-weight: 700; text-decoration: none; }
+.vc-pdf-link:hover { background: #dcf4ed; }
 .vc-decline { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: #fef2f2; }
-body.theme-night .vc-settings, body.theme-night .vc-patient, body.theme-night .vc-question, body.theme-night .vc-list button, body.theme-night .vc-link, body.theme-night .vc-tabs button { background: #0b1830; color: #e2e8f0; border-color: #24395c; }
+body.theme-night .vc-settings, body.theme-night .vc-patient, body.theme-night .vc-question, body.theme-night .vc-list button, body.theme-night .vc-link, body.theme-night .vc-tabs button, body.theme-night .vc-branding-logo > img, body.theme-night .vc-branding-logo > span, body.theme-night .vc-file-label { background: #0b1830; color: #e2e8f0; border-color: #24395c; }
 body.theme-night .vc-tabs button.active { background: #0f766e; color: #fff; }
 body.theme-night .vc-list-question, body.theme-night .vc-hint, body.theme-night .vc-list small { color: #a5b4c8; }

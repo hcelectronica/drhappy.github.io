@@ -3,6 +3,7 @@ import {
   declineVirtualConsult,
   draftVirtualConsult,
   getVirtualConsultAttachments,
+  getVirtualConsultResponsePdf,
   getVirtualConsultSettings,
   listVirtualConsults,
   markVirtualConsultPaid,
@@ -40,10 +41,13 @@ export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountCh
   syncLedgerRef.current = onSyncLedger
   const [settings, setSettings] = useState<VirtualConsultSettings | null>(null)
   const [priceInput, setPriceInput] = useState('')
+  const [letterheadInput, setLetterheadInput] = useState('')
+  const [logoDataUrl, setLogoDataUrl] = useState('')
   const [consults, setConsults] = useState<VirtualConsult[] | null>(null)
   const [filter, setFilter] = useState<Filter>('pending')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [attachments, setAttachments] = useState<VirtualConsultAttachment[]>([])
+  const [responsePdfUrl, setResponsePdfUrl] = useState('')
   const [responseText, setResponseText] = useState('')
   const [declineReason, setDeclineReason] = useState('')
   const [declineOpen, setDeclineOpen] = useState(false)
@@ -63,6 +67,8 @@ export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountCh
     if (settingsResult.settings) {
       setSettings(settingsResult.settings)
       setPriceInput(String(settingsResult.settings.price))
+      setLetterheadInput(settingsResult.settings.letterhead)
+      setLogoDataUrl(settingsResult.settings.logoDataUrl)
     }
     const list = listResult.consults ?? []
     setConsults(list)
@@ -79,15 +85,24 @@ export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountCh
 
   useEffect(() => {
     setAttachments([])
+    setResponsePdfUrl('')
     setDeclineOpen(false)
     setDeclineReason('')
     if (!selected) return
     setResponseText(selected.response_text || selected.draft?.respuestaPaciente || '')
-    if (!selected.attachmentCount) return
     let cancelled = false
-    void getVirtualConsultAttachments(selected.id).then((result) => {
-      if (!cancelled && result.success) setAttachments(result.attachments ?? [])
-    })
+    if (selected.attachmentCount) {
+      void getVirtualConsultAttachments(selected.id).then((result) => {
+        if (!cancelled && result.success) setAttachments(result.attachments ?? [])
+      })
+    }
+    if (selected.status === 'answered') {
+      void getVirtualConsultResponsePdf(selected.id).then((result) => {
+        if (cancelled) return
+        if (result.success && result.pdfUrl) setResponsePdfUrl(result.pdfUrl)
+        else setError(result.message || 'No se pudo preparar el PDF de la devolución.')
+      })
+    }
     return () => { cancelled = true }
     // Solo se recarga al cambiar de consulta, no cuando se actualiza la lista.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,12 +126,40 @@ export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountCh
 
   const handleSaveSettings = (enabled: boolean) => run('settings', async () => {
     const price = Math.round(Number(priceInput.replace(/\D/g, '')))
-    const result = await saveVirtualConsultSettings(enabled, price)
+    const result = await saveVirtualConsultSettings(enabled, price, letterheadInput.trim(), logoDataUrl)
     if (!result.success || !result.settings) { setError(result.message || 'No se pudo guardar.'); return }
     setSettings(result.settings)
     setPriceInput(String(result.settings.price))
-    setNotice(enabled ? 'Consulta virtual activada.' : 'Consulta virtual pausada: el link deja de recibir consultas.')
+    setLetterheadInput(result.settings.letterhead)
+    setLogoDataUrl(result.settings.logoDataUrl)
+    setNotice('Configuración de consultas virtuales guardada.')
   })
+
+  const handleLogoChange = async (file?: File) => {
+    if (!file) return
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      setError('El logo debe estar en formato PNG o JPG.')
+      return
+    }
+    if (file.size > 300 * 1024) {
+      setError('El logo no puede superar los 300 KB.')
+      return
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('No se pudo leer la imagen.'))
+      reader.onerror = () => reject(reader.error ?? new Error('No se pudo leer la imagen.'))
+      reader.readAsDataURL(file)
+    }).catch((readError: unknown) => {
+      setError(readError instanceof Error ? readError.message : 'No se pudo leer la imagen.')
+      return ''
+    })
+    if (dataUrl) {
+      setLogoDataUrl(dataUrl)
+      setError(null)
+      setNotice('Logo cargado. Guardá la configuración para aplicarlo a las próximas devoluciones.')
+    }
+  }
 
   const handleCopyLink = async () => {
     if (!settings) return
@@ -158,8 +201,15 @@ export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountCh
     if (!window.confirm(`¿Visar y enviar la devolución a ${consult.nombre} ${consult.apellido}? Se genera el PDF firmado y ya no se puede modificar.`)) return
     const result = await publishVirtualConsult(consult.id, text)
     if (!result.success) { setError(result.message || 'No se pudo enviar la devolución.'); return }
-    updateConsult(consult.id, { status: 'answered', response_text: text, answered_at: result.answeredAt ?? new Date().toISOString() })
-    const recorded = await recordInChart(consult, text)
+    const answeredConsult: VirtualConsult = {
+      ...consult,
+      status: 'answered',
+      response_text: text,
+      answered_at: result.answeredAt ?? new Date().toISOString(),
+      signature_seal: result.signatureSeal ?? null,
+    }
+    updateConsult(consult.id, answeredConsult)
+    const recorded = await recordInChart(answeredConsult, text)
     setNotice([
       result.emailSent ? 'Devolución visada y enviada por email al paciente.' : 'Devolución visada. No se pudo enviar el email: el paciente la puede descargar desde su link de seguimiento.',
       recorded ? 'Quedó registrada en la historia clínica.' : 'No se pudo registrar en la historia clínica: usá "Registrar en historia clínica".',
@@ -213,6 +263,27 @@ export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountCh
               <label>Valor $ <input inputMode="numeric" value={priceInput} onChange={(event) => setPriceInput(event.target.value.replace(/\D/g, ''))} /></label>
               <button type="button" disabled={busy !== null} onClick={() => { void handleSaveSettings(!settings.enabled) }}>{settings.enabled ? 'Pausar' : 'Activar'}</button>
               {settings.enabled && String(settings.price) !== priceInput ? <button type="button" className="ghost" disabled={busy !== null} onClick={() => { void handleSaveSettings(true) }}>Guardar valor</button> : null}
+            </div>
+            <div className="vc-branding">
+              <div>
+                <strong>Identidad del PDF</strong>
+                <p className="vc-hint">El membrete es opcional y no usa el domicilio del consultorio. Si lo dejás vacío, se identifica con tu nombre profesional.</p>
+              </div>
+              <label className="vc-branding-field">
+                Nombre o membrete
+                <input maxLength={100} value={letterheadInput} onChange={(event) => setLetterheadInput(event.target.value)} placeholder="Ej.: Dra. Ana Pérez · Salud integral" />
+              </label>
+              <div className="vc-branding-logo">
+                {logoDataUrl ? <img src={logoDataUrl} alt="Vista previa del logo del membrete" /> : <span>Sin logo</span>}
+                <div>
+                  <label className="vc-file-label">
+                    Elegir logo (PNG o JPG, hasta 300 KB)
+                    <input type="file" accept="image/png,image/jpeg" onChange={(event) => { void handleLogoChange(event.target.files?.[0]); event.currentTarget.value = '' }} />
+                  </label>
+                  {logoDataUrl ? <button type="button" className="ghost" disabled={busy !== null} onClick={() => setLogoDataUrl('')}>Quitar logo</button> : null}
+                </div>
+              </div>
+              <button type="button" className="ghost" disabled={busy !== null} onClick={() => { void handleSaveSettings(settings.enabled) }}>Guardar identidad del PDF</button>
             </div>
             {!settings.paymentReady ? <p className="error">Conectá tu cuenta de Mercado Pago en Perfil para poder cobrar las consultas.</p> : null}
             {settings.enabled ? (
@@ -275,7 +346,7 @@ export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountCh
               <h3>Devolución para el paciente</h3>
               <textarea value={responseText} rows={10} maxLength={6000} onChange={(event) => setResponseText(event.target.value)}
                 placeholder="Escribí o revisá la devolución. Se entrega en PDF con tu firma." />
-              <p className="vc-hint">Al visar se genera el PDF "Devolución de consulta virtual asistida" con tu firma, se le envía al paciente y se registra en su historia clínica.</p>
+              <p className="vc-hint">Al visar se genera el PDF "Devolución de orientación virtual asistida" con tu firma, se envía al paciente y se registra en su historia clínica.</p>
               <div className="vc-actions">
                 <button type="button" disabled={busy !== null || responseText.trim().length < 20} onClick={() => { void handlePublish(selected) }}>
                   {busy === 'publish' ? 'Generando PDF...' : '✍️ Visar y enviar'}
@@ -294,7 +365,15 @@ export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountCh
 
             {selected.status === 'answered' ? <>
               <h3>Devolución enviada · {dateLabel(selected.answered_at)}</h3>
+              {responsePdfUrl
+                ? <a className="vc-pdf-link" href={responsePdfUrl} target="_blank" rel="noopener noreferrer">📄 Abrir el PDF enviado al paciente</a>
+                : <p className="vc-hint">Cargando el enlace seguro al PDF enviado...</p>}
               <p className="vc-question">{selected.response_text}</p>
+              {selected.signature_seal ? (
+                <p className="vc-hint">
+                  🔏 Firma electrónica simple · {dateLabel(selected.signature_seal.signedAt)} · SHA-256 {selected.signature_seal.hashSha256.slice(0, 24)}…
+                </p>
+              ) : null}
               {!selected.recorded_in_chart_at ? <button type="button" disabled={busy !== null} onClick={() => { void handleRecord(selected) }}>Registrar en historia clínica</button> : <p className="vc-hint">✅ Registrada en la historia clínica.</p>}
             </> : null}
             {selected.status === 'declined' ? <><h3>Derivada a atención presencial</h3><p className="vc-question">{selected.decline_reason}</p></> : null}

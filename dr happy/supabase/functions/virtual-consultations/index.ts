@@ -8,6 +8,15 @@ import { buildVirtualConsultPdf } from './pdf.ts'
 // Sofía prepara un borrador y el profesional revisa, visa y emite la devolución en PDF.
 
 type Entry = Record<string, unknown>
+type VirtualConsultSignatureSeal = {
+  hashSha256: string
+  signedAt: string
+  signedByUserId: string
+  signedByFullName: string
+  signedByLicense: string
+  method: 'firma-electronica-simple'
+  algorithm: 'SHA-256'
+}
 
 const PILOT_EMAILS = new Set(['mudimudialan@gmail.com', 'alan.moodie@hotmail.com'])
 const BUCKET = 'virtual-consults'
@@ -91,6 +100,17 @@ function sniffType(bytes: Uint8Array): string | null {
   return null
 }
 
+function validateBrandingLogo(value: unknown): { logoDataUrl?: string; error?: string } {
+  if (value === null || value === undefined || value === '') return { logoDataUrl: '' }
+  if (typeof value !== 'string' || value.length > 420_000) return { error: 'El logo debe ser PNG o JPG y no superar los 300 KB.' }
+  const match = value.match(/^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/)
+  if (!match) return { error: 'El archivo de logo no es una imagen PNG o JPG válida.' }
+  const bytes = decodeBase64(match[2])
+  const type = sniffType(bytes)
+  if (type !== `image/${match[1]}` || bytes.length > 300 * 1024) return { error: 'El logo debe ser PNG o JPG y no superar los 300 KB.' }
+  return { logoDataUrl: value }
+}
+
 async function professionalInfo(admin: SupabaseClient, professionalId: string) {
   const [{ data: professional, error: professionalError }, { data: workspace, error: workspaceError }] = await Promise.all([
     admin.from('professionals').select('full_name, specialty, email, active').eq('id', professionalId).maybeSingle(),
@@ -109,18 +129,28 @@ async function professionalInfo(admin: SupabaseClient, professionalId: string) {
     licenseNumber: String(profile.licenseNumber || ''),
     signatureText: String(profile.signatureText || ''),
     signatureDataUrl: typeof signatureImage === 'string' ? signatureImage : undefined,
-    letterhead: typeof profile.certificateLetterhead === 'string' ? profile.certificateLetterhead.trim() : '',
     email: String((typeof profile.email === 'string' && profile.email.trim()) || professional?.email || '').trim(),
   }
 }
 
-async function sendEmail(url: string, key: string, to: string, subject: string, text: string): Promise<boolean> {
+async function sendEmail(
+  url: string,
+  key: string,
+  to: string,
+  subject: string,
+  text: string,
+  attachment?: { filename: string; content: string; contentType: string },
+): Promise<boolean> {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return false
   try {
     const response = await fetch(`${url}/functions/v1/send-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}`, apikey: key },
-      body: JSON.stringify({ to, subject, type: 'custom', text, templateData: { message: escapeHtml(text).replaceAll('\n', '<br>') } }),
+      body: JSON.stringify({
+        to, subject, type: 'custom', text,
+        templateData: { message: escapeHtml(text).replaceAll('\n', '<br>') },
+        attachments: attachment ? [{ ...attachment, encoding: 'base64' }] : undefined,
+      }),
       signal: AbortSignal.timeout(10000),
     })
     const result = await response.json().catch(() => null)
@@ -131,15 +161,60 @@ async function sendEmail(url: string, key: string, to: string, subject: string, 
   }
 }
 
+async function buildVirtualConsultSignatureSeal(params: {
+  consultId: string
+  professionalId: string
+  professionalName: string
+  licenseNumber: string
+  patientName: string
+  patientDni: string
+  question: string
+  response: string
+  createdAt: string
+  answeredAt: string
+}): Promise<VirtualConsultSignatureSeal> {
+  const signedAt = params.answeredAt
+  const canonicalContent = JSON.stringify({
+    content: {
+      consultId: params.consultId,
+      patientName: params.patientName,
+      patientDni: params.patientDni,
+      question: params.question,
+      response: params.response,
+      createdAt: params.createdAt,
+      answeredAt: params.answeredAt,
+    },
+    signer: {
+      userId: params.professionalId,
+      fullName: params.professionalName,
+      license: params.licenseNumber,
+      dni: '',
+    },
+    signedAt,
+  })
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalContent))
+  const hashSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return {
+    hashSha256,
+    signedAt,
+    signedByUserId: params.professionalId,
+    signedByFullName: params.professionalName,
+    signedByLicense: params.licenseNumber,
+    method: 'firma-electronica-simple',
+    algorithm: 'SHA-256',
+  }
+}
+
 async function ensureSettings(admin: SupabaseClient, professionalId: string, name: string) {
-  const { data: existing, error } = await admin.from('virtual_consult_settings').select('slug, enabled, price').eq('professional_id', professionalId).maybeSingle()
+  const { data: existing, error } = await admin.from('virtual_consult_settings')
+    .select('slug, enabled, price, letterhead, logo_data_url').eq('professional_id', professionalId).maybeSingle()
   if (error) throw error
   if (existing) return existing
   const base = slugify(name) || 'profesional'
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const slug = `${base}-${randomToken(3)}`
     const { data, error: insertError } = await admin.from('virtual_consult_settings')
-      .insert({ professional_id: professionalId, slug }).select('slug, enabled, price').single()
+      .insert({ professional_id: professionalId, slug }).select('slug, enabled, price, letterhead, logo_data_url').single()
     if (!insertError) return data
   }
   throw new Error('No se pudo generar el link de consulta virtual.')
@@ -339,9 +414,13 @@ Deno.serve(async (request) => {
       if (body.action === 'save-settings') {
         const price = Math.round(Number(body.price))
         if (!Number.isFinite(price) || price < 100 || price > 1_000_000) return reply(400, { success: false, message: 'Ingresá un valor entre $100 y $1.000.000.' })
+        const letterhead = typeof body.letterhead === 'string' ? body.letterhead.trim() : ''
+        if (letterhead.length > 100) return reply(400, { success: false, message: 'El membrete no puede superar los 100 caracteres.' })
+        const logoValidation = validateBrandingLogo(body.logoDataUrl)
+        if (logoValidation.error) return reply(400, { success: false, message: logoValidation.error })
         const { data, error } = await admin.from('virtual_consult_settings')
-          .update({ enabled: body.enabled === true, price, updated_at: new Date().toISOString() })
-          .eq('professional_id', professionalId).select('slug, enabled, price').single()
+          .update({ enabled: body.enabled === true, price, letterhead, logo_data_url: logoValidation.logoDataUrl || null, updated_at: new Date().toISOString() })
+          .eq('professional_id', professionalId).select('slug, enabled, price, letterhead, logo_data_url').single()
         if (error) throw error
         settings = data
       }
@@ -349,13 +428,17 @@ Deno.serve(async (request) => {
         .eq('professional_id', professionalId).eq('provider', 'mercadopago').maybeSingle()
       return reply(200, {
         success: true,
-        settings: { slug: settings.slug, enabled: settings.enabled, price: Number(settings.price), paymentReady: paymentAccount?.status === 'connected', url: `${PUBLIC_SITE}/consulta/${settings.slug}` },
+        settings: {
+          slug: settings.slug, enabled: settings.enabled, price: Number(settings.price),
+          letterhead: settings.letterhead ?? '', logoDataUrl: settings.logo_data_url ?? '',
+          paymentReady: paymentAccount?.status === 'connected', url: `${PUBLIC_SITE}/consulta/${settings.slug}`,
+        },
       })
     }
 
     if (body.action === 'list') {
       const { data, error } = await admin.from('virtual_consultations')
-        .select('id, nombre, apellido, dni, email, phone, obra_social, birth_date, question, attachments, status, payment_status, amount, created_at, paid_at, answered_at, recorded_in_chart_at, response_text, decline_reason, draft')
+        .select('id, nombre, apellido, dni, email, phone, obra_social, birth_date, question, attachments, status, payment_status, amount, created_at, paid_at, answered_at, recorded_in_chart_at, response_text, signature_seal, decline_reason, draft')
         .eq('professional_id', professionalId).neq('status', 'cancelled')
         .order('created_at', { ascending: false }).limit(100)
       if (error) throw error
@@ -373,6 +456,16 @@ Deno.serve(async (request) => {
 
     if (body.action === 'attachments') {
       return reply(200, { success: true, attachments: await signedAttachments(admin, consult.attachments) })
+    }
+
+    if (body.action === 'response-pdf') {
+      if (consult.status !== 'answered' || !consult.pdf_path) {
+        return reply(404, { success: false, message: 'No hay un PDF de devolución guardado para esta consulta.' })
+      }
+      const { data, error } = await admin.storage.from(BUCKET).createSignedUrl(consult.pdf_path, 3600)
+      if (error) throw error
+      if (!data?.signedUrl) throw new Error('No se pudo crear el enlace seguro al PDF.')
+      return reply(200, { success: true, pdfUrl: data.signedUrl })
     }
 
     if (body.action === 'mark-paid') {
@@ -461,27 +554,49 @@ Deno.serve(async (request) => {
       if (responseText.length < 20) return reply(400, { success: false, message: 'Escribí la devolución antes de visarla.' })
       if (!info.name.trim()) return reply(400, { success: false, message: 'Completá tu nombre en el perfil antes de visar devoluciones.' })
       const answeredAt = new Date().toISOString()
+      const patientName = `${consult.apellido}, ${consult.nombre}`
+      const branding = await ensureSettings(admin, professionalId, info.name)
+      const signatureSeal = await buildVirtualConsultSignatureSeal({
+        consultId,
+        professionalId,
+        professionalName: info.name,
+        licenseNumber: info.licenseNumber,
+        patientName,
+        patientDni: consult.dni,
+        question: consult.question,
+        response: responseText,
+        createdAt: consult.created_at,
+        answeredAt,
+      })
       const pdf = await buildVirtualConsultPdf({
-        consultId, letterhead: info.letterhead, professionalName: info.name, specialty: info.specialty,
+        consultId,
+        letterhead: branding.letterhead ?? '',
+        logoDataUrl: branding.logo_data_url ?? '',
+        professionalName: info.name, specialty: info.specialty,
         licenseNumber: info.licenseNumber, signatureText: info.signatureText, signatureDataUrl: info.signatureDataUrl,
-        patientName: `${consult.apellido}, ${consult.nombre}`, patientDni: consult.dni,
+        patientName, patientDni: consult.dni,
         question: consult.question, response: responseText, createdAt: consult.created_at, answeredAt,
+        signatureSeal,
       })
       const pdfPath = `${professionalId}/${consultId}/devolucion.pdf`
       const { error: uploadError } = await admin.storage.from(BUCKET).upload(pdfPath, pdf, { contentType: 'application/pdf', upsert: true })
       if (uploadError) throw uploadError
       const { data: updated, error } = await admin.from('virtual_consultations').update({
-        status: 'answered', response_text: responseText, pdf_path: pdfPath, answered_at: answeredAt, updated_at: answeredAt,
+        status: 'answered', response_text: responseText, signature_seal: signatureSeal, pdf_path: pdfPath, answered_at: answeredAt, updated_at: answeredAt,
       }).eq('id', consultId).eq('status', 'pending_review').select('id').maybeSingle()
       if (error) throw error
       if (!updated) return reply(409, { success: false, message: 'Esta consulta ya fue respondida.' })
-      const emailSent = await sendEmail(url, key, consult.email, `Tu devolución de consulta virtual - ${info.name}`, [
+      const emailSent = await sendEmail(url, key, consult.email, `Tu devolución de orientación virtual - ${info.name}`, [
         `Hola ${consult.nombre},`, '',
-        `${info.name} revisó tu consulta virtual y ya está disponible tu devolución en PDF.`, '',
+        `${info.name} revisó tu consulta y te envía adjunta la devolución de orientación virtual en PDF. También podés descargarla desde tu link de seguimiento.`, '',
         'Descargala desde este link:', `${PUBLIC_SITE}/consulta/?s=${consult.tracking_token}`, '',
-        'Es una orientación elaborada con asistencia de IA (Sofía) y revisada y visada por tu profesional. No reemplaza la consulta presencial. Ante síntomas de alarma, concurrí a la guardia o llamá al 107.',
-      ].join('\n'))
-      return reply(200, { success: true, emailSent, answeredAt })
+        'La orientación fue elaborada con asistencia de IA (Sofía) y revisada y visada por tu profesional. No reemplaza la consulta presencial. Ante síntomas de alarma, concurrí a la guardia o llamá al 107.',
+      ].join('\n'), {
+        filename: `devolucion-orientacion-${consultId.slice(0, 8)}.pdf`,
+        content: encodeBase64(pdf),
+        contentType: 'application/pdf',
+      })
+      return reply(200, { success: true, emailSent, answeredAt, signatureSeal })
     }
 
     if (body.action === 'decline') {

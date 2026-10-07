@@ -14,6 +14,16 @@ export interface VirtualConsultDraft {
   alertas: string
 }
 
+export interface VirtualConsultSignatureSeal {
+  hashSha256: string
+  signedAt: string
+  signedByUserId: string
+  signedByFullName: string
+  signedByLicense: string
+  method: 'firma-electronica-simple'
+  algorithm: 'SHA-256'
+}
+
 export interface VirtualConsult {
   id: string
   nombre: string
@@ -32,6 +42,7 @@ export interface VirtualConsult {
   answered_at: string | null
   recorded_in_chart_at: string | null
   response_text: string | null
+  signature_seal: VirtualConsultSignatureSeal | null
   decline_reason: string | null
   draft: VirtualConsultDraft | null
   attachmentCount: number
@@ -41,6 +52,8 @@ export interface VirtualConsultSettings {
   slug: string
   enabled: boolean
   price: number
+  letterhead: string
+  logoDataUrl: string
   paymentReady: boolean
   url: string
 }
@@ -58,9 +71,11 @@ interface VirtualConsultResponse {
   settings?: VirtualConsultSettings
   consults?: VirtualConsult[]
   attachments?: VirtualConsultAttachment[]
+  pdfUrl?: string
   draft?: VirtualConsultDraft
   emailSent?: boolean
   answeredAt?: string
+  signatureSeal?: VirtualConsultSignatureSeal
 }
 
 async function invokeVirtualConsult(body: Record<string, unknown>): Promise<VirtualConsultResponse> {
@@ -86,9 +101,11 @@ async function invokeVirtualConsult(body: Record<string, unknown>): Promise<Virt
 }
 
 export const getVirtualConsultSettings = () => invokeVirtualConsult({ action: 'get-settings' })
-export const saveVirtualConsultSettings = (enabled: boolean, price: number) => invokeVirtualConsult({ action: 'save-settings', enabled, price })
+export const saveVirtualConsultSettings = (enabled: boolean, price: number, letterhead: string, logoDataUrl: string) =>
+  invokeVirtualConsult({ action: 'save-settings', enabled, price, letterhead, logoDataUrl })
 export const listVirtualConsults = () => invokeVirtualConsult({ action: 'list' })
 export const getVirtualConsultAttachments = (id: string) => invokeVirtualConsult({ action: 'attachments', id })
+export const getVirtualConsultResponsePdf = (id: string) => invokeVirtualConsult({ action: 'response-pdf', id })
 export const markVirtualConsultPaid = (id: string) => invokeVirtualConsult({ action: 'mark-paid', id })
 export const markVirtualConsultRecorded = (id: string) => invokeVirtualConsult({ action: 'mark-recorded', id })
 export const draftVirtualConsult = (id: string) => invokeVirtualConsult({ action: 'draft', id })

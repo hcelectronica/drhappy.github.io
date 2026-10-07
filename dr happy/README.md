@@ -89,11 +89,12 @@ Validar metadatos con `node --test tests/video-consultations.test.mjs` y `tests/
 Solo para las cuentas de `VIRTUAL_CONSULT_PILOT_EMAILS` (`src/virtualConsultService.ts` y `PILOT_EMAILS` en la función). El profesional la activa desde **💬 Consultas virtuales**, fija el valor y comparte `https://drhappy.com.ar/consulta/<slug>`.
 
 - `public/consulta/index.html`: formulario público con aviso visible de servicio **pago y no obligatorio**, filtro de señales de alarma (deriva a guardia/107 antes de cobrar), hasta 3 fotos/PDF y pago con Mercado Pago del profesional. Con `?s=<token>` muestra el seguimiento y la descarga del PDF.
-- `supabase/functions/virtual-consultations`: acciones públicas (`get-page`, `submit`, `status`) y del profesional (`get-settings`, `save-settings`, `list`, `attachments`, `mark-paid`, `draft`, `publish`, `decline`, `mark-recorded`). El envío también se guarda en `patient_invite_submissions`, por lo que el paciente se incorpora o completa por DNI. `draft` usa un cupo de Sofía; `publish` genera el PDF "Devolución de consulta virtual asistida" firmado (`pdf-lib`) y avisa por email.
+- `supabase/functions/virtual-consultations`: acciones públicas (`get-page`, `submit`, `status`) y del profesional (`get-settings`, `save-settings`, `list`, `attachments`, `response-pdf`, `mark-paid`, `draft`, `publish`, `decline`, `mark-recorded`). El envío también se guarda en `patient_invite_submissions`, por lo que el paciente se incorpora o completa por DNI. `draft` usa un cupo de Sofía; `publish` genera el PDF "Devolución de orientación virtual asistida" con firma gráfica y sello electrónico simple SHA-256, lo adjunta al email y conserva una copia privada accesible desde la bandeja profesional. La evolución clínica incorpora el mismo sello de integridad de la devolución.
 - `mercadopago-patient-webhook` acredita las referencias `vc_<id>` y avisa al profesional.
 - Al visar, la app agrega a la historia clínica la evolución `virtual-<id>` y suma al **Balance de pagos** el cobro (`virtual-<id>`, total = abonado) de las consultas respondidas con pago aprobado o manual; al abrir la bandeja se completan las que falten. Los reembolsos de consultas derivadas a presencial se hacen manualmente desde Mercado Pago.
+- El PDF no hereda el membrete físico configurado para certificados. Cada profesional puede definir un membrete propio opcional y cargar un logo PNG/JPG de hasta 300 KB desde la bandeja; si no configura uno, se usa su nombre profesional.
 
-Desplegar con la migración `20261006010000_virtual_consultations.sql` y `supabase functions deploy virtual-consultations --no-verify-jwt` (más `mercadopago-patient-webhook`).
+Desplegar con las migraciones `20261006010000_virtual_consultations.sql`, `20261006020000_virtual_consult_signature_seal.sql` y `20261006030000_virtual_consult_branding.sql`, luego `supabase functions deploy virtual-consultations --no-verify-jwt` (más `mercadopago-patient-webhook`).
 
 ## Documentos clínicos
 

@@ -3,6 +3,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFP
 export interface VirtualConsultPdfInput {
   consultId: string
   letterhead: string
+  logoDataUrl?: string
   professionalName: string
   specialty: string
   licenseNumber: string
@@ -14,6 +15,14 @@ export interface VirtualConsultPdfInput {
   response: string
   createdAt: string
   answeredAt: string
+  signatureSeal: {
+    hashSha256: string
+    signedAt: string
+    signedByFullName: string
+    signedByLicense: string
+    method: 'firma-electronica-simple'
+    algorithm: 'SHA-256'
+  }
 }
 
 // Las fuentes estándar de PDF usan WinAnsi: se reemplazan los caracteres que no puede dibujar.
@@ -71,7 +80,7 @@ async function embedSignature(pdf: PDFDocument, dataUrl?: string): Promise<PDFIm
 
 export async function buildVirtualConsultPdf(input: VirtualConsultPdfInput): Promise<Uint8Array> {
   const pdf = await PDFDocument.create()
-  pdf.setTitle('Devolucion de consulta virtual asistida')
+  pdf.setTitle('Devolucion de orientacion virtual asistida')
   pdf.setAuthor(winAnsi(input.professionalName))
   pdf.setProducer('Dr Happy')
   const regular = await pdf.embedFont(StandardFonts.Helvetica)
@@ -112,11 +121,24 @@ export async function buildVirtualConsultPdf(input: VirtualConsultPdfInput): Pro
   }
 
   page.drawRectangle({ x: 0, y: pageHeight - 8, width: pageWidth, height: 8, color: teal })
-  write(input.letterhead || input.professionalName, { font: bold, size: 16 })
   const subtitle = [input.specialty, input.licenseNumber ? `Matrícula ${input.licenseNumber}` : ''].filter(Boolean).join(' · ')
-  if (subtitle) write(subtitle, { size: 10, color: muted })
+  const logo = await embedSignature(pdf, input.logoDataUrl)
+  if (logo) {
+    const scale = Math.min(64 / logo.width, 64 / logo.height)
+    const logoWidth = logo.width * scale
+    const logoHeight = logo.height * scale
+    const headerX = margin + logoWidth + 14
+    const title = input.letterhead.trim() || input.professionalName
+    page.drawImage(logo, { x: margin, y: y - logoHeight, width: logoWidth, height: logoHeight })
+    page.drawText(winAnsi(title).slice(0, 100), { x: headerX, y: y - 18, size: 15, font: bold, color: ink, maxWidth: contentWidth - logoWidth - 14 })
+    if (subtitle) page.drawText(winAnsi(subtitle), { x: headerX, y: y - 36, size: 9.5, font: regular, color: muted, maxWidth: contentWidth - logoWidth - 14 })
+    y -= Math.max(logoHeight, subtitle ? 46 : 26) + 10
+  } else {
+    write(input.letterhead.trim() || input.professionalName, { font: bold, size: 16 })
+    if (subtitle) write(subtitle, { size: 10, color: muted })
+  }
   y -= 10
-  write('Devolución de consulta virtual asistida', { font: bold, size: 14, color: teal, gap: 2 })
+  write('Devolución de orientación virtual asistida', { font: bold, size: 14, color: teal, gap: 2 })
   write(`Consulta N° ${input.consultId.slice(0, 8).toUpperCase()}`, { size: 9, color: muted, gap: 6 })
 
   section('Paciente')
@@ -144,7 +166,7 @@ export async function buildVirtualConsultPdf(input: VirtualConsultPdfInput): Pro
 
   const signature = await embedSignature(pdf, input.signatureDataUrl)
   const scale = signature ? Math.min(160 / signature.width, 60 / signature.height) : 0
-  ensure((signature ? signature.height * scale : 30) + 80)
+  ensure((signature ? signature.height * scale : 30) + 150)
   const signatureX = pageWidth - margin - 220
   if (signature) {
     page.drawImage(signature, { x: signatureX + 30, y: y - signature.height * scale, width: signature.width * scale, height: signature.height * scale })
@@ -164,9 +186,14 @@ export async function buildVirtualConsultPdf(input: VirtualConsultPdfInput): Pro
     page.drawText(winAnsi(line.text).slice(0, 70), { x: signatureX, y: y - line.size, size: line.size, font: line.font, color: line.color })
     y -= line.size * 1.5
   }
+  y -= 6
+  write(`Firma electrónica simple · SHA-256 · ${formatDate(input.signatureSeal.signedAt)}`, { font: bold, size: 8.5, color: teal })
+  write(`Firmante: ${input.signatureSeal.signedByFullName}${input.signatureSeal.signedByLicense ? ` · Matrícula ${input.signatureSeal.signedByLicense}` : ''}`, { size: 8, color: muted })
+  write(`Sello de integridad: ${input.signatureSeal.hashSha256}`, { size: 7.5, color: muted, gap: 4 })
+  write('Este sello permite comprobar la integridad del contenido firmado; no equivale a una firma digital certificada.', { size: 7.5, color: muted })
 
   for (const current of pdf.getPages()) {
-    current.drawText(winAnsi('Documento generado con Dr Happy · drhappy.com.ar · Consulta virtual asistida por IA con revisión profesional'), {
+    current.drawText(winAnsi('Documento generado con Dr Happy · drhappy.com.ar · Orientación virtual asistida por IA con revisión profesional'), {
       x: margin, y: 28, size: 7.5, font: regular, color: muted,
     })
   }
