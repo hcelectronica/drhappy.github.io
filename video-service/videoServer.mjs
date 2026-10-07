@@ -23,6 +23,7 @@ export function createVideoServer({
   createConsultation,
   summarizeConsultation,
   saveConsultationSummary,
+  sendInvitation,
   recordConsultationEvent,
   waitingDurationMs = 30 * 60_000,
   now = Date.now,
@@ -93,6 +94,7 @@ export function createVideoServer({
   createConsultation ??= (sessionToken, data) => remote('video-consultations', { action: 'create', ...data }, sessionToken)
   summarizeConsultation ??= (sessionToken, data) => remote('video-consultations', { action: 'summarize', ...data }, sessionToken, 60_000)
   saveConsultationSummary ??= (sessionToken, data) => remote('video-consultations', { action: 'save-summary', ...data }, sessionToken)
+  sendInvitation ??= (sessionToken, data) => remote('video-consultations', { action: 'send-invitation', ...data }, sessionToken, 30_000)
   recordConsultationEvent ??= async (lifecycleToken, event) => {
     const data = await remote('video-consultations', { action: 'event', lifecycleToken, event })
     if (data?.ok !== true) throw fail(503, 'No se pudo confirmar el registro de videoconsulta.')
@@ -248,6 +250,28 @@ export function createVideoServer({
           motivoConsulta: data.motivoConsulta, detalleAtencion: data.detalleAtencion, planManejo: data.planManejo })
         return json(response, 201, { ok: true })
       }
+      if (path === '/api/rooms/invitation-email' && request.method === 'POST') {
+        const session = getSession(request)
+        await authorize(session)
+        const data = await body(request)
+        if (!validToken(data?.token)) throw fail(400, 'Sala invalida.')
+        const access = tokens.get(hash(data.token))
+        const room = access?.room
+        if (!room || access.role !== 'professional' || room.owner !== session.key || rooms.get(room.id) !== room
+          || room.expiresAt <= now()) throw fail(409, 'La sala ya no esta disponible. Crea una nueva invitacion.')
+        if (room.emailSending) throw fail(409, 'El envio de esta invitacion ya esta en curso.')
+        if (room.emailSent) throw fail(409, 'La invitacion de esta sala ya fue enviada por email.')
+        rate(`invitation:${session.key}`, 5, 10 * 60_000)
+        room.emailSending = true
+        try {
+          const result = await sendInvitation(session.upstream, {
+            consultationId: room.consultationId, lifecycleToken: room.lifecycleToken, patientLink: room.patientLink,
+          })
+          if (result?.ok !== true) throw fail(502, 'El servicio de correo no confirmo el envio. No reenvies sin verificar.')
+          room.emailSent = true
+          return json(response, 200, { ok: true })
+        } finally { room.emailSending = false }
+      }
       if (path === '/api/rooms' && request.method === 'POST') {
         const session = getSession(request)
         rate(`create:${session.key}`, 5, 60_000)
@@ -282,12 +306,13 @@ export function createVideoServer({
             throw error
           }
           const room = { id, owner: session.key, professional: hash(professional), patient: hash(patient),
+            patientLink: `${origin}/#p=${patient}`,
             consultationId: consultation.consultationId, patientName: consultation.patientName, lifecycleToken: consultation.lifecycleToken,
             durationMinutes: data.durationMinutes, startedAt: null, expiresAt: now() + waitingDurationMs, admitted: false, sockets: {} }
           rooms.set(id, room)
           tokens.set(room.professional, { room, role: 'professional' })
           tokens.set(room.patient, { room, role: 'patient' })
-          return json(response, 201, { token: professional, patientLink: `${origin}/#p=${patient}`,
+          return json(response, 201, { token: professional, patientLink: room.patientLink,
             consultationId: room.consultationId, patientName: room.patientName, ...timing(room) })
         } finally {
           const remaining = (pendingCreations.get(session.key) || 1) - 1

@@ -20,6 +20,7 @@ const fixtureAppointments = [
 ]
 const summaryCalls = []
 const savedSummaries = []
+const invitationEmails = []
 const app = createVideoServer({
   origin, iceServers: [],
   now: () => Date.now() + clockOffset,
@@ -37,6 +38,7 @@ const app = createVideoServer({
     return { motivoConsulta: 'Control semanal', detalleAtencion: 'Refiere estar mucho mejor.', planManejo: 'Control en una semana.' }
   },
   saveConsultationSummary: async (_session, data) => { savedSummaries.push(data); return { ok: true } },
+  sendInvitation: async (_session, data) => { invitationEmails.push(data); return { ok: true } },
   recordConsultationEvent: async (_token, event) => { lifecycleEvents.push(event); return { ok: true } },
   exchangeHandoff: async token => {
     if (!handoffs.delete(token)) throw Object.assign(new Error('El pase vencio o ya se uso. Abri nuevamente desde Dr Happy.'), { status: 401 })
@@ -215,6 +217,12 @@ try {
   await professional.click('create')
   await professional.wait(`document.querySelector('#link').value.includes('#p=')`)
   const invite = await professional.evaluate(`document.querySelector('#link').value`)
+  await professional.click('email-invite')
+  await professional.wait(`document.querySelector('#email-invite').textContent==='Email enviado'`)
+  assert.equal(await professional.evaluate(`document.querySelector('#email-invite').disabled`), true)
+  assert.equal(invitationEmails.length, 1)
+  assert.equal(invitationEmails[0].patientLink, invite)
+  assert.equal(await professional.evaluate(`document.querySelector('#email-invite-status').textContent.includes('No garantiza recepción')`), true)
   assert.deepEqual(await professional.evaluate(`window.__roomCreateBody`), {
     durationMinutes: 40, patientId: 'synthetic-patient-2', appointmentId: 'synthetic-appointment-2',
   }, 'Room creation sends selected patient and appointment IDs')

@@ -184,6 +184,71 @@ serve(async request => {
       if (error) throw error
       return reply(201, { consultationId: data.id, patientName: `${String(patient.apellido ?? '')}, ${String(patient.nombre ?? '')}`, lifecycleToken })
     }
+    if (body.action === 'send-invitation') {
+      if (!validId(body.consultationId) || typeof body.lifecycleToken !== 'string' || !/^[a-f0-9]{64}$/.test(body.lifecycleToken)
+        || typeof body.patientLink !== 'string' || !/^https:\/\/video\.drhappy\.com\.ar\/#p=[A-Za-z0-9_-]{21}[AQgw]$/.test(body.patientLink)) {
+        return reply(400, { error: 'Invitacion de videoconsulta invalida.' })
+      }
+      const { data: consultation, error: consultationError } = await admin.from('video_consultations')
+        .select('patient_id,appointment_id,status,created_at,started_at,duration_minutes')
+        .eq('id', body.consultationId).eq('professional_id', id).eq('lifecycle_hash', await hash(body.lifecycleToken)).maybeSingle()
+      if (consultationError) throw consultationError
+      if (!consultation || !['waiting', 'active'].includes(consultation.status)) {
+        return reply(409, { error: 'La sala no esta disponible para enviar una invitacion.' })
+      }
+      const deadline = consultation.started_at
+        ? Date.parse(consultation.started_at) + consultation.duration_minutes * 60_000
+        : Date.parse(consultation.created_at) + 30 * 60_000
+      if (!Number.isFinite(deadline) || deadline <= Date.now()) return reply(409, { error: 'La invitacion vencio. Crea una sala nueva.' })
+      const patient = patients.find(patient => patient.id === consultation.patient_id)
+      if (!patient) return reply(404, { error: 'La ficha del paciente ya no esta disponible.' })
+      const appointment = appointments.find(appointment => appointment.id === consultation.appointment_id && appointment.patientId === patient.id)
+      const email = text(patient.email, 254) || text(appointment?.patientEmail, 254)
+      if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) {
+        return reply(400, { error: 'El paciente no tiene un email valido. Completalo en su ficha, guarda y volve a intentar.' })
+      }
+      const { data: claimed, error: claimError } = await admin.from('video_consultations')
+        .update({ invitation_email_claimed_at: new Date().toISOString() })
+        .eq('id', body.consultationId).eq('professional_id', id)
+        .is('invitation_email_claimed_at', null).in('status', ['waiting', 'active']).select('id').maybeSingle()
+      if (claimError) throw claimError
+      if (!claimed) return reply(409, { error: 'La invitacion ya se envio o tiene un envio pendiente de confirmacion. No se reenviara; podes copiar el enlace.' })
+      const message = [
+        'Tu profesional te invita a una videoconsulta en Dr Happy.',
+        'Entra a la sala de espera con este enlace privado:',
+        body.patientLink,
+        'No necesitas crear una cuenta. Tu profesional debe admitir tu ingreso.',
+        'El enlace tiene vigencia limitada y deja de funcionar al finalizar o reiniciar la sala. No lo compartas.',
+        'Permiti el acceso a camara y microfono cuando quieras activarlos. Si podes, usa auriculares.',
+      ].join('\n\n')
+      let response: Response
+      try {
+        response = await fetch(`${url}/functions/v1/send-email`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            to: email, subject: 'Tu enlace privado de videoconsulta - Dr Happy', type: 'custom', text: message,
+            templateData: { message: message.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('\n', '<br>')
+              .replace(body.patientLink, `<a href="${body.patientLink}" style="display:inline-block;padding:12px 18px;background:#17324d;color:#fff;border-radius:8px;text-decoration:none">Entrar a la videoconsulta</a>`) },
+          }),
+          signal: AbortSignal.timeout(25_000),
+        })
+      } catch {
+        console.error('video-consultations: envio de invitacion sin confirmacion', { consultationId: body.consultationId })
+        return reply(502, { error: 'No se pudo confirmar el envio del correo. Verifica con el paciente antes de reintentar.' })
+      }
+      const result = await response.json().catch(() => null)
+      if (!response.ok || result?.success !== true) {
+        console.error('video-consultations: correo de invitacion no confirmado', { consultationId: body.consultationId, status: response.status })
+        return reply(502, { error: 'El servicio de correo no confirmo el envio. Verifica con el paciente antes de reintentar.' })
+      }
+      const { error: sentError } = await admin.from('video_consultations')
+        .update({ invitation_email_sent_at: new Date().toISOString() }).eq('id', body.consultationId).eq('professional_id', id)
+      if (sentError) {
+        console.error('video-consultations: correo aceptado sin registro de confirmacion', { consultationId: body.consultationId })
+        return reply(502, { error: 'El servicio acepto el correo, pero no se pudo registrar la confirmacion. No lo reenvies; podes copiar el enlace.' })
+      }
+      return reply(200, { ok: true })
+    }
     return reply(400, { error: 'Accion no reconocida.' })
   } catch (error) {
     console.error('video-consultations: fallo de registro', error instanceof Error ? error.message : 'Error de base de datos')

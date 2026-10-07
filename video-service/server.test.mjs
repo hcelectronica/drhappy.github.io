@@ -93,6 +93,48 @@ test('HTTP authorization, cookie, CSRF and payload validation', async t => {
   assert.equal((await f.request('/api/rooms', { cookie, method: 'POST' })).status, 403)
 })
 
+test('invitation email uses the owned live room and never accepts client recipient or URL', async t => {
+  const calls = []
+  const f = await fixture(t, { sendInvitation: async (token, data) => { calls.push({ token, data }); return { ok: true } } })
+  const cookie = await f.login()
+  const room = await f.create(cookie)
+  const send = (token, owner = cookie) => f.request('/api/rooms/invitation-email', {
+    cookie: owner, method: 'POST', data: { token, patientLink: 'https://attacker.invalid/', to: 'wrong@example.invalid' },
+  })
+  assert.equal((await send(room.token, null)).status, 401)
+  assert.equal((await send(room.patient)).status, 400)
+  assert.equal((await send('b'.repeat(64))).status, 409)
+  const other = await f.login('admin2')
+  assert.equal((await send(room.token, other)).status, 409)
+  assert.equal((await send(room.token)).status, 200)
+  assert.deepEqual(calls, [{ token: 'admin', data: {
+    consultationId: 'consultation-test', lifecycleToken: 'a'.repeat(64), patientLink: room.patientLink,
+  } }])
+  assert.equal((await send(room.token)).status, 409)
+  assert.equal(calls.length, 1)
+})
+
+test('invitation email blocks concurrent requests, rejects expired rooms and surfaces mail errors', async t => {
+  let clock = Date.now()
+  let finish
+  let calls = 0
+  const f = await fixture(t, { now: () => clock, sendInvitation: async () => {
+    calls++
+    return await new Promise(resolve => { finish = resolve })
+  } })
+  const cookie = await f.login()
+  const room = await f.create(cookie)
+  const send = () => f.request('/api/rooms/invitation-email', { cookie, method: 'POST', data: { token: room.token } })
+  const pending = send()
+  while (!finish) await new Promise(resolve => setTimeout(resolve, 5))
+  assert.equal((await send()).status, 409)
+  finish({ ok: false })
+  assert.equal((await pending).status, 502)
+  assert.equal(calls, 1)
+  clock += 31 * 60_000
+  assert.equal((await send()).status, 409)
+})
+
 test('Sofia summary routes require an authorized session, enforce limits and propagate quota errors', async t => {
   const calls = []
   const consultationId = '3f2b8c1e-5d4a-4b6f-9a1c-2e7d8f9a0b1c'

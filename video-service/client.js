@@ -500,6 +500,9 @@ $('create').onclick = async () => {
     $('link').value = data.patientLink
     $('invite').hidden = false
     $('invite').open = true
+    $('email-invite').disabled = false
+    $('email-invite').textContent = 'Enviar por email'
+    $('email-invite-status').textContent = ''
     $('waiting').textContent = 'Tu paciente aparecerá cuando entre.'
     $('share').hidden = typeof navigator.share !== 'function'
     resetChat()
@@ -516,6 +519,26 @@ $('share').onclick = async () => {
     status('Enlace compartido. El paciente necesita tu admisión para conectar.')
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return
+    report(error)
+  }
+}
+$('email-invite').onclick = async () => {
+  const token = accessToken
+  if (!admin || role !== 'professional' || !token || $('email-invite').disabled) return
+  $('email-invite').disabled = true
+  $('email-invite').textContent = 'Enviando...'
+  $('email-invite-status').textContent = ''
+  try {
+    await api('/api/rooms/invitation-email', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }) })
+    if (accessToken !== token) return
+    $('email-invite').textContent = 'Email enviado'
+    $('email-invite-status').textContent = 'Invitación aceptada por el servicio de correo. No garantiza recepción; el paciente puede revisar spam.'
+  } catch (error) {
+    if (accessToken !== token) return
+    $('email-invite').disabled = false
+    $('email-invite').textContent = 'Enviar por email'
+    $('email-invite-status').textContent = error.message
     report(error)
   }
 }

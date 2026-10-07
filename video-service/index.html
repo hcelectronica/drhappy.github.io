@@ -83,6 +83,8 @@
     #duration-panel:not([hidden])~.chat-dock{margin-left:0}
     #chat-toggle{width:auto;gap:10px}
     #invite{margin:2px 0 6px}
+    .link-content{flex-wrap:wrap}.link-content input{flex:1 1 200px;min-width:0}
+    #email-invite-status{overflow-wrap:anywhere;margin:6px 0}#email-invite-status:empty{display:none}
     #transcribe[hidden]{display:none}
     #transcribe .rec-dot{fill:none}
     #transcribe[aria-pressed=true]{background:#b42318;color:#fff}
@@ -197,7 +199,7 @@
       <label id="duration-panel" hidden for="duration">Duración <input id="duration" type="number" min="1" max="120" step="1" value="40" inputmode="numeric" aria-describedby="duration-help"> min</label>
       <div class="chat-dock"><button id="chat-toggle" aria-expanded="false" aria-controls="chat-panel"><span>Chat privado <span id="chat-badge" hidden></span></span><span id="chat-toggle-label">Abrir ▾</span></button></div>
     </div>
-    <details id="invite" hidden class="link"><summary>Enlace privado del paciente</summary><div class="link-content"><label class="visually-hidden" for="link">Enlace privado del paciente</label><input id="link" readonly><button id="copy">Copiar</button><button id="share" hidden>Compartir</button></div></details>
+    <details id="invite" hidden class="link"><summary>Enlace privado del paciente</summary><div class="link-content"><label class="visually-hidden" for="link">Enlace privado del paciente</label><input id="link" readonly><button id="copy">Copiar</button><button id="share" hidden>Compartir</button><button id="email-invite">Enviar por email</button></div><p id="email-invite-status" role="status" aria-live="polite"></p></details>
     <div id="transcript-panel" hidden><span id="transcript-status" role="status"></span><button id="transcript-summarize" class="primary" hidden>✨ Resumir con Sofía (usa 1 consulta)</button><button id="transcript-discard" hidden>Finalizar sin resumir</button><button id="transcript-download-professional" hidden>Descargar profesional</button><button id="transcript-download-patient" hidden>Descargar paciente</button></div>
     <form id="summary-editor" class="panel" hidden><p id="summary-help">Borrador de Sofía. Revisalo y corregilo antes de guardarlo en la historia clínica.</p><label>Motivo de consulta<textarea id="summary-reason" maxlength="300"></textarea></label><label>Resumen de la atención<textarea id="summary-detail" maxlength="8000" required></textarea></label><label>Indicaciones y pendientes<textarea id="summary-plan" maxlength="4000"></textarea></label><div class="actions"><button id="summary-save" class="primary" type="submit">Guardar en la historia clínica</button><button id="summary-cancel" type="button">Descartar resumen</button></div></form>
     <p id="summary-saved" role="status" hidden></p>

@@ -31,6 +31,23 @@ ser HTTPS, sin ruta ni barra final. Solo se permite HTTP para loopback local.
 
 ## Uso
 
+La version 12 agrega **Enviar por email** en el panel del enlace privado,
+sin envio automatico al crear la sala. El destinatario se resuelve en Supabase
+desde la ficha guardada del paciente o, si esta no tiene email, el turno asociado.
+No se acepta un destinatario ni enlace arbitrario desde el navegador.
+Falta de email valido, sala vencida y errores se informan sin simular exito.
+La confirmacion significa aceptacion del servicio de correo, no entrega al buzon.
+El paciente no necesita cuenta; sigue requiriendo admision y la invitacion vence
+igual que el enlace copiado. No guardar ni imprimir el enlace privado en logs.
+
+Antes de subir el ZIP v12 aplicar `20261007010000_video_invitation_email.sql`
+y desplegar `video-consultations` en Supabase con verify_jwt=false. El envio
+reutiliza `send-email`; las credenciales SMTP siguen exclusivamente en Supabase.
+Una reserva atomica en la base limita a un intento de correo por sala,
+incluso ante solicitudes simultaneas o respuestas perdidas. Si un envio queda
+sin confirmacion no se reenvia automaticamente: verificar con el paciente
+y usar Copiar/Compartir. La reserva no almacena el enlace ni el email.
+
 1. Administrador: desde la app, tocar Videoconsulta para entrar automaticamente
    con la cuenta actual, incluso si ingreso con Google. No pide otra contrasena.
    Abrir directamente el subdominio conserva el login con usuario/email y
