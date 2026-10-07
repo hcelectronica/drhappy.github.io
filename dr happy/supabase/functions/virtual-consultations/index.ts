@@ -31,7 +31,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const SOFIA_PROMPT = [
   'Sos Sofía, asistente clínica de Dr Happy. Un paciente envió una consulta virtual asincrónica paga, con texto y a veces fotos o documentos (estudios, recetas, lesiones).',
   'Tu tarea es preparar un BORRADOR para que el profesional tratante lo revise, corrija y vise antes de enviarlo. Nada llega al paciente sin esa revisión.',
-  'Redactá en español rioplatense. No inventes datos que no estén en la consulta o los adjuntos. Si algo es dudoso o ilegible, decilo.',
+  'Redactá en español rioplatense como texto clínico del profesional para que este lo revise. No te presentes ni te nombres; no atribuyas la respuesta a una IA o asistente. No agregues saludos finales, despedidas, nombres ni firmas.',
+  'No inventes datos que no estén en la consulta o los adjuntos. Si algo es dudoso o ilegible, decilo.',
   'La respuesta al paciente debe ser una orientación aproximada, clara y empática, en segunda persona (vos): qué puede estar pasando en términos generales, cuidados o medidas generales razonables, qué signos de alarma requieren guardia, y si conviene una consulta presencial o estudios. No indiques dosis de medicamentos ni diagnósticos definitivos.',
   'Respondé únicamente con un objeto JSON válido, sin texto adicional ni bloques de código, con estas claves de texto:',
   '"resumenClinico": resumen técnico breve para la historia clínica (motivo, datos relevantes y hallazgos de los adjuntos).',
@@ -50,6 +51,13 @@ function plainText(value: unknown, maxLength: number): string {
 function multilineText(value: unknown, maxLength: number): string {
   return String(value ?? '').replace(/\r\n?/g, '\n').replace(/<[^>]*>/g, '').replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, ' ')
     .replace(/\n{3,}/g, '\n\n').trim().slice(0, maxLength)
+}
+
+function removeSofiaSignOff(value: string): string {
+  return value.replace(
+    /(?:^|\n)\s*(?:(?:saludos(?:\s+cordiales)?|atentamente|cordialmente|un\s+saludo)[,:\s]*)?(?:[-–—]\s*)?(?:soy\s+)?sof[ií]a(?:\s+(?:asistente(?:\s+cl[ií]nica)?|de\s+dr\s+happy))?[.!]?\s*$/i,
+    '',
+  ).trim()
 }
 
 function escapeHtml(value: string): string {
@@ -525,12 +533,12 @@ Deno.serve(async (request) => {
           return reply(502, { success: false, message: 'Sofía no pudo preparar el borrador. Reintentá.' })
         }
         const cleaned = raw.replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
-        let draft = { resumenClinico: '', respuestaPaciente: cleaned.slice(0, 4000), alertas: '' }
+        let draft = { resumenClinico: '', respuestaPaciente: removeSofiaSignOff(cleaned.slice(0, 4000)), alertas: '' }
         try {
           const parsed = JSON.parse(cleaned.slice(cleaned.indexOf('{'), cleaned.lastIndexOf('}') + 1))
           draft = {
             resumenClinico: multilineText(parsed?.resumenClinico, 4000),
-            respuestaPaciente: multilineText(parsed?.respuestaPaciente, 4000),
+            respuestaPaciente: removeSofiaSignOff(multilineText(parsed?.respuestaPaciente, 4000)),
             alertas: multilineText(parsed?.alertas, 2000),
           }
         } catch { /* Se usa el texto completo como respuesta. */ }
@@ -590,7 +598,7 @@ Deno.serve(async (request) => {
         `Hola ${consult.nombre},`, '',
         `${info.name} revisó tu consulta y te envía adjunta la devolución de orientación virtual en PDF. También podés descargarla desde tu link de seguimiento.`, '',
         'Descargala desde este link:', `${PUBLIC_SITE}/consulta/?s=${consult.tracking_token}`, '',
-        'La orientación fue elaborada con asistencia de IA (Sofía) y revisada y visada por tu profesional. No reemplaza la consulta presencial. Ante síntomas de alarma, concurrí a la guardia o llamá al 107.',
+        'La devolución fue revisada y visada por tu profesional. No reemplaza la consulta presencial. Ante síntomas de alarma, concurrí a la guardia o llamá al 107.',
       ].join('\n'), {
         filename: `devolucion-orientacion-${consultId.slice(0, 8)}.pdf`,
         content: encodeBase64(pdf),

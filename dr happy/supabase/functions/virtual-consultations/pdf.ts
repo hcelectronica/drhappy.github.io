@@ -152,7 +152,7 @@ export async function buildVirtualConsultPdf(input: VirtualConsultPdfInput): Pro
   section('Devolución')
   write(input.response, { gap: 8 })
 
-  const notice = 'Orientación elaborada con asistencia de inteligencia artificial (Sofía) y revisada y visada por el profesional firmante. Es una orientación a distancia basada en la información enviada: no reemplaza la consulta presencial ni constituye un diagnóstico definitivo. Ante síntomas de alarma, concurrí a la guardia más cercana o llamá al 107.'
+  const notice = 'Esta orientación a distancia se basa en la información enviada por el paciente y fue revisada y visada por el profesional firmante. No reemplaza la consulta presencial ni constituye un diagnóstico definitivo. Ante síntomas de alarma, concurrí a la guardia más cercana o llamá al 107.'
   const noticeLines = wrap(notice, regular, 8.8, contentWidth - 20)
   const noticeHeight = noticeLines.length * 12.5 + 14
   ensure(noticeHeight + 8)
@@ -193,7 +193,7 @@ export async function buildVirtualConsultPdf(input: VirtualConsultPdfInput): Pro
   write('Este sello permite comprobar la integridad del contenido firmado; no equivale a una firma digital certificada.', { size: 7.5, color: muted })
 
   for (const current of pdf.getPages()) {
-    current.drawText(winAnsi('Documento generado con Dr Happy · drhappy.com.ar · Orientación virtual asistida por IA con revisión profesional'), {
+    current.drawText(winAnsi('Documento generado con Dr Happy · drhappy.com.ar · Orientación virtual revisada por profesional'), {
       x: margin, y: 28, size: 7.5, font: regular, color: muted,
     })
   }
