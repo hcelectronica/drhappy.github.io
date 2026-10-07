@@ -140,10 +140,21 @@
         </fieldset>
         <fieldset>
           <legend>Tu consulta</legend>
-          <label>¿Qué te pasa o qué querés consultar?
-            <textarea id="question" maxlength="4000" placeholder="Contá desde cuándo, qué síntomas tenés, si tomás medicación, y qué querés saber."></textarea>
-            <span class="hint" id="counter">0 / 4000</span>
+          <label>Contanos con detalle qué te pasa o qué querés consultar
+            <textarea id="question" maxlength="4000" placeholder="Por ejemplo: desde cuándo empezó, en qué parte lo sentís, cómo es y cuánto molesta, si empeora o mejora con algo, qué otros síntomas tenés, si tomás medicación o tenés antecedentes importantes, y qué necesitás saber."></textarea>
+            <span class="hint">Escribí al menos 120 caracteres (unas cuantas líneas). Cuanto más contexto aportes, mejor podrá evaluarlo tu profesional.</span>
+            <span class="hint" id="counter" aria-live="polite">0 / 4000 · faltan 120 para el mínimo</span>
           </label>
+          <div class="notice" role="note">
+            <strong>Para ayudar a que tu profesional entienda mejor la situación, incluí:</strong>
+            <ul>
+              <li>Cuándo empezó y si cambió con el paso del tiempo.</li>
+              <li>En qué lugar ocurre, cómo se siente y qué intensidad tiene.</li>
+              <li>Qué lo empeora o alivia y si hay otros síntomas.</li>
+              <li>Antecedentes o medicación relevantes y qué querés consultar.</li>
+            </ul>
+            <span>Si no sabés algún dato, decilo. No hace falta incluir información que no sea relevante.</span>
+          </div>
           <div class="files">
             <span class="hint">Podés adjuntar hasta 3 fotos o PDF (estudios, recetas, una lesión). Máx. 5 MB cada uno.</span>
             <label class="file-pick">📎 Adjuntar foto o PDF<input id="fileInput" type="file" accept="image/*,application/pdf" multiple /></label>
@@ -186,6 +197,7 @@
       'embarazada y sangr', 'embarazo y sangr', 'reaccion alergica grave', 'se me cierra la garganta', 'anafilaxia'];
     var MAX_FILES = 3;
     var MAX_BYTES = 5 * 1024 * 1024;
+    var MIN_QUESTION_LENGTH = 120;
     var params = new URLSearchParams(window.location.search);
     var pathSlug = (window.location.pathname.match(/\/consulta\/([a-z0-9-]+)\/?$/i) || [])[1] || '';
     var slug = (params.get('p') || pathSlug || '').toLowerCase();
@@ -270,7 +282,11 @@
       }, Promise.resolve()).catch(function (error) { msg.textContent = error.message; msg.hidden = false; }).then(renderFiles);
     });
 
-    el('question').addEventListener('input', function () { el('counter').textContent = this.value.length + ' / 4000'; });
+    el('question').addEventListener('input', function () {
+      var length = this.value.trim().length;
+      var remaining = Math.max(0, MIN_QUESTION_LENGTH - length);
+      el('counter').textContent = length + ' / 4000' + (remaining ? ' · faltan ' + remaining + ' para el mínimo' : ' · detalle suficiente');
+    });
     el('dni').addEventListener('input', function () { this.value = this.value.replace(/\D/g, ''); });
     el('birthDate').max = new Date().toISOString().slice(0, 10);
     el('backToForm').addEventListener('click', function () { show('formCard'); });
@@ -390,17 +406,22 @@
         attachments: attachments.map(function (file) { return { name: file.name, type: file.type, data: file.data }; }),
         acceptTerms: el('acceptTerms').checked, consent: el('consent').checked, website: el('website').value
       };
+      if (hasRedFlag(data.question)) { show('emergency'); return; }
       var problem = !data.nombre || !data.apellido ? 'Completá tu nombre y apellido.'
         : !/^\d{6,9}$/.test(data.dni) ? 'Ingresá un DNI válido (solo números).'
         : !data.birthDate ? 'Ingresá tu fecha de nacimiento.'
         : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email) ? 'Ingresá un email válido: ahí te llega la devolución.'
         : data.phone.replace(/\D/g, '').length < 8 ? 'Ingresá un teléfono de contacto válido.'
-        : data.question.length < 10 ? 'Contanos tu consulta con un poco más de detalle.'
         : !data.acceptTerms ? 'Para continuar, confirmá que entendés las condiciones del servicio.'
         : !data.consent ? 'Para continuar, aceptá el registro de tus datos.'
         : '';
       if (problem) { msg.textContent = problem; msg.hidden = false; return; }
-      if (hasRedFlag(data.question)) { show('emergency'); return; }
+      if (data.question.trim().length < MIN_QUESTION_LENGTH) {
+        msg.textContent = 'Contanos tu situación con más contexto: escribí al menos ' + MIN_QUESTION_LENGTH + ' caracteres e incluí cuándo empezó, cómo es y qué otros síntomas o antecedentes son importantes.';
+        msg.hidden = false;
+        el('question').focus();
+        return;
+      }
       var button = el('submitBtn');
       var label = button.textContent;
       button.disabled = true;

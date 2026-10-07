@@ -22,6 +22,7 @@ const PILOT_EMAILS = new Set(['mudimudialan@gmail.com', 'alan.moodie@hotmail.com
 const BUCKET = 'virtual-consults'
 const MAX_ATTACHMENTS = 3
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+const MIN_QUESTION_LENGTH = 120
 const ATTACHMENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
 const PER_PROFESSIONAL_HOURLY_LIMIT = 30
 const PER_DNI_DAILY_LIMIT = 3
@@ -284,13 +285,6 @@ Deno.serve(async (request) => {
       const phone = String(body.phone ?? '').replace(/[^\d+]/g, '').slice(0, 30)
       const obraSocial = plainText(body.obraSocial, 80)
       const question = multilineText(body.question, 4000)
-      if (!nombre || !apellido) return reply(400, { success: false, message: 'Completá tu nombre y apellido.' })
-      if (!/^\d{6,9}$/.test(dni)) return reply(400, { success: false, message: 'Ingresá un DNI válido (solo números).' })
-      if (!isValidBirthDate(birthDate)) return reply(400, { success: false, message: 'Ingresá una fecha de nacimiento válida.' })
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return reply(400, { success: false, message: 'Ingresá un email válido: ahí te enviamos la devolución.' })
-      if (phone.replace(/\D/g, '').length < 8) return reply(400, { success: false, message: 'Ingresá un teléfono de contacto válido.' })
-      if (question.length < 10) return reply(400, { success: false, message: 'Contanos tu consulta con un poco más de detalle.' })
-      if (body.consent !== true || body.acceptTerms !== true) return reply(400, { success: false, message: 'Necesitamos que aceptes las condiciones del servicio y el registro de tus datos.' })
       const redFlag = findRedFlag(question)
       if (redFlag) {
         return reply(422, {
@@ -298,6 +292,15 @@ Deno.serve(async (request) => {
           message: 'Lo que describís puede ser una urgencia. No uses la consulta virtual: concurrí ahora a la guardia más cercana o llamá al 107 (SAME) o al 911. No se te cobró nada.',
         })
       }
+      if (!nombre || !apellido) return reply(400, { success: false, message: 'Completá tu nombre y apellido.' })
+      if (!/^\d{6,9}$/.test(dni)) return reply(400, { success: false, message: 'Ingresá un DNI válido (solo números).' })
+      if (!isValidBirthDate(birthDate)) return reply(400, { success: false, message: 'Ingresá una fecha de nacimiento válida.' })
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return reply(400, { success: false, message: 'Ingresá un email válido: ahí te enviamos la devolución.' })
+      if (phone.replace(/\D/g, '').length < 8) return reply(400, { success: false, message: 'Ingresá un teléfono de contacto válido.' })
+      if (question.length < MIN_QUESTION_LENGTH) {
+        return reply(400, { success: false, message: `Contanos tu situación con más contexto: escribí al menos ${MIN_QUESTION_LENGTH} caracteres e incluí cuándo empezó, cómo es y qué otros síntomas o antecedentes son importantes.` })
+      }
+      if (body.consent !== true || body.acceptTerms !== true) return reply(400, { success: false, message: 'Necesitamos que aceptes las condiciones del servicio y el registro de tus datos.' })
 
       const rawAttachments = Array.isArray(body.attachments) ? body.attachments as Entry[] : []
       if (rawAttachments.length > MAX_ATTACHMENTS) return reply(400, { success: false, message: `Podés adjuntar hasta ${MAX_ATTACHMENTS} archivos.` })
