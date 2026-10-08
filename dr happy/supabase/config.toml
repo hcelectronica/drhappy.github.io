@@ -21,6 +21,9 @@ verify_jwt = false
 [functions.workspace-data]
 verify_jwt = false
 
+[functions.consultation-correction]
+verify_jwt = false
+
 [functions.patient-invite]
 verify_jwt = false
 

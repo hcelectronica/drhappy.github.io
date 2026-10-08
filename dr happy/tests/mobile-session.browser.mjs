@@ -215,6 +215,23 @@ try {
             data.workspace.patients_json=JSON.parse(localStorage.getItem('fixture-document-patients'));
           }
         }
+        if(url.endsWith('/consultation-correction')){
+          window.__correctionCalls=(window.__correctionCalls||0)+1;
+          if(window.__delayCorrection)await new Promise(resolve=>{window.__finishCorrection=resolve});
+          if(window.__failCorrection)return Response.json({success:false,message:'Corrección simulada rechazada'},{status:409});
+          const {consultationCorrectionError,correctionReplacementError,correctionSignedContent}=await import('/src/consultationCorrection.ts');
+          const {verifySignatureSeal}=await import('/src/signatureSeal.ts');
+          const patients=JSON.parse(localStorage.getItem('fixture-document-patients'));
+          const patient=patients.find(p=>p.id===body.patientId),original=patient?.consultations.find(e=>e.id===body.consultationId);
+          const blocked=consultationCorrectionError(original,id,Date.now())||correctionReplacementError(original,body.replacement,body.expectedHash);
+          if(blocked||original.signatureSeal.hashSha256!==body.expectedHash)return Response.json({success:false,message:blocked||'La evolución ya fue corregida'},{status:409});
+          if(!await verifySignatureSeal({contentToVerify:correctionSignedContent(patient.id,patient.dni,body.replacement),seal:body.replacement.signatureSeal}))throw new Error('Invalid correction signature');
+          const previous={...original};delete previous.correctionHistory;
+          const saved={...body.replacement,correctionHistory:[...(original.correctionHistory||[]),{previous,reason:body.replacement.correction.reason,correctedAt:new Date().toISOString(),correctedByUserId:id,newHash:body.replacement.signatureSeal.hashSha256}]};
+          patient.consultations=patient.consultations.map(e=>e.id===original.id?saved:e);
+          localStorage.setItem('fixture-document-patients',JSON.stringify(patients));
+          data={success:true,consultation:saved};
+        }
         if(url.endsWith('/patient-invite'))data={success:true,submissions:[]};
         if(url.endsWith('/consultation-instructions')){
           window.__instructionCalls=(window.__instructionCalls||0)+1;
@@ -963,7 +980,7 @@ try {
   await evaluate(`(()=>{
     const open=window.open.bind(window);window.__clinicalPrintCount=0;
     window.open=(...args)=>{const popup=open(...args);if(popup){window.__clinicalPrintWindow=popup;popup.print=()=>{window.__clinicalPrintCount++};popup.focus=()=>{}}return popup};
-    document.querySelector('.consultation-list button').click();
+    document.querySelector('.consultation-list .consultation-print-button').click();
   })()`)
   await wait(`window.__clinicalPrintCount===1`)
   assert(await evaluate(`window.__clinicalPrintWindow.document.body.textContent.includes('Losartán 50 mg por día')`), 'Evolution PDF includes added medication')
@@ -1041,6 +1058,45 @@ try {
   assert(codedPdf.size > 1000 && codedPdf.type === 'application/pdf','Coded practices generate a real PDF')
   assert(codedPdf.text.includes('Nomenclador 660475') && codedPdf.text.includes('Nomenclador 250102'),'Rendered PDF preserves nomenclator labels and kinesiotherapy')
   assert(!codedPdf.text.includes('SNOMED CT 660475'),'PDF never mislabels nomenclator code')
+  await evaluate(`document.querySelector('.certificate-modal-card .drhappy-modal-close-btn').click()`)
+  await evaluate(`Array.from(document.querySelectorAll('.patient-directory-card')).find(card=>card.textContent.includes('Segundo')).querySelector('button').click()`)
+  await wait(`!!document.querySelector('input[name=tallaCm]')`)
+  await click('+ Evolucionar paciente')
+  await wait(`!!document.querySelector('.consultation-list')`)
+  const originalCorrection = await evaluate(`${storedClinicalPatient}.consultations[0]`)
+  await evaluate(`Array.from(document.querySelectorAll('.consultation-list button')).find(button=>button.textContent.includes('Corregir evolución')).click()`)
+  await wait(`!!document.querySelector('.clinical-correction-panel')`)
+  await setClinicalField('.clinical-correction-panel input','Error de transcripción fixture')
+  await setClinicalField('.evolution-form [name=planManejo]','Pauta corregida fixture')
+  await evaluate(`window.confirm=()=>false`)
+  await click('Guardar corrección y volver a firmar')
+  assert.equal(await evaluate(`window.__correctionCalls||0`),0,'Cancellation never sends correction')
+  await evaluate(`window.confirm=()=>true;window.__failCorrection=true`)
+  await click('Guardar corrección y volver a firmar')
+  await wait(`document.body.textContent.includes('Corrección simulada rechazada')`)
+  assert.equal(await evaluate(`${storedClinicalPatient}.consultations[0].signatureSeal.hashSha256`),originalCorrection.signatureSeal.hashSha256,'Server failure leaves signed original intact')
+  assert(await evaluate(`document.querySelector('.clinical-correction-panel')!==null`),'Failed correction keeps draft for retry')
+  await evaluate(`window.__failCorrection=false`)
+  await evaluate(`window.__delayCorrection=true;document.querySelector('.evolution-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));document.querySelector('.evolution-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))`)
+  await wait(`typeof window.__finishCorrection==='function'`)
+  assert.equal(await evaluate(`window.__correctionCalls`),2,'Double submit makes one request, in addition to the previous failed request')
+  assert(await evaluate(`document.querySelector('.evolution-form [name=planManejo]').matches(':disabled')`),'Correction fields lock during confirmation')
+  await evaluate(`window.__delayCorrection=false;window.__finishCorrection()`)
+  await wait(`${storedClinicalPatient}.consultations[0].correctionHistory?.length===1`)
+  const correctedEntry = await evaluate(`${storedClinicalPatient}.consultations[0]`)
+  assert.equal(correctedEntry.id,originalCorrection.id)
+  assert.equal(correctedEntry.date,originalCorrection.date,'Correction never changes original date')
+  assert.equal(correctedEntry.correctionHistory[0].previous.signatureSeal.hashSha256,originalCorrection.signatureSeal.hashSha256)
+  assert.equal(correctedEntry.correctionHistory[0].previous.planManejo,originalCorrection.planManejo)
+  assert.notEqual(correctedEntry.signatureSeal.hashSha256,originalCorrection.signatureSeal.hashSha256,'New version is signed')
+  assert.equal(correctedEntry.planManejo,'Pauta corregida fixture')
+  await wait(`!!document.querySelector('.clinical-correction-history')`)
+  assert(await evaluate(`(async()=>{const {correctionSignedContent}=await import('/src/consultationCorrection.ts');const {verifySignatureSeal}=await import('/src/signatureSeal.ts');const p=${storedClinicalPatient};return verifySignatureSeal({contentToVerify:correctionSignedContent(p.id,p.dni,p.consultations[0]),seal:p.consultations[0].signatureSeal})})()`),'Corrected signature verifies after server confirmation')
+  await checkTouchLayout('signed evolution correction history')
+  await evaluate(`document.querySelector('.consultation-print-button').click()`)
+  await wait(`window.__clinicalPrintCount===3`)
+  assert(await evaluate(`window.__clinicalPrintWindow.document.body.textContent.includes('Historial de correcciones')&&window.__clinicalPrintWindow.document.body.textContent.includes('Error de transcripción fixture')`),'Printed evolution retains correction audit')
+  await evaluate(`window.__clinicalPrintWindow.close()`)
   console.log('Compact clinical screens passed: visible collapsed identity, bounded widths, requested clinical field order, saved-only instructions email with confirmation/cancellation, missing-email and empty-content guards, cloud/provider/invalid-response errors, single pending send, privacy-filtered content, mobile layout, dictation, CIE10, medication, optional AI review, BP signature/reload/PDF and unchanged baseline.')
   }
 } finally {

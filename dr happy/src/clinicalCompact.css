@@ -91,6 +91,11 @@ body.theme-night .clinical-compact .clinical-identity-details > summary { backgr
 .clinical-compact .clinical-study-search { position: relative; width: 620px; max-width: 100%; }
 .clinical-compact .clinical-study-search .clinical-suggestions { position: absolute; z-index: 35; left: 0; right: 0; background: var(--surface); box-shadow: 0 6px 18px #14345126; }
 .clinical-compact .clinical-study-search .clinical-suggestions button { display: grid; overflow-wrap: anywhere; }
+.clinical-compact .clinical-correction-panel { display: grid; gap: 8px; padding: 12px; border: 1px solid #4978a8; border-radius: 10px; }
+.clinical-compact .clinical-correction-fields { display: contents; }
+.clinical-compact .clinical-correction-panel button { justify-self: start; }
+.clinical-compact .clinical-correction-history { padding: 8px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; }
+.clinical-compact .clinical-correction-history article { margin-top: 10px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .clinical-compact .evolution-form { max-width: none; gap: 10px 14px; margin-top: 10px; }
 .clinical-compact .clinical-reason-field { width: 520px; max-width: 100%; }
 .clinical-compact .clinical-diagnosis-row { width: 620px; max-width: 100%; }

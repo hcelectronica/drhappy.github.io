@@ -103,7 +103,7 @@ Deno.serve(async (request) => {
       workspaceUpdate.treatment_ledger_initialized = true
     }
     const { error } = await admin.from('user_workspaces').upsert(workspaceUpdate, { onConflict: 'user_id' })
-    if (error) return jsonResponse(500, { success: false, message: error.message })
+    if (error) return jsonResponse(['40001', '23505'].includes(error.code) ? 409 : 500, { success: false, message: error.message })
     return jsonResponse(200, { success: true })
   }
   if (body.action === 'save-ledger') {

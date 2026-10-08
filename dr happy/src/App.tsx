@@ -16,6 +16,9 @@ import { ClinicalDiagnosisField } from './ClinicalDiagnosisField'
 import { bmiLabel, classifiedBmiLabel, followUpLines, mergeClinicalPathologies, normalizeClinicalBaseline, validateClinicalMeasurements } from './clinicalFollowUp'
 import { ClinicalWeightReview } from './ClinicalWeightReview'
 import { useDesktopDock } from './useDesktopDock'
+import { consultationCorrectionError, correctionSignedContent, consultationRevisionText } from './consultationCorrection'
+import type { ConsultationRevision } from './consultationCorrection'
+import { saveConsultationCorrection } from './consultationCorrectionService'
 import type { PatientClinicalBaseline, ConsultationFollowUp } from './clinicalFollowUp'
 import { buildPatientAttachmentsMarkup, patientDocumentLabel, selectPatientPrintAttachments, waitForPatientPrintImages } from './patientDocumentPrint'
 import { useErrorNotification } from './useErrorNotification'
@@ -330,6 +333,8 @@ interface ProfessionalProfile {
 }
 
 interface ConsultationEntry extends ConsultationFollowUp {
+  correction?: { reason: string; previousHash: string; originalDate: string }
+  correctionHistory?: ConsultationRevision[]
   id: string
   date: string
   motivoConsulta: string
@@ -2769,6 +2774,15 @@ function App() {
   const [patientDraft, setPatientDraft] = useState<PatientDraft>(emptyPatientDraft)
   const [patientFormUnlocked, setPatientFormUnlocked] = useState(true)
   const [patientEditPrompt, setPatientEditPrompt] = useState(false)
+  const [consultationEditing, setConsultationEditing] = useState<{ patientId: string; entry: ConsultationEntry } | null>(null)
+  const [consultationCorrectionReason, setConsultationCorrectionReason] = useState('')
+  const [consultationCorrectionSaving, setConsultationCorrectionSaving] = useState(false)
+  const consultationCorrectionInFlight = useRef(false)
+  const [consultationClock, setConsultationClock] = useState(Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setConsultationClock(Date.now()), 30_000)
+    return () => clearInterval(timer)
+  }, [])
   const patientEditTargetRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
   const [paperRecordUploading, setPaperRecordUploading] = useState(false)
   const [patientPrintBusy, setPatientPrintBusy] = useState(false)
@@ -2801,6 +2815,9 @@ function App() {
     Record<string, number>
   >({})
   const [workspaceLayer, setWorkspaceLayer] = useState<WorkspaceLayer>('overview')
+  useEffect(() => {
+    setConsultationEditing(null); setConsultationCorrectionReason('')
+  }, [activeUserId, selectedPatientId, workspaceLayer])
   useEffect(() => { setPatientEditPrompt(false); patientEditTargetRef.current = null }, [activeUserId, selectedPatientId, workspaceLayer])
   useEffect(() => {
     patientDocumentContext.current += 1
@@ -3660,6 +3677,7 @@ function App() {
       return true
     } catch (err) {
       console.warn('Fallo de conexión al sincronizar workspace en la nube:', err)
+      setAppError(err instanceof Error ? err.message : 'No se pudieron guardar los cambios en la nube.')
       return false
     }
   }
@@ -9060,8 +9078,35 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     }
   }
 
+  function handleEditConsultation(entry: ConsultationEntry): void {
+    if (!selectedPatient || consultationCorrectionSaving) return
+    const blocked = consultationCorrectionError(entry, activeUserId || '')
+    if (blocked) { setAppError(blocked); return }
+    if ((Object.values(consultationDraft).some(value => typeof value === 'string' && value.trim()) || clinicalAttachment || consultationEditing)
+      && !window.confirm('Hay una evolución en edición. ¿Descartar ese borrador y corregir la evolución seleccionada?')) return
+    stopDictation()
+    setClinicalAttachment(null)
+    setConsultationEditing({ patientId: selectedPatient.id, entry })
+    setConsultationCorrectionReason('')
+    setConsultationDraft({
+      ...emptyConsultationDraft,
+      motivoConsulta: entry.motivoConsulta,
+      enfermedadActual: entry.enfermedadActual || entry.detalleAtencion,
+      pensamientoMedico: entry.pensamientoMedico || '',
+      examenFisico: entry.examenFisico || '',
+      impresionDiagnostica: entry.impresionDiagnostica || entry.diagnostico || '',
+      planManejo: entry.planManejo || '',
+      pesoActual: entry.pesoActual || '', tensionArterial: entry.tensionArterial || '',
+      tallaCmEnConsulta: entry.tallaCmEnConsulta || '',
+      farmacosAgregados: entry.farmacosAgregados || '', estudiosComplementarios: entry.estudiosComplementarios || '',
+      resumenSofia: entry.resumenSofia || '', incluirResumenSofia: Boolean(entry.resumenSofia),
+    })
+    requestAnimationFrame(() => document.querySelector('.evolution-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+
   async function handleSaveConsultation(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
+    if (consultationCorrectionSaving || consultationCorrectionInFlight.current) return
     stopDictation()
     if (!selectedPatient || !profile) {
       setAppError('Primero selecciona un paciente y completa tu perfil profesional.')
@@ -9075,16 +9120,63 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       return
     }
     const baseline = canEditSelectedPatientRecord ? patientDraft : selectedPatient
-    const measurementError = validateClinicalMeasurements(baseline, consultationDraft.pesoActual)
+    const measurementError = validateClinicalMeasurements(consultationEditing ? { tallaCm: consultationEditing.entry.tallaCmEnConsulta } : baseline, consultationDraft.pesoActual)
       || validateClinicalMeasurements({ tensionArterial: consultationDraft.tensionArterial })
     if (measurementError) { setAppError(measurementError); return }
     const followUp: ConsultationFollowUp = {
       pesoActual: consultationDraft.pesoActual?.trim() || '',
       tensionArterial: consultationDraft.tensionArterial?.trim() || '',
-      tallaCmEnConsulta: consultationDraft.pesoActual?.trim() ? baseline.tallaCm?.trim() || '' : '',
+      tallaCmEnConsulta: consultationDraft.pesoActual?.trim() ? (consultationEditing ? consultationEditing.entry.tallaCmEnConsulta : baseline.tallaCm)?.trim() || '' : '',
       farmacosAgregados: consultationDraft.farmacosAgregados?.trim() || '',
       estudiosComplementarios: consultationDraft.estudiosComplementarios?.trim() || '',
       resumenSofia: consultationDraft.incluirResumenSofia ? consultationDraft.resumenSofia?.trim() || '' : '',
+    }
+
+    if (consultationEditing) {
+      const original = consultationEditing.entry
+      const blocked = consultationCorrectionError(original, activeUserId || '')
+      if (blocked) { setAppError(blocked); return }
+      if (!consultationCorrectionReason.trim()) { setAppError('Indicá el motivo de la corrección.'); return }
+      if (consultationEditing.patientId !== selectedPatient.id || !activeUserId || !original.signatureSeal) {
+        setAppError('La ficha cambió. Volvé a abrir la evolución antes de corregirla.'); return
+      }
+      if (!window.confirm('Se guardará y firmará una nueva versión, conservando la anterior. Si ya enviaste indicaciones o imprimiste un PDF, esas copias no se actualizan automáticamente. ¿Guardar corrección?')) return
+      const context = patientDocumentContext.current
+      consultationCorrectionInFlight.current = true
+      setConsultationCorrectionSaving(true)
+      try {
+        if (!await persistWorkspaceRemote(activeUserId, profile, patients, appointments)) throw new Error('No se pudo sincronizar la ficha antes de corregirla.')
+        const replacement: ConsultationEntry = {
+          ...original,
+          motivoConsulta: nextMotivo, diagnostico: consultationDraft.impresionDiagnostica.trim(),
+          detalleAtencion: consultationDraft.enfermedadActual, enfermedadActual: consultationDraft.enfermedadActual,
+          pensamientoMedico: consultationDraft.pensamientoMedico, examenFisico: consultationDraft.examenFisico,
+          impresionDiagnostica: consultationDraft.impresionDiagnostica, planManejo: consultationDraft.planManejo,
+          ...followUp,
+          professionalSignature: { fullName: profile.fullName, licenseNumber: profile.licenseNumber, signatureText: profile.signatureText, signatureImageDataUrl: profile.signatureImage?.dataUrl },
+          correction: { reason: consultationCorrectionReason.trim(), previousHash: original.signatureSeal.hashSha256, originalDate: original.date },
+        }
+        replacement.signatureSeal = await buildSignatureSeal({
+          contentToSign: correctionSignedContent(selectedPatient.id, selectedPatient.dni, replacement),
+          signerUserId: activeUserId, signerFullName: profile.fullName, signerLicense: profile.licenseNumber, signerDni: activeUser?.dni,
+        })
+        if (context !== patientDocumentContext.current) throw new Error('La ficha cambió antes de enviar la corrección.')
+        const saved = await saveConsultationCorrection({
+          patientId: selectedPatient.id, consultationId: original.id, expectedHash: original.signatureSeal.hashSha256, replacement,
+        })
+        if (context !== patientDocumentContext.current) {
+          setAppNotice('La corrección quedó guardada en la ficha original. Recargala para consultar la nueva versión.'); return
+        }
+        const corrected: ConsultationEntry = { ...replacement, ...saved }
+        const updatedPatient = { ...selectedPatient, consultations: selectedPatient.consultations.map(entry => entry.id === original.id ? corrected : entry), updatedAt: new Date().toISOString() }
+        persistPatient(updatedPatient)
+        if (canEditSelectedPatientRecord) setPatientDraft(patientToDraft(updatedPatient))
+        setConsultationEditing(null); setConsultationCorrectionReason(''); setConsultationDraft(emptyConsultationDraft); setClinicalAttachment(null)
+        showSavedFloatingNotice('Corrección guardada y firmada. La versión anterior se conserva.')
+      } catch (error) {
+        setAppError(error instanceof Error ? error.message : 'No se pudo confirmar la corrección. Recargá la ficha.')
+      } finally { consultationCorrectionInFlight.current = false; setConsultationCorrectionSaving(false) }
+      return
     }
 
     if (consultationDraft.impresionDiagnostica.trim()) persistCustomDiagnosis(consultationDraft.impresionDiagnostica)
@@ -9398,6 +9490,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                   ${entry.examenFisico ? `<p><strong>Examen físico (registro anterior):</strong><br />${escapeHtml(entry.examenFisico).replaceAll('\n', '<br />')}</p>` : ''}
                   ${entry.pensamientoMedico ? `<p><strong>Pensamiento médico (registro anterior):</strong><br />${escapeHtml(entry.pensamientoMedico).replaceAll('\n', '<br />')}</p>` : ''}
                   ${followUpLines(entry, patientForPrint.birthDate).map(([label, value]) => `<p><strong>${escapeHtml(label)}:</strong><br />${escapeHtml(value).replaceAll('\n', '<br />')}</p>`).join('')}
+                  ${entry.correctionHistory?.length ? `<h4>Historial de correcciones (versiones anteriores)</h4><p>${escapeHtml(consultationRevisionText(entry)).replaceAll('\n', '<br />')}</p>` : ''}
                   <p><strong>Firma:</strong> ${escapeHtml(entry.professionalSignature.fullName)} - Matrícula ${escapeHtml(entry.professionalSignature.licenseNumber)}</p>
                   <p>${escapeHtml(entry.professionalSignature.signatureText)}</p>
                   ${signatureImage}
@@ -14536,12 +14629,22 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 </section>
               ) : null}
               <form className="evolution-form" onSubmit={handleSaveConsultation}>
+                <fieldset className="clinical-correction-fields" disabled={consultationCorrectionSaving}>
+                {consultationEditing ? <section className="clinical-correction-panel evolution-field--wide" role="status">
+                  <strong>Corrigiendo evolución del {formatDate(consultationEditing.entry.date)}</strong>
+                  <small>La fecha original y la versión anterior se conservan. El plazo no se reinicia. La talla para el IMC es la de esa consulta.</small>
+                  <label>Motivo de la corrección<input value={consultationCorrectionReason} onChange={event => setConsultationCorrectionReason(event.target.value)} maxLength={1000} required /></label>
+                  <button type="button" className="ghost" disabled={consultationCorrectionSaving} onClick={() => {
+                    if (!window.confirm('¿Descartar la corrección sin guardar?')) return
+                    stopDictation(); setConsultationEditing(null); setConsultationCorrectionReason(''); setConsultationDraft(emptyConsultationDraft); setClinicalAttachment(null)
+                  }}>Cancelar corrección</button>
+                </section> : null}
                 <div className="clinical-measurements evolution-field--wide">
                   <label>Peso actual (kg)<input name="pesoActual" inputMode="decimal" value={consultationDraft.pesoActual || ''} onChange={handleConsultationDraftChange} placeholder="Ej.: 71,2" /></label>
                   <label>TA actual (mmHg)<input name="tensionArterial" value={consultationDraft.tensionArterial || ''} onChange={handleConsultationDraftChange} placeholder="Ej.: 120/80" /></label>
                   <ClinicalWeightReview baseline={(canEditSelectedPatientRecord ? patientDraft : selectedPatient) || {}}
                     history={selectedPatient?.consultations || []} birthDate={(canEditSelectedPatientRecord ? patientDraft : selectedPatient)?.birthDate}
-                    current={{ pesoActual: consultationDraft.pesoActual, tallaCmEnConsulta: (canEditSelectedPatientRecord ? patientDraft : selectedPatient)?.tallaCm, date: todayLocalISO() }} />
+                    current={{ id: consultationEditing?.entry.id, pesoActual: consultationDraft.pesoActual, tallaCmEnConsulta: consultationEditing ? consultationEditing.entry.tallaCmEnConsulta : (canEditSelectedPatientRecord ? patientDraft : selectedPatient)?.tallaCm, date: consultationEditing?.entry.date || todayLocalISO() }} />
                 </div>
                 <label className="evolution-field evolution-field--wide clinical-reason-field">
                   Motivo de consulta
@@ -14611,7 +14714,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       {clinicalSummaryBusy ? 'Sofía está valorando...' : 'Valorar evolución con Sofía'}
                     </button>
                   </div>
-                  {clinicalAttachment ? <p className="clinical-inline-actions">Archivo: {clinicalAttachment.name} <button type="button" className="ghost compact" disabled={clinicalSummaryBusy} onClick={() => setClinicalAttachment(null)}>Quitar archivo</button><small>{canEditSelectedPatientRecord ? 'El original se adjuntará a la ficha al guardar.' : 'Archivo solo para esta revisión. Solo el dueño puede agregar documentos a la ficha compartida.'}</small></p> : null}
+                  {clinicalAttachment ? <p className="clinical-inline-actions">Archivo: {clinicalAttachment.name} <button type="button" className="ghost compact" disabled={clinicalSummaryBusy} onClick={() => setClinicalAttachment(null)}>Quitar archivo</button><small>{consultationEditing ? 'Archivo solo para revisar la corrección. Para conservarlo, agregalo desde Documentos de la ficha.' : canEditSelectedPatientRecord ? 'El original se adjuntará a la ficha al guardar.' : 'Archivo solo para esta revisión. Solo el dueño puede agregar documentos a la ficha compartida.'}</small></p> : null}
                   {consultationDraft.resumenSofia ? <div className="clinical-sofia-review">
                     <label>Resumen y reflexión de Sofía — revisá y editá antes de adjuntar
                       <textarea name="resumenSofia" value={consultationDraft.resumenSofia} onChange={handleConsultationDraftChange} rows={5} />
@@ -14626,7 +14729,10 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                   </div> : null}
                 </section>
 
-                <button type="submit" className="evolution-save-button" disabled={clinicalSummaryBusy || clinicalDocumentBusy}>Guardar evolución</button>
+                <button type="submit" className="evolution-save-button" disabled={clinicalSummaryBusy || clinicalDocumentBusy || consultationCorrectionSaving}>
+                  {consultationCorrectionSaving ? 'Guardando corrección…' : consultationEditing ? 'Guardar corrección y volver a firmar' : 'Guardar evolución'}
+                </button>
+                </fieldset>
               </form>
               {selectedPatient ? renderPaperRecords(false) : null}
               <ul className="consultation-list">
@@ -14646,6 +14752,26 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       <strong>Pensamiento médico:</strong> {entry.pensamientoMedico}
                     </p> : null}
                     <footer>
+                      {entry.correctionHistory?.length ? <details className="clinical-correction-history">
+                        <summary>Historial de correcciones · {entry.correctionHistory.length} versión(es) anterior(es)</summary>
+                        {entry.correctionHistory.map((revision, index) => <article key={`${revision.correctedAt}-${index}`}>
+                          <strong>Versión anterior {index + 1} · Corregida {formatDate(revision.correctedAt)}</strong>
+                          <p><strong>Motivo de corrección:</strong> {revision.reason}</p>
+                          <p><strong>Motivo de consulta:</strong> {revision.previous.motivoConsulta}</p>
+                          <p><strong>Enfermedad actual:</strong> {revision.previous.enfermedadActual || revision.previous.detalleAtencion}</p>
+                          <p><strong>Sospecha diagnóstica:</strong> {revision.previous.impresionDiagnostica || revision.previous.diagnostico}</p>
+                          <p><strong>Tratamiento:</strong> {revision.previous.planManejo}</p>
+                          {revision.previous.examenFisico ? <p><strong>Examen físico:</strong> {revision.previous.examenFisico}</p> : null}
+                          {revision.previous.pensamientoMedico ? <p><strong>Pensamiento médico:</strong> {revision.previous.pensamientoMedico}</p> : null}
+                          {followUpLines(revision.previous, selectedPatient?.birthDate).map(([label, value]) => <p key={label} style={{ whiteSpace: 'pre-wrap' }}><strong>{label}:</strong> {value}</p>)}
+                          <small>Firma original: {revision.previous.professionalSignature.fullName} · {revision.previous.signatureSeal?.signedAt} · SHA-256: {revision.previous.signatureSeal?.hashSha256}</small>
+                        </article>)}
+                      </details> : null}
+                      {!entry.certificateId && !/^(?:video-|virtual-)/.test(entry.id) ? <div className="clinical-inline-actions">
+                        <button type="button" className="ghost" disabled={consultationCorrectionSaving || Boolean(consultationCorrectionError(entry, activeUserId || '', Math.max(consultationClock, Date.now())))}
+                          onClick={() => handleEditConsultation(entry)}>Corregir evolución (hasta 24 h)</button>
+                        <small>{consultationCorrectionError(entry, activeUserId || '', Math.max(consultationClock, Date.now())) || 'Solo su autor. Se conserva el original y se registra una nueva firma.'}</small>
+                      </div> : null}
                       <p>
                         Firma: {entry.professionalSignature.fullName} (Matrícula{' '}
                         {entry.professionalSignature.licenseNumber})
