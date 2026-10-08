@@ -14,6 +14,7 @@ import { BrandMark } from './BrandMark'
 import { ClinicalMedicationField } from './ClinicalMedicationField'
 import { ClinicalDiagnosisField } from './ClinicalDiagnosisField'
 import { bmiLabel, classifiedBmiLabel, followUpLines, mergeClinicalPathologies, normalizeClinicalBaseline, validateClinicalMeasurements } from './clinicalFollowUp'
+import { allergyDetails, clinicalChecklist, firstAttentionSummary, hasClinicalCondition, setAllergyDetails, toggleClinicalCondition } from './firstAttention'
 import { ClinicalWeightReview } from './ClinicalWeightReview'
 import { useDesktopDock } from './useDesktopDock'
 import { consultationCorrectionError, correctionSignedContent, consultationRevisionText } from './consultationCorrection'
@@ -2773,6 +2774,8 @@ function App() {
 
   const [patientDraft, setPatientDraft] = useState<PatientDraft>(emptyPatientDraft)
   const [patientFormUnlocked, setPatientFormUnlocked] = useState(true)
+  const [patientSaving, setPatientSaving] = useState(false)
+  const patientSaveInFlight = useRef(false)
   const [patientEditPrompt, setPatientEditPrompt] = useState(false)
   const [consultationEditing, setConsultationEditing] = useState<{ patientId: string; entry: ConsultationEntry } | null>(null)
   const [consultationCorrectionReason, setConsultationCorrectionReason] = useState('')
@@ -2817,7 +2820,12 @@ function App() {
   const [workspaceLayer, setWorkspaceLayer] = useState<WorkspaceLayer>('overview')
   useEffect(() => {
     setConsultationEditing(null); setConsultationCorrectionReason('')
-  }, [activeUserId, selectedPatientId, workspaceLayer])
+  }, [activeUserId, selectedPatientId])
+  useEffect(() => {
+    if (workspaceLayer !== 'clinical') {
+      setConsultationEditing(null); setConsultationCorrectionReason('')
+    }
+  }, [workspaceLayer])
   useEffect(() => { setPatientEditPrompt(false); patientEditTargetRef.current = null }, [activeUserId, selectedPatientId, workspaceLayer])
   useEffect(() => {
     patientDocumentContext.current += 1
@@ -6803,7 +6811,7 @@ function App() {
   ): void {
     const { name, value } = event.target
     setPatientDraft((current) => ({ ...current, [name]: value,
-      ...(name === 'pesoInicial' && value !== current.pesoInicial ? { pesoInicialFecha: value.trim() ? todayLocalISO() : '' } : {}),
+      ...(name === 'pesoInicial' && !selectedPatientId ? { pesoInicialFecha: value.trim() ? todayLocalISO() : '' } : {}),
     }))
   }
 
@@ -8658,6 +8666,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
 
   async function handleSavePatient(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
+    if (patientSaveInFlight.current) return
     if (!activeUserId) {
       return
     }
@@ -8697,9 +8706,17 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     }
     const measurementError = validateClinicalMeasurements(patientDraft)
     if (measurementError) { setAppError(measurementError); return }
+    if (allergyDetails(patientDraft.patologiasCronicas) === '') {
+      setAppError('Completá a qué es alérgico el paciente o desmarcá Alergias si no corresponde.')
+      return
+    }
     if (patientDraft.diagnosticoPrincipal.trim()) persistCustomDiagnosis(patientDraft.diagnosticoPrincipal)
     setAppError(null)
 
+    patientSaveInFlight.current = true
+    setPatientSaving(true)
+    try {
+    const context = patientDocumentContext.current
     const now = new Date().toISOString()
     const attentionAppointment = pendingAttentionAppointmentId
       ? appointments.find((appointment) => appointment.id === pendingAttentionAppointmentId)
@@ -8713,6 +8730,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       id: existing?.id ?? newPatientId,
       ownerUserId: existing?.ownerUserId ?? activeUserId,
       ...patientDraft,
+      pesoInicialFecha: existing?.pesoInicialFecha || (!existing && patientDraft.pesoInicial?.trim() ? todayLocalISO() : ''),
       patologiasConocidas: '',
       numeroAfiliado: patientDraft.numeroAfiliado.trim(),
       plan: patientDraft.plan.trim(),
@@ -8751,11 +8769,37 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       } finally { setDentalNewPatientBusy(false) }
       return
     }
+    if (!existing) {
+      if (!profile) throw new Error('Completá tu perfil profesional para firmar la primera atención.')
+      const appointmentText = attentionAppointment ? buildAppointmentConsultation(attentionAppointment).detalleAtencion : ''
+      const summary = firstAttentionSummary(record, appointmentText)
+      const initialEntry: ConsultationEntry = {
+        id: `initial-${crypto.randomUUID()}`, date: now,
+        motivoConsulta: 'Primera atención', diagnostico: record.diagnosticoPrincipal,
+        detalleAtencion: summary, enfermedadActual: summary, pensamientoMedico: '',
+        impresionDiagnostica: record.diagnosticoPrincipal, planManejo: '',
+        pesoActual: record.pesoInicial || '', tensionArterial: record.tensionArterial || '',
+        tallaCmEnConsulta: record.pesoInicial ? record.tallaCm || '' : '',
+        farmacosAgregados: '', estudiosComplementarios: '', resumenSofia: '',
+        professionalSignature: {
+          fullName: profile.fullName, licenseNumber: profile.licenseNumber,
+          signatureText: profile.signatureText, signatureImageDataUrl: profile.signatureImage?.dataUrl,
+        },
+        ...(attentionAppointment ? { appointmentId: attentionAppointment.id } : {}),
+      }
+      initialEntry.signatureSeal = await buildSignatureSeal({
+        contentToSign: correctionSignedContent(record.id, record.dni, initialEntry),
+        signerUserId: activeUserId, signerFullName: profile.fullName,
+        signerLicense: profile.licenseNumber, signerDni: activeUser?.dni,
+      })
+      if (context !== patientDocumentContext.current) throw new Error('La ficha cambió durante el guardado. Volvé a guardar la ficha actual.')
+      record.consultations = [initialEntry]
+    }
     if (pendingAttentionAppointmentId) {
       const appointment = attentionAppointment
       if (appointment) {
         const entry = buildAppointmentConsultation(appointment)
-        const attendedPatient = { ...record, consultations: [entry, ...record.consultations] }
+        const attendedPatient = { ...record, consultations: existing ? [entry, ...record.consultations] : record.consultations }
         persistPatient(attendedPatient)
         const nextAppointments = appointments.map((item) => item.id === appointment.id
           ? { ...item, patientId: record.id, status: 'attended' as const }
@@ -8763,8 +8807,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         setAppointments(nextAppointments)
         localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
         const currentProfile = profile ?? (activeUser ? profileFromSeed(activeUser) : null)
-        if (currentProfile) void persistWorkspaceRemote(activeUserId, currentProfile, sortPatientsByName([...patients, attendedPatient]), nextAppointments)
-        setWorkspaceLayer('clinical')
+        if (currentProfile) void persistWorkspaceRemote(activeUserId, currentProfile, sortPatientsByName([...patients.filter(patient => patient.id !== record.id), attendedPatient]), nextAppointments)
+        setWorkspaceLayer(existing ? 'clinical' : 'patient-record')
         setConsultationDraft((current) => ({ ...current, motivoConsulta: appointment.reason || current.motivoConsulta }))
       } else {
         setAppError('El turno ya no está disponible. Volvé a abrirlo desde la agenda.')
@@ -8777,6 +8821,13 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     if (!pendingAttentionAppointmentId) setWorkspaceLayer('patient-record')
     setAppNotice('Ficha del paciente guardada.')
     showSavedFloatingNotice()
+    } catch (error) {
+      console.error('No se pudo guardar la ficha del paciente:', error)
+      setAppError(error instanceof Error ? error.message : 'No se pudo guardar la ficha del paciente.')
+    } finally {
+      patientSaveInFlight.current = false
+      setPatientSaving(false)
+    }
   }
 
   function handleNewPatient(): void {
@@ -9101,6 +9152,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       farmacosAgregados: entry.farmacosAgregados || '', estudiosComplementarios: entry.estudiosComplementarios || '',
       resumenSofia: entry.resumenSofia || '', incluirResumenSofia: Boolean(entry.resumenSofia),
     })
+    setWorkspaceLayer('clinical')
     requestAnimationFrame(() => document.querySelector('.evolution-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
@@ -14283,15 +14335,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
               >
                 📅 Agendar turno
               </button>
-              <button
-                type="button"
-                className="ghost"
-                onClick={handleOpenClinicalPage}
-                disabled={!selectedPatient}
-              >
-                + Evolucionar paciente
-              </button>
-              {canEditPatientForm ? <button type="submit" form="clinical-patient-form" className="clinical-primary-action">Guardar ficha</button> : null}
+              {canEditPatientForm ? <button type="submit" form="clinical-patient-form" className="clinical-primary-action" disabled={patientSaving}>{patientSaving ? 'Guardando ficha…' : 'Guardar ficha'}</button> : null}
             </div>
           </section>
 
@@ -14370,7 +14414,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     patientEditTargetRef.current = field
                     setPatientEditPrompt(true)
                   }}>
-                <fieldset className="patient-edit-fieldset" disabled={!canEditPatientForm}>
+                <fieldset className="patient-edit-fieldset" disabled={!canEditPatientForm || patientSaving}>
                   <details className="patient-form-block clinical-identity-details" key={selectedPatient?.id || 'new-patient'} open={!selectedPatient ? true : undefined}
                     onInvalidCapture={(event) => { event.currentTarget.open = true }}>
                     <summary>📋 Ver / ocultar datos filiatorios y afiliación</summary>
@@ -14426,12 +14470,11 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     </div>
                   </details>
                   <section className="patient-form-block">
-                    <h4 className="block-title">🩺 Antecedentes clínicos</h4>
+                    <h4 className="block-title">🩺 Primera atención</h4>
                     <div className="clinical-measurements">
                       <label>Peso inicial (kg)<input name="pesoInicial" inputMode="decimal" value={patientDraft.pesoInicial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 72,5" /></label>
                       <label>Talla (cm)<input name="tallaCm" inputMode="decimal" value={patientDraft.tallaCm || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 170" /></label>
                       <label>TA inicial (mmHg)<input name="tensionArterial" value={patientDraft.tensionArterial || ''} onChange={handlePatientDraftChange} placeholder="Ej.: 120/80" /></label>
-                      <label>Fecha del peso inicial<input type="date" name="pesoInicialFecha" value={patientDraft.pesoInicialFecha || ''} onChange={handlePatientDraftChange} max={todayLocalISO()} /></label>
                       <p>IMC inicial: <strong>{classifiedBmiLabel(patientDraft.pesoInicial, patientDraft.tallaCm, patientDraft.birthDate, patientDraft.pesoInicialFecha || '')}</strong></p>
                     </div>
                     <ClinicalDiagnosisField label="Diagnóstico principal" name="diagnosticoPrincipal" value={patientDraft.diagnosticoPrincipal}
@@ -14452,11 +14495,35 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       <textarea name="cirugiasPrevias" value={patientDraft.cirugiasPrevias} onChange={handlePatientDraftChange} />
                     </label>
                     </div>
-                    <ClinicalMedicationField label="Medicación habitual del paciente" value={patientDraft.medicacionHabitual || ''} catalog={medicationCatalog} onChange={medicacionHabitual => setPatientDraft(current => ({ ...current, medicacionHabitual }))} />
+                    <div className="clinical-history-stack clinical-checklist-stack">
+                      <ClinicalMedicationField label="Medicación habitual del paciente" value={patientDraft.medicacionHabitual || ''} catalog={medicationCatalog} onChange={medicacionHabitual => setPatientDraft(current => ({ ...current, medicacionHabitual }))} />
+                      <div className="clinical-checklist" role="group" aria-label="Antecedentes frecuentes">
+                        {clinicalChecklist.map(condition => <label key={condition}>
+                          <input type="checkbox" checked={hasClinicalCondition(patientDraft.patologiasCronicas, condition)}
+                            onChange={event => { const checked = event.target.checked; setPatientDraft(current => ({ ...current, patologiasCronicas: toggleClinicalCondition(current.patologiasCronicas, condition, checked) })) }} />
+                          {condition}
+                        </label>)}
+                        <label><input type="checkbox" checked={allergyDetails(patientDraft.patologiasCronicas) !== null}
+                          onChange={event => { const checked = event.target.checked; setPatientDraft(current => ({ ...current, patologiasCronicas: setAllergyDetails(current.patologiasCronicas, checked ? '' : null) })) }} />Alergias</label>
+                      </div>
+                      {allergyDetails(patientDraft.patologiasCronicas) !== null ? <label>¿A qué es alérgico?
+                        <input aria-label="Detalle de alergias" value={allergyDetails(patientDraft.patologiasCronicas) || ''} placeholder="Sustancia y reacción, si se conoce"
+                          onChange={event => { const value = event.target.value; setPatientDraft(current => ({ ...current, patologiasCronicas: setAllergyDetails(current.patologiasCronicas, value) })) }} />
+                      </label> : null}
+                    </div>
                     </div>
                   </section>
-                  <small>Los campos clínicos son opcionales. La fecha corresponde a la medición del peso, no a la creación de la ficha.</small>
+                  <small>Los campos clínicos son opcionales. La primera atención registra automáticamente la fecha y hora al crear la ficha.</small>
                 </fieldset>
+                <button type="button" className="clinical-baseline-evolve" disabled={!selectedPatient || patientSaving}
+                  title={!selectedPatient ? 'Guardá primero la ficha del paciente' : 'Abrir una nueva evolución'}
+                  onClick={() => {
+                    if (selectedPatient && JSON.stringify(patientDraft) !== JSON.stringify(patientToDraft(selectedPatient))) {
+                      setAppError('Guardá los cambios de la ficha antes de evolucionar al paciente.')
+                      return
+                    }
+                    handleOpenClinicalPage()
+                  }}>+ Evolucionar paciente</button>
                 </div>
                 {patientEditPrompt ? <div className="clinical-edit-toast" role="alertdialog" aria-modal="false" aria-labelledby="clinical-edit-question">
                   <strong id="clinical-edit-question">¿Querés modificar los datos iniciales del paciente?</strong>
@@ -14469,6 +14536,18 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     <button type="button" className="ghost" onClick={() => setPatientEditPrompt(false)}>Cancelar</button>
                   </div>
                 </div> : null}
+                {selectedPatient?.consultations.filter(entry => entry.id.startsWith('initial-')).map(entry => <section key={entry.id} className="patient-form-block first-attention-summary">
+                  <h4 className="block-title">Primera atención · {formatDate(entry.date)}</h4>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{entry.enfermedadActual || entry.detalleAtencion}</p>
+                  <p><strong>Firma:</strong> {entry.professionalSignature.fullName} · Matrícula {entry.professionalSignature.licenseNumber}</p>
+                  {entry.signatureSeal ? <small>Firma electrónica · {formatDate(entry.signatureSeal.signedAt)} · SHA-256: {entry.signatureSeal.hashSha256}</small> : null}
+                  {entry.correctionHistory?.length ? <p>Registro corregido con historial: {entry.correctionHistory.length} versión(es) anterior(es). Consultá el historial completo en Evoluciones o en el PDF.</p> : null}
+                  <div className="clinical-inline-actions">
+                    <button type="button" className="ghost consultation-print-button" onClick={() => printSingleConsultation(entry)}>Imprimir esta atención</button>
+                    <button type="button" className="ghost" disabled={consultationCorrectionSaving || Boolean(consultationCorrectionError(entry, activeUserId || '', Math.max(consultationClock, Date.now())))}
+                      onClick={() => handleEditConsultation(entry)}>Corregir evolución (hasta 24 h)</button>
+                  </div>
+                </section>)}
                 {renderPaperRecords(canManagePaperRecords)}
                 <div className="record-document-actions">
                   {isAdminSession && selectedPatient?.ownerUserId === activeUserId ? (

@@ -86,7 +86,20 @@ body.theme-night .clinical-compact .clinical-identity-details > summary { backgr
 .clinical-compact .clinical-field-lock[data-locked=true] label { cursor: pointer; }
 .clinical-compact .clinical-field-lock[data-locked=true] label:has([readonly]) { cursor: default; }
 .clinical-compact .clinical-edit-hint { margin: 0; font-size: .8rem; }
-.clinical-compact .clinical-edit-toast { position: fixed; right: 20px; bottom: 100px; z-index: 220; width: min(380px, calc(100vw - 40px)); box-sizing: border-box; display: grid; gap: 10px; padding: 16px; border: 2px solid #4978a8; border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 8px 32px #1434514d; }
+.clinical-compact .clinical-edit-toast { position: fixed; right: 20px; bottom: 100px; z-index: 220; width: min(380px, calc(100vw - 40px)); box-sizing: border-box; display: grid; gap: 10px; padding: 16px; border: 2px solid #4978a8; border-radius: 12px; background: #fff; color: #17324d; box-shadow: 0 8px 32px #1434514d; }
+body.theme-night .clinical-compact .clinical-edit-toast { background: #1b2c42; color: #f1f5f9; }
+.clinical-compact .clinical-edit-toast small { color: inherit; }
+.clinical-compact .clinical-field-lock { position: relative; }
+.clinical-compact .clinical-checklist-stack { padding-bottom: 48px; }
+.clinical-compact .clinical-checklist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.clinical-compact .clinical-checklist label { display: flex; align-items: center; gap: 6px; }
+.clinical-compact .clinical-checklist input { width: 16px; height: 16px; flex: 0 0 16px; margin: 0; }
+.clinical-compact .clinical-baseline-evolve { position: absolute; right: 12px; bottom: 36px; }
+.clinical-compact .first-attention-summary { overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .clinical-compact .clinical-baseline-evolve { position: static; margin: 0 10px 8px; }
+  .clinical-compact .clinical-checklist-stack { padding-bottom: 0; }
+}
 .clinical-compact .clinical-study-field { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; width: 100%; }
 .clinical-compact .clinical-study-search { position: relative; width: 620px; max-width: 100%; }
 .clinical-compact .clinical-study-search .clinical-suggestions { position: absolute; z-index: 35; left: 0; right: 0; background: var(--surface); box-shadow: 0 6px 18px #14345126; }

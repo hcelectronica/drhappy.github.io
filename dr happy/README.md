@@ -10,7 +10,11 @@ Web app base en React + TypeScript para:
 
 ## Ficha clínica y seguimiento
 
-La ficha médica admite peso inicial (kg), fecha de su medición, talla (cm), tensión arterial inicial (sistólica/diastólica en mmHg) y medicación habitual; todos son opcionales. Peso y talla aceptan coma o punto decimal, pero no cero, valores negativos ni texto. Al ingresar/cambiar el peso se propone la fecha actual, editable si la medición fue anterior. Los pesos antiguos sin fecha se conservan: no se infiere una fecha clínica desde la creación de la ficha.
+La ficha médica admite peso inicial (kg), talla (cm), tensión arterial inicial (sistólica/diastólica en mmHg) y medicación habitual; todos son opcionales. Peso y talla aceptan coma o punto decimal, pero no cero, valores negativos ni texto. La fecha del peso se registra automáticamente al crear una ficha nueva y no tiene un campo visible. Al editar una ficha previa se conserva su fecha conocida; los pesos antiguos sin fecha siguen sin fecha. Para nuevas mediciones se utiliza la evolución, sin modificar la fecha original.
+
+Al guardar una ficha médica nueva se crea una sola **Primera atención**, con fecha/hora, resumen de los datos aportados y firma electrónica del profesional. Se muestra debajo de la ficha y en Evoluciones, y se incluye al imprimir/exportar. No se crea retrospectivamente en pacientes existentes ni se sobrescribe al modificar la ficha base. Si la creación proviene de un turno, el registro inicial incorpora ese vínculo y no agrega otra atención administrativa duplicada. Su corrección utiliza el mismo circuito auditado de 24 horas que las otras evoluciones.
+
+El checklist de antecedentes frecuentes agrega líneas al campo libre de patologías sin borrar el texto previo; las opciones no seleccionadas no afirman ausencia de enfermedad. Alergias exige indicar a qué; queda en antecedentes y se conserva en impresión, exportación y contexto de Sofía. «Evolucionar paciente» está debajo del checklist; primero debe guardarse la ficha y cualquier cambio pendiente.
 
 El IMC es peso / talla en metros al cuadrado. Con fecha de nacimiento y de medición válidas, se aplican categorías OMS solo desde los 18 años: bajo peso <18,5; normopeso 18,5–<25; sobrepeso 25–<30; obesidad I 30–<35, II 35–<40, III ≥40. Los límites se comparan con el IMC sin redondear. Sin edad/fecha comprobable se muestra únicamente el número; en menores se requiere interpretación por edad y sexo y en embarazo no deben usarse estos cortes.
 
