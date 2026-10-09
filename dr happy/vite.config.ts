@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => {
   // En Hostinger / dominio raíz se usa '/' por defecto.
   // En GitHub Pages se sobreescribe con --base=/drhappy.github.io/
   return {
-    base: './',
+    base: '/',
     define: {
       'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId),
     },
