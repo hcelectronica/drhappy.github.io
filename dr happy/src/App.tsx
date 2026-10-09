@@ -13369,12 +13369,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
 
       {workspaceLayer === 'appointments' ? (
         <div className="screen-stage">
-          <section className="panel layer-header">
+          <section className="panel layer-header appointment-layer-header">
             <div>
-              <h2>{turneraViewMode === 'ledger' ? '◈ Balance de pagos' : '📅 Turnera Médica'}</h2>
+              <h2>{turneraViewMode === 'ledger' ? 'Balance de pagos' : '📅 Turnera Médica'}</h2>
               <p className="flow-hint">
                 {turneraViewMode === 'ledger'
-                  ? 'Registro exclusivo de cobros, saldos pendientes y deuda acumulada por paciente.'
+                  ? 'Cobros y saldos por paciente.'
                   : 'Gestión de turnos clínicos, agenda diaria y recordatorios automáticos por email desde soporte@drhappy.com.ar.'}
               </p>
             </div>
@@ -13386,7 +13386,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           </section>
 
           {/* Todos los accesos de la Turnera juntos y arriba, sin scroll previo. */}
-          <nav className="screen-action-bar" aria-label="Acciones de la turnera">
+          <nav className="screen-action-bar appointment-action-bar" aria-label="Acciones de la turnera">
             <button type="button" className="screen-action primary" onClick={() => handleNewAppointmentModal()}>
               <span aria-hidden="true">➕</span> Nuevo turno
             </button>
@@ -13672,7 +13672,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             <section className="panel turnera-ledger-panel">
               <div className="turnera-ledger-header">
                 <div>
-                  <h3 style={{ margin: 0 }}>💰 Balance de pagos</h3>
+                  <h3 style={{ margin: 0 }}>Movimientos</h3>
                   <small className="flow-hint">
                     {isDentist ? 'Una cuenta por paciente. Desplegá sus tratamientos para consultar pagos y detalles, sin eliminar el historial.' : 'Registrá cada intervención, cuánto cobraste y cuánto queda pendiente.'}
                   </small>

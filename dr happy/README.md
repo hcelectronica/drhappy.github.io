@@ -10,6 +10,8 @@ Web app base en React + TypeScript para:
 
 ## Ficha clínica y seguimiento
 
+Los encabezados de navegación (Balance, Turnera, Mis pacientes, Herramientas y páginas relacionadas) usan márgenes y espaciado compactos, sin alterar las barras clínicas. El Balance presenta un solo título principal, sus cuatro totales en dos columnas en móvil y cuatro en escritorio, con importes completos que pueden ocupar varias líneas. Las seis acciones de Turnera conservan todos sus accesos en una grilla de dos columnas en móvil; los controles mantienen una altura táctil mínima de 44 px.
+
 La ficha médica admite peso inicial (kg), talla (cm), tensión arterial inicial (sistólica/diastólica en mmHg) y medicación habitual; todos son opcionales. Peso y talla aceptan coma o punto decimal, pero no cero, valores negativos ni texto. La fecha del peso se registra automáticamente al crear una ficha nueva y no tiene un campo visible. Al editar una ficha previa se conserva su fecha conocida; los pesos antiguos sin fecha siguen sin fecha. Para nuevas mediciones se utiliza la evolución, sin modificar la fecha original.
 
 Al guardar una ficha médica nueva se crea una sola **Primera atención**, con fecha/hora, resumen de los datos aportados y firma electrónica del profesional. Se muestra debajo de la ficha y en Evoluciones, y se incluye al imprimir/exportar. No se crea retrospectivamente en pacientes existentes ni se sobrescribe al modificar la ficha base. Si la creación proviene de un turno, el registro inicial incorpora ese vínculo y no agrega otra atención administrativa duplicada. Su corrección utiliza el mismo circuito auditado de 24 horas que las otras evoluciones.
