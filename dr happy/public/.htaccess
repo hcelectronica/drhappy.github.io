@@ -11,4 +11,6 @@
   RewriteRule ^registro/([a-z0-9-]+)/?$ /registro/?t=$1 [R=302,L,QSA]
   # Consulta virtual asistida: /consulta/slug -> formulario público pago.
   RewriteRule ^consulta/([a-z0-9-]+)/?$ /consulta/?p=$1 [R=302,L,QSA]
+  # Certificados y órdenes pagas: enlace fijo público independiente.
+  RewriteRule ^documentos/([a-z0-9-]+)/?$ /index.html?paid_documents_slug=$1 [QSA,L]
 </IfModule>

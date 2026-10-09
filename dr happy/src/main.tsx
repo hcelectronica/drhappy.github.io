@@ -9,6 +9,13 @@ import { installRuntimeErrorLogging, logRuntime } from './runtimeLogger'
 const DentalDesignPreview = import.meta.env.DEV && window.location.pathname === '/dental-design'
   ? lazy(() => import('./dental/DentalDesignPreview'))
   : null
+const isPaidDocumentsPublicRoute = Boolean(
+  window.location.pathname.match(/^\/documentos\/[a-z0-9-]+\/?$/i) ||
+  new URLSearchParams(window.location.search).get('paid_documents_slug'),
+)
+const PaidDocumentsPublicPage = isPaidDocumentsPublicRoute
+  ? lazy(() => import('./PaidClinicalDocumentsPublicPage').then((module) => ({ default: module.PaidClinicalDocumentsPublicPage })))
+  : null
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -16,7 +23,9 @@ createRoot(document.getElementById('root')!).render(
       <ErrorNotificationProvider>
         {DentalDesignPreview
           ? <Suspense fallback={<p>Cargando diseño de ficha dental...</p>}><DentalDesignPreview /></Suspense>
-          : <App />}
+          : PaidDocumentsPublicPage
+            ? <Suspense fallback={<p>Cargando formulario de documentos…</p>}><PaidDocumentsPublicPage /></Suspense>
+            : <App />}
       </ErrorNotificationProvider>
     </AppErrorBoundary>
   </StrictMode>,
@@ -25,7 +34,7 @@ createRoot(document.getElementById('root')!).render(
 installRuntimeErrorLogging()
 logRuntime('info', 'app.started', { buildId: import.meta.env.VITE_BUILD_ID })
 
-if (!DentalDesignPreview && 'serviceWorker' in navigator) {
+if (!DentalDesignPreview && !PaidDocumentsPublicPage && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register(`${import.meta.env.BASE_URL}service-worker.js`)

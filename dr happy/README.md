@@ -154,6 +154,16 @@ Solo para las cuentas de `VIRTUAL_CONSULT_PILOT_EMAILS` (`src/virtualConsultServ
 
 Desplegar con las migraciones `20261006010000_virtual_consultations.sql`, `20261006020000_virtual_consult_signature_seal.sql` y `20261006030000_virtual_consult_branding.sql`, luego `supabase functions deploy virtual-consultations --no-verify-jwt` (más `mercadopago-patient-webhook`).
 
+## Enlace pago de certificados y órdenes (piloto)
+
+Es una herramienta separada de **Consultas virtuales**, **Invitar paciente** y la emisión gratuita desde la ficha. Solo la ven el perfil `mudimudialan@gmail.com` y el usuario `ADMIN`; el Edge Function aplica la misma allowlist. Cada perfil conserva su propia configuración, enlace fijo `/documentos/<slug>` y cuenta Mercado Pago conectada. Los servicios quedan deshabilitados hasta que el profesional configure precio y los active.
+
+El paciente elige certificado u orden, informa sus datos y el motivo acordado, paga en Checkout Pro y vuelve al seguimiento. El webhook verifica la moneda, el importe, la cuenta receptora y la referencia antes de marcar el pago confirmado. El profesional abre la solicitud y usa la herramienta actual para completar, firmar y enviar el documento. Ningún documento se genera automáticamente y el circuito gratis no cambia.
+
+El esquema protegido vive en `20261009010000_paid_clinical_documents.sql`; los endpoints de configuración, solicitudes y checkout están en `supabase/functions/paid-clinical-documents`. `mercadopago-patient-webhook` reconoce el prefijo `cd_<uuid>` sin cambiar el tratamiento previo de `vc_<uuid>` ni de turnos. El formulario público y el seguimiento se sirven desde `src/PaidClinicalDocumentsPublicPage.tsx`; `.htaccess` resuelve los enlaces fijos en Hostinger.
+
+Despliegue: aplicar la migración y publicar `paid-clinical-documents` y `mercadopago-patient-webhook` con `verify_jwt=false`; luego publicar el build web y `public/.htaccess` en Hostinger. No se deben activar precios de prueba hasta comprobar la cuenta Mercado Pago conectada de cada perfil.
+
 ## Documentos clínicos
 
 Desde la ficha del paciente, **Emitir certificado** permite elegir entre un certificado médico y una orden de estudios complementarios. En la orden se busca entre estudios frecuentes codificados o se agrega uno en texto libre; el profesional debe indicar el motivo clínico, puede añadir observaciones y revisar el borrador antes de emitir. Si el contenido no cabe en el PDF, se informa el error antes de guardar la orden. Ambos documentos se guardan en la historia clínica con firma, PDF y QR; las órdenes se identifican como tales en el historial, la descarga y el envío.

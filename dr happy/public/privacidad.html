@@ -97,7 +97,7 @@
     </header>
 
     <article>
-      <span class="updated">Última actualización: 7 de octubre de 2026</span>
+      <span class="updated">Última actualización: 9 de octubre de 2026</span>
 
       <h2>1. Responsable del tratamiento de datos</h2>
       <p>
@@ -119,7 +119,7 @@
       <ul>
         <li><strong>Datos de cuenta del profesional:</strong> nombre y apellido, especialidad, número de matrícula, correo electrónico y teléfono.</li>
         <li><strong>Datos de pacientes y atención:</strong> identificación, contacto, cobertura de salud, antecedentes, medicación, mediciones, diagnósticos, evoluciones, estudios, turnos, recetas, certificados y documentos adjuntos. Pueden incluir datos sensibles de salud, imágenes de documentos, imágenes de firma y sellos de integridad de los registros.</li>
-        <li><strong>Datos aportados por el paciente:</strong> información ingresada mediante formularios de registro, reservas o consultas virtuales, y archivos enviados en esas funciones.</li>
+        <li><strong>Datos aportados por el paciente:</strong> información ingresada mediante formularios de registro, reservas, consultas virtuales y solicitudes pagas de certificados u órdenes (nombre, DNI, fecha de nacimiento opcional, contacto y motivo informado), además de archivos enviados en las funciones que los admiten.</li>
         <li><strong>Comunicaciones y gestión:</strong> mensajes de soporte y datos de suscripciones, pagos y cobros asociados a las funciones utilizadas. Los pagos procesados por Mercado Pago están sujetos también a sus propias condiciones.</li>
         <li><strong>Datos técnicos:</strong> tokens de notificaciones push (para avisos en el dispositivo), tipo de navegador y dispositivo, y registros de acceso necesarios para la seguridad del servicio.</li>
       </ul>
@@ -127,6 +127,7 @@
       <h2>3. Finalidad del tratamiento</h2>
       <ul>
         <li>Proveer historia clínica digital, odontograma, agenda, documentos clínicos, consultas virtuales, vademécum, protocolos y gestión administrativa según las funciones habilitadas.</li>
+        <li>Recibir solicitudes de certificados u órdenes, enviar los datos aportados al profesional elegido y verificar el estado del pago procesado en Mercado Pago.</li>
         <li>Enviar comunicaciones operativas: recuperación de contraseña, confirmaciones y recordatorios de turnos, enlaces de videoconsulta, indicaciones enviadas por el profesional y avisos administrativos.</li>
         <li>Procesar consultas, textos y documentos con Sofía cuando se utilicen sus funciones, conforme al apartado 7.</li>
         <li>Permitir exportar o imprimir registros y generar una copia de salida en el circuito de baja.</li>
@@ -160,6 +161,9 @@
         entre ellos Supabase para servicios de datos y backend, Hostinger para alojamiento y correo,
         Anthropic para las funciones de Sofía y Mercado Pago para las funciones de pago.
         Cada proveedor procesa la información necesaria para la función correspondiente.
+        Para las solicitudes pagas, Mercado Pago procesa el cobro en su plataforma; Dr Happy recibe
+        los datos de la solicitud y la información necesaria para asociar la confirmación de pago.
+        Los datos de tarjeta se ingresan en Mercado Pago y no en el formulario de Dr Happy.
         También puede haber destinatarios indicados mediante funciones de envío
         utilizadas por el profesional, o comunicaciones exigidas por autoridad competente conforme a la ley.
       </p>

@@ -33,7 +33,7 @@ Deno.serve(async (request) => {
 
   const providerUserId = String(body.user_id || body.userId || '').trim()
   const professionalIdFromUrl = new URL(request.url).searchParams.get('professional_id')?.trim() || ''
-  let accountQuery = admin.from('professional_payment_accounts').select('professional_id, access_token_encrypted, status').eq('provider', 'mercadopago')
+  let accountQuery = admin.from('professional_payment_accounts').select('professional_id, provider_user_id, access_token_encrypted, status').eq('provider', 'mercadopago')
   if (providerUserId) {
     accountQuery = accountQuery.eq('provider_user_id', providerUserId)
   } else if (professionalIdFromUrl) {
@@ -48,6 +48,86 @@ Deno.serve(async (request) => {
   const payment = await paymentResponse.json().catch(() => null)
   if (!paymentResponse.ok || !payment) return jsonResponse(502, { success: false, message: 'No se pudo validar el pago.' })
   const externalReference = String(payment.external_reference || '').trim()
+  if (externalReference.startsWith('cd_')) {
+    const requestId = externalReference.slice(3)
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+      return jsonResponse(200, { success: true, ignored: true })
+    }
+    const { data: clinicalDocument, error: requestError } = await admin
+      .from('paid_clinical_document_requests')
+      .select('id, professional_id, amount, patient_first_name, patient_last_name, patient_email, service_type, requested_purpose, status, payment_status, payment_id')
+      .eq('id', requestId)
+      .eq('professional_id', account.professional_id)
+      .maybeSingle()
+    if (requestError) return jsonResponse(500, { success: false, message: 'No se pudo buscar la solicitud de documento.' })
+    if (!clinicalDocument) return jsonResponse(200, { success: true, ignored: true })
+    if (
+      String(payment.currency_id || '') !== 'ARS' ||
+      Math.round(Number(payment.transaction_amount) * 100) !== Math.round(Number(clinicalDocument.amount) * 100) ||
+      String(payment.collector_id || '') !== String(account.provider_user_id || '')
+    ) {
+      console.error('[mercadopago-patient-webhook] Pago de documento con importe, moneda o cuenta distinta', requestId)
+      return jsonResponse(200, { success: true, ignored: true })
+    }
+    const paymentStatus = String(payment.status || 'pending')
+    if (paymentStatus !== 'approved') {
+      const { error } = await admin.from('paid_clinical_document_requests').update({
+        payment_status: paymentStatus,
+        payment_id: paymentId,
+        updated_at: new Date().toISOString(),
+      }).eq('id', requestId).eq('professional_id', account.professional_id).eq('status', 'pending_payment')
+        .neq('payment_status', 'approved')
+      if (error) return jsonResponse(500, { success: false, message: 'No se pudo actualizar el estado del pago del documento.' })
+      return jsonResponse(200, { success: true, paymentStatus })
+    }
+    if (clinicalDocument.status === 'pending_review' || clinicalDocument.status === 'completed') {
+      if (clinicalDocument.payment_id !== paymentId) {
+        console.error('[mercadopago-patient-webhook] Otro pago aprobado para una solicitud ya pagada', requestId)
+        return jsonResponse(200, { success: true, ignored: true })
+      }
+      return jsonResponse(200, { success: true, paymentStatus, alreadyProcessed: true })
+    }
+    if (clinicalDocument.status !== 'pending_payment' || clinicalDocument.payment_status === 'approved') {
+      return jsonResponse(200, { success: true, ignored: true })
+    }
+    const paidAt = new Date().toISOString()
+    const { data: paid, error: paidError } = await admin.from('paid_clinical_document_requests').update({
+      status: 'pending_review',
+      payment_status: 'approved',
+      payment_id: paymentId,
+      paid_at: paidAt,
+      updated_at: paidAt,
+    }).eq('id', requestId).eq('professional_id', account.professional_id).eq('status', 'pending_payment')
+      .select('id')
+      .maybeSingle()
+    if (paidError) return jsonResponse(500, { success: false, message: 'No se pudo registrar el pago del documento.' })
+    if (!paid) return jsonResponse(200, { success: true, ignored: true })
+    const [{ data: professional }, { data: workspace }] = await Promise.all([
+      admin.from('professionals').select('full_name, email').eq('id', account.professional_id).maybeSingle(),
+      admin.from('user_workspaces').select('profile_json').eq('user_id', account.professional_id).maybeSingle(),
+    ])
+    const profile = (workspace?.profile_json ?? {}) as Record<string, unknown>
+    const to = (typeof profile.email === 'string' && profile.email.trim()) || String(professional?.email || '')
+    if (to) {
+      const serviceLabel = clinicalDocument.service_type === 'study-order' ? 'orden de estudios' : 'certificado médico'
+      const text = [
+        `Hola ${professional?.full_name || 'profesional'},`, '',
+        `Recibiste una nueva solicitud paga de ${serviceLabel}.`, '',
+        `Paciente: ${clinicalDocument.patient_last_name}, ${clinicalDocument.patient_first_name}`,
+        `Tipo solicitado: ${clinicalDocument.requested_purpose}`,
+        'Ingresá a Dr Happy > Certificados y órdenes para revisar el pago y emitir el documento con tu herramienta habitual.',
+        'https://www.drhappy.com.ar/',
+      ].join('\n')
+      const escaped = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+      await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, subject: 'Dr Happy - Solicitud paga de certificado u orden', type: 'custom', text, templateData: { message: escaped.replaceAll('\n', '<br>') } }),
+        signal: AbortSignal.timeout(10000),
+      }).catch((error) => console.error('[mercadopago-patient-webhook] Aviso de documento no enviado', error))
+    }
+    return jsonResponse(200, { success: true, paymentStatus })
+  }
   if (externalReference.startsWith('vc_')) {
     const consultId = externalReference.slice(3)
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(consultId)) return jsonResponse(200, { success: true, ignored: true })

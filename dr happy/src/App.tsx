@@ -41,6 +41,9 @@ import { SignaturePad } from './SignaturePad'
 import { blobToBase64, buildCertificatePdf, buildQrDataUrl, certificateFileName, certificateSignedContent, formatCertificateDate } from './medicalCertificate'
 import { acknowledgePatientInviteSubmissions, buildPatientInviteUrl, getPatientInviteLink, pullPatientInviteSubmissions } from './patientInviteService'
 import { VirtualConsultInbox } from './VirtualConsultInbox'
+import { PaidClinicalDocumentsPanel } from './PaidClinicalDocumentsPanel'
+import { completePaidClinicalDocumentRequest } from './paidClinicalDocumentsService'
+import type { PaidClinicalDocumentRequest } from './paidClinicalDocumentsService'
 import { isVirtualConsultPilotEmail, listVirtualConsults } from './virtualConsultService'
 import type { VirtualConsult } from './virtualConsultService'
 import type { CertificateEntry } from './medicalCertificate'
@@ -2734,6 +2737,7 @@ function App() {
 
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false)
   const [certificatePatientId, setCertificatePatientId] = useState<string | null>(null)
+  const [paidClinicalDocumentRequestId, setPaidClinicalDocumentRequestId] = useState<string | null>(null)
   const [certificateDraft, setCertificateDraft] = useState({ date: '', diagnostico: '', body: '' })
   const [certificateDocumentType, setCertificateDocumentType] = useState<'certificate' | 'study-order'>('certificate')
   const [orderedStudies, setOrderedStudies] = useState<OrderedStudy[]>([])
@@ -2872,6 +2876,7 @@ function App() {
   const [previewTrialExpired, setPreviewTrialExpired] = useState(false)
   const [subscriptionAccountOpen, setSubscriptionAccountOpen] = useState(false)
   const [virtualConsultOpen, setVirtualConsultOpen] = useState(false)
+  const [paidDocumentsPanelOpen, setPaidDocumentsPanelOpen] = useState(false)
   const [virtualConsultPending, setVirtualConsultPending] = useState(0)
   const [subscriptionCheckoutLoading, setSubscriptionCheckoutLoading] = useState<SubscriptionPlan | null>(null)
   const [adminBusyUserId, setAdminBusyUserId] = useState<string | null>(null)
@@ -3091,6 +3096,9 @@ function App() {
   }, [activeUser, profile])
   const isAdminSession = isAdminUser(activeUser)
   const isVirtualConsultPilot = isVirtualConsultPilotEmail(activeUser?.email)
+  const isPaidClinicalDocumentsPilot =
+    String(activeUser?.email ?? '').trim().toLowerCase() === 'mudimudialan@gmail.com' ||
+    String(activeUser?.username ?? '').trim().toLowerCase() === 'admin'
   useEffect(() => {
     if (!isVirtualConsultPilot || !isSupabaseConfigured) return
     let cancelled = false
@@ -9679,6 +9687,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   }
 
   function handleOpenCertificateModal(patient: PatientRecord): void {
+    setPaidClinicalDocumentRequestId(null)
     setCertificatePatientId(patient.id)
     setCertificateDocumentType('certificate')
     setOrderedStudies([])
@@ -9689,6 +9698,63 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     setCertificateEmail(patient.email || '')
     setCertificateDiagnosisOpen(false)
     setCertificateError(null)
+  }
+
+  function handleStartPaidClinicalDocumentIssue(request: PaidClinicalDocumentRequest): void {
+    if (!activeUserId || !profile) {
+      setAppError('Iniciá sesión para emitir el documento.')
+      return
+    }
+    const requestDni = request.patient_dni.replace(/\D/g, '')
+    let patient = patients.find((item) => item.dni.replace(/\D/g, '') === requestDni)
+    if (!patient) {
+      const now = new Date().toISOString()
+      const birthDate = request.patient_birth_date || ''
+      patient = {
+        id: crypto.randomUUID(),
+        ownerUserId: activeUserId,
+        nombre: request.patient_first_name,
+        apellido: request.patient_last_name,
+        dni: requestDni,
+        email: request.patient_email,
+        telefono: request.patient_phone,
+        obraSocial: '',
+        numeroAfiliado: '',
+        plan: '',
+        birthDate,
+        edad: calculateAge(birthDate),
+        diagnosticoPrincipal: '',
+        patologiasConocidas: '',
+        patologiasCronicas: '',
+        ultimaInternacion: '',
+        cirugiasPrevias: '',
+        direccion: '',
+        documents: [],
+        consultations: [],
+        createdAt: now,
+        updatedAt: now,
+      }
+      persistPatient(patient)
+    } else {
+      patient = {
+        ...patient,
+        email: patient.email || request.patient_email,
+        telefono: patient.telefono || request.patient_phone,
+      }
+      persistPatient(patient)
+    }
+    handleOpenCertificateModal(patient)
+    setPaidClinicalDocumentRequestId(request.id)
+    setCertificateDocumentType(request.service_type)
+    setCertificateDraft({
+      date: todayLocalISO(),
+      diagnostico: request.reason,
+      body: request.service_type === 'certificate'
+        ? `Documento solicitado: ${request.requested_purpose}.\n\n${buildCertificateTemplate(patient, request.reason)}`
+        : '',
+    })
+    setPaidDocumentsPanelOpen(false)
+    setWorkspaceLayer('my-patients')
   }
 
   function addOrderedStudy(study: OrderedStudy): void {
@@ -9820,6 +9886,19 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         consultations: [historyEntry, ...certificatePatient.consultations],
         updatedAt: issuedAt,
       })
+      if (paidClinicalDocumentRequestId) {
+        try {
+          const completion = await completePaidClinicalDocumentRequest(paidClinicalDocumentRequestId)
+          if (completion.success) {
+            setPaidClinicalDocumentRequestId(null)
+          } else {
+            setAppError(`El documento quedó emitido, pero no se pudo cerrar la solicitud paga: ${completion.message || 'actualizá su estado desde Certificados y órdenes.'}`)
+          }
+        } catch (completionError) {
+          console.error('No se pudo cerrar la solicitud de documento ya emitido:', completionError)
+          setAppError('El documento quedó emitido, pero no se pudo actualizar el estado de la solicitud. Podés marcarla como emitida desde Certificados y órdenes.')
+        }
+      }
       if (!diagnosisCatalog.some((item) => normalizeSearchText(item) === normalizeSearchText(diagnostico))) {
         persistCustomDiagnosis(diagnostico)
       }
@@ -11566,6 +11645,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           {isVirtualConsultPilot ? (
             <button type="button" title="Consultas virtuales" className={virtualConsultOpen ? 'active' : ''} onClick={() => { setVirtualConsultOpen(true); setSidebarOpen(false) }}>
               <span>💬</span> Consultas virtuales {virtualConsultPending ? <small>{virtualConsultPending}</small> : null}
+            </button>
+          ) : null}
+          {isPaidClinicalDocumentsPilot ? (
+            <button type="button" title="Enlace de pago para certificados y órdenes" className={paidDocumentsPanelOpen ? 'active' : ''}
+              onClick={() => { setPaidDocumentsPanelOpen(true); setSidebarOpen(false) }}>
+              <span>📄</span> Certificados y órdenes
             </button>
           ) : null}
           {isModuleEnabled('appointments') ? (
@@ -17210,6 +17295,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           onRecordInChart={handleRecordVirtualConsult}
           onPendingCountChange={setVirtualConsultPending}
           onSyncLedger={(consults) => { void handleSyncVirtualConsultLedger(consults) }}
+        />
+      ) : null}
+      {paidDocumentsPanelOpen && isPaidClinicalDocumentsPilot ? (
+        <PaidClinicalDocumentsPanel
+          onClose={() => setPaidDocumentsPanelOpen(false)}
+          onStartIssue={handleStartPaidClinicalDocumentIssue}
         />
       ) : null}
       {sofiaOpen ? (
