@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <title>Dr Happy: basta de papeleo, hagamos medicina</title>
+  <defs>
+    <linearGradient id="background" x2="1" y2="1">
+      <stop stop-color="#10263c"/>
+      <stop offset="1" stop-color="#214a61"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#background)"/>
+  <circle cx="1140" cy="50" r="250" fill="#48d5c5" opacity=".06"/>
+  <circle cx="1060" cy="600" r="190" fill="#48d5c5" opacity=".06"/>
+  <rect x="64" y="96" width="340" height="340" rx="82" fill="#fff" opacity=".07"/>
+  <g transform="translate(69 101) scale(3.3)">
+    <rect x="4" y="4" width="92" height="92" rx="27" fill="#17324d"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19 24v31h6c10 0 15-6 15-15.5S35 24 25 24z M45 55V42m0 5c0-4 3-6 6-6" stroke="#fff" stroke-width="3.6"/>
+      <path d="M65 25v30 M81 25v30 M65 40h16" stroke="#48d5c5" stroke-width="4"/>
+      <path d="M34 71q16 13 32 0" stroke="#fff" stroke-width="3.5"/>
+    </g>
+    <circle cx="56" cy="54" r="1.7" fill="#fff"/>
+  </g>
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <text x="460" y="143" fill="#48d5c5" font-size="19" font-weight="600" letter-spacing="2">TU CONSULTORIO, ORGANIZADO</text>
+    <text x="454" y="237" fill="#fff" font-size="84" font-weight="700">Dr Happy</text>
+    <text x="460" y="302" fill="#fff" font-size="38" font-weight="600">Basta de papeleo,</text>
+    <text x="460" y="354" fill="#fff" font-size="38" font-weight="600">hagamos medicina.</text>
+    <text x="460" y="411" fill="#c8dbe6" font-size="24">Historia cl&#237;nica digital, turnos y odontograma.</text>
+    <text x="460" y="448" fill="#c8dbe6" font-size="24">Herramientas para profesionales de la salud.</text>
+    <path d="M72 508h1056" stroke="#80adb9" opacity=".3"/>
+    <text x="76" y="567" fill="#fff" font-size="30" font-weight="600">drhappy.com.ar</text>
+    <text x="1124" y="567" fill="#48d5c5" text-anchor="end" font-size="24">Prob&#225; gratis por 7 d&#237;as</text>
+  </g>
+</svg>

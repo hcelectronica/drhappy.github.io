@@ -55,6 +55,7 @@
     .month-day.day-free { background: #ecfdf5; border-color: #86efac; color: #166534; cursor: pointer; }
     .month-day.day-busy { background: #fef2f2; border-color: #fca5a5; color: #991b1b; cursor: pointer; }
     .month-day.day-closed { background: #f8fafc; color: #94a3b8; }
+    .month-day.day-holiday { background: repeating-linear-gradient(135deg, #fff7ed, #fff7ed 6px, #ffedd5 6px, #ffedd5 12px); border-color: #fdba74; color: #9a3412; cursor: not-allowed; }
     .month-day.empty { border: 0; background: transparent; }
     .first-available { grid-column: 1 / -1; padding: 14px 16px; border: 0; border-radius: 12px; background: #166534; color: white; font-size: .95rem; font-weight: 800; cursor: pointer; }
     .first-available:disabled { background: #cbd5e1; cursor: not-allowed; }
@@ -129,8 +130,10 @@
           <p class="empty" id="selectedText">Elegí un horario disponible.</p>
           <div id="selectedBox" class="selected-box" style="display:none"></div>
           <div id="slotChoices" class="slot-choices"></div>
-          <label for="patientName">Nombre y apellido *</label>
-          <input id="patientName" autocomplete="name" />
+          <label for="patientLastName">Apellido *</label>
+          <input id="patientLastName" autocomplete="family-name" />
+          <label for="patientFirstName">Nombre *</label>
+          <input id="patientFirstName" autocomplete="given-name" />
           <label for="patientDni">DNI *</label>
           <input id="patientDni" inputmode="numeric" />
           <label for="patientPhone">WhatsApp</label>
@@ -150,7 +153,8 @@
     var FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/public-booking';
     var params = new URLSearchParams(window.location.search);
     var slug = params.get('p') || (window.location.hash || '').replace(/^#\/?/, '') || '';
-    var fixedModality = null;
+    var modalityParam = (params.get('m') || '').toLowerCase();
+    var fixedModality = modalityParam === 'gratis' || modalityParam === 'coverage' ? 'coverage' : modalityParam === 'private' ? 'private' : null;
     var cursor = todayISO().slice(0, 7) + '-01';
     var filter = 'all';
     var agenda = null;
@@ -203,9 +207,11 @@
         var date = monthDate.getFullYear() + '-' + String(monthDate.getMonth() + 1).padStart(2, '0') + '-' + String(dayNumber).padStart(2, '0');
         var day = daysByDate[date]; var slots = day ? (day.slots || []).filter(function (slot) { return filter === 'all' || slot.modality === filter; }) : [];
         var available = slots.filter(function (slot) { return slot.available; });
-        var cell = document.createElement('button'); cell.type = 'button'; cell.className = 'month-day ' + (available.length ? 'day-free' : slots.length ? 'day-busy' : 'day-closed');
-        cell.innerHTML = '<strong>' + dayNumber + '</strong><span>' + (available.length ? available.length + ' libres' : slots.length ? 'Ocupado' : 'Sin agenda') + '</span>';
-        cell.disabled = !available.length;
+        var holiday = day && day.holiday ? day.holiday : '';
+        var cell = document.createElement('button'); cell.type = 'button'; cell.className = 'month-day ' + (holiday ? 'day-holiday' : available.length ? 'day-free' : slots.length ? 'day-busy' : 'day-closed');
+        cell.innerHTML = '<strong>' + dayNumber + '</strong><span>' + (holiday ? 'Feriado' : available.length ? available.length + ' libres' : slots.length ? 'Ocupado' : 'Sin agenda') + '</span>';
+        if (holiday) { cell.title = 'Feriado nacional: ' + holiday; }
+        cell.disabled = Boolean(holiday) || !available.length;
         cell.addEventListener('click', function (chosenDate, chosenSlots) { return function () { var first = chosenSlots.filter(function (slot) { return slot.available; })[0]; if (first) { selected = Object.assign({ date: chosenDate }, first); renderSelection(); } }; }(date, slots));
         calendar.appendChild(cell);
       }
@@ -229,9 +235,7 @@
       el('bookingPanel').hidden = false;
     }
 
-    if (fixedModality) {
-      document.querySelectorAll('.chip').forEach(function (button) { button.style.display = 'none'; });
-    }
+    document.querySelectorAll('.chip').forEach(function (button) { button.style.display = 'none'; });
     document.querySelectorAll('.chip').forEach(function (button) {
       button.addEventListener('click', function () {
         filter = button.getAttribute('data-filter');
@@ -244,13 +248,15 @@
     el('nextBtn').addEventListener('click', function () { var d = new Date(Number(cursor.slice(0, 4)), Number(cursor.slice(5, 7)), 1); cursor = d.toISOString().slice(0, 10); loadAgenda(); });
     el('closeBooking').addEventListener('click', function () { el('bookingPanel').hidden = true; });
     el('confirmBtn').addEventListener('click', function () {
-      var patientName = el('patientName').value.trim();
-      var patientDni = el('patientDni').value.trim();
+      var lastName = el('patientLastName').value.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+      var firstName = el('patientFirstName').value.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+      var patientName = lastName && firstName ? lastName + ', ' + firstName : '';
+      var patientDni = el('patientDni').value.replace(/\D/g, '');
       var msg = el('message'); msg.className = 'msg'; msg.textContent = '';
       if (!selected) { msg.className = 'msg err'; msg.textContent = 'Elegí un horario.'; return; }
-      if (!patientName || !patientDni) { msg.className = 'msg err'; msg.textContent = 'Completá nombre y DNI.'; return; }
+      if (!patientName || !patientDni) { msg.className = 'msg err'; msg.textContent = 'Completá apellido, nombre y DNI.'; return; }
       var patientEmail = el('patientEmail').value.trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) { msg.className = 'msg err'; msg.textContent = 'Ingresá un email válido para continuar con el pago.'; return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) { msg.className = 'msg err'; msg.textContent = 'Ingresá un email válido para continuar.'; return; }
       el('confirmBtn').disabled = true;
       el('confirmBtn').textContent = 'Confirmando...';
       callFunction({ action: 'book-public-slot', slug: slug, modality: fixedModality, slotDate: selected.date, slotTime: selected.time, blockId: selected.blockId, patientName: patientName, patientDni: patientDni, patientPhone: el('patientPhone').value.trim(), patientEmail: patientEmail }).then(function (result) {
