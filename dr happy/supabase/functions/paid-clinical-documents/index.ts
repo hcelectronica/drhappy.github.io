@@ -3,8 +3,6 @@ import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 type Entry = Record<string, unknown>
-type ServiceType = 'certificate' | 'study-order'
-
 const PILOT_EMAIL = 'mudimudialan@gmail.com'
 const PUBLIC_SITE = (Deno.env.get('APP_BASE_URL') || 'https://drhappy.com.ar').replace(/\/+$/, '')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -109,16 +107,19 @@ async function ensureSettings(admin: SupabaseClient, professionalId: string, pro
   throw new Error('No se pudo generar el enlace fijo de documentos.')
 }
 
-function publicServices(settings: Entry) {
+function publicService(settings: Entry) {
+  const certificateEnabled = settings.certificate_enabled === true
+  const studyOrderEnabled = settings.study_order_enabled === true
   return {
-    certificate: {
-      enabled: settings.certificate_enabled === true,
-      price: Number(settings.certificate_price || 0),
-    },
-    studyOrder: {
-      enabled: settings.study_order_enabled === true,
-      price: Number(settings.study_order_price || 0),
-    },
+    enabled: certificateEnabled || studyOrderEnabled,
+    price: Number(certificateEnabled || !studyOrderEnabled ? settings.certificate_price || 0 : settings.study_order_price || 0),
+  }
+}
+
+function responseService(service: ReturnType<typeof publicService>) {
+  return {
+    service,
+    services: { certificate: service, studyOrder: service },
   }
 }
 
@@ -147,7 +148,7 @@ Deno.serve(async (request) => {
         const token = String(body.trackingToken ?? '')
         if (!/^[a-f0-9]{64}$/.test(token)) return reply(404, { success: false, message: 'El enlace de seguimiento no es válido.' })
         const { data: item, error } = await admin.from('paid_clinical_document_requests')
-          .select('professional_id, service_type, requested_purpose, status, payment_status, payment_init_point, amount, created_at')
+          .select('professional_id, status, payment_status, payment_init_point, amount, created_at')
           .eq('tracking_token', token)
           .maybeSingle()
         if (error) throw error
@@ -159,8 +160,8 @@ Deno.serve(async (request) => {
             status: item.status,
             paymentStatus: item.payment_status,
             paymentUrl: item.status === 'pending_payment' ? item.payment_init_point || '' : '',
-            serviceType: item.service_type,
-            purpose: item.requested_purpose,
+            serviceType: 'certificate',
+            purpose: 'Evaluación profesional',
             amount: Number(item.amount),
             professionalName: professional?.full_name || 'Profesional',
             createdAt: item.created_at,
@@ -175,8 +176,8 @@ Deno.serve(async (request) => {
       if (!settings || !professional || professional.active === false || !isPilotAccount(professional)) {
         return reply(404, { success: false, message: 'Este enlace de documentos no está disponible.' })
       }
-      const services = publicServices(settings)
-      if (!services.certificate.enabled && !services.studyOrder.enabled) {
+      const service = publicService(settings)
+      if (!service.enabled) {
         return reply(404, { success: false, message: 'El profesional todavía no habilitó solicitudes de documentos.' })
       }
 
@@ -185,16 +186,13 @@ Deno.serve(async (request) => {
         return reply(200, {
           success: true,
           professionalName: professional.full_name || 'Profesional',
-          services,
+          ...responseService(service),
           paymentReady: paymentAccount?.status === 'connected',
         })
       }
 
       if (typeof body.website === 'string' && body.website.trim()) return reply(200, { success: true, ignored: true })
       if (body.consent !== true) return reply(400, { success: false, message: 'Aceptá el uso de tus datos para enviar la solicitud al profesional.' })
-      const serviceType = body.serviceType === 'certificate' || body.serviceType === 'study-order' ? body.serviceType as ServiceType : null
-      if (!serviceType) return reply(400, { success: false, message: 'Elegí el tipo de documento.' })
-      const service = serviceType === 'certificate' ? services.certificate : services.studyOrder
       if (!service.enabled || service.price < 100 || service.price > 1_000_000) return reply(404, { success: false, message: 'Ese servicio no está disponible.' })
       const paymentAccount = await getPaymentAccount(admin, settings.professional_id)
       if (paymentAccount?.status !== 'connected' || !paymentAccount.access_token_encrypted) {
@@ -207,14 +205,12 @@ Deno.serve(async (request) => {
       const patientEmail = plainText(body.patientEmail, 160).toLowerCase()
       const patientPhone = String(body.patientPhone ?? '').replace(/[^\d+]/g, '').slice(0, 30)
       const birthDate = plainText(body.birthDate, 10)
-      const purpose = plainText(body.purpose, 80)
       const reason = multilineText(body.reason, 2000)
       if (!patientFirstName || !patientLastName) return reply(400, { success: false, message: 'Completá tu nombre y apellido.' })
       if (!/^\d{6,9}$/.test(patientDni)) return reply(400, { success: false, message: 'Ingresá un DNI válido (solo números).' })
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) return reply(400, { success: false, message: 'Ingresá un email válido.' })
       if (patientPhone.replace(/\D/g, '').length < 8) return reply(400, { success: false, message: 'Ingresá un teléfono válido.' })
       if (!isValidBirthDate(birthDate)) return reply(400, { success: false, message: 'Ingresá una fecha de nacimiento válida.' })
-      if (!purpose) return reply(400, { success: false, message: 'Elegí qué documento necesitás.' })
       if (reason.length < 5) return reply(400, { success: false, message: 'Contale brevemente al profesional para qué necesitás el documento.' })
 
       const { count: recentCount, error: rateError } = await admin.from('paid_clinical_document_requests')
@@ -231,8 +227,8 @@ Deno.serve(async (request) => {
         id,
         professional_id: settings.professional_id,
         tracking_token: trackingToken,
-        service_type: serviceType,
-        requested_purpose: purpose,
+        service_type: 'certificate',
+        requested_purpose: 'Evaluación profesional',
         patient_first_name: patientFirstName,
         patient_last_name: patientLastName,
         patient_dni: patientDni,
@@ -257,7 +253,7 @@ Deno.serve(async (request) => {
           body: JSON.stringify({
             items: [{
               id,
-              title: serviceType === 'certificate' ? `Emisión de certificado: ${purpose}` : `Orden de estudios: ${purpose}`,
+              title: 'Solicitud de atención profesional',
               quantity: 1,
               currency_id: 'ARS',
               unit_price: amount,
@@ -302,19 +298,23 @@ Deno.serve(async (request) => {
     if (body.action === 'get-settings' || body.action === 'save-settings') {
       let settings = await ensureSettings(admin, professionalId, String(professional.full_name || 'Profesional'))
       if (body.action === 'save-settings') {
-        const certificateEnabled = body.certificateEnabled === true
-        const studyOrderEnabled = body.studyOrderEnabled === true
-        const certificatePrice = Number(body.certificatePrice)
-        const studyOrderPrice = Number(body.studyOrderPrice)
-        if ((certificateEnabled && (!Number.isInteger(certificatePrice) || certificatePrice < 100 || certificatePrice > 1_000_000)) ||
-            (studyOrderEnabled && (!Number.isInteger(studyOrderPrice) || studyOrderPrice < 100 || studyOrderPrice > 1_000_000))) {
-          return reply(400, { success: false, message: 'Cada precio habilitado debe estar entre $100 y $1.000.000.' })
+        const hasUnifiedSettings = Object.prototype.hasOwnProperty.call(body, 'enabled')
+        const legacyCertificateEnabled = body.certificateEnabled === true
+        const legacyStudyOrderEnabled = body.studyOrderEnabled === true
+        const enabled = hasUnifiedSettings ? body.enabled === true : legacyCertificateEnabled || legacyStudyOrderEnabled
+        const price = hasUnifiedSettings
+          ? Number(body.price)
+          : Number(legacyCertificateEnabled ? body.certificatePrice : body.studyOrderPrice)
+        if (enabled && (!Number.isInteger(price) || price < 100 || price > 1_000_000)) {
+          return reply(400, { success: false, message: 'El arancel debe estar entre $100 y $1.000.000.' })
+        }
+        if (!Number.isFinite(price) || price < 0 || price > 1_000_000) {
+          return reply(400, { success: false, message: 'Ingresá un arancel válido.' })
         }
         const { data, error } = await admin.from('paid_clinical_document_settings').update({
-          certificate_enabled: certificateEnabled,
-          certificate_price: certificateEnabled ? certificatePrice : Math.max(0, Math.min(1_000_000, Number.isFinite(certificatePrice) ? certificatePrice : 0)),
-          study_order_enabled: studyOrderEnabled,
-          study_order_price: studyOrderEnabled ? studyOrderPrice : Math.max(0, Math.min(1_000_000, Number.isFinite(studyOrderPrice) ? studyOrderPrice : 0)),
+          certificate_enabled: enabled,
+          certificate_price: price,
+          study_order_enabled: false,
           updated_at: new Date().toISOString(),
         }).eq('professional_id', professionalId)
           .select('professional_id, slug, certificate_enabled, certificate_price, study_order_enabled, study_order_price')
@@ -328,7 +328,7 @@ Deno.serve(async (request) => {
         settings: {
           slug: settings.slug,
           professionalName: professional.full_name || 'Profesional',
-          services: publicServices(settings),
+          ...responseService(publicService(settings)),
           paymentReady: paymentAccount?.status === 'connected',
         },
       })
@@ -336,8 +336,9 @@ Deno.serve(async (request) => {
 
     if (body.action === 'list-requests') {
       const { data, error } = await admin.from('paid_clinical_document_requests')
-        .select('id, service_type, requested_purpose, patient_first_name, patient_last_name, patient_dni, patient_email, patient_phone, patient_birth_date, reason, amount, status, payment_status, paid_at, completed_at, created_at')
+        .select('id, patient_first_name, patient_last_name, patient_dni, patient_email, patient_phone, patient_birth_date, reason, amount, status, payment_status, paid_at, completed_at, created_at')
         .eq('professional_id', professionalId)
+        .in('status', ['pending_review', 'completed'])
         .order('created_at', { ascending: false })
         .limit(100)
       if (error) throw error

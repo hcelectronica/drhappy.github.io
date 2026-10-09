@@ -55,7 +55,7 @@ Deno.serve(async (request) => {
     }
     const { data: clinicalDocument, error: requestError } = await admin
       .from('paid_clinical_document_requests')
-      .select('id, professional_id, amount, patient_first_name, patient_last_name, patient_email, service_type, requested_purpose, status, payment_status, payment_id')
+      .select('id, professional_id, amount, patient_first_name, patient_last_name, patient_dni, patient_email, patient_phone, reason, status, payment_status, payment_id')
       .eq('id', requestId)
       .eq('professional_id', account.professional_id)
       .maybeSingle()
@@ -109,20 +109,26 @@ Deno.serve(async (request) => {
     const profile = (workspace?.profile_json ?? {}) as Record<string, unknown>
     const to = (typeof profile.email === 'string' && profile.email.trim()) || String(professional?.email || '')
     if (to) {
-      const serviceLabel = clinicalDocument.service_type === 'study-order' ? 'orden de estudios' : 'certificado médico'
       const text = [
         `Hola ${professional?.full_name || 'profesional'},`, '',
-        `Recibiste una nueva solicitud paga de ${serviceLabel}.`, '',
+        'Recibiste una nueva solicitud de atención profesional. El paciente ya abonó el arancel del enlace.', '',
         `Paciente: ${clinicalDocument.patient_last_name}, ${clinicalDocument.patient_first_name}`,
-        `Tipo solicitado: ${clinicalDocument.requested_purpose}`,
-        'Ingresá a Dr Happy > Certificados y órdenes para revisar el pago y emitir el documento con tu herramienta habitual.',
+        `DNI: ${clinicalDocument.patient_dni}`,
+        `Email: ${clinicalDocument.patient_email}`,
+        `Teléfono: ${clinicalDocument.patient_phone}`,
+        `Importe abonado: $${Number(clinicalDocument.amount).toLocaleString('es-AR')}`,
+        '',
+        'Motivo de solicitud:',
+        String(clinicalDocument.reason || ''),
+        '',
+        'Ingresá a Dr Happy > Certificados y órdenes para revisar el motivo y resolver qué respuesta o documento corresponde.',
         'https://www.drhappy.com.ar/',
       ].join('\n')
       const escaped = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
       await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, subject: 'Dr Happy - Solicitud paga de certificado u orden', type: 'custom', text, templateData: { message: escaped.replaceAll('\n', '<br>') } }),
+        body: JSON.stringify({ to, subject: 'Dr Happy - Nueva solicitud profesional paga', type: 'custom', text, templateData: { message: escaped.replaceAll('\n', '<br>') } }),
         signal: AbortSignal.timeout(10000),
       }).catch((error) => console.error('[mercadopago-patient-webhook] Aviso de documento no enviado', error))
     }

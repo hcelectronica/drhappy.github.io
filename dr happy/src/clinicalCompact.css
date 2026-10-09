@@ -86,9 +86,10 @@ body.theme-night .clinical-compact .clinical-identity-details > summary { backgr
 .clinical-compact .clinical-field-lock[data-locked=true] label { cursor: pointer; }
 .clinical-compact .clinical-field-lock[data-locked=true] label:has([readonly]) { cursor: default; }
 .clinical-compact .clinical-edit-hint { margin: 0; font-size: .8rem; }
-.clinical-compact .clinical-edit-toast { position: fixed; right: 20px; bottom: 100px; z-index: 220; width: min(380px, calc(100vw - 40px)); box-sizing: border-box; display: grid; gap: 10px; padding: 16px; border: 2px solid #4978a8; border-radius: 12px; background: #fff; color: #17324d; box-shadow: 0 8px 32px #1434514d; }
-body.theme-night .clinical-compact .clinical-edit-toast { background: #1b2c42; color: #f1f5f9; }
-.clinical-compact .clinical-edit-toast small { color: inherit; }
+.clinical-edit-toast-backdrop { position: fixed; inset: 0; z-index: 11000; display: grid; place-items: center; box-sizing: border-box; padding: 20px; background: rgba(15, 23, 42, .42); }
+.clinical-edit-toast { width: min(440px, 100%); box-sizing: border-box; display: grid; gap: 10px; padding: 18px; border: 2px solid #4978a8; border-radius: 14px; background: #fff; color: #17324d; box-shadow: 0 16px 48px #14345166; }
+body.theme-night .clinical-edit-toast { background: #1b2c42; color: #f1f5f9; }
+.clinical-edit-toast small { color: inherit; }
 .clinical-compact .clinical-field-lock { position: relative; }
 .clinical-compact .clinical-checklist-stack { padding-bottom: 48px; }
 .clinical-compact .clinical-checklist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }

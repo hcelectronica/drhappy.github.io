@@ -23,19 +23,14 @@
 .paid-document-public-kicker { display:block; margin-top:22px; color:#0f766e; font-size:.73rem; font-weight:850; letter-spacing:.12em; text-transform:uppercase; }
 .paid-document-public h1 { margin:5px 0 9px; color:#10233a; font-size:clamp(1.5rem,5vw,2rem); line-height:1.18; }
 .paid-document-public-intro { margin:0 0 18px; line-height:1.5; }
+.paid-document-public-fee { margin:0 0 14px; padding:12px 14px; border:1px solid #b8ddd5; border-radius:11px; background:#effaf8; color:#174d47; font-size:.92rem; }
+.paid-document-public-fee strong { font-size:1.05rem; }
 .paid-document-public-form { display:grid; gap:15px; }
 .paid-document-public-form > label,.paid-document-purpose { display:grid; gap:6px; color:#273c55; font-size:.88rem; font-weight:750; }
 .paid-document-public-form input:not([type=checkbox]):not([type=radio]),.paid-document-public-form select,.paid-document-public-form textarea {
   width:100%; min-width:0; box-sizing:border-box; min-height:44px; padding:10px 11px; border:1px solid #cbd7e4; border-radius:9px; background:#fff; color:#14243a; font:inherit; font-weight:450;
 }
 .paid-document-public-form textarea { resize:vertical; }
-.paid-document-type-options { display:grid; gap:8px; margin:0; padding:0; border:0; }
-.paid-document-type-options legend { margin-bottom:7px; color:#273c55; font-size:.9rem; font-weight:800; }
-.paid-document-type-options label { display:flex; align-items:center; gap:10px; padding:11px; border:1px solid #d9e5f0; border-radius:11px; cursor:pointer; }
-.paid-document-type-options label:has(input:checked) { border-color:#0f766e; background:#effaf8; }
-.paid-document-type-options input { width:18px; height:18px; margin:0; accent-color:#0f766e; }
-.paid-document-type-options span { display:flex; flex:1; justify-content:space-between; gap:8px; align-items:center; }
-.paid-document-type-options small { color:#0f766e; font-size:.9rem; font-weight:850; white-space:nowrap; }
 .paid-document-public-two-col { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 .paid-document-public-two-col label { display:grid; gap:6px; min-width:0; color:#273c55; font-size:.85rem; font-weight:750; }
 .paid-document-public-consent { display:flex!important; flex-direction:row; align-items:flex-start; gap:9px!important; color:#5b6b80!important; font-size:.79rem!important; font-weight:500!important; line-height:1.45; }
@@ -47,6 +42,7 @@
 .paid-document-public-terms { margin:-5px 0 0; font-size:.77rem; line-height:1.5; }
 .paid-document-public-error { margin:14px 0 0; padding:10px 12px; border-radius:9px; background:#fff1f0; color:#a5231b; font-size:.85rem; }
 .paid-document-public-status { display:grid; gap:10px; margin-top:16px; padding:16px; border:1px solid #d9e5f0; border-radius:14px; background:#f7fafc; }
+.paid-document-public-status.pending_review { border-color:#b8ddd5; background:#effaf8; }
 .paid-document-public-status p { margin:0; color:#475569; line-height:1.5; }
 .paid-document-public-status-detail { display:flex; justify-content:space-between; align-items:center; gap:10px; padding-top:10px; border-top:1px solid #d9e5f0; font-size:.84rem; }
 .paid-document-public-status-detail strong { color:#0f766e; white-space:nowrap; }

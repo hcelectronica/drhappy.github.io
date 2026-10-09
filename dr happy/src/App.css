@@ -5867,7 +5867,7 @@ body.theme-night .vc-list-question, body.theme-night .vc-hint, body.theme-night 
 .paid-documents-link-card small { color: #64748b; font-size: .76rem; }
 .paid-documents-professional { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
 .paid-documents-content h3, .paid-documents-patient-preview h3 { margin: 2px 0 0; font-size: 1rem; }
-.paid-documents-service-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.paid-documents-service-list { display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; }
 .paid-documents-service { display: grid; align-content: start; gap: 9px; padding: 13px; border: 1px solid #d9e5f0; border-radius: 13px; background: #fff; }
 .paid-documents-switch { display: flex; align-items: flex-start; gap: 8px; font-weight: 800; }
 .paid-documents-switch input { flex: 0 0 18px; width: 18px; height: 18px; margin: 1px 0 0; }
@@ -5911,6 +5911,8 @@ body.theme-night .vc-list-question, body.theme-night .vc-hint, body.theme-night 
 .paid-documents-status.pending_review { background: #e6f6f1; color: #12645b; }
 .paid-documents-status.completed { background: #eaf0ff; color: #304e9b; }
 .paid-documents-request-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.paid-document-request-reason-note { margin: 0 0 12px; padding: 12px 14px; border: 1px solid #b8ddd5; border-radius: 10px; background: #effaf8; color: #174d47; font-size: .86rem; line-height: 1.5; }
+.paid-document-request-reason-note strong { display: block; margin-bottom: 4px; }
 .paid-documents-empty { margin: 0; padding: 18px 10px; border: 1px dashed #cbd5e1; border-radius: 12px; color: #64748b; font-size: .84rem; text-align: center; }
 .paid-documents-clinical-note { margin: 0; color: #52627a; font-size: .8rem; line-height: 1.45; }
 .paid-documents-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
@@ -5919,6 +5921,7 @@ body.theme-night .paid-documents-tabs { border-color: #24395c; }
 body.theme-night .paid-documents-tabs button { color: #a5b4c8; }
 body.theme-night .paid-documents-tabs button.active { color: #77d6ca; }
 body.theme-night .paid-documents-link-card, body.theme-night .paid-documents-service, body.theme-night .paid-documents-patient-preview, body.theme-night .paid-documents-patient-option { background: #0b1830; border-color: #24395c; color: #e2e8f0; }
+body.theme-night .paid-document-request-reason-note { background:#102f31; border-color:#27665c; color:#9de3da; }
 body.theme-night .paid-documents-link-card code { color: #8fe1d6; }
 body.theme-night .paid-documents-link-card small, body.theme-night .paid-documents-service p, body.theme-night .paid-documents-price, body.theme-night .paid-documents-patient-preview > p, body.theme-night .paid-documents-patient-option span, body.theme-night .paid-documents-patient-brand small { color: #a5b4c8; }
 body.theme-night .paid-documents-price input { background: #111f36; border-color: #364b69; color: #e2e8f0; }

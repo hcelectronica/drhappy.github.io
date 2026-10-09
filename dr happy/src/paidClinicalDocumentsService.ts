@@ -1,6 +1,5 @@
 import { isSupabaseConfigured, supabase } from './supabaseClient'
 
-export type PaidClinicalDocumentType = 'certificate' | 'study-order'
 export type PaidClinicalDocumentStatus = 'pending_payment' | 'pending_review' | 'completed' | 'cancelled'
 
 export interface PaidClinicalDocumentServiceOption {
@@ -11,17 +10,12 @@ export interface PaidClinicalDocumentServiceOption {
 export interface PaidClinicalDocumentSettings {
   slug: string
   professionalName: string
-  services: {
-    certificate: PaidClinicalDocumentServiceOption
-    studyOrder: PaidClinicalDocumentServiceOption
-  }
+  service: PaidClinicalDocumentServiceOption
   paymentReady: boolean
 }
 
 export interface PaidClinicalDocumentRequest {
   id: string
-  service_type: PaidClinicalDocumentType
-  requested_purpose: string
   patient_first_name: string
   patient_last_name: string
   patient_dni: string
@@ -43,7 +37,7 @@ interface FunctionResponse {
   settings?: PaidClinicalDocumentSettings
   requests?: PaidClinicalDocumentRequest[]
   professionalName?: string
-  services?: PaidClinicalDocumentSettings['services']
+  service?: PaidClinicalDocumentSettings['service']
   paymentReady?: boolean
   paymentUrl?: string
   trackingToken?: string
@@ -51,8 +45,6 @@ interface FunctionResponse {
     status: PaidClinicalDocumentStatus
     paymentStatus: string
     paymentUrl: string
-    serviceType: PaidClinicalDocumentType
-    purpose: string
     amount: number
     professionalName: string
     createdAt: string
@@ -86,10 +78,8 @@ export function getPaidClinicalDocumentSettings(): Promise<FunctionResponse> {
 }
 
 export function savePaidClinicalDocumentSettings(settings: {
-  certificateEnabled: boolean
-  certificatePrice: number
-  studyOrderEnabled: boolean
-  studyOrderPrice: number
+  enabled: boolean
+  price: number
 }): Promise<FunctionResponse> {
   return invokePaidClinicalDocuments({ action: 'save-settings', ...settings })
 }
@@ -112,8 +102,6 @@ export function getPublicPaidClinicalDocuments(slug: string): Promise<FunctionRe
 
 export function submitPaidClinicalDocumentRequest(input: {
   slug: string
-  serviceType: PaidClinicalDocumentType
-  purpose: string
   patientFirstName: string
   patientLastName: string
   patientDni: string

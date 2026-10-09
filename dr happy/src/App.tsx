@@ -2738,6 +2738,7 @@ function App() {
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false)
   const [certificatePatientId, setCertificatePatientId] = useState<string | null>(null)
   const [paidClinicalDocumentRequestId, setPaidClinicalDocumentRequestId] = useState<string | null>(null)
+  const [paidClinicalDocumentRequestReason, setPaidClinicalDocumentRequestReason] = useState('')
   const [certificateDraft, setCertificateDraft] = useState({ date: '', diagnostico: '', body: '' })
   const [certificateDocumentType, setCertificateDocumentType] = useState<'certificate' | 'study-order'>('certificate')
   const [orderedStudies, setOrderedStudies] = useState<OrderedStudy[]>([])
@@ -9688,6 +9689,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
 
   function handleOpenCertificateModal(patient: PatientRecord): void {
     setPaidClinicalDocumentRequestId(null)
+    setPaidClinicalDocumentRequestReason('')
     setCertificatePatientId(patient.id)
     setCertificateDocumentType('certificate')
     setOrderedStudies([])
@@ -9745,13 +9747,11 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     }
     handleOpenCertificateModal(patient)
     setPaidClinicalDocumentRequestId(request.id)
-    setCertificateDocumentType(request.service_type)
+    setPaidClinicalDocumentRequestReason(request.reason)
     setCertificateDraft({
       date: todayLocalISO(),
-      diagnostico: request.reason,
-      body: request.service_type === 'certificate'
-        ? `Documento solicitado: ${request.requested_purpose}.\n\n${buildCertificateTemplate(patient, request.reason)}`
-        : '',
+      diagnostico: '',
+      body: buildCertificateTemplate(patient, ''),
     })
     setPaidDocumentsPanelOpen(false)
     setWorkspaceLayer('my-patients')
@@ -9886,19 +9886,6 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         consultations: [historyEntry, ...certificatePatient.consultations],
         updatedAt: issuedAt,
       })
-      if (paidClinicalDocumentRequestId) {
-        try {
-          const completion = await completePaidClinicalDocumentRequest(paidClinicalDocumentRequestId)
-          if (completion.success) {
-            setPaidClinicalDocumentRequestId(null)
-          } else {
-            setAppError(`El documento quedó emitido, pero no se pudo cerrar la solicitud paga: ${completion.message || 'actualizá su estado desde Certificados y órdenes.'}`)
-          }
-        } catch (completionError) {
-          console.error('No se pudo cerrar la solicitud de documento ya emitido:', completionError)
-          setAppError('El documento quedó emitido, pero no se pudo actualizar el estado de la solicitud. Podés marcarla como emitida desde Certificados y órdenes.')
-        }
-      }
       if (!diagnosisCatalog.some((item) => normalizeSearchText(item) === normalizeSearchText(diagnostico))) {
         persistCustomDiagnosis(diagnostico)
       }
@@ -9983,6 +9970,20 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       if (!result.success) {
         setCertificateError(result.message || 'No se pudo enviar el documento por email.')
         return
+      }
+      if (paidClinicalDocumentRequestId) {
+        try {
+          const completion = await completePaidClinicalDocumentRequest(paidClinicalDocumentRequestId)
+          if (completion.success) {
+            setPaidClinicalDocumentRequestId(null)
+            setPaidClinicalDocumentRequestReason('')
+          } else {
+            setAppError(`El documento se envió, pero no se pudo cerrar la solicitud paga: ${completion.message || 'actualizá su estado desde Certificados y órdenes.'}`)
+          }
+        } catch (completionError) {
+          console.error('No se pudo cerrar la solicitud cuyo documento ya se envió:', completionError)
+          setAppError('El documento se envió, pero no se pudo actualizar el estado de la solicitud. Podés marcarla como respondida desde Certificados y órdenes.')
+        }
       }
       setCertificateError(null)
       setAppNotice(`Documento enviado a ${to}.`)
@@ -14610,17 +14611,22 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     handleOpenClinicalPage()
                   }}>+ Evolucionar paciente</button>
                 </div>
-                {patientEditPrompt ? <div className="clinical-edit-toast" role="alertdialog" aria-modal="false" aria-labelledby="clinical-edit-question">
-                  <strong id="clinical-edit-question">¿Querés modificar los datos iniciales del paciente?</strong>
-                  <small>Los cambios se aplicarán a la ficha base cuando guardes.</small>
-                  <div className="clinical-inline-actions">
-                    <button type="button" autoFocus onClick={() => {
-                      setPatientFormUnlocked(true); setPatientEditPrompt(false)
-                      requestAnimationFrame(() => patientEditTargetRef.current?.focus())
-                    }}>Sí, modificar</button>
-                    <button type="button" className="ghost" onClick={() => setPatientEditPrompt(false)}>Cancelar</button>
-                  </div>
-                </div> : null}
+                {patientEditPrompt ? createPortal(
+                  <div className="clinical-edit-toast-backdrop">
+                    <div className="clinical-edit-toast" role="alertdialog" aria-modal="true" aria-labelledby="clinical-edit-question">
+                      <strong id="clinical-edit-question">¿Querés modificar los datos iniciales del paciente?</strong>
+                      <small>Los cambios se aplicarán a la ficha base cuando guardes.</small>
+                      <div className="clinical-inline-actions">
+                        <button type="button" autoFocus onClick={() => {
+                          setPatientFormUnlocked(true); setPatientEditPrompt(false)
+                          requestAnimationFrame(() => patientEditTargetRef.current?.focus())
+                        }}>Sí, modificar</button>
+                        <button type="button" className="ghost" onClick={() => setPatientEditPrompt(false)}>Cancelar</button>
+                      </div>
+                    </div>
+                  </div>,
+                  document.body,
+                ) : null}
                 {selectedPatient?.consultations.filter(entry => entry.id.startsWith('initial-')).map(entry => <section key={entry.id} className="patient-form-block first-attention-summary">
                   <h4 className="block-title">Primera atención · {formatDate(entry.date)}</h4>
                   <p style={{ whiteSpace: 'pre-wrap' }}>{entry.enfermedadActual || entry.detalleAtencion}</p>
@@ -17020,6 +17026,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
               <button type="button" className="drhappy-modal-close-btn" onClick={closeCertificateModal} aria-label="Cerrar">✕</button>
             </div>
             <div className="drhappy-modal-body">
+              {paidClinicalDocumentRequestId && paidClinicalDocumentRequestReason ? (
+                <div className="paid-document-request-reason-note">
+                  <strong>Motivo de solicitud informado por el paciente</strong>
+                  {paidClinicalDocumentRequestReason}
+                </div>
+              ) : null}
               {!certificateIssued ? (
                 <div className="certificate-sheet">
                   <div className="certificate-document-type" role="group" aria-label="Tipo de documento">
