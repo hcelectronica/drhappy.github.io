@@ -593,9 +593,9 @@ body.theme-night .plan-chip.danger .plan-chip-copy strong { color: #fca5a5; }
 .patient-directory-info { min-width: 0; display: grid; gap: 3px; }
 .patient-directory-info strong { overflow: hidden; color: #183759; font-size: 0.82rem; text-overflow: ellipsis; white-space: nowrap; }
 .patient-directory-info span, .patient-directory-info small { color: #7187a2; font-size: 0.68rem; }
-.patient-directory-actions { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; }
-.patient-directory-actions button { min-height: 32px; padding: 6px 10px; border-radius: 9px; font-size: 0.72rem; }
-.patient-directory-actions .patient-delete-action { margin-left: auto; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; box-shadow: none; }
+.patient-directory-actions { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; }
+.patient-directory-actions button { width: 100%; min-width: 0; min-height: 38px; padding: 6px 8px; border-radius: 9px; font-size: 0.72rem; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
+.patient-directory-actions .patient-delete-action { grid-column: 1 / -1; justify-self: end; width: auto; margin-left: 0; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; box-shadow: none; }
 .patient-directory-actions .patient-delete-action:hover { background: #dc2626; color: #ffffff; border-color: #dc2626; }
 .patient-last-visit { color: #2563eb; font-weight: 700; }
 .suggestion-last-visit { margin-left: auto; font-style: normal; font-size: 0.74rem; font-weight: 700; color: #2563eb; white-space: nowrap; }
@@ -5476,7 +5476,7 @@ body.theme-night .turnera-card-actions {
   .app-sidebar, .app-sidebar.open {
     transform: translate(-50%, calc(100% + 30px));
     opacity: 0; pointer-events: none;
-    transition: transform 200ms ease, opacity 160ms ease;
+    transition: transform 340ms cubic-bezier(.2, .8, .2, 1), opacity 240ms ease;
   }
   .app-sidebar[data-desktop-visible=true], .app-sidebar:has(:focus-visible) {
     transform: translateX(-50%); opacity: 1; pointer-events: auto;
