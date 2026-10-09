@@ -11713,7 +11713,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       </button>
 
       {/* Solo visible en móvil: reemplaza a la barra lateral como navegación principal. */}
-      <nav className="mobile-tabbar" aria-label="Navegación rápida">
+      <nav className={`mobile-tabbar${isPaidClinicalDocumentsPilot ? ' mobile-tabbar--paid-documents' : ''}`} aria-label="Navegación rápida">
         <button
           type="button"
           className={workspaceLayer === 'overview' ? 'active' : ''}
@@ -11738,6 +11738,17 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         >
           <span aria-hidden="true">👥</span> Pacientes
         </button>
+        {isPaidClinicalDocumentsPilot ? (
+          <button
+            type="button"
+            className="mobile-tab-paid-documents"
+            aria-label="Certificados y órdenes pagas"
+            title="Certificados y órdenes pagas"
+            onClick={() => setPaidDocumentsPanelOpen(true)}
+          >
+            <span aria-hidden="true">📄</span> Docs pago
+          </button>
+        ) : null}
         <button
           type="button"
           className={workspaceLayer === 'profile' ? 'active' : ''}

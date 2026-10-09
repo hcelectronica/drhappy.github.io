@@ -288,6 +288,7 @@ body.theme-night .screen-action.active { background: linear-gradient(135deg, rgb
     box-shadow: 0 -6px 20px rgba(76, 95, 130, 0.12);
     backdrop-filter: blur(14px);
   }
+  .mobile-tabbar--paid-documents { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .mobile-tabbar button {
     display: grid;
     justify-items: center;
@@ -306,6 +307,7 @@ body.theme-night .screen-action.active { background: linear-gradient(135deg, rgb
   .mobile-tabbar button:hover { transform: none; filter: none; box-shadow: none; }
   .mobile-tabbar button span { font-size: 1.15rem; line-height: 1.1; }
   .mobile-tabbar button.active { color: #4d7ad4; }
+  .mobile-tabbar .mobile-tab-paid-documents { color: #0f766e; }
   .mobile-tabbar .mobile-tab-sofia { color: #35507d; }
   .mobile-tabbar .mobile-tab-sofia span {
     width: 46px;
@@ -323,6 +325,7 @@ body.theme-night .screen-action.active { background: linear-gradient(135deg, rgb
 body.theme-night .mobile-tabbar { border-top-color: rgba(96, 116, 152, 0.5); background: rgba(17, 28, 47, 0.97); box-shadow: 0 -6px 20px rgba(3, 10, 22, 0.5); }
 body.theme-night .mobile-tabbar button { color: #9db2d6; }
 body.theme-night .mobile-tabbar button.active { color: #8fb4f5; }
+body.theme-night .mobile-tabbar .mobile-tab-paid-documents { color: #5eead4; }
 
 /* Paywall como oferta, no como error: tarjeta de beneficios con CTA. */
 .premium-prompt-card {
