@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChangeEvent,
-  CSSProperties,
   DragEvent as ReactDragEvent,
   FormEvent,
   ReactNode,
@@ -17,6 +16,8 @@ import { bmiLabel, classifiedBmiLabel, followUpLines, mergeClinicalPathologies, 
 import { allergyDetails, clinicalChecklist, firstAttentionSummary, hasClinicalCondition, setAllergyDetails, toggleClinicalCondition } from './firstAttention'
 import { ClinicalWeightReview } from './ClinicalWeightReview'
 import { useDesktopDock } from './useDesktopDock'
+import { MobileHomeMenu } from './MobileHomeMenu'
+import type { MobileHomeAction } from './MobileHomeMenu'
 import { consultationCorrectionError, correctionSignedContent, consultationRevisionText } from './consultationCorrection'
 import type { ConsultationRevision } from './consultationCorrection'
 import { saveConsultationCorrection } from './consultationCorrectionService'
@@ -11327,15 +11328,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   }
 
   /* En móvil la navegación se resuelve con esta botonera de Inicio en lugar de la barra lateral. */
-  const homeQuickActions: Array<{
-    key: string
-    icon: string
-    label: string
-    hint: string
-    tone: string
-    badge?: number
-    onClick: () => void
-  }> = [
+  const homeQuickActions: MobileHomeAction[] = [
     isModuleEnabled('ambulance') ? {
       key: 'ambulance', icon: '🚑', label: 'Modo Ambulancia', hint: 'Traslados y guardia', tone: '#15945f',
       onClick: handleOpenAmbulance,
@@ -11350,6 +11343,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     } : null,
     isAdminSession ? {
       key: 'video', icon: '📹', label: 'Videoconsulta', hint: 'Consulta con un paciente', tone: '#0f766e',
+      disabled: videoAccessBusy,
       onClick: () => { void handleOpenVideoConsultation() },
     } : null,
     {
@@ -13201,7 +13195,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       ) : null}
 
       {workspaceLayer === 'overview' ? (
-        <div className="screen-stage">
+        <div className="screen-stage home-overview">
           {onboardingDone < onboardingSteps.length && !onboardingDismissed ? (
             <section className="onboarding-card" aria-label="Primeros pasos">
               <div className="onboarding-head">
@@ -13243,25 +13237,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </section>
           ) : null}
 
-          <nav className="home-botonera" aria-label="Accesos rápidos">
-            {homeQuickActions.map((action) => (
-              <button
-                key={action.key}
-                type="button"
-                className={`smart-btn${action.key === 'video' ? ' video-consultation-link' : ''}`}
-                disabled={action.key === 'video' && videoAccessBusy}
-                style={{ '--tone': action.tone } as CSSProperties}
-                onClick={action.onClick}
-              >
-                {action.badge && action.badge > 0 ? <span className="smart-badge">{action.badge}</span> : null}
-                <span className="smart-ico" aria-hidden="true">{action.icon}</span>
-                <span className="smart-txt">
-                  <strong>{action.label}</strong>
-                  <small>{action.hint}</small>
-                </span>
-              </button>
-            ))}
-          </nav>
+          {activeUserId ? <MobileHomeMenu key={activeUserId} userId={activeUserId} actions={homeQuickActions} onError={setAppError} /> : null}
 
         </div>
       ) : null}

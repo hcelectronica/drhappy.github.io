@@ -106,6 +106,12 @@ Se mantiene la compresión de fotos a JPEG (lado máximo de 1800 px) y el límit
 
 Validar con `node --test tests/patient-document-print.test.mjs`, `npm run build` y `node tests/mobile-session.browser.mjs` contra el build servido mediante `TEST_APP_ORIGIN`. `TEST_PATIENT_DOCUMENTS=1` ejecuta solo el recorrido de documentos. La prueba de navegador comprueba la lista móvil, adjuntos anteriores, PDF de dos páginas vertical/horizontal, selección opcional, exportación real de ocho páginas, persistencia de carga y errores sin impresión incompleta.
 
+## Menú de Inicio móvil
+
+La botonera móvil usa tres columnas compactas, con todos los accesos del mismo tamaño y la guía de primeros pasos debajo. Mantener un botón presionado durante 450 ms permite arrastrarlo; los demás accesos se reacomodan. Un desplazamiento de más de 8 px antes de activarse cancela el arrastre para permitir el scroll normal. Soltar guarda el orden por usuario en el almacenamiento local del dispositivo; no se sincroniza con otros teléfonos. Las herramientas ocultas conservan su posición al habilitarse nuevamente, y las nuevas se agregan al final. Un fallo de lectura o guardado muestra una notificación. También se puede ordenar con espacio y las flechas usando un teclado. La navegación de PC y la barra inferior móvil no cambian.
+
+Validar la persistencia y reordenación con `node --test tests/mobile-home-order.test.mjs` y compilar con `npm run build`.
+
 ## Videoconsulta para administradores
 
 La botonera general de Inicio y la navegación lateral de una sesión administrativa ofrecen

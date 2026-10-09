@@ -139,6 +139,7 @@ body.theme-night .sidebar-handle { border-color: rgba(96, 116, 152, 0.55); backg
 /* ── Inicio en móvil: Sofía + botonera reemplazan a la barra lateral ──────── */
 .home-sofia,
 .home-botonera { display: none; }
+.mobile-home-menu { display: none; }
 
 .home-sofia {
   align-items: center;
@@ -225,6 +226,23 @@ body.theme-night .smart-txt small { color: #9db2d6; }
 @media (max-width: 899px) {
   .home-sofia { display: flex; }
   .home-botonera { display: grid; }
+  .home-overview { display: flex; flex-direction: column; }
+  .mobile-home-menu { display: block; order: -1; }
+  .mobile-home-hint { margin: 0 0 8px; color: var(--text-secondary); font-size: .7rem; text-align: center; }
+  .mobile-home-menu .home-botonera { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-bottom: 0; }
+  .mobile-home-menu .smart-btn { min-height: 72px; padding: 6px 4px; flex-direction: column; justify-content: center; gap: 4px; text-align: center; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  .mobile-home-menu .smart-ico { flex: 0 0 27px; width: 27px; height: 27px; border-radius: 8px; font-size: 1rem; }
+  .mobile-home-menu .smart-txt strong { display: block; font-size: .7rem; line-height: 1.15; }
+  .mobile-home-menu .smart-txt small { display: none; }
+  .mobile-home-menu .smart-btn--dragging { z-index: 100; border-color: var(--tone); box-shadow: 0 10px 24px rgba(15, 23, 42, .3); opacity: .9; }
+}
+@media (max-width: 899px) and (max-height: 750px) {
+  .mobile-home-menu .smart-btn { min-height: 58px; gap: 2px; }
+  .mobile-home-menu .smart-ico { flex-basis: 22px; width: 22px; height: 22px; font-size: .9rem; }
+  .mobile-home-menu .home-botonera { gap: 5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-home-menu .smart-btn { transition: none !important; }
 }
 
 /* Botonera de acciones al tope de una pantalla: todo a la vista, sin scroll previo. */
