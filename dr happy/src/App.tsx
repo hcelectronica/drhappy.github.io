@@ -11333,12 +11333,11 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     label: string
     hint: string
     tone: string
-    wide?: boolean
     badge?: number
     onClick: () => void
   }> = [
     isModuleEnabled('ambulance') ? {
-      key: 'ambulance', icon: '🚑', label: 'Modo Ambulancia', hint: 'Traslados y guardia', tone: '#15945f', wide: true,
+      key: 'ambulance', icon: '🚑', label: 'Modo Ambulancia', hint: 'Traslados y guardia', tone: '#15945f',
       onClick: handleOpenAmbulance,
     } : null,
     isModuleEnabled('attention') ? {
@@ -11367,7 +11366,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       onClick: () => setVirtualConsultOpen(true),
     } : null,
     isPaidClinicalDocumentsPilot ? {
-      key: 'paid-documents', icon: '📄', label: 'Certificados y órdenes', hint: 'Enlace y solicitudes pagas', tone: '#0f766e', wide: true,
+      key: 'paid-documents', icon: '📄', label: 'Certificados y órdenes', hint: 'Enlace y solicitudes pagas', tone: '#0f766e',
       onClick: () => setPaidDocumentsPanelOpen(true),
     } : null,
     isModuleEnabled('tools') ? {
@@ -13249,7 +13248,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
               <button
                 key={action.key}
                 type="button"
-                className={`smart-btn${action.wide ? ' wide' : ''}${action.key === 'video' ? ' video-consultation-link' : ''}`}
+                className={`smart-btn${action.key === 'video' ? ' video-consultation-link' : ''}`}
                 disabled={action.key === 'video' && videoAccessBusy}
                 style={{ '--tone': action.tone } as CSSProperties}
                 onClick={action.onClick}
