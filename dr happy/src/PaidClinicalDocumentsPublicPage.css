@@ -23,8 +23,6 @@
 .paid-document-public-kicker { display:block; margin-top:22px; color:#0f766e; font-size:.73rem; font-weight:850; letter-spacing:.12em; text-transform:uppercase; }
 .paid-document-public h1 { margin:5px 0 9px; color:#10233a; font-size:clamp(1.5rem,5vw,2rem); line-height:1.18; }
 .paid-document-public-intro { margin:0 0 18px; line-height:1.5; }
-.paid-document-public-fee { margin:0 0 14px; padding:12px 14px; border:1px solid #b8ddd5; border-radius:11px; background:#effaf8; color:#174d47; font-size:.92rem; }
-.paid-document-public-fee strong { font-size:1.05rem; }
 .paid-document-public-form { display:grid; gap:15px; }
 .paid-document-public-form > label,.paid-document-purpose { display:grid; gap:6px; color:#273c55; font-size:.88rem; font-weight:750; }
 .paid-document-public-form input:not([type=checkbox]):not([type=radio]),.paid-document-public-form select,.paid-document-public-form textarea {
@@ -44,7 +42,5 @@
 .paid-document-public-status { display:grid; gap:10px; margin-top:16px; padding:16px; border:1px solid #d9e5f0; border-radius:14px; background:#f7fafc; }
 .paid-document-public-status.pending_review { border-color:#b8ddd5; background:#effaf8; }
 .paid-document-public-status p { margin:0; color:#475569; line-height:1.5; }
-.paid-document-public-status-detail { display:flex; justify-content:space-between; align-items:center; gap:10px; padding-top:10px; border-top:1px solid #d9e5f0; font-size:.84rem; }
-.paid-document-public-status-detail strong { color:#0f766e; white-space:nowrap; }
 .paid-document-public-footer { margin-top:20px; padding-top:13px; border-top:1px solid #e0e9f2; color:#718096; font-size:.72rem; line-height:1.45; text-align:center; }
 @media(max-width:560px) { .paid-document-public-two-col { grid-template-columns:1fr; } .paid-document-public-card { border-radius:16px; } }

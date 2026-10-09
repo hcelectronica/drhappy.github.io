@@ -23,10 +23,6 @@ function getPublicSlug(): string {
   return pathSlug || new URLSearchParams(window.location.search).get('paid_documents_slug') || ''
 }
 
-function formatPrice(amount: number): string {
-  return `$${amount.toLocaleString('es-AR')}`
-}
-
 export function PaidClinicalDocumentsPublicPage() {
   const slug = getPublicSlug()
   const trackingToken = new URLSearchParams(window.location.search).get('s') || ''
@@ -143,12 +139,8 @@ export function PaidClinicalDocumentsPublicPage() {
                     ? 'El profesional indicó que respondió tu solicitud. Revisá el correo que informaste, incluida la carpeta de correo no deseado.'
                     : 'No se completó el pago, por eso no se envió la solicitud.'}
             </p>
-            <div className="paid-document-public-status-detail">
-              <span>Importe de la solicitud</span>
-              <strong>{formatPrice(status.amount)}</strong>
-            </div>
             {status.status === 'pending_payment' && status.paymentUrl
-              ? <a className="paid-document-public-submit" href={status.paymentUrl}>Continuar al pago</a>
+              ? <a className="paid-document-public-submit" href={status.paymentUrl}>Abrir Mercado Pago y pagar</a>
               : null}
           </section>
         ) : null}
@@ -158,7 +150,6 @@ export function PaidClinicalDocumentsPublicPage() {
             <p className="paid-document-public-intro">
               Profesional: <strong>{settings.professionalName}</strong>. Completá tus datos y contá qué necesitás. El profesional evaluará el motivo y definirá la respuesta o el documento indicado.
             </p>
-            <p className="paid-document-public-fee">Importe único de la solicitud: <strong>{formatPrice(settings.service.price)}</strong></p>
             <form className="paid-document-public-form" onSubmit={(event) => void handleSubmit(event)}>
               <div className="paid-document-public-two-col">
                 <label>Nombre<input autoComplete="given-name" maxLength={80} value={patientFirstName} onChange={(event) => setPatientFirstName(event.target.value)} required /></label>
@@ -177,9 +168,9 @@ export function PaidClinicalDocumentsPublicPage() {
               </label>
               <label className="paid-document-public-honeypot" aria-hidden="true">Sitio web<input tabIndex={-1} autoComplete="off" value={website} onChange={(event) => setWebsite(event.target.value)} /></label>
               <button className="paid-document-public-submit" type="submit" disabled={submitting || !settings.service.enabled || !settings.paymentReady}>
-                {submitting ? 'Enviando solicitud…' : 'Enviar solicitud'}
+                {submitting ? 'Abriendo Mercado Pago…' : 'Continuar a Mercado Pago'}
               </button>
-              <p className="paid-document-public-terms">Al enviar, continuarás a Mercado Pago para abonar el importe único. La solicitud llegará al profesional cuando se confirme el pago; el profesional revisará el motivo y te responderá por correo. No cargues información de urgencia por este medio.</p>
+              <p className="paid-document-public-terms">Al continuar, se abrirá Mercado Pago para completar el pago. El profesional solo recibirá y gestionará tu solicitud cuando el pago se confirme. Si no pagás, no se realizará ninguna gestión. No cargues información de urgencia por este medio.</p>
             </form>
           </>
         ) : null}
