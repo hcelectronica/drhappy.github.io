@@ -43,7 +43,8 @@ import { blobToBase64, buildCertificatePdf, buildQrDataUrl, certificateFileName,
 import { acknowledgePatientInviteSubmissions, buildPatientInviteUrl, getPatientInviteLink, pullPatientInviteSubmissions } from './patientInviteService'
 import { VirtualConsultInbox } from './VirtualConsultInbox'
 import { PaidClinicalDocumentsPanel } from './PaidClinicalDocumentsPanel'
-import { completePaidClinicalDocumentRequest } from './paidClinicalDocumentsService'
+import { completePaidClinicalDocumentRequest, listPaidClinicalDocumentLedgerRequests } from './paidClinicalDocumentsService'
+import { paidDocumentLedgerEntries } from './paidClinicalDocumentLedger'
 import type { PaidClinicalDocumentRequest } from './paidClinicalDocumentsService'
 import { isVirtualConsultPilotEmail, listVirtualConsults } from './virtualConsultService'
 import type { VirtualConsult } from './virtualConsultService'
@@ -583,6 +584,7 @@ interface TreatmentLedgerEntry {
   createdAt: string
   updatedAt: string
   dentalRecordPatientId?: string
+  paidClinicalDocumentRequestId?: string
   dentalTreatmentId?: string
   internalCost?: number
 }
@@ -3192,28 +3194,68 @@ function App() {
   // El Balance de pagos queda disponible para cualquier profesional con acceso premium.
   const canUseTreatmentLedger = hasPremiumTurneraAccess
 
-  const ledgerTotals = useMemo(() => summarizeLedger(treatmentLedger), [treatmentLedger])
-  const ledgerPatientGroups = useMemo(() => groupLedgerByPatient(treatmentLedger), [treatmentLedger])
+  const [paidDocumentPayments, setPaidDocumentPayments] = useState<{ userId: string; requests: PaidClinicalDocumentRequest[] } | null>(null)
+  const [paidDocumentPaymentsLoading, setPaidDocumentPaymentsLoading] = useState(false)
+  const [paidDocumentPaymentsError, setPaidDocumentPaymentsError] = useState<string | null>(null)
+  useEffect(() => {
+    if (!activeUserId || !isPaidClinicalDocumentsPilot || !canUseTreatmentLedger || !isSupabaseConfigured) return
+    let cancelled = false
+    let refreshing = false
+    const refresh = async () => {
+      if (refreshing) return
+      refreshing = true
+      setPaidDocumentPaymentsLoading(true)
+      try {
+        const result = await listPaidClinicalDocumentLedgerRequests()
+        if (!result.success || !result.requests) throw new Error(result.message || 'No se pudieron cargar los pagos.')
+        paidDocumentLedgerEntries(result.requests, [])
+        if (!cancelled) {
+          setPaidDocumentPayments({ userId: activeUserId, requests: result.requests })
+          setPaidDocumentPaymentsError(null)
+        }
+      } catch (error) {
+        console.error('No se pudieron actualizar los pagos de certificados y órdenes:', error)
+        if (!cancelled) setPaidDocumentPaymentsError('No se pudieron actualizar los pagos de certificados y órdenes. El balance puede estar incompleto. Volvé a entrar al Balance para reintentar.')
+      } finally {
+        refreshing = false
+        if (!cancelled) setPaidDocumentPaymentsLoading(false)
+      }
+    }
+    void refresh()
+    const intervalId = window.setInterval(() => { void refresh() }, 60_000)
+    const onFocus = () => { void refresh() }
+    window.addEventListener('focus', onFocus)
+    return () => { cancelled = true; window.clearInterval(intervalId); window.removeEventListener('focus', onFocus) }
+  }, [activeUserId, isPaidClinicalDocumentsPilot, canUseTreatmentLedger, workspaceLayer, turneraViewMode, paidDocumentsPanelOpen])
+
+  const balanceEntries = useMemo<TreatmentLedgerEntry[]>(() => {
+    const payments = paidDocumentPayments?.userId === activeUserId && isPaidClinicalDocumentsPilot && canUseTreatmentLedger
+      ? paidDocumentLedgerEntries(paidDocumentPayments.requests, patients) : []
+    const ids = new Set(payments.map((entry) => entry.id))
+    return [...payments, ...treatmentLedger.filter((entry) => !ids.has(entry.id))]
+  }, [paidDocumentPayments, activeUserId, isPaidClinicalDocumentsPilot, canUseTreatmentLedger, patients, treatmentLedger])
+  const ledgerTotals = useMemo(() => summarizeLedger(balanceEntries), [balanceEntries])
+  const ledgerPatientGroups = useMemo(() => groupLedgerByPatient(balanceEntries), [balanceEntries])
   const visibleLedgerPatients = useMemo(
     () => filterLedgerPatients(ledgerPatientGroups, ledgerFilter, ledgerSearch),
     [ledgerPatientGroups, ledgerFilter, ledgerSearch],
   )
   const financialLedgerEntries = useMemo(
-    () => isDentist ? treatmentLedger.filter((entry) => Boolean(entry.dentalRecordPatientId)) : treatmentLedger,
-    [isDentist, treatmentLedger],
+    () => isDentist ? balanceEntries.filter((entry) => Boolean(entry.dentalRecordPatientId || entry.paidClinicalDocumentRequestId)) : balanceEntries,
+    [isDentist, balanceEntries],
   )
   const financialLedgerTotals = useMemo(() => summarizeLedger(financialLedgerEntries), [financialLedgerEntries])
 
   const ledgerPatientBalances = useMemo(() => {
     const balances = new Map<string, { patientName: string; pending: number }>()
-    for (const entry of treatmentLedger) {
+    for (const entry of balanceEntries) {
       const pending = Math.max(entry.totalAmount - entry.paidAmount, 0)
       const current = balances.get(entry.patientId) ?? { patientName: entry.patientName, pending: 0 }
       current.pending += pending
       balances.set(entry.patientId, current)
     }
     return Array.from(balances.values()).sort((left, right) => right.pending - left.pending)
-  }, [treatmentLedger])
+  }, [balanceEntries])
 
   const pathologyStats = useMemo(() => {
     const counts = new Map<string, number>()
@@ -3230,7 +3272,7 @@ function App() {
 
   const visibleLedgerEntries = useMemo(() => {
     const query = normalizeSearchText(ledgerSearch)
-    return treatmentLedger
+    return balanceEntries
       .filter((entry) => {
         const pending = entry.totalAmount - entry.paidAmount
         if (ledgerFilter === 'debt' && pending <= 0) return false
@@ -3239,7 +3281,7 @@ function App() {
         return normalizeSearchText(`${entry.patientName} ${entry.intervention}`).includes(query)
       })
       .sort((left, right) => right.date.localeCompare(left.date))
-  }, [treatmentLedger, ledgerFilter, ledgerSearch])
+  }, [balanceEntries, ledgerFilter, ledgerSearch])
 
   const ledgerPatientSuggestions = useMemo(() => {
     const query = normalizeSearchText(ledgerPatientQuery)
@@ -11468,10 +11510,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           {pending > 0 ? <button type="button" className="ghost" disabled={ledgerReminderSendingId === entry.id} onClick={() => void handleSendLedgerPaymentReminder(entry.id)}>
             {ledgerReminderSendingId === entry.id ? 'Enviando...' : '📧 Enviar recordatorio de pago'}
           </button> : null}
-          <button type="button" className="ghost" onClick={() => handleOpenLedgerModal(entry)}>
+          {entry.paidClinicalDocumentRequestId ? (
+            <button type="button" className="ghost" onClick={() => setPaidDocumentsPanelOpen(true)}>Ver solicitudes pagas</button>
+          ) : <button type="button" className="ghost" onClick={() => handleOpenLedgerModal(entry)}>
             {entry.dentalRecordPatientId ? 'Abrir ficha dental' : '✏️ Editar'}
-          </button>
-          {!entry.dentalRecordPatientId ? <button type="button" className="ghost" style={{ color: '#c0392b' }} onClick={() => handleDeleteLedgerEntry(entry.id)}>🗑️ Eliminar</button> : null}
+          </button>}
+          {!entry.dentalRecordPatientId && !entry.paidClinicalDocumentRequestId ? <button type="button" className="ghost" style={{ color: '#c0392b' }} onClick={() => handleDeleteLedgerEntry(entry.id)}>🗑️ Eliminar</button> : null}
         </div>
       </article>
     )
@@ -13638,6 +13682,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 </button>
               </div>
 
+              {isPaidClinicalDocumentsPilot && paidDocumentPaymentsLoading ? <p className="flow-hint" role="status">Actualizando pagos de certificados y órdenes…</p> : null}
+              {isPaidClinicalDocumentsPilot && paidDocumentPaymentsError ? <p className="error" role="alert">{paidDocumentPaymentsError}</p> : null}
               <div className="ledger-summary-grid">
                 <div className="ledger-summary-card">
                   <span className="ledger-summary-label">{isDentist ? 'Importe registrado' : 'Facturado'}</span>
@@ -13670,21 +13716,21 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     className={`ghost compact ${ledgerFilter === 'all' ? 'active' : ''}`}
                     onClick={() => setLedgerFilter('all')}
                   >
-                    Todos ({isDentist ? ledgerPatientGroups.length : treatmentLedger.length})
+                    Todos ({isDentist ? ledgerPatientGroups.length : balanceEntries.length})
                   </button>
                   <button
                     type="button"
                     className={`ghost compact ${ledgerFilter === 'debt' ? 'active' : ''}`}
                     onClick={() => setLedgerFilter('debt')}
                   >
-                    Con saldo ({isDentist ? ledgerPatientGroups.filter((group) => group.pending > 0).length : treatmentLedger.filter((e) => e.totalAmount - e.paidAmount > 0).length})
+                    Con saldo ({isDentist ? ledgerPatientGroups.filter((group) => group.pending > 0).length : balanceEntries.filter((e) => e.totalAmount - e.paidAmount > 0).length})
                   </button>
                   <button
                     type="button"
                     className={`ghost compact ${ledgerFilter === 'settled' ? 'active' : ''}`}
                     onClick={() => setLedgerFilter('settled')}
                   >
-                    Saldados ({isDentist ? ledgerPatientGroups.filter((group) => group.pending <= 0).length : treatmentLedger.filter((e) => e.totalAmount - e.paidAmount <= 0).length})
+                    Saldados ({isDentist ? ledgerPatientGroups.filter((group) => group.pending <= 0).length : balanceEntries.filter((e) => e.totalAmount - e.paidAmount <= 0).length})
                   </button>
                 </div>
               </div>
@@ -13692,11 +13738,11 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
               {(isDentist ? visibleLedgerPatients.length : visibleLedgerEntries.length) === 0 ? (
                 <div className="turnera-empty-state">
                   <p>
-                    {treatmentLedger.length === 0
+                    {balanceEntries.length === 0
                       ? 'Todavía no registraste intervenciones. Empezá cargando el primer tratamiento.'
                       : 'No hay registros con los filtros seleccionados.'}
                   </p>
-                  {treatmentLedger.length === 0 ? (
+                  {balanceEntries.length === 0 ? (
                     <button type="button" onClick={() => handleOpenLedgerModal()}>
                       ➕ Registrar la primera intervención
                     </button>

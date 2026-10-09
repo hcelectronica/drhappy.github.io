@@ -88,6 +88,17 @@ export function listPaidClinicalDocumentRequests(): Promise<FunctionResponse> {
   return invokePaidClinicalDocuments({ action: 'list-requests' })
 }
 
+export async function listPaidClinicalDocumentLedgerRequests(): Promise<FunctionResponse> {
+  const requests: PaidClinicalDocumentRequest[] = []
+  for (let offset = 0; ; offset += 100) {
+    const result = await invokePaidClinicalDocuments({ action: 'list-ledger-requests', offset })
+    if (!result.success) return result
+    if (!result.requests) return { success: false, message: 'No se recibieron los pagos de certificados y órdenes.' }
+    requests.push(...result.requests)
+    if (result.requests.length < 100) return { success: true, requests }
+  }
+}
+
 export function completePaidClinicalDocumentRequest(id: string): Promise<FunctionResponse> {
   return invokePaidClinicalDocuments({ action: 'complete-request', id })
 }

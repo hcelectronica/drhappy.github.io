@@ -334,13 +334,17 @@ Deno.serve(async (request) => {
       })
     }
 
-    if (body.action === 'list-requests') {
+    if (body.action === 'list-requests' || body.action === 'list-ledger-requests') {
+      const offset = body.action === 'list-ledger-requests' ? Number(body.offset ?? 0) : 0
+      if (!Number.isSafeInteger(offset) || offset < 0) return reply(400, { success: false, message: 'La página de pagos no es válida.' })
       const { data, error } = await admin.from('paid_clinical_document_requests')
         .select('id, patient_first_name, patient_last_name, patient_dni, patient_email, patient_phone, patient_birth_date, reason, amount, status, payment_status, paid_at, completed_at, created_at')
         .eq('professional_id', professionalId)
         .in('status', ['pending_review', 'completed'])
+        .eq('payment_status', 'approved')
         .order('created_at', { ascending: false })
-        .limit(100)
+        .order('id', { ascending: false })
+        .range(offset, offset + 99)
       if (error) throw error
       return reply(200, { success: true, requests: data ?? [] })
     }
