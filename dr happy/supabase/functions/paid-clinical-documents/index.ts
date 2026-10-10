@@ -1,9 +1,9 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
+import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from '../_shared/medicalToolAccess.ts'
 
 type Entry = Record<string, unknown>
-const PILOT_EMAIL = 'mudimudialan@gmail.com'
 const PUBLIC_SITE = (Deno.env.get('APP_BASE_URL') || 'https://drhappy.com.ar').replace(/\/+$/, '')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -52,16 +52,13 @@ function isValidBirthDate(value: string): boolean {
     date.getUTCFullYear() >= 1900 && date.getTime() <= Date.now()
 }
 
-function isPilotAccount(user: Entry | null | undefined): boolean {
-  return Boolean(user && (
-    String(user.email ?? '').trim().toLowerCase() === PILOT_EMAIL ||
-    String(user.username ?? '').trim().toLowerCase() === 'admin'
-  ))
+function canUsePaidDocuments(user: Entry | null | undefined): boolean {
+  return hasMedicalToolRowAccess(user, ['attention', 'ledger'])
 }
 
 async function getProfessional(admin: SupabaseClient, professionalId: string) {
   const { data, error } = await admin.from('professionals')
-    .select('id, username, email, full_name, active')
+    .select(`${MEDICAL_TOOL_ACCESS_COLUMNS}, username, email, full_name`)
     .eq('id', professionalId)
     .maybeSingle()
   if (error) throw error
@@ -173,7 +170,7 @@ Deno.serve(async (request) => {
       if (!/^[a-z0-9-]{6,80}$/.test(slug)) return reply(404, { success: false, message: 'Este enlace no es válido.' })
       const settings = await getSettingsBySlug(admin, slug)
       const professional = settings ? await getProfessional(admin, settings.professional_id) : null
-      if (!settings || !professional || professional.active === false || !isPilotAccount(professional)) {
+      if (!settings || !professional || professional.active === false || !canUsePaidDocuments(professional)) {
         return reply(404, { success: false, message: 'Este enlace de documentos no está disponible.' })
       }
       const service = publicService(settings)
@@ -291,8 +288,8 @@ Deno.serve(async (request) => {
     const professionalId = await resolveProfessionalId(request, admin)
     if (!professionalId) return reply(401, { success: false, message: 'Volvé a iniciar sesión en Dr Happy.' })
     const professional = await getProfessional(admin, professionalId)
-    if (!professional || professional.active === false || !isPilotAccount(professional)) {
-      return reply(403, { success: false, message: 'Esta herramienta está disponible solo para las cuentas habilitadas en el piloto.' })
+    if (!professional || professional.active === false || !canUsePaidDocuments(professional)) {
+      return reply(403, { success: false, message: 'Esta herramienta requiere acceso médico vigente y los módulos de atención y balance habilitados.' })
     }
 
     if (body.action === 'get-settings' || body.action === 'save-settings') {

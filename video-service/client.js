@@ -943,7 +943,7 @@ async function restoreSession() {
     if (!response.ok) throw new Error(data.error)
     admin = data.admin === true
     if (admin) {
-      status('Sesión administrativa recuperada. Elegí un paciente para crear una videoconsulta.')
+      status('Sesión profesional recuperada. Elegí un paciente para crear una videoconsulta.')
       await loadPatients(handoffPatientId, handoffAppointmentId)
     }
   } catch (error) { status('No se pudo recuperar el acceso. Abrí la videoconsulta otra vez desde Dr Happy o iniciá sesión aquí.'); report(error) }

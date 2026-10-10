@@ -46,7 +46,8 @@ import { PaidClinicalDocumentsPanel } from './PaidClinicalDocumentsPanel'
 import { completePaidClinicalDocumentRequest, listPaidClinicalDocumentLedgerRequests } from './paidClinicalDocumentsService'
 import { paidDocumentLedgerEntries } from './paidClinicalDocumentLedger'
 import type { PaidClinicalDocumentRequest } from './paidClinicalDocumentsService'
-import { isVirtualConsultPilotEmail, listVirtualConsults } from './virtualConsultService'
+import { listVirtualConsults } from './virtualConsultService'
+import { hasMedicalToolAccess } from '../supabase/functions/_shared/medicalToolAccess'
 import type { VirtualConsult } from './virtualConsultService'
 import type { CertificateEntry } from './medicalCertificate'
 import { STUDY_CATALOG, findStudySuggestions, formatOrderedStudy, loadStudyNomenclatorFromJson, studyCodeLabel } from './studyCatalog'
@@ -3005,6 +3006,16 @@ function App() {
   }
 
   // --- Trial / Suscripción ---
+  const [accessClock, setAccessClock] = useState(Date.now)
+  useEffect(() => {
+    const refresh = () => setAccessClock(Date.now())
+    const timer = window.setInterval(refresh, 60_000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
   const trialInfo = useMemo(() => {
     const TRIAL_DAYS = 7
     const user = seedUsers.find((u) => u.id === activeUserId)
@@ -3022,7 +3033,7 @@ function App() {
     }
     if (user.subscriptionStatus === 'active') {
       if (user.subscriptionExpiresAt) {
-        const millisecondsLeft = new Date(user.subscriptionExpiresAt).getTime() - Date.now()
+        const millisecondsLeft = new Date(user.subscriptionExpiresAt).getTime() - accessClock
         const daysLeft = Math.max(0, Math.ceil(millisecondsLeft / DAY_IN_MS))
         const expired = millisecondsLeft <= 0
         return {
@@ -3068,7 +3079,7 @@ function App() {
       }
     }
 
-    const daysPassed = Math.floor((Date.now() - new Date(user.trialStartedAt).getTime()) / DAY_IN_MS)
+    const daysPassed = Math.floor((accessClock - new Date(user.trialStartedAt).getTime()) / DAY_IN_MS)
     const daysLeft = Math.max(0, TRIAL_DAYS - daysPassed)
     const ownPatientCount = patients.filter((p) => p.ownerUserId === activeUserId).length
 
@@ -3085,7 +3096,7 @@ function App() {
       expiredBySubscription: false,
       expired,
     }
-  }, [seedUsers, activeUserId, patients])
+  }, [seedUsers, activeUserId, patients, accessClock])
 
   const activeUser = useMemo(
     () => seedUsers.find((user) => user.id === activeUserId) ?? null,
@@ -3099,12 +3110,12 @@ function App() {
     return () => window.clearInterval(intervalId)
   }, [activeUser, profile])
   const isAdminSession = isAdminUser(activeUser)
-  const isVirtualConsultPilot = isVirtualConsultPilotEmail(activeUser?.email)
-  const isPaidClinicalDocumentsPilot =
-    String(activeUser?.email ?? '').trim().toLowerCase() === 'mudimudialan@gmail.com' ||
-    String(activeUser?.username ?? '').trim().toLowerCase() === 'admin'
+  const medicalToolUser = activeUser ? { ...activeUser, isAdmin: isAdminSession, specialty: activeUser.specialty || profile?.specialty } : null
+  const canUseMedicalTools = hasMedicalToolAccess(medicalToolUser)
+  const canUseVirtualConsult = hasMedicalToolAccess(medicalToolUser, ['attention', 'ledger'])
+  const canUsePaidClinicalDocuments = canUseVirtualConsult
   useEffect(() => {
-    if (!isVirtualConsultPilot || !isSupabaseConfigured) return
+    if (!canUseVirtualConsult || !isSupabaseConfigured) return
     let cancelled = false
     const refresh = () => {
       void listVirtualConsults().then((result) => {
@@ -3114,11 +3125,11 @@ function App() {
     refresh()
     const intervalId = window.setInterval(refresh, 5 * 60_000)
     return () => { cancelled = true; window.clearInterval(intervalId) }
-  }, [isVirtualConsultPilot])
+  }, [canUseVirtualConsult])
   const isDentist = normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('odont')
-  // Acceso a la Turnera Premium (calendario de ocupación + estadísticas): solo suscripción activa,
-  // no incluye usuarios en período de prueba (trial) ni vencidos.
-  const hasPremiumTurneraAccess = Boolean(isAdminSession || activeUser?.subscriptionStatus === 'active')
+  // Los médicos prueban también calendario y estadísticas; odontología conserva su acceso previo.
+  const hasPremiumTurneraAccess = Boolean(isAdminSession || activeUser?.subscriptionStatus === 'active' ||
+    hasMedicalToolAccess(medicalToolUser, ['appointments']))
 
   // Módulos visibles para el usuario activo. El admin siempre los ve todos, y
   // un usuario sin configuración (undefined) también, para no romper cuentas previas.
@@ -3141,6 +3152,7 @@ function App() {
       const configured = activeUser?.enabledModules
       if (professionModules && !professionModules.includes(moduleId)) return false
       if (configured) return configured.includes(moduleId)
+      if (profession.includes('medic') && !profession.includes('odont')) return true
       return !OPT_IN_APP_MODULE_IDS.includes(moduleId)
     },
     [isAdminSession, activeUser, profile, trialInfo],
@@ -3192,13 +3204,15 @@ function App() {
   }, [patients, appointmentPatientQuery])
 
   // El Balance de pagos queda disponible para cualquier profesional con acceso premium.
-  const canUseTreatmentLedger = hasPremiumTurneraAccess
+  const canUseTreatmentLedger = isDentist ? hasPremiumTurneraAccess :
+    hasMedicalToolAccess(medicalToolUser, ['ledger']) ||
+    (hasPremiumTurneraAccess && isModuleEnabled('ledger'))
 
   const [paidDocumentPayments, setPaidDocumentPayments] = useState<{ userId: string; requests: PaidClinicalDocumentRequest[] } | null>(null)
   const [paidDocumentPaymentsLoading, setPaidDocumentPaymentsLoading] = useState(false)
   const [paidDocumentPaymentsError, setPaidDocumentPaymentsError] = useState<string | null>(null)
   useEffect(() => {
-    if (!activeUserId || !isPaidClinicalDocumentsPilot || !canUseTreatmentLedger || !isSupabaseConfigured) return
+    if (!activeUserId || !canUsePaidClinicalDocuments || !canUseTreatmentLedger || !isSupabaseConfigured) return
     let cancelled = false
     let refreshing = false
     const refresh = async () => {
@@ -3226,14 +3240,14 @@ function App() {
     const onFocus = () => { void refresh() }
     window.addEventListener('focus', onFocus)
     return () => { cancelled = true; window.clearInterval(intervalId); window.removeEventListener('focus', onFocus) }
-  }, [activeUserId, isPaidClinicalDocumentsPilot, canUseTreatmentLedger, workspaceLayer, turneraViewMode, paidDocumentsPanelOpen])
+  }, [activeUserId, canUsePaidClinicalDocuments, canUseTreatmentLedger, workspaceLayer, turneraViewMode, paidDocumentsPanelOpen])
 
   const balanceEntries = useMemo<TreatmentLedgerEntry[]>(() => {
-    const payments = paidDocumentPayments?.userId === activeUserId && isPaidClinicalDocumentsPilot && canUseTreatmentLedger
+    const payments = paidDocumentPayments?.userId === activeUserId && canUsePaidClinicalDocuments && canUseTreatmentLedger
       ? paidDocumentLedgerEntries(paidDocumentPayments.requests, patients) : []
     const ids = new Set(payments.map((entry) => entry.id))
     return [...payments, ...treatmentLedger.filter((entry) => !ids.has(entry.id))]
-  }, [paidDocumentPayments, activeUserId, isPaidClinicalDocumentsPilot, canUseTreatmentLedger, patients, treatmentLedger])
+  }, [paidDocumentPayments, activeUserId, canUsePaidClinicalDocuments, canUseTreatmentLedger, patients, treatmentLedger])
   const ledgerTotals = useMemo(() => summarizeLedger(balanceEntries), [balanceEntries])
   const ledgerPatientGroups = useMemo(() => groupLedgerByPatient(balanceEntries), [balanceEntries])
   const visibleLedgerPatients = useMemo(
@@ -4076,7 +4090,7 @@ function App() {
     }
 
     const defaultModules = ALL_APP_MODULE_IDS.filter(
-      (entry) => !OPT_IN_APP_MODULE_IDS.includes(entry),
+      (entry) => entry !== 'community' && (normalizeSearchText(targetUser.specialty).includes('medic') || !OPT_IN_APP_MODULE_IDS.includes(entry)),
     )
     const current = targetUser.enabledModules ?? defaultModules
     const nextModules = current.includes(moduleId)
@@ -7360,6 +7374,19 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     setAppError(null)
   }
 
+  function handleOpenBalance(): void {
+    if (!canUseTreatmentLedger) {
+      setAppError('El Balance no está habilitado para tu cuenta.')
+      return
+    }
+    stopDictation()
+    setCommunityOpen(false)
+    setTurneraViewMode('ledger')
+    setWorkspaceLayer('appointments')
+    setSidebarOpen(false)
+    setAppError(null)
+  }
+
   function saveAppointmentCapacity(nextDays: number[], nextStartTime = appointmentStartTime, nextEndTime = appointmentEndTime, nextDuration = appointmentDurationMinutes): void {
     const normalizedDays = Array.from(new Set(nextDays)).filter((day) => day >= 0 && day <= 6)
     const normalizedLimit = Math.max(1, Math.min(100, calculateDailyCapacity(nextStartTime, nextEndTime, nextDuration)))
@@ -10309,6 +10336,10 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   }
 
   function handleOpenPrescriptionModal(): void {
+    if (!canUseMedicalTools) {
+      setAppError('La emisión de recetas requiere acceso médico vigente y el módulo de atención habilitado.')
+      return
+    }
     if (!selectedPatient) {
       setAppError('Selecciona un paciente para emitir una receta.')
       return
@@ -10369,6 +10400,10 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   }
 
   async function handleSavePrescription(): Promise<void> {
+    if (!canUseMedicalTools) {
+      setAppError('Tu acceso a la emisión de recetas ya no está disponible.')
+      return
+    }
     if (!selectedPatient || !profile || !activeUserId) return
     const validItems = prescriptionItems.filter((item) => item.genericName.trim() && item.presentation.trim())
     if (validItems.length === 0) {
@@ -11383,7 +11418,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       key: 'appointments', icon: '📅', label: 'Turnera', hint: 'Agenda y cupos', tone: '#d97706',
       onClick: handleOpenAppointments,
     } : null,
-    isAdminSession ? {
+    canUseMedicalTools ? {
       key: 'video', icon: '📹', label: 'Videoconsulta', hint: 'Consulta con un paciente', tone: '#0f766e',
       disabled: videoAccessBusy,
       onClick: () => { void handleOpenVideoConsultation() },
@@ -11396,12 +11431,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       key: 'invite', icon: '📨', label: 'Invitar paciente', hint: 'Link de registro', tone: '#0f766e',
       onClick: handleOpenInvitePatient,
     },
-    isVirtualConsultPilot ? {
+    canUseVirtualConsult ? {
       key: 'virtual-consult', icon: '💬', label: 'Consultas virtuales', hint: virtualConsultPending ? `${virtualConsultPending} para revisar` : 'Asistidas por Sofía', tone: '#0d9488',
       badge: virtualConsultPending || undefined,
       onClick: () => setVirtualConsultOpen(true),
     } : null,
-    isPaidClinicalDocumentsPilot ? {
+    canUsePaidClinicalDocuments ? {
       key: 'paid-documents', icon: '📄', label: 'Certificados y órdenes', hint: 'Enlace y solicitudes pagas', tone: '#0f766e',
       onClick: () => setPaidDocumentsPanelOpen(true),
     } : null,
@@ -11411,7 +11446,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     } : null,
     canUseTreatmentLedger ? {
       key: 'ledger', icon: '💰', label: 'Balance', hint: 'Deudas y cobros', tone: '#dc2626',
-      onClick: () => { handleOpenAppointments(); setTurneraViewMode('ledger') },
+      onClick: handleOpenBalance,
     } : null,
     {
       key: 'profile', icon: '👤', label: 'Perfil', hint: 'Firma y ajustes', tone: '#4f46e5',
@@ -11684,12 +11719,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           <button type="button" title="Invitar paciente" className={inviteModalOpen ? 'active' : ''} onClick={handleOpenInvitePatient}>
             <span>📨</span> Invitar paciente
           </button>
-          {isVirtualConsultPilot ? (
+          {canUseVirtualConsult ? (
             <button type="button" title="Consultas virtuales" className={virtualConsultOpen ? 'active' : ''} onClick={() => { setVirtualConsultOpen(true); setSidebarOpen(false) }}>
               <span>💬</span> Consultas virtuales {virtualConsultPending ? <small>{virtualConsultPending}</small> : null}
             </button>
           ) : null}
-          {isPaidClinicalDocumentsPilot ? (
+          {canUsePaidClinicalDocuments ? (
             <button type="button" title="Enlace de pago para certificados y órdenes" className={paidDocumentsPanelOpen ? 'active' : ''}
               onClick={() => { setPaidDocumentsPanelOpen(true); setSidebarOpen(false) }}>
               <span>📄</span> Certificados y órdenes
@@ -11706,7 +11741,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </button>
           ) : null}
           {canUseTreatmentLedger ? (
-            <button type="button" title="Balance de pagos" className={workspaceLayer === 'appointments' && turneraViewMode === 'ledger' ? 'active' : ''} onClick={() => { handleOpenAppointments(); setTurneraViewMode('ledger'); setSidebarOpen(false) }}>
+            <button type="button" title="Balance de pagos" className={workspaceLayer === 'appointments' && turneraViewMode === 'ledger' ? 'active' : ''} onClick={handleOpenBalance}>
               <span>💰</span> Balance de pagos
             </button>
           ) : null}
@@ -11715,7 +11750,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
               <span>⚙️</span> Administrar usuarios
             </button>
           ) : null}
-          {isAdminSession ? (
+          {canUseMedicalTools ? (
             <button
               type="button"
               className="video-consultation-link"
@@ -13386,7 +13421,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           </section>
 
           {/* Todos los accesos de la Turnera juntos y arriba, sin scroll previo. */}
-          <nav className="screen-action-bar appointment-action-bar" aria-label="Acciones de la turnera">
+          {isModuleEnabled('appointments') ? <nav className="screen-action-bar appointment-action-bar" aria-label="Acciones de la turnera">
             <button type="button" className="screen-action primary" onClick={() => handleNewAppointmentModal()}>
               <span aria-hidden="true">➕</span> Nuevo turno
             </button>
@@ -13440,7 +13475,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             >
               <span aria-hidden="true">📊</span> Estadísticas{!hasPremiumTurneraAccess ? ' 🔒' : ''}
             </button>
-            {isModuleEnabled('appointments') ? (
+            {isModuleEnabled('ledger') || canUseTreatmentLedger ? (
               <button
                 type="button"
                 className={`screen-action${turneraViewMode === 'ledger' ? ' active' : ''}${!canUseTreatmentLedger ? ' locked' : ''}`}
@@ -13464,7 +13499,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 <span aria-hidden="true">💰</span> Balance de pagos{!canUseTreatmentLedger ? ' 🔒' : ''}
               </button>
             ) : null}
-          </nav>
+          </nav> : null}
 
           {turneraViewMode === 'capacity' ? <section className="panel appointment-capacity-panel">
             <div>
@@ -13682,8 +13717,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 </button>
               </div>
 
-              {isPaidClinicalDocumentsPilot && paidDocumentPaymentsLoading ? <p className="flow-hint" role="status">Actualizando pagos de certificados y órdenes…</p> : null}
-              {isPaidClinicalDocumentsPilot && paidDocumentPaymentsError ? <p className="error" role="alert">{paidDocumentPaymentsError}</p> : null}
+              {canUsePaidClinicalDocuments && paidDocumentPaymentsLoading ? <p className="flow-hint" role="status">Actualizando pagos de certificados y órdenes…</p> : null}
+              {canUsePaidClinicalDocuments && paidDocumentPaymentsError ? <p className="error" role="alert">{paidDocumentPaymentsError}</p> : null}
               <div className="ledger-summary-grid">
                 <div className="ledger-summary-card">
                   <span className="ledger-summary-label">{isDentist ? 'Importe registrado' : 'Facturado'}</span>
@@ -14173,7 +14208,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       </div>
 
                       <div className="turnera-card-actions">
-                        {isAdminSession && record.patientId && patients.some(patient => patient.id === record.patientId && patient.ownerUserId === activeUserId) ? (
+                        {canUseMedicalTools && record.patientId && patients.some(patient => patient.id === record.patientId && patient.ownerUserId === activeUserId) ? (
                           <button type="button" className="ghost" disabled={videoAccessBusy}
                             onClick={() => { if (record.patientId) void handleOpenVideoConsultation({ patientId: record.patientId, appointmentId: record.id }) }}>
                             📹 Videoconsulta
@@ -14359,7 +14394,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       </div>
                       <div className="patient-directory-actions">
                         <button type="button" onClick={() => handleSelectPatient(patient.id)}>Abrir ficha</button>
-                        {isAdminSession && patient.ownerUserId === activeUserId ? (
+                        {canUseMedicalTools && patient.ownerUserId === activeUserId ? (
                           <button type="button" className="ghost" disabled={videoAccessBusy} onClick={() => { void handleOpenVideoConsultation({ patientId: patient.id }) }}>📹 Videoconsulta</button>
                         ) : null}
                         <button type="button" className="ghost" onClick={() => handleNewAppointmentModal(patient)}>Agendar</button>
@@ -14389,7 +14424,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             if (selectedPatientArchived) { setWorkspaceLayer('my-patients'); setShowPatientArchive(true); return }
             handleStartAttentionFlow()
           }} /><section className="panel">
-            {isAdminSession && selectedPatient.ownerUserId === activeUserId && !selectedPatientArchived ? (
+            {canUseMedicalTools && selectedPatient.ownerUserId === activeUserId && !selectedPatientArchived ? (
               <button type="button" className="ghost" disabled={videoAccessBusy} onClick={() => { void handleOpenVideoConsultation({ patientId: selectedPatient.id, appointmentId: dentalAppointmentId }) }}>📹 Videoconsulta</button>
             ) : null}
             <button type="button" className="ghost certificate-action" disabled={dentalSaving || selectedPatientArchived} onClick={() => handleOpenCertificateModal(selectedPatient)}>📄 Certificado / orden</button>
@@ -14666,7 +14701,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 </section>)}
                 {renderPaperRecords(canManagePaperRecords)}
                 <div className="record-document-actions">
-                  {isAdminSession && selectedPatient?.ownerUserId === activeUserId ? (
+                  {canUseMedicalTools && selectedPatient?.ownerUserId === activeUserId ? (
                     <button type="button" className="ghost" disabled={videoAccessBusy} onClick={() => { void handleOpenVideoConsultation({ patientId: selectedPatient.id }) }}>📹 Videoconsulta</button>
                   ) : null}
                   <button
@@ -14685,7 +14720,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                   >
                     {patientPrintBusy ? 'Preparando resumen...' : 'Imprimir resumen (PDF)'}
                   </button>
-                  {isAdminSession ? (
+                  {canUseMedicalTools ? (
                     <button
                       type="button"
                       className="ghost"
@@ -14714,7 +14749,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     </ul>
                   </section>
                 ) : null}
-                {isAdminSession && selectedPatient?.prescriptions?.length ? (
+                {canUseMedicalTools && selectedPatient?.prescriptions?.length ? (
                   <section className="patient-form-block">
                     <h4 className="block-title">🧾 Recetas emitidas</h4>
                     <ul className="file-list">
@@ -15084,7 +15119,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     onChange={handleProfileFieldChange}
                   />
                 </label>
-                {isAdminSession ? (
+                {canUseMedicalTools ? (
                   <label>
                     Domicilio profesional
                     <input
@@ -17243,7 +17278,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           </div>
         </div>
       ) : null}
-      {prescriptionModalOpen && selectedPatient && isAdminSession ? (
+      {prescriptionModalOpen && selectedPatient && canUseMedicalTools ? (
         <div className="drhappy-modal-overlay" onClick={() => setPrescriptionModalOpen(false)}>
           <div className="drhappy-modal-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="prescription-title">
             <div className="drhappy-modal-header">
@@ -17326,7 +17361,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           busy={subscriptionCheckoutLoading}
         />
       ) : null}
-      {virtualConsultOpen && isVirtualConsultPilot ? (
+      {virtualConsultOpen && canUseVirtualConsult ? (
         <VirtualConsultInbox
           onClose={() => setVirtualConsultOpen(false)}
           onRecordInChart={handleRecordVirtualConsult}
@@ -17334,7 +17369,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           onSyncLedger={(consults) => { void handleSyncVirtualConsultLedger(consults) }}
         />
       ) : null}
-      {paidDocumentsPanelOpen && isPaidClinicalDocumentsPilot ? (
+      {paidDocumentsPanelOpen && canUsePaidClinicalDocuments ? (
         <PaidClinicalDocumentsPanel
           onClose={() => setPaidDocumentsPanelOpen(false)}
           onStartIssue={handleStartPaidClinicalDocumentIssue}

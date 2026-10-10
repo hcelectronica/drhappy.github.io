@@ -80,7 +80,7 @@ export function createVideoServer({
   async function remoteLogin(username, password) {
     const data = await remote('auth-professional', { action: 'login', username, password })
     if (!data.success || typeof data.sessionToken !== 'string') throw fail(503, 'No se recibio una sesion valida.')
-    if (data.professional?.is_admin !== true || data.professional.active === false) throw fail(403, 'La videoconsulta esta habilitada solo para administradores.')
+    await remoteVerify(data.sessionToken)
     return data.sessionToken
   }
   async function remoteVerify(sessionToken) {

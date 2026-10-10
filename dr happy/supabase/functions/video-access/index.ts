@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { corsHeaders } from '../_shared/cors.ts'
+import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from '../_shared/medicalToolAccess.ts'
 
 const reply = (status: number, body: Record<string, unknown>) => new Response(JSON.stringify(body), {
   status,
@@ -19,14 +20,14 @@ serve(async (request) => {
     const id = await resolveProfessionalId(request, admin)
     if (!id) return reply(401, { error: 'La sesion vencio o no es valida. Volve a iniciar sesion.' })
     const { data, error } = await admin.from('professionals')
-      .select('id, is_admin, active').eq('id', id).maybeSingle()
+      .select(MEDICAL_TOOL_ACCESS_COLUMNS).eq('id', id).maybeSingle()
     if (error) throw error
-    if (!data || data.active === false || data.is_admin !== true) {
-      return reply(403, { error: 'La videoconsulta esta habilitada solo para administradores.' })
+    if (!hasMedicalToolRowAccess(data)) {
+      return reply(403, { error: 'La videoconsulta requiere acceso medico vigente y el modulo de atencion habilitado.' })
     }
     return reply(200, { id: data.id })
   } catch (error) {
     console.error('video-access: fallo de validacion', error instanceof Error ? error.message : 'Error de base de datos')
-    return reply(503, { error: 'No se pudo comprobar el permiso administrativo. Reintenta.' })
+    return reply(503, { error: 'No se pudo comprobar el permiso de videoconsulta. Reintenta.' })
   }
 })

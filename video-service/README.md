@@ -23,7 +23,7 @@ tests, archivos .env ni claves privilegiadas.
 - Supabase predeterminado: proyecto Dr Happy stzsobirxdivbgqxwkhc.
 - No requiere variables para la configuracion basica.
 - Las funciones Supabase video-access y video-handoff deben estar desplegadas con verify_jwt=false:
-  la propia funcion valida la sesion profesional y el permiso is_admin.
+  la propia funcion valida la sesion y el acceso medico durante prueba vigente o suscripcion activa, respetando el modulo attention; conserva administradores y excluye odontologia.
 - No copiar SUPABASE_SERVICE_ROLE_KEY al hosting: permanece en Supabase.
 
 PUBLIC_ORIGIN y SUPABASE_URL permiten otros despliegues. PUBLIC_ORIGIN debe
@@ -48,11 +48,11 @@ incluso ante solicitudes simultaneas o respuestas perdidas. Si un envio queda
 sin confirmacion no se reenvia automaticamente: verificar con el paciente
 y usar Copiar/Compartir. La reserva no almacena el enlace ni el email.
 
-1. Administrador: desde la app, tocar Videoconsulta para entrar automaticamente
+1. Profesional habilitado: desde la app, tocar Videoconsulta para entrar automaticamente
    con la cuenta actual, incluso si ingreso con Google. No pide otra contrasena.
    Abrir directamente el subdominio conserva el login con usuario/email y
    contrasena de Dr Happy (no de Hostinger); el login directo no incluye OAuth.
-   Solo cuentas con is_admin=true y activas.
+   Medicos con prueba de 7 dias o suscripcion vigente y attention habilitado, o administradores activos. La politica se revalida en video-access, video-handoff y video-consultations; la migracion 20261010010000_medical_tools_full_access.sql actualiza el pase de un solo uso. El login directo consulta video-access en lugar de decidir por is_admin en Node.
 2. Elegir paciente de la lista propia y, si corresponde, un turno asociado.
    Elegir duracion entera de 1 a 120 minutos (40 por defecto), crear sala y
    copiar invitacion. Crear y Entrar son pasos separados, juntos sobre el video.

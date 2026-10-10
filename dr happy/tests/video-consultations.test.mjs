@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { webcrypto } from 'node:crypto'
+import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from '../supabase/functions/_shared/medicalToolAccess.ts'
 
 async function fixture(options = {}) {
   let callback
@@ -17,7 +18,7 @@ async function fixture(options = {}) {
         insert(value) { inserted = value; return query },
         then(resolve, reject) {
           calls.push({ table, inserted })
-          const data = table === 'professionals' ? { is_admin: !options.nonAdmin, active: !options.inactive }
+          const data = table === 'professionals' ? { is_admin: !options.nonAdmin, active: !options.inactive, ...options.professional }
             : table === 'user_workspaces' ? { patients_json: patients, appointments_json: [{ id: 'a1', patientId: 'p1', scheduledDate: '2026-10-06', scheduledTime: '10:00' }] }
               : table === 'dental_patient_archives' ? (options.archived ? [{ patient_id: 'p1' }] : []) : { id: 'consultation-id' }
           return Promise.resolve({ data, error: options.databaseFailure ? new Error('Unavailable') : null }).then(resolve, reject)
@@ -33,6 +34,7 @@ async function fixture(options = {}) {
     serve: value => { callback = value },
     createClient: () => admin, resolveProfessionalId: async () => options.noSession ? null : 'owner',
     crypto: webcrypto, TextEncoder, corsHeaders: {}, Response, console: { error() {} },
+    hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS,
   })
   return { calls, async request(body) {
     const response = await callback(new Request('https://example.invalid', { method: 'POST', body: JSON.stringify(body) }))
@@ -92,4 +94,14 @@ test('Archived patients cannot be listed or linked to a new consultation', async
   assert.deepEqual(list.data.patients, [])
   assert.deepEqual(list.data.appointments, [])
   assert.equal((await f.request({ action: 'create', patientId: 'p1', durationMinutes: 40 })).status, 403)
+})
+
+test('trial physician can list and create own consultations; dentist and expired physician cannot', async () => {
+  const trial = { is_admin: false, specialty: 'Médico', subscription_status: 'trial', trial_started_at: new Date().toISOString(), enabled_modules_json: ['attention'] }
+  const f = await fixture({ professional: trial })
+  assert.equal((await f.request({ action: 'list' })).status, 200)
+  assert.equal((await f.request({ action: 'create', patientId: 'p1', durationMinutes: 40 })).status, 201)
+  for (const professional of [{ ...trial, specialty: 'Odontólogo' }, { ...trial, subscription_status: 'expired' }, { ...trial, enabled_modules_json: [] }]) {
+    assert.equal((await (await fixture({ professional })).request({ action: 'list' })).status, 403)
+  }
 })

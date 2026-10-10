@@ -249,7 +249,7 @@ export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountCh
       <section ref={panel} tabIndex={-1} className="subscription-account-modal virtual-consult-modal" role="dialog" aria-modal="true" aria-labelledby="virtual-consult-title"
         onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape') onClose() }}>
         <header>
-          <h2 id="virtual-consult-title">💬 Consultas virtuales <small className="vc-pilot">Piloto</small></h2>
+          <h2 id="virtual-consult-title">💬 Consultas virtuales</h2>
           <button type="button" className="ghost" onClick={onClose}>Cerrar</button>
         </header>
         {error ? <p className="error" role="alert">{error}</p> : null}

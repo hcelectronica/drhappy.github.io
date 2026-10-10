@@ -1,10 +1,11 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
+import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from '../_shared/medicalToolAccess.ts'
 import { findRedFlag } from '../_shared/virtualConsultRedFlags.ts'
 import { buildVirtualConsultPdf } from './pdf.ts'
 
-// Consulta virtual asistida (piloto). El paciente paga y envía su consulta por un link público;
+// El paciente paga y envía su consulta por un link público;
 // Sofía prepara un borrador y el profesional revisa, visa y emite la devolución en PDF.
 
 type Entry = Record<string, unknown>
@@ -18,7 +19,6 @@ type VirtualConsultSignatureSeal = {
   algorithm: 'SHA-256'
 }
 
-const PILOT_EMAILS = new Set(['mudimudialan@gmail.com', 'alan.moodie@hotmail.com'])
 const BUCKET = 'virtual-consults'
 const MAX_ATTACHMENTS = 3
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
@@ -123,7 +123,7 @@ function validateBrandingLogo(value: unknown): { logoDataUrl?: string; error?: s
 
 async function professionalInfo(admin: SupabaseClient, professionalId: string) {
   const [{ data: professional, error: professionalError }, { data: workspace, error: workspaceError }] = await Promise.all([
-    admin.from('professionals').select('full_name, specialty, email, active').eq('id', professionalId).maybeSingle(),
+    admin.from('professionals').select(`${MEDICAL_TOOL_ACCESS_COLUMNS}, full_name, email`).eq('id', professionalId).maybeSingle(),
     admin.from('user_workspaces').select('profile_json').eq('user_id', professionalId).maybeSingle(),
   ])
   if (professionalError) throw professionalError
@@ -133,7 +133,7 @@ async function professionalInfo(admin: SupabaseClient, professionalId: string) {
   return {
     exists: Boolean(professional),
     active: professional?.active !== false,
-    pilot: PILOT_EMAILS.has(String(professional?.email ?? '').trim().toLowerCase()),
+    eligible: hasMedicalToolRowAccess(professional, ['attention', 'ledger']),
     name: String(profile.fullName || professional?.full_name || ''),
     specialty: String(profile.specialty || professional?.specialty || ''),
     licenseNumber: String(profile.licenseNumber || ''),
@@ -262,7 +262,7 @@ Deno.serve(async (request) => {
       const { data: settings, error: settingsError } = await admin.from('virtual_consult_settings').select('professional_id, slug, enabled, price').eq('slug', slug).maybeSingle()
       if (settingsError) throw settingsError
       const info = settings ? await professionalInfo(admin, settings.professional_id) : null
-      if (!settings || !info?.exists || !info.active || !info.pilot) return reply(404, { success: false, message: 'Este link de consulta virtual no está disponible.' })
+      if (!settings || !info?.exists || !info.active || !info.eligible) return reply(404, { success: false, message: 'Este link de consulta virtual no está disponible.' })
       if (!settings.enabled) return reply(404, { success: false, message: 'El profesional no está recibiendo consultas virtuales en este momento.' })
       const { data: paymentAccount } = await admin.from('professional_payment_accounts').select('access_token_encrypted, status')
         .eq('professional_id', settings.professional_id).eq('provider', 'mercadopago').maybeSingle()
@@ -416,11 +416,11 @@ Deno.serve(async (request) => {
       })
     }
 
-    // ── Acciones del profesional (piloto) ────────────────────────────────────
+    // ── Acciones del profesional ────────────────────────────────────────────
     const professionalId = await resolveProfessionalId(request, admin)
     if (!professionalId) return reply(401, { success: false, message: 'Volvé a iniciar sesión en Dr Happy.' })
     const info = await professionalInfo(admin, professionalId)
-    if (!info.exists || !info.active || !info.pilot) return reply(403, { success: false, message: 'La consulta virtual asistida está en etapa piloto.' })
+    if (!info.exists || !info.active || !info.eligible) return reply(403, { success: false, message: 'La consulta virtual requiere acceso médico vigente y los módulos de atención y balance habilitados.' })
 
     if (body.action === 'get-settings' || body.action === 'save-settings') {
       let settings = await ensureSettings(admin, professionalId, info.name)

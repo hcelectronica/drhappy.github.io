@@ -60,7 +60,7 @@ export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinic
         setEnabled(settingsResult.settings.service.enabled)
         setRequests(requestsResult.requests ?? [])
       } catch (loadError) {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el piloto.')
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar la herramienta.')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -128,7 +128,7 @@ export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinic
       >
         <header className="drhappy-modal-header">
           <div>
-            <span className="section-kicker">Piloto · enlace y cobro independientes</span>
+            <span className="section-kicker">Enlace y cobro independientes</span>
             <h2 id="paid-documents-title">Solicitudes de certificados y estudios</h2>
           </div>
           <button type="button" className="drhappy-modal-close-btn" onClick={onClose} aria-label="Cerrar">✕</button>

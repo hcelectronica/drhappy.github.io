@@ -1,11 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient'
 
-export const VIRTUAL_CONSULT_PILOT_EMAILS = ['mudimudialan@gmail.com', 'alan.moodie@hotmail.com']
-
-export function isVirtualConsultPilotEmail(email?: string | null): boolean {
-  return VIRTUAL_CONSULT_PILOT_EMAILS.includes(String(email ?? '').trim().toLowerCase())
-}
-
 export type VirtualConsultStatus = 'pending_payment' | 'pending_review' | 'answered' | 'declined' | 'cancelled'
 
 export interface VirtualConsultDraft {

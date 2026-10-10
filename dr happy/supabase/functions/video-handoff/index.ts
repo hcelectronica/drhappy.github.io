@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { createProfessionalSession, resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { corsHeaders } from '../_shared/cors.ts'
+import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from '../_shared/medicalToolAccess.ts'
 
 const reply = (status: number, body: Record<string, unknown>) => new Response(JSON.stringify(body), {
   status,
@@ -28,9 +29,9 @@ serve(async request => {
       if (!session || session.length > 256) return reply(401, { error: 'Volve a iniciar sesion en Dr Happy.' })
       const id = await resolveProfessionalId(request, admin)
       if (!id) return reply(401, { error: 'La sesion de Dr Happy vencio. Volve a iniciar sesion.' })
-      const { data, error } = await admin.from('professionals').select('is_admin, active').eq('id', id).maybeSingle()
+      const { data, error } = await admin.from('professionals').select(MEDICAL_TOOL_ACCESS_COLUMNS).eq('id', id).maybeSingle()
       if (error) throw error
-      if (data?.is_admin !== true || data.active === false) return reply(403, { error: 'La videoconsulta esta habilitada para administradores.' })
+      if (!hasMedicalToolRowAccess(data)) return reply(403, { error: 'La videoconsulta requiere acceso medico vigente y el modulo de atencion habilitado.' })
       const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')
       const { data: issued, error: issueError } = await admin.rpc('issue_video_handoff', {
         p_token_hash: await hash(token), p_source_hash: await hash(session),

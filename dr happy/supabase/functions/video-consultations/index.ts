@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { corsHeaders } from '../_shared/cors.ts'
+import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from '../_shared/medicalToolAccess.ts'
 
 const reply = (status: number, body: Record<string, unknown>) => new Response(JSON.stringify(body), {
   status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
@@ -63,9 +64,9 @@ serve(async request => {
     }
     const id = await resolveProfessionalId(request, admin)
     if (!id) return reply(401, { error: 'Volve a iniciar sesion en Dr Happy.' })
-    const { data: professional, error: professionalError } = await admin.from('professionals').select('is_admin,active').eq('id', id).maybeSingle()
+    const { data: professional, error: professionalError } = await admin.from('professionals').select(MEDICAL_TOOL_ACCESS_COLUMNS).eq('id', id).maybeSingle()
     if (professionalError) throw professionalError
-    if (professional?.is_admin !== true || professional.active === false) return reply(403, { error: 'La videoconsulta esta habilitada para administradores.' })
+    if (!hasMedicalToolRowAccess(professional)) return reply(403, { error: 'La videoconsulta requiere acceso medico vigente y el modulo de atencion habilitado.' })
     if (body.action === 'summarize' || body.action === 'save-summary') {
       const consultationId = typeof body.consultationId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(body.consultationId) ? body.consultationId : null
       if (!consultationId) return reply(400, { error: 'Videoconsulta invalida.' })

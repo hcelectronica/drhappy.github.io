@@ -114,17 +114,23 @@ La botonera móvil usa tres columnas compactas, con todos los accesos del mismo 
 
 Validar la persistencia y reordenación con `node --test tests/mobile-home-order.test.mjs` y compilar con `npm run build`.
 
-## Videoconsulta para administradores
+## Acceso completo de médicos
 
-La botonera general de Inicio y la navegación lateral de una sesión administrativa ofrecen
+Los médicos tienen las herramientas clínicas completas durante los **7 días de prueba** y con suscripción activa no vencida, respetando los módulos habilitados por administración. Esto incluye consultas virtuales, certificados/órdenes pagos, videoconsulta, recetas, calendario, estadísticas y Balance. Atención habilita video/recetas; atención y Balance habilitan los dos enlaces pagos. Una configuración de módulos nula usa los módulos médicos predeterminados, incluido Balance; una lista explícita se respeta. No se otorgan permisos de administración ni se cambian los módulos o condiciones de acceso de odontología/psicología. Se conservan los cupos de Sofía y los requisitos de matrícula, firma, domicilio y conexión a Mercado Pago.
+
+La política compartida `supabase/functions/_shared/medicalToolAccess.ts` controla frontend y funciones Edge; `20261010010000_medical_tools_full_access.sql` aplica la misma política al pase de videoconsulta, incluyendo revalidación al canjearlo, y `20261010020000_preserve_video_administrator_access.sql` conserva el privilegio administrativo previo independientemente de la especialidad. No se reinician pruebas ni se activan suscripciones. Vencidos, cancelados, inactivos o médicos con el módulo requerido deshabilitado no reciben los nuevos accesos. Pruebas: `tests/medical-tool-access.test.mjs`, `tests/medical-tools.edge.test.mjs`, `tests/medical-tool-access.sql` (transacción con rollback) y `tests/video-consultations.test.mjs`.
+
+## Videoconsulta
+
+La botonera general de Inicio y la navegación lateral de una sesión médica habilitada o administrativa ofrecen
 «Videoconsulta», que abre `https://video.drhappy.com.ar/` en otra pestaña
 con acceso automático, sin enviar contraseña ni sesión permanente por URL
 ni compartir acceso al documento original. Se usa un pase aleatorio de un solo
 uso, válido durante 60 segundos, enviado en el fragmento y eliminado al cargar.
-No aparece para profesionales no administradores ni en el inicio público.
+No aparece para odontólogos ni en el inicio público.
 El acceso directo al subdominio conserva el inicio de sesión manual. Ocultar
 el acceso en la app no es el control de seguridad: `video-handoff` valida la
-sesión profesional vigente y el permiso administrativo al emitir y canjear el
+sesión profesional vigente y el permiso médico al emitir y canjear el
 pase, y `video-access` sigue revalidando el permiso en el servidor de video.
 Los ingresos con Google de la app también tienen sesión profesional y pueden
 usar este acceso automático. El navegador debe permitir abrir otra pestaña.
@@ -146,13 +152,13 @@ del opener, ventanas bloqueadas, errores y cambios de cuenta. `TEST_VIDEO_ACCESS
 
 El servicio independiente vive en `../video-service`; su README detalla despliegue,
 pruebas, límites, STUN/TURN y cierre de salas. La sala tiene invitación temporal,
-admisión, audio/video y chat, sin grabación; la transcripción local es opcional y experimental. Se retiraron el cartel y la casilla de prueba técnica; eso no reemplaza las políticas de privacidad ni el consentimiento aplicables a la atención. Mantiene el permiso administrativo y STUN sin TURN: algunas redes pueden impedir conectar.
+admisión, audio/video y chat, sin grabación; la transcripción local es opcional y experimental. Se retiraron el cartel y la casilla de prueba técnica; eso no reemplaza las políticas de privacidad ni el consentimiento aplicables a la atención. Mantiene la validación de acceso profesional y STUN sin TURN: algunas redes pueden impedir conectar.
 
 Validar metadatos con `node --test tests/video-consultations.test.mjs` y `tests/video-consultations.sql` (rollback). `LIVE_VIDEO_CONSULTATIONS_TEST=1 node tests/video-consultations.edge.mjs` comprueba Edge y Node desplegados, paciente/turno propios, admisión y cierre durables, con fixtures sintéticos eliminados en `finally`.
 
-## Consulta virtual asistida (piloto)
+## Consulta virtual asistida
 
-Solo para las cuentas de `VIRTUAL_CONSULT_PILOT_EMAILS` (`src/virtualConsultService.ts` y `PILOT_EMAILS` en la función). El profesional la activa desde **💬 Consultas virtuales**, fija el valor y comparte `https://drhappy.com.ar/consulta/<slug>`.
+Disponible para médicos con acceso vigente y módulos de atención y Balance habilitados, además de administración. El profesional la activa desde **💬 Consultas virtuales**, fija el valor y comparte `https://drhappy.com.ar/consulta/<slug>`.
 
 - `public/consulta/index.html`: formulario público con aviso visible de servicio **pago y no obligatorio**, filtro de señales de alarma (deriva a guardia/107 antes de cobrar), relato clínico con mínimo de 120 caracteres y 20 palabras junto a una guía para aportar contexto, hasta 3 fotos/PDF y pago con Mercado Pago del profesional. Con `?s=<token>` muestra el seguimiento y la descarga del PDF.
 - `supabase/functions/virtual-consultations`: acciones públicas (`get-page`, `submit`, `status`) y del profesional (`get-settings`, `save-settings`, `list`, `attachments`, `response-pdf`, `mark-paid`, `draft`, `publish`, `decline`, `mark-recorded`). El envío también se guarda en `patient_invite_submissions`, por lo que el paciente se incorpora o completa por DNI. `draft` usa un cupo de Sofía; `publish` genera el PDF "Devolución de orientación virtual asistida" con firma gráfica y sello electrónico simple SHA-256, lo adjunta al email y conserva una copia privada accesible desde la bandeja profesional. El documento atribuye la orientación al profesional que la revisa y visa, no a la IA.
@@ -162,9 +168,9 @@ Solo para las cuentas de `VIRTUAL_CONSULT_PILOT_EMAILS` (`src/virtualConsultServ
 
 Desplegar con las migraciones `20261006010000_virtual_consultations.sql`, `20261006020000_virtual_consult_signature_seal.sql` y `20261006030000_virtual_consult_branding.sql`, luego `supabase functions deploy virtual-consultations --no-verify-jwt` (más `mercadopago-patient-webhook`).
 
-## Enlace pago de certificados y órdenes (piloto)
+## Enlace pago de certificados y órdenes
 
-Es una herramienta separada de **Consultas virtuales**, **Invitar paciente** y la emisión gratuita desde la ficha. Solo la ven el perfil `mudimudialan@gmail.com` y el usuario `ADMIN`; el Edge Function aplica la misma allowlist. Cada perfil conserva su propia configuración, enlace fijo `/documentos/<slug>`, un solo arancel para cualquier motivo y su cuenta Mercado Pago conectada. El enlace queda deshabilitado hasta que el profesional configure el importe y lo active.
+Es una herramienta separada de **Consultas virtuales**, **Invitar paciente** y la emisión gratuita desde la ficha. La ven médicos con acceso vigente y módulos de atención y Balance habilitados, además de administración; el Edge Function aplica la misma política. Cada perfil conserva su propia configuración, enlace fijo `/documentos/<slug>`, un solo arancel para cualquier motivo y su cuenta Mercado Pago conectada. El enlace queda deshabilitado hasta que el profesional configure el importe y lo active.
 
 El profesional configura un solo arancel fijo para el enlace. El paciente completa sus datos y el «Motivo de solicitud»; al enviar, el formulario crea el checkout y lo redirige a Mercado Pago. El paciente no elige certificado, apto, constancia ni orden: una vez confirmado el pago, la solicitud aparece en la bandeja y llega un aviso por email al profesional con los datos de contacto y el motivo. El profesional evalúa qué respuesta o documento corresponde y lo prepara, firma y envía con la herramienta habitual. Ningún documento se genera automáticamente y el circuito gratis ni Consulta Virtual asistida cambian.
 
