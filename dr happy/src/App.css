@@ -1967,32 +1967,46 @@ button.ghost {
   bottom: max(14px, env(safe-area-inset-bottom));
   left: 16px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 7px;
   width: fit-content;
   max-width: calc(100vw - 32px);
   margin: 0 auto;
-  padding: 11px 16px;
+  padding: 9px 14px;
   border: 1px solid #cfdef2;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #fff;
   color: #17324d;
   box-shadow: 0 8px 24px rgba(23, 50, 77, 0.18);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 650;
   pointer-events: none;
   animation: login-progress-toast-in 180ms ease-out both;
 }
 
-.login-progress-spinner {
-  flex: 0 0 17px;
-  width: 17px;
-  height: 17px;
-  border: 2px solid #d6e2f1;
-  border-top-color: #4d7ad4;
-  border-radius: 50%;
-  animation: login-progress-spin 700ms linear infinite;
+.login-progress-track {
+  width: 112px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e4ebf4;
+}
+
+.login-progress-fill {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: inherit;
+  background: #4d7ad4;
+  animation: login-progress-sweep 1.2s ease-in-out infinite;
+}
+
+.login-progress-toast.is-complete .login-progress-fill {
+  width: 100%;
+  animation: none;
+  transition: width 180ms ease-out;
 }
 
 @keyframes login-progress-toast-in {
@@ -2000,13 +2014,14 @@ button.ghost {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes login-progress-spin {
-  to { transform: rotate(360deg); }
+@keyframes login-progress-sweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(270%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .login-progress-toast,
-  .login-progress-spinner { animation: none; }
+  .login-progress-fill { animation: none; }
 }
 
 .access-note {

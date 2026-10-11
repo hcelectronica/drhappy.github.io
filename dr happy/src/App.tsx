@@ -2558,7 +2558,7 @@ function App() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showLoginPassword, setShowLoginPassword] = useState(false)
-  const [loginBusy, setLoginBusy] = useState(false)
+  const [loginProgress, setLoginProgress] = useState<'idle' | 'loading' | 'complete'>('idle')
   const [showRegisterPassword, setShowRegisterPassword] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = localStorage.getItem(THEME_MODE_KEY)
@@ -6295,14 +6295,14 @@ function App() {
     event.preventDefault()
     if (loginBusyRef.current) return
     loginBusyRef.current = true
-    setLoginBusy(true)
+    setLoginProgress('loading')
     try {
       await performLogin()
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'No se pudo iniciar sesión.')
     } finally {
       loginBusyRef.current = false
-      setLoginBusy(false)
+      setLoginProgress('idle')
     }
   }
 
@@ -6377,6 +6377,8 @@ function App() {
         localStorage.setItem(SESSION_USER_KEY, user.id)
         await loadWorkspaceForUser(user)
         if (loginAttempt !== loginAttemptRef.current || readProfessionalSession()?.token !== result.sessionToken) return
+        setLoginProgress('complete')
+        await new Promise((resolve) => window.setTimeout(resolve, 240))
         setWorkspaceLayer('overview')
         setSelectedPatientId(null)
       } catch (error) {
@@ -6405,6 +6407,8 @@ function App() {
     try {
       localStorage.setItem(SESSION_USER_KEY, user.id)
       await loadWorkspaceForUser(user)
+      setLoginProgress('complete')
+      await new Promise((resolve) => window.setTimeout(resolve, 240))
       setWorkspaceLayer('overview')
       setSelectedPatientId(null)
       setPassword('')
@@ -10866,7 +10870,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 <input
                   name="username"
                   value={username}
-                  disabled={loginBusy}
+                  disabled={loginProgress !== 'idle'}
                   onChange={(event) => setUsername(event.target.value.toLowerCase())}
                   autoCapitalize="none"
                   autoCorrect="off"
@@ -10881,7 +10885,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     type={showLoginPassword ? 'text' : 'password'}
                     name="password"
                     value={password}
-                    disabled={loginBusy}
+                    disabled={loginProgress !== 'idle'}
                     onChange={(event) => setPassword(event.target.value)}
                     autoComplete="current-password"
                     required
@@ -10898,14 +10902,14 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 </div>
               </label>
               {appNotice ? <p className="notice">{appNotice}</p> : null}
-              <button type="submit" className="auth-signin-btn" disabled={loginBusy} aria-busy={loginBusy}>
-                {loginBusy ? 'Ingresando...' : 'Iniciar sesión'}
+              <button type="submit" className="auth-signin-btn" disabled={loginProgress !== 'idle'} aria-busy={loginProgress !== 'idle'}>
+                {loginProgress !== 'idle' ? 'Ingresando...' : 'Iniciar sesión'}
               </button>
               {isSupabaseConfigured ? (
                 <button
                   type="button"
                   className="google-login-btn"
-                  disabled={loginBusy}
+                  disabled={loginProgress !== 'idle'}
                   aria-label="Iniciar sesión con Google"
                   onClick={() => void handleGoogleLogin()}
                   style={{
@@ -11198,10 +11202,19 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
-        {loginBusy ? (
-          <div className="login-progress-toast" role="status" aria-live="polite">
-            <span className="login-progress-spinner" aria-hidden="true" />
-            Estamos iniciando sesión. Esperá un momento...
+        {loginProgress !== 'idle' ? (
+          <div className={`login-progress-toast${loginProgress === 'complete' ? ' is-complete' : ''}`} role="status" aria-live="polite">
+            <span>Iniciando sesión</span>
+            <div
+              className="login-progress-track"
+              role="progressbar"
+              aria-label="Inicio de sesión"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              {...(loginProgress === 'complete' ? { 'aria-valuenow': 100 } : {})}
+            >
+              <span className="login-progress-fill" />
+            </div>
           </div>
         ) : null}
         {contactModalOpen ? (
@@ -16127,10 +16140,19 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         </div>
       ) : null}
       {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
-      {loginBusy ? (
-        <div className="login-progress-toast" role="status" aria-live="polite">
-          <span className="login-progress-spinner" aria-hidden="true" />
-          Estamos iniciando sesión. Esperá un momento...
+      {loginProgress !== 'idle' ? (
+        <div className={`login-progress-toast${loginProgress === 'complete' ? ' is-complete' : ''}`} role="status" aria-live="polite">
+          <span>Iniciando sesión</span>
+          <div
+            className="login-progress-track"
+            role="progressbar"
+            aria-label="Inicio de sesión"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            {...(loginProgress === 'complete' ? { 'aria-valuenow': 100 } : {})}
+          >
+            <span className="login-progress-fill" />
+          </div>
         </div>
       ) : null}
 
