@@ -1,4 +1,4 @@
-type Service = 'emergency' | 'care' | 'calendar' | 'patients' | 'certificates' | 'invite' | 'protocols' | 'ledger'
+type Service = 'emergency' | 'care' | 'calendar' | 'video' | 'patients' | 'certificates' | 'invite' | 'protocols' | 'ledger'
 
 export function ServiceIllustration({ service }: { service: Service }) {
   return <svg className="auth-promo-service-icon" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -14,6 +14,12 @@ export function ServiceIllustration({ service }: { service: Service }) {
     {service === 'calendar' ? <>
       <rect x="9" y="13" width="46" height="43" rx="6" fill="#fff" />
       <path d="M9 25h46M21 8v11M43 8v11M21 40l7 7 15-15" />
+    </> : null}
+    {service === 'video' ? <>
+      <rect x="6" y="12" width="39" height="34" rx="5" fill="#fff" />
+      <path d="m45 23 13-7v26l-13-7" fill="#fff" />
+      <circle cx="25" cy="25" r="6" />
+      <path d="M14 40a11 11 0 0 1 22 0M16 55h32" />
     </> : null}
     {service === 'patients' ? <>
       <path d="M17 8h23l10 10v38H17z" fill="#fff" /><path d="M40 8v12h10" />

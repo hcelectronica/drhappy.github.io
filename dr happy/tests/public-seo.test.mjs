@@ -8,12 +8,14 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', process.env.
 const publicRoot = process.env.SEO_BUILD_DIR ? root : join(root, 'public')
 const home = readFileSync(join(root, 'index.html'), 'utf8')
 const privacy = readFileSync(join(publicRoot, 'privacidad.html'), 'utf8')
+const accountDeletion = readFileSync(join(publicRoot, 'eliminacion-cuenta.html'), 'utf8')
 const sitemap = readFileSync(join(publicRoot, 'sitemap.xml'), 'utf8')
 
 test('public pages declare the canonical URLs listed in the sitemap', () => {
   const pages = [
     [home, 'https://www.drhappy.com.ar/'],
     [privacy, 'https://www.drhappy.com.ar/privacidad.html'],
+    [accountDeletion, 'https://www.drhappy.com.ar/eliminacion-cuenta.html'],
   ]
   const locations = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(match => match[1])
   assert.deepEqual(locations, pages.map(([, url]) => url))
@@ -56,7 +58,7 @@ test('structured identity describes a website and application, not a medical pra
 })
 
 test('public favicons use a stable PNG URL and declared square dimensions', () => {
-  for (const html of [home, privacy]) {
+  for (const html of [home, privacy, accountDeletion]) {
     const icon = html.match(/<link rel="icon"[^>]+>/)?.[0]
     assert(icon)
     assert(icon.includes('type="image/png"'))

@@ -773,6 +773,7 @@ body.theme-night .analytics-row .analytics-paid { color: #98edc9; }
 .auth-promo-tool-art--dental { position: relative; --promo-art-bg: #e7f8ef; --promo-art-ink: #17553d; --promo-art-accent: #177463; padding-right: 88px; }
 .auth-promo-dental-icon { position: absolute; right: 12px; top: 50%; width: 64px; height: 64px; transform: translateY(-50%); color: #177463; }
 .auth-promo-tool-art--calendar { --promo-art-bg: #fff1d8; --promo-art-ink: #633e13; --promo-art-accent: #ae6100; background-image: linear-gradient(110deg, transparent 65%, rgba(174, 97, 0, .1) 65%); }
+.auth-promo-tool-art--video { --promo-art-bg: #e7eaff; --promo-art-ink: #252d69; --promo-art-accent: #4f46e5; background-image: linear-gradient(110deg, transparent 65%, rgba(79, 70, 229, .11) 65%); }
 .auth-promo-tool-art--patients { --promo-art-bg: #e0f5f6; --promo-art-ink: #14525b; --promo-art-accent: #087f91; background-image: linear-gradient(110deg, transparent 65%, rgba(8, 127, 145, .1) 65%); }
 .auth-promo-tool-art--certificates { --promo-art-bg: #e9edff; --promo-art-ink: #293b78; --promo-art-accent: #4659b5; background-image: linear-gradient(110deg, transparent 65%, rgba(70, 89, 181, .1) 65%); }
 .auth-promo-tool-art--invite { --promo-art-bg: #e7f8ef; --promo-art-ink: #17553d; --promo-art-accent: #16805b; background-image: linear-gradient(110deg, transparent 65%, rgba(22, 128, 91, .1) 65%); }
@@ -851,6 +852,7 @@ body.theme-night .auth-promo-tool-art { --promo-art-ink: #eef4fc; }
 body.theme-night .auth-promo-tool-art--emergency { --promo-art-bg: #173d33; --promo-art-accent: #6ee7b7; }
 body.theme-night .auth-promo-tool-art--care { --promo-art-bg: #1b3358; --promo-art-accent: #93c5fd; }
 body.theme-night .auth-promo-tool-art--calendar { --promo-art-bg: #43311a; --promo-art-accent: #fcd34d; }
+body.theme-night .auth-promo-tool-art--video { --promo-art-bg: #292c57; --promo-art-accent: #a5b4fc; }
 body.theme-night .auth-promo-tool-art--patients { --promo-art-bg: #143f47; --promo-art-accent: #67e8f9; }
 body.theme-night .auth-promo-tool-art--certificates { --promo-art-bg: #252f57; --promo-art-accent: #a5b4fc; }
 body.theme-night .auth-promo-tool-art--invite { --promo-art-bg: #173e32; --promo-art-accent: #6ee7b7; }
@@ -5688,6 +5690,20 @@ body.theme-night .turnera-card-actions {
   .medical-news-strip button { font-size: 0.65rem; }
   .app-sidebar { inset: 10px auto 10px 10px; width: min(284px, calc(100vw - 20px)); }
   .layer-header { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 520px) {
+  .topbar { flex-wrap: wrap; }
+  .brand-block.compact { flex: 1 1 100%; }
+  .topbar-actions { flex: 1 1 100%; width: 100%; justify-content: flex-start; }
+  .topbar-actions > span.subscription-status {
+    flex: 1 1 100%;
+    box-sizing: border-box;
+    min-width: 0;
+    justify-content: space-between;
+    white-space: normal;
+  }
+  .plan-chip-copy { min-width: 0; }
+  .plan-chip-copy small { overflow-wrap: anywhere; }
   .layer-header > * { width: 100%; }
   .layer-header:not(.clinical-toolbar) { padding: 10px 12px; }
   .layer-header:not(.clinical-toolbar) > button { width: auto; align-self: flex-end; }

@@ -565,16 +565,18 @@ La app ya puede iniciar el checkout mensual desde el botón **Suscribirme** si d
 
 ```bash
 MP_ACCESS_TOKEN=tu_access_token_de_mercadopago
-APP_BASE_URL=https://hcelectronica.github.io/drhappy.github.io/
-MP_BACK_URL_SUCCESS=https://hcelectronica.github.io/drhappy.github.io/
-MP_BACK_URL_PENDING=https://hcelectronica.github.io/drhappy.github.io/
-MP_BACK_URL_FAILURE=https://hcelectronica.github.io/drhappy.github.io/
+APP_BASE_URL=https://www.drhappy.com.ar/
+MP_BACK_URL_SUCCESS=https://www.drhappy.com.ar/
+MP_BACK_URL_PENDING=https://www.drhappy.com.ar/
+MP_BACK_URL_FAILURE=https://www.drhappy.com.ar/
 MP_MONTHLY_PRICE_ARS=15000
 MP_SEMIANNUAL_PRICE_ARS=78000
 MP_ANNUAL_PRICE_ARS=120000
 ```
 
 ### Deploy de Edge Functions
+
+Aplicá primero la migración `20261011010000_admin_subscription_payment_email.sql` para habilitar el registro del envío y sus reintentos. El webhook guarda cada pago aprobado en `subscription_payments` antes de intentar enviar el aviso al administrador. Si el correo falla, conserva el error, libera el reclamo y devuelve un error HTTP para permitir el reintento de Mercado Pago.
 
 Desde la carpeta del proyecto:
 

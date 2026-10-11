@@ -10666,6 +10666,14 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 <strong>Turnera</strong>
                 <small>Turnera inteligente con recordatorios de turnos para ayudar a reducir ausencias.</small>
               </article>
+              <article className="flyer-tool auth-promo-tool auth-promo-tool--violet">
+                <div className="auth-promo-tool-art auth-promo-tool-art--video" aria-hidden="true">
+                  <ServiceIllustration service="video" />
+                  <span>ATENCIÓN A DISTANCIA</span><strong>VIDEOCONSULTA<br />PROFESIONAL</strong><small>Acceso seguro desde la ficha o el turno</small>
+                </div>
+                <strong>Videoconsulta</strong>
+                <small>Iniciá una consulta por video desde la ficha del paciente o el turno, con un acceso temporal y protegido.</small>
+              </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--green">
                 <div className="auth-promo-tool-art auth-promo-tool-art--emergency" aria-hidden="true">
                   <ServiceIllustration service="emergency" />

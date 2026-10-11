@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { notifyAdminSubscriptionPayment, type SubscriptionPaymentPlan } from '../_shared/adminSubscriptionPaymentEmail.ts'
 
 type PaymentDetails = {
   status?: string
@@ -8,9 +9,10 @@ type PaymentDetails = {
   date_approved?: string
   transaction_amount?: number
   currency_id?: string
+  payment_method_id?: string
   metadata?: {
     user_id?: string
-    plan?: 'monthly' | 'semiannual' | 'annual'
+    plan?: SubscriptionPaymentPlan
   }
 }
 
@@ -104,11 +106,84 @@ serve(async (request) => {
     return jsonResponse(500, { message: `No se pudo aplicar el pago: ${error.message}` })
   }
 
+  const { data: noticeState, error: noticeStateError } = await adminClient
+    .from('subscription_payments')
+    .select('admin_notice_sent_at')
+    .eq('payment_id', paymentId)
+    .single()
+  if (noticeStateError || !noticeState) {
+    return jsonResponse(500, { message: `No se pudo consultar el estado del aviso de pago: ${noticeStateError?.message || 'No se encontró el pago registrado.'}` })
+  }
+
+  if (!noticeState.admin_notice_sent_at) {
+    const { data: claimed, error: claimError } = await adminClient.rpc('claim_subscription_payment_notice', {
+      p_payment_id: paymentId,
+    })
+    if (claimError) {
+      return jsonResponse(500, { message: `No se pudo reservar el aviso de pago: ${claimError.message}` })
+    }
+    if (!claimed) {
+      return jsonResponse(503, { message: 'El aviso de este pago está en proceso; Mercado Pago puede reintentarlo.' })
+    }
+
+    let noticeError: string | null = null
+    let professional: { full_name: string; username: string; email: string } | null = null
+    const { data: professionalData, error: professionalError } = await adminClient
+      .from('professionals')
+      .select('full_name, username, email')
+      .eq('id', userId)
+      .single()
+    if (professionalError || !professionalData) {
+      noticeError = `No se pudieron consultar los datos del profesional: ${professionalError?.message || 'Cuenta no encontrada.'}`
+    } else {
+      professional = professionalData
+      try {
+        await notifyAdminSubscriptionPayment(supabaseUrl, serviceRoleKey, {
+          paymentId,
+          professionalId: userId,
+          professionalName: professional.full_name,
+          professionalUsername: professional.username,
+          professionalEmail: professional.email,
+          plan,
+          amount: paymentJson.transaction_amount,
+          approvedAt,
+          expiresAt: applied.expiresAt,
+          paymentMethod: paymentJson.payment_method_id,
+        })
+      } catch (error) {
+        noticeError = error instanceof Error ? error.message : String(error)
+      }
+    }
+
+    const { data: noticeCompleted, error: noticeCompletionError } = await adminClient.rpc('complete_subscription_payment_notice', {
+      p_payment_id: paymentId,
+      p_succeeded: noticeError === null,
+      p_error: noticeError,
+    })
+    if (noticeCompletionError || !noticeCompleted) {
+      console.error('[mercadopago-webhook] No se pudo cerrar el estado del aviso de pago.', {
+        paymentId,
+        professionalId: userId,
+        message: noticeCompletionError?.message || 'No se confirmó el cierre del aviso.',
+      })
+      return jsonResponse(500, { message: 'El pago quedó registrado, pero no se pudo confirmar el aviso administrativo.' })
+    }
+    if (noticeError) {
+      console.error('[mercadopago-webhook] No se pudo enviar el aviso de pago; se permite el reintento.', {
+        paymentId,
+        professionalId: userId,
+        message: noticeError,
+      })
+      return jsonResponse(502, { message: 'El pago quedó registrado, pero no se pudo enviar el aviso administrativo.' })
+    }
+  }
+
   return jsonResponse(200, {
     received: true,
     userId,
     plan,
     subscriptionExpiresAt: applied.expiresAt,
     applied: applied.applied,
+    adminNotified: true,
   })
 })
