@@ -10,6 +10,10 @@ Web app base en React + TypeScript para:
 
 ## Ficha clínica y seguimiento
 
+### Barra inferior y zona segura de Android
+
+`index.html` debe conservar el viewport estándar, sin `viewport-fit=cover`: la barra inferior fija ya considera las zonas seguras, y extender la página hasta el borde puede hacer que el menú quede desplazado sobre la navegación del sistema. Tras publicar cambios del viewport, comprobar el HTML servido por Hostinger y abrir la app Android instalada; no alcanza con validar el navegador de escritorio.
+
 Los encabezados de navegación (Balance, Turnera, Mis pacientes, Herramientas y páginas relacionadas) usan márgenes y espaciado compactos, sin alterar las barras clínicas. El Balance presenta un solo título principal, sus cuatro totales en dos columnas en móvil y cuatro en escritorio, con importes completos que pueden ocupar varias líneas. Las seis acciones de Turnera conservan todos sus accesos en una grilla de dos columnas en móvil; los controles mantienen una altura táctil mínima de 44 px.
 
 La ficha médica admite peso inicial (kg), talla (cm), tensión arterial inicial (sistólica/diastólica en mmHg) y medicación habitual; todos son opcionales. Peso y talla aceptan coma o punto decimal, pero no cero, valores negativos ni texto. La fecha del peso se registra automáticamente al crear una ficha nueva y no tiene un campo visible. Al editar una ficha previa se conserva su fecha conocida; los pesos antiguos sin fecha siguen sin fecha. Para nuevas mediciones se utiliza la evolución, sin modificar la fecha original.

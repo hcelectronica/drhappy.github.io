@@ -2558,6 +2558,7 @@ function App() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showLoginPassword, setShowLoginPassword] = useState(false)
+  const [loginBusy, setLoginBusy] = useState(false)
   const [showRegisterPassword, setShowRegisterPassword] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = localStorage.getItem(THEME_MODE_KEY)
@@ -2594,6 +2595,7 @@ function App() {
   const sessionGenerationRef = useRef(0)
   const googleLoginBusyRef = useRef(false)
   const loginAttemptRef = useRef(0)
+  const loginBusyRef = useRef(false)
   const workspaceSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
   const [googleIdentity, setGoogleIdentity] = useState<{
     email: string
@@ -6291,6 +6293,20 @@ function App() {
 
   async function handleLogin(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
+    if (loginBusyRef.current) return
+    loginBusyRef.current = true
+    setLoginBusy(true)
+    try {
+      await performLogin()
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'No se pudo iniciar sesión.')
+    } finally {
+      loginBusyRef.current = false
+      setLoginBusy(false)
+    }
+  }
+
+  async function performLogin(): Promise<void> {
     setAuthError(null)
     setAppNotice(null)
     const loginAttempt = ++loginAttemptRef.current
@@ -10850,6 +10866,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 <input
                   name="username"
                   value={username}
+                  disabled={loginBusy}
                   onChange={(event) => setUsername(event.target.value.toLowerCase())}
                   autoCapitalize="none"
                   autoCorrect="off"
@@ -10864,6 +10881,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     type={showLoginPassword ? 'text' : 'password'}
                     name="password"
                     value={password}
+                    disabled={loginBusy}
                     onChange={(event) => setPassword(event.target.value)}
                     autoComplete="current-password"
                     required
@@ -10880,11 +10898,14 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 </div>
               </label>
               {appNotice ? <p className="notice">{appNotice}</p> : null}
-              <button type="submit" className="auth-signin-btn">Iniciar sesión</button>
+              <button type="submit" className="auth-signin-btn" disabled={loginBusy} aria-busy={loginBusy}>
+                {loginBusy ? 'Ingresando...' : 'Iniciar sesión'}
+              </button>
               {isSupabaseConfigured ? (
                 <button
                   type="button"
                   className="google-login-btn"
+                  disabled={loginBusy}
                   aria-label="Iniciar sesión con Google"
                   onClick={() => void handleGoogleLogin()}
                   style={{
@@ -11177,6 +11198,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
+        {loginBusy ? (
+          <div className="login-progress-toast" role="status" aria-live="polite">
+            <span className="login-progress-spinner" aria-hidden="true" />
+            Estamos iniciando sesión. Esperá un momento...
+          </div>
+        ) : null}
         {contactModalOpen ? (
           <div className="drhappy-modal-overlay" onClick={() => setContactModalOpen(false)}>
             <div
@@ -16100,6 +16127,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         </div>
       ) : null}
       {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
+      {loginBusy ? (
+        <div className="login-progress-toast" role="status" aria-live="polite">
+          <span className="login-progress-spinner" aria-hidden="true" />
+          Estamos iniciando sesión. Esperá un momento...
+        </div>
+      ) : null}
 
       {renderInstallOffer()}
 

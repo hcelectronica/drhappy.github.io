@@ -1960,6 +1960,55 @@ button.ghost {
   text-transform: uppercase;
 }
 
+.login-progress-toast {
+  position: fixed;
+  z-index: 12001;
+  right: 16px;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: calc(100vw - 32px);
+  margin: 0 auto;
+  padding: 11px 16px;
+  border: 1px solid #cfdef2;
+  border-radius: 14px;
+  background: #fff;
+  color: #17324d;
+  box-shadow: 0 8px 24px rgba(23, 50, 77, 0.18);
+  font-size: 0.9rem;
+  font-weight: 650;
+  pointer-events: none;
+  animation: login-progress-toast-in 180ms ease-out both;
+}
+
+.login-progress-spinner {
+  flex: 0 0 17px;
+  width: 17px;
+  height: 17px;
+  border: 2px solid #d6e2f1;
+  border-top-color: #4d7ad4;
+  border-radius: 50%;
+  animation: login-progress-spin 700ms linear infinite;
+}
+
+@keyframes login-progress-toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes login-progress-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-progress-toast,
+  .login-progress-spinner { animation: none; }
+}
+
 .access-note {
   margin: 0;
   padding: 10px 12px;
