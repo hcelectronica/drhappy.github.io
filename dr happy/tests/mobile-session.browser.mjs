@@ -259,6 +259,8 @@ try {
   await command('Page.navigate', { url: origin + '/' })
   const ready = (name) => wait(`document.body?.innerText.includes(${JSON.stringify(name)})&&Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Cerrar sesión'))`)
   await ready('Profesional A')
+  assert(await evaluate(`!document.querySelector('.fullscreen-toggle')`), 'Authenticated app has no fullscreen button')
+  assert.equal(await evaluate(`document.querySelectorAll('.mobile-tabbar button').length`), 5, 'The five navigation buttons are unchanged')
   assert.equal(await evaluate(`document.querySelectorAll('button.video-consultation-link').length`), 0, 'Non-admin does not see video links')
   await wait(`performance.getEntriesByType('resource').some(r=>r.name.includes('vademecum.json'))`)
   await wait(`performance.getEntriesByType('resource').some(r=>/cie-10/.test(r.name))`)
@@ -523,6 +525,14 @@ try {
   await command('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36' })
   await reloadPublic()
   await wait(`!!document.querySelector('.public-install-banner')`)
+  assert(await evaluate(`!document.querySelector('.fullscreen-toggle')`), 'Public entry has no fullscreen button')
+  const manifest = await fetch(origin + '/manifest.webmanifest').then(response => response.json())
+  assert.equal(manifest.display, 'fullscreen', 'Installed app requests fullscreen')
+  await evaluate(`document.documentElement.requestFullscreen()`)
+  await wait(`document.fullscreenElement===document.documentElement`)
+  assert(await evaluate(`!!document.querySelector('.public-install-banner')`), 'Browser fullscreen does not count as installation')
+  await evaluate(`document.exitFullscreen()`)
+  await wait(`!document.fullscreenElement`)
   await evaluate(`document.querySelector('.public-install-banner button').click()`)
   await wait(`!!document.querySelector('.install-manual-guide')`)
   assert(await evaluate(`document.querySelector('.install-manual-guide').textContent.includes('Chrome o Edge')`))
@@ -544,7 +554,7 @@ try {
   await simulateInstall('accepted', true)
   await evaluate(`document.querySelector('.public-install-banner button').click()`)
   await wait(`!!document.querySelector('.install-manual-guide')`)
-  assert(await evaluate(`document.body.textContent.includes('Fixture install failure')`), 'Install failures are surfaced')
+  await wait(`document.querySelector('.app-error-toast p')?.textContent.includes('Fixture install failure')`)
   await click('Continuar en el navegador')
   await simulateInstall('accepted')
   await evaluate(`document.querySelector('.public-install-banner button').click()`)
@@ -556,6 +566,21 @@ try {
   await wait(`!!document.querySelector('.install-manual-guide')`)
   assert(await evaluate(`document.querySelector('.install-manual-guide').textContent.includes('Safari')&&document.querySelector('.install-manual-guide').textContent.includes('Compartir')`))
   await click('Continuar en el navegador')
+  const fullscreenFixture = await command('Page.addScriptToEvaluateOnNewDocument', { source: `
+    const nativeMatchMedia=window.matchMedia.bind(window);
+    window.matchMedia=query=>{
+      if(query==='(display-mode: fullscreen)'){
+        const result=nativeMatchMedia(query);
+        Object.defineProperty(result,'matches',{get:()=>true});
+        return result;
+      }
+      return nativeMatchMedia(query);
+    };
+  ` })
+  await reloadPublic()
+  assert(await evaluate(`!document.querySelector('.public-install-banner')`), 'Fullscreen PWA does not offer installation')
+  assert(await evaluate(`!document.querySelector('.fullscreen-toggle')`), 'Fullscreen PWA has no added fullscreen controls')
+  await command('Page.removeScriptToEvaluateOnNewDocument', { identifier: fullscreenFixture.identifier })
   await command('Page.addScriptToEvaluateOnNewDocument', { source: `Object.defineProperty(navigator,'standalone',{get:()=>true})` })
   await reloadPublic()
   await wait(`!!document.querySelector('input[name="username"]')`)

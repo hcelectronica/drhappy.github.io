@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom'
 import './App.css'
 import './clinicalCompact.css'
 import { BrandMark } from './BrandMark'
+import { useDisplayMode } from './useDisplayMode'
 import { ClinicalMedicationField } from './ClinicalMedicationField'
 import { ClinicalDiagnosisField } from './ClinicalDiagnosisField'
 import { bmiLabel, classifiedBmiLabel, followUpLines, mergeClinicalPathologies, normalizeClinicalBaseline, validateClinicalMeasurements } from './clinicalFollowUp'
@@ -2546,10 +2547,9 @@ function App() {
   )
   const [showInstallToast, setShowInstallToast] = useState(false)
   const [installBannerDismissed, setInstallBannerDismissed] = useState(false)
-  const [appInstalled, setAppInstalled] = useState(() =>
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as Navigator & { standalone?: boolean }).standalone === true,
-  )
+  const { isInstalledDisplayMode } = useDisplayMode()
+  const [installationConfirmed, setInstallationConfirmed] = useState(false)
+  const appInstalled = installationConfirmed || isInstalledDisplayMode
   const isMobileInstallDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   const isAppleInstallDevice = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
@@ -4870,24 +4870,19 @@ function App() {
     }
 
     function handleAppInstalled(): void {
-      setAppInstalled(true)
+      setInstallationConfirmed(true)
       setInstallPromptEvent(null)
       setShowInstallToast(false)
       // No guardamos un bloqueo permanente: si el usuario desinstala la app más
-      // adelante, dejará de estar en modo standalone y el aviso podrá reaparecer.
+      // adelante, dejará de estar en modo instalado y el aviso podrá reaparecer.
       localStorage.removeItem(INSTALL_PROMPT_DISMISSED_KEY)
     }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
     window.addEventListener('appinstalled', handleAppInstalled)
-    const displayMode = window.matchMedia('(display-mode: standalone)')
-    const handleDisplayModeChange = () => setAppInstalled(displayMode.matches ||
-      (window.navigator as Navigator & { standalone?: boolean }).standalone === true)
-    displayMode.addEventListener('change', handleDisplayModeChange)
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
       window.removeEventListener('appinstalled', handleAppInstalled)
-      displayMode.removeEventListener('change', handleDisplayModeChange)
     }
   }, [])
 
@@ -4922,7 +4917,7 @@ function App() {
           String(Date.now() + INSTALL_PROMPT_SNOOZE_DAYS * 24 * 60 * 60 * 1000),
         )
       }
-      if (choice.outcome === 'accepted') setAppInstalled(true)
+      if (choice.outcome === 'accepted') setInstallationConfirmed(true)
       setAppNotice(
         choice.outcome === 'accepted'
           ? 'DrHappy se está instalando en tu dispositivo.'

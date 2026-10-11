@@ -56,7 +56,13 @@ El modelo 08 (monograma Dr. H con sonrisa, sin caduceo) es la identidad principa
 
 Las referencias de instalación llevan la versión `drh-08` para renovar los iconos sin cambiar el nombre, el inicio ni el ámbito de la PWA. El navegador puede actualizar una instalación existente, pero no se garantiza una renovación inmediata del icono del sistema; si permanece el anterior, volver a añadir el acceso o reinstalar la PWA. Esto no borra la cuenta ni sus datos en la nube. No borrar los datos del sitio.
 
-El inicio público ofrece «Instalar app» en celulares sin exigir una sesión. Si el navegador emite `beforeinstallprompt`, el botón abre su diálogo nativo; de lo contrario muestra instrucciones (Safari y Compartir en iPhone/iPad, menú de instalación en Android). El aviso automático se puede posponer siete días, pero el botón público sigue disponible. No se ofrece al abrir la PWA en modo standalone ni después de una instalación confirmada en esa visita. No es posible instalar sin confirmación del usuario ni detectar todos los accesos directos instalados desde una pestaña del navegador.
+El inicio público ofrece «Instalar app» en celulares sin exigir una sesión. Si el navegador emite `beforeinstallprompt`, el botón abre su diálogo nativo; de lo contrario muestra instrucciones (Safari y Compartir en iPhone/iPad, menú de instalación en Android). El aviso automático se puede posponer siete días, pero el botón público sigue disponible. No se ofrece al abrir la PWA en modo instalado (standalone, minimal-ui o fullscreen) ni después de una instalación confirmada en esa visita. No es posible instalar sin confirmación del usuario ni detectar todos los accesos directos instalados desde una pestaña del navegador.
+
+### Pantalla completa en móvil
+
+El manifiesto solicita `display: fullscreen` para la app instalada. Android y el navegador deciden si ocultan las barras del sistema; los controles pueden reaparecer al deslizar desde los bordes. Una instalación existente puede tardar en actualizar su modo de pantalla después del despliegue. Cerrar y volver a abrir; si conserva el modo anterior, reinstalar el acceso sin borrar los datos del sitio.
+
+Se conserva el flujo habitual: entrar a la página desde Google o el navegador, aceptar «Instalar app» y luego abrir Dr Happy desde su icono en el inicio. No hay botones de pantalla completa ni solicitudes de Fullscreen API: el modo se solicita automáticamente al abrir la app instalada mediante el manifiesto. Una pestaña del navegador conserva la interfaz de Chrome. Las zonas seguras protegen los botones y la cabecera frente a recortes y gestos. La barra inferior mantiene sus cinco accesos.
 
 ## Carga del inicio público
 

@@ -301,7 +301,7 @@ body.theme-night .screen-action.active { background: linear-gradient(135deg, rgb
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: center;
-    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    padding: 6px max(4px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left));
     border-top: 1px solid rgba(197, 209, 231, 0.9);
     background: rgba(255, 255, 255, 0.97);
     box-shadow: 0 -6px 20px rgba(76, 95, 130, 0.12);
@@ -5736,7 +5736,7 @@ body.theme-night .turnera-card-actions {
   .public-install-banner span { display: none; }
   .public-install-banner button { min-height: 44px; padding: 8px 10px; font-size: 12px; }
   .public-install-banner .install-banner-close { width: 32px; min-height: 44px; padding: 4px; }
-  .auth-layout:not(:has(.public-install-banner)) { padding-top: 18px; }
+  .auth-layout:not(:has(.public-install-banner)) { padding-top: calc(18px + env(safe-area-inset-top)); }
   .auth-card { width: 100%; padding: 12px; }
   .auth-card .brand-block { display: none; }
   #auth-login-panel .auth-login-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
@@ -5758,7 +5758,10 @@ body.theme-night .turnera-card-actions {
    con la forma corta y dejarían el contenido debajo de la barra inferior fija. */
 @media (max-width: 899px) {
   .app {
+    padding-top: calc(10px + env(safe-area-inset-top));
+    padding-right: max(10px, env(safe-area-inset-right));
     padding-bottom: calc(84px + env(safe-area-inset-bottom));
+    padding-left: max(10px, env(safe-area-inset-left));
   }
 
   .notification-corner-toast {
