@@ -6148,10 +6148,7 @@ function App() {
     setAuthError(null)
     localStorage.setItem(GOOGLE_LOGIN_PENDING_KEY, String(Date.now()))
     localStorage.removeItem(GOOGLE_AUTO_LOGIN_BLOCKED_KEY)
-    const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
-    const redirectUrl = isLocalDevelopment
-      ? `${window.location.origin}${window.location.pathname || '/'}`
-      : 'https://www.drhappy.com.ar/'
+    const redirectUrl = `${window.location.origin}${window.location.pathname || '/'}`
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {

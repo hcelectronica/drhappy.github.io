@@ -64,6 +64,8 @@ El manifiesto solicita `display: fullscreen` para la app instalada. Android y el
 
 Se conserva el flujo habitual: entrar a la página desde Google o el navegador, aceptar «Instalar app» y luego abrir Dr Happy desde su icono en el inicio. No hay botones de pantalla completa ni solicitudes de Fullscreen API: el modo se solicita automáticamente al abrir la app instalada mediante el manifiesto. Una pestaña del navegador conserva la interfaz de Chrome. Las zonas seguras protegen los botones y la cabecera frente a recortes y gestos. La barra inferior mantiene sus cinco accesos.
 
+El login con Google regresa al mismo origen y ruta desde donde se inició, sin forzar el cambio entre `drhappy.com.ar` y `www.drhappy.com.ar` ni reenviar parámetros o fragmentos anteriores. Ambos dominios deben estar autorizados en las Redirect URLs de Supabase; si no lo están, Supabase puede usar su Site URL y el retorno quedar fuera del ámbito de la PWA. Validar el retorno con `node --test tests/google-oauth-return.test.mjs`; la prueba cubre ambos dominios, la ruta de entrada, desarrollo local y errores del proveedor. La comprobación final del cierre de la ventana externa de Google requiere un dispositivo Android con la app instalada.
+
 ## Carga del inicio público
 
 El título SEO y las vistas previas al compartir usan «Dr Happy | Historia clínica digital y Turnos», sin restringir la marca a odontología. La descripción incluye odontograma, turnos, Sofía IA y la prueba de 7 días. Google puede elegir otro título o fragmento y necesita volver a rastrear la portada para reflejar los cambios.
