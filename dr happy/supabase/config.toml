@@ -39,6 +39,9 @@ verify_jwt = false
 [functions.auth-professional]
 verify_jwt = false
 
+[functions.passkey-auth]
+verify_jwt = false
+
 [functions.admin-stats]
 verify_jwt = true
 

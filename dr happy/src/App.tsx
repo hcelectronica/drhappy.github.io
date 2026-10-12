@@ -119,6 +119,14 @@ import {
 } from './authService'
 import type { AuthProfessionalPublic } from './authService'
 import {
+  authenticateWithPasskey,
+  isPasskeySupported,
+  listPasskeys,
+  registerPasskey,
+  removePasskey,
+} from './passkeyService'
+import type { PasskeySummary } from './passkeyService'
+import {
   registerWithEmailVerification,
   resumeProfessionalEmailVerification,
   verifyProfessionalEmail,
@@ -2559,6 +2567,12 @@ function App() {
   const [password, setPassword] = useState('')
   const [showLoginPassword, setShowLoginPassword] = useState(false)
   const [loginProgress, setLoginProgress] = useState<'idle' | 'loading' | 'complete'>('idle')
+  const [loginProgressValue, setLoginProgressValue] = useState(0)
+  const loginProgressTimerRef = useRef<number | null>(null)
+  const loginProgressSucceededRef = useRef(false)
+  const [passkeyBusy, setPasskeyBusy] = useState(false)
+  const [passkeyMessage, setPasskeyMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null)
+  const [passkeyCredentials, setPasskeyCredentials] = useState<PasskeySummary[] | null>(null)
   const [showRegisterPassword, setShowRegisterPassword] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = localStorage.getItem(THEME_MODE_KEY)
@@ -2596,6 +2610,11 @@ function App() {
   const googleLoginBusyRef = useRef(false)
   const loginAttemptRef = useRef(0)
   const loginBusyRef = useRef(false)
+  useEffect(() => () => {
+    if (loginProgressTimerRef.current !== null) {
+      window.clearInterval(loginProgressTimerRef.current)
+    }
+  }, [])
   const workspaceSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
   const [googleIdentity, setGoogleIdentity] = useState<{
     email: string
@@ -6291,18 +6310,118 @@ function App() {
     } finally { googleLoginBusyRef.current = false }
   }
 
+  function clearLoginProgressTimer(): void {
+    if (loginProgressTimerRef.current !== null) {
+      window.clearInterval(loginProgressTimerRef.current)
+      loginProgressTimerRef.current = null
+    }
+  }
+
+  function startLoginProgress(): void {
+    clearLoginProgressTimer()
+    loginProgressSucceededRef.current = false
+    setLoginProgressValue(0)
+    setLoginProgress('loading')
+    loginProgressTimerRef.current = window.setInterval(() => {
+      setLoginProgressValue((current) => Math.min(current + (current < 82 ? 4 : 1), 94))
+    }, 240)
+  }
+
+  function completeLoginProgress(): void {
+    clearLoginProgressTimer()
+    loginProgressSucceededRef.current = true
+    setLoginProgressValue(100)
+    setLoginProgress('complete')
+  }
+
+  async function finishLoginProgress(): Promise<void> {
+    clearLoginProgressTimer()
+    if (loginProgressSucceededRef.current) {
+      await new Promise((resolve) => window.setTimeout(resolve, 360))
+    }
+    setLoginProgress('idle')
+    setLoginProgressValue(0)
+  }
+
+  function renderLoginProgress(): ReactNode {
+    if (loginProgress === 'idle') return null
+    const value = loginProgress === 'complete' ? 100 : loginProgressValue
+    const circumference = 2 * Math.PI * 45
+    return createPortal(
+      <div className="login-progress-overlay" role="status" aria-live="polite">
+        <div className="login-progress-card">
+          <div
+            className="login-progress-ring"
+            role="progressbar"
+            aria-label="Inicio de sesión"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={value}
+            aria-live="off"
+          >
+            <svg viewBox="0 0 100 100" aria-hidden="true">
+              <circle className="login-progress-ring-track" cx="50" cy="50" r="45" />
+              <circle
+                className="login-progress-ring-value"
+                cx="50"
+                cy="50"
+                r="45"
+                style={{ strokeDashoffset: circumference * (1 - value / 100) }}
+              />
+            </svg>
+            <div className="login-progress-brand">
+              <BrandMark />
+              <span>{value}%</span>
+            </div>
+          </div>
+          <strong>Iniciando sesión</strong>
+          <span>Estamos preparando tu espacio</span>
+        </div>
+      </div>,
+      document.body,
+    )
+  }
+
+  async function activateProfessionalLogin(
+    professional: AuthProfessionalPublic,
+    sessionToken: string,
+    loginAttempt: number,
+    generation: number,
+  ): Promise<boolean> {
+    if (loginAttempt !== loginAttemptRef.current || generation !== sessionGenerationRef.current) return false
+    const user = mapAuthProfessionalPublic(professional)
+    sessionGenerationRef.current += 1
+    setActiveUserId(null)
+    setProfile(null)
+    setPasskeyCredentials(null)
+    setPasskeyMessage(null)
+    setPatients([])
+    setAvailablePatients([])
+    setAppointments([])
+    setTreatmentLedger([])
+    setSeedUsers((current) => current.some((entry) => entry.id === user.id)
+      ? current.map((entry) => entry.id === user.id ? user : entry)
+      : [...current, user])
+    storeProfessionalSession(user.id, sessionToken)
+    localStorage.removeItem(GOOGLE_LOGIN_PENDING_KEY)
+    localStorage.setItem(SESSION_USER_KEY, user.id)
+    setLoginExpanded(true)
+    await loadWorkspaceForUser(user)
+    return loginAttempt === loginAttemptRef.current && readProfessionalSession()?.token === sessionToken
+  }
+
   async function handleLogin(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (loginBusyRef.current) return
     loginBusyRef.current = true
-    setLoginProgress('loading')
+    startLoginProgress()
     try {
       await performLogin()
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'No se pudo iniciar sesión.')
     } finally {
       loginBusyRef.current = false
-      setLoginProgress('idle')
+      await finishLoginProgress()
     }
   }
 
@@ -6360,24 +6479,15 @@ function App() {
       setPendingEmailVerification(null)
       setShowEmailVerification(false)
       setLoginExpanded(true)
-      const user = mapAuthProfessionalPublic(result.professional)
       try {
-        sessionGenerationRef.current += 1
-        setActiveUserId(null)
-        setProfile(null)
-        setPatients([])
-        setAvailablePatients([])
-        setAppointments([])
-        setTreatmentLedger([])
-        setSeedUsers((current) => current.some((entry) => entry.id === user.id)
-          ? current.map((entry) => entry.id === user.id ? user : entry)
-          : [...current, user])
-        storeProfessionalSession(user.id, result.sessionToken || '')
-        localStorage.removeItem(GOOGLE_LOGIN_PENDING_KEY)
-        localStorage.setItem(SESSION_USER_KEY, user.id)
-        await loadWorkspaceForUser(user)
-        if (loginAttempt !== loginAttemptRef.current || readProfessionalSession()?.token !== result.sessionToken) return
-        setLoginProgress('complete')
+        const activated = await activateProfessionalLogin(
+          result.professional,
+          result.sessionToken || '',
+          loginAttempt,
+          generation,
+        )
+        if (!activated) return
+        completeLoginProgress()
         await new Promise((resolve) => window.setTimeout(resolve, 240))
         setWorkspaceLayer('overview')
         setSelectedPatientId(null)
@@ -6407,7 +6517,7 @@ function App() {
     try {
       localStorage.setItem(SESSION_USER_KEY, user.id)
       await loadWorkspaceForUser(user)
-      setLoginProgress('complete')
+      completeLoginProgress()
       await new Promise((resolve) => window.setTimeout(resolve, 240))
       setWorkspaceLayer('overview')
       setSelectedPatientId(null)
@@ -6418,6 +6528,97 @@ function App() {
           ? `No se pudieron cargar datos del profesional: ${error.message}`
           : 'No se pudieron cargar datos del profesional.',
       )
+    }
+  }
+
+  async function handlePasskeyLogin(): Promise<void> {
+    if (loginBusyRef.current) return
+    loginBusyRef.current = true
+    setAuthError(null)
+    setAppNotice(null)
+    const loginAttempt = ++loginAttemptRef.current
+    const generation = sessionGenerationRef.current
+    startLoginProgress()
+    try {
+      const result = await authenticateWithPasskey()
+      if (loginAttempt !== loginAttemptRef.current || generation !== sessionGenerationRef.current) return
+      const activated = await activateProfessionalLogin(
+        result.professional,
+        result.sessionToken,
+        loginAttempt,
+        generation,
+      )
+      if (!activated) return
+      completeLoginProgress()
+      await new Promise((resolve) => window.setTimeout(resolve, 240))
+      setWorkspaceLayer('overview')
+      setSelectedPatientId(null)
+    } catch (error) {
+      const message = error instanceof DOMException && error.name === 'NotAllowedError'
+        ? 'No se completó la verificación del dispositivo. Podés intentar otra vez o ingresar con contraseña.'
+        : error instanceof Error
+          ? error.message
+          : 'No se pudo iniciar sesión con biometría.'
+      setAuthError(message)
+    } finally {
+      loginBusyRef.current = false
+      await finishLoginProgress()
+    }
+  }
+
+  async function handleRegisterPasskey(): Promise<void> {
+    setPasskeyBusy(true)
+    setPasskeyMessage(null)
+    try {
+      await registerPasskey()
+      setPasskeyCredentials(await listPasskeys())
+      setPasskeyMessage({
+        text: 'Este dispositivo ya puede iniciar sesión con huella, rostro o el método de desbloqueo del dispositivo.',
+        kind: 'success',
+      })
+    } catch (error) {
+      setPasskeyMessage({
+        text: error instanceof Error ? error.message : 'No se pudo configurar la biometría.',
+        kind: 'error',
+      })
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
+
+  async function handleLoadPasskeys(): Promise<void> {
+    setPasskeyBusy(true)
+    setPasskeyMessage(null)
+    try {
+      setPasskeyCredentials(await listPasskeys())
+    } catch (error) {
+      setPasskeyMessage({
+        text: error instanceof Error ? error.message : 'No se pudieron cargar los dispositivos registrados.',
+        kind: 'error',
+      })
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
+
+  async function handleRemovePasskey(credentialId: string): Promise<void> {
+    if (!window.confirm('¿Quitar este dispositivo? Vas a poder volver a configurarlo más adelante.')) return
+    setPasskeyBusy(true)
+    setPasskeyMessage(null)
+    try {
+      await removePasskey(credentialId)
+      setPasskeyCredentials(await listPasskeys())
+      setPasskeyMessage({
+        text: 'Se quitó el dispositivo. Podés seguir ingresando con tu contraseña.',
+        kind: 'success',
+      })
+    } catch (error) {
+      setPasskeyMessage({
+        text: error instanceof Error ? error.message : 'No se pudo quitar el dispositivo.',
+        kind: 'error',
+      })
+    } finally {
+      setPasskeyBusy(false)
     }
   }
 
@@ -6695,6 +6896,8 @@ function App() {
     setGoogleIdentity(null)
     setActiveUserId(null)
     setProfile(null)
+    setPasskeyCredentials(null)
+    setPasskeyMessage(null)
     setPatients([])
     setAvailablePatients([])
     setAppointments([])
@@ -10936,6 +11139,22 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                   <span className="google-login-label-mobile">Google</span>
                 </button>
               ) : null}
+              {isSupabaseConfigured && isPasskeySupported() ? (
+                <button
+                  type="button"
+                  className="auth-passkey-btn"
+                  disabled={loginProgress !== 'idle'}
+                  onClick={() => void handlePasskeyLogin()}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3.5a7 7 0 0 0-7 7c0 3.1 1.1 6.1 2.5 8.5M12 6a4.5 4.5 0 0 0-4.5 4.5c0 2.2.5 4.8 1.4 7.1M12 8.5a2 2 0 0 0-2 2c0 2.8.5 5 1.2 7.2M12 3.5a7 7 0 0 1 7 7c0 2.7-.6 5.8-1.7 8.5M12 6a4.5 4.5 0 0 1 4.5 4.5c0 2-.3 4.1-1 6.2M12 13.5c0 2.4.3 4.5.8 6.5" />
+                  </svg>
+                  <span className="auth-passkey-copy">
+                    <strong>Ingresar con huella o rostro</strong>
+                    <small>No necesitás escribir usuario ni contraseña</small>
+                  </span>
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="text-button"
@@ -11210,21 +11429,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
-        {loginProgress !== 'idle' ? (
-          <div className={`login-progress-toast${loginProgress === 'complete' ? ' is-complete' : ''}`} role="status" aria-live="polite">
-            <span>Iniciando sesión</span>
-            <div
-              className="login-progress-track"
-              role="progressbar"
-              aria-label="Inicio de sesión"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              {...(loginProgress === 'complete' ? { 'aria-valuenow': 100 } : {})}
-            >
-              <span className="login-progress-fill" />
-            </div>
-          </div>
-        ) : null}
+        {renderLoginProgress()}
         {contactModalOpen ? (
           <div className="drhappy-modal-overlay" onClick={() => setContactModalOpen(false)}>
             <div
@@ -15288,6 +15493,52 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 <button type="submit">Actualizar contraseña</button>
               </form>
             </details>
+            {isSupabaseConfigured && isPasskeySupported() ? (
+              <details className="panel profile-passkey-settings">
+                <summary>🔐 Acceso con huella o rostro</summary>
+                <p className="flow-hint">
+                  Registrá este dispositivo para ingresar con huella, reconocimiento facial o su método de desbloqueo.
+                  La verificación ocurre en el dispositivo; Dr Happy no recibe ni guarda tu huella. La contraseña sigue disponible.
+                </p>
+                <div className="profile-passkey-actions">
+                  <button type="button" disabled={passkeyBusy} onClick={() => void handleRegisterPasskey()}>
+                    {passkeyBusy ? 'Procesando...' : 'Configurar este dispositivo'}
+                  </button>
+                  <button type="button" className="ghost" disabled={passkeyBusy} onClick={() => void handleLoadPasskeys()}>
+                    Ver dispositivos registrados
+                  </button>
+                </div>
+                {passkeyMessage ? (
+                  <p className={`passkey-status ${passkeyMessage.kind}`} role="status" aria-live="polite">
+                    {passkeyMessage.text}
+                  </p>
+                ) : null}
+                {passkeyCredentials?.length ? (
+                  <ul className="profile-passkey-list">
+                    {passkeyCredentials.map((credential) => (
+                      <li key={credential.id}>
+                        <span>
+                          Dispositivo agregado el {new Date(credential.created_at).toLocaleDateString('es-AR')}
+                          {credential.last_used_at
+                            ? ` · último uso ${new Date(credential.last_used_at).toLocaleDateString('es-AR')}`
+                            : ''}
+                        </span>
+                        <button
+                          type="button"
+                          className="ghost compact"
+                          disabled={passkeyBusy}
+                          onClick={() => void handleRemovePasskey(credential.id)}
+                        >
+                          Quitar
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : passkeyCredentials ? (
+                  <p className="field-hint">Todavía no hay dispositivos biométricos registrados.</p>
+                ) : null}
+              </details>
+            ) : null}
             {/* Zona de auto-eliminación de cuenta (requisito de Google Play).
                 Dispara el flujo completo: archivo legal + emails + baja. */}
             {!isAdminSession ? (
@@ -16148,21 +16399,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         </div>
       ) : null}
       {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
-      {loginProgress !== 'idle' ? (
-        <div className={`login-progress-toast${loginProgress === 'complete' ? ' is-complete' : ''}`} role="status" aria-live="polite">
-          <span>Iniciando sesión</span>
-          <div
-            className="login-progress-track"
-            role="progressbar"
-            aria-label="Inicio de sesión"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            {...(loginProgress === 'complete' ? { 'aria-valuenow': 100 } : {})}
-          >
-            <span className="login-progress-fill" />
-          </div>
-        </div>
-      ) : null}
+      {renderLoginProgress()}
 
       {renderInstallOffer()}
 
