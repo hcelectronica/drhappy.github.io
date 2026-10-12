@@ -6554,11 +6554,12 @@ function App() {
       setWorkspaceLayer('overview')
       setSelectedPatientId(null)
     } catch (error) {
-      const message = error instanceof DOMException && error.name === 'NotAllowedError'
-        ? 'No se completó la verificación del dispositivo. Podés intentar otra vez o ingresar con contraseña.'
-        : error instanceof Error
-          ? error.message
-          : 'No se pudo iniciar sesión con biometría.'
+      const rawMessage = error instanceof Error ? error.message : ''
+      const isNotAllowed = (error instanceof DOMException && error.name === 'NotAllowedError') ||
+        (error instanceof Error && (error.name === 'NotAllowedError' || /timed out or was not allowed/i.test(rawMessage)))
+      const message = isNotAllowed
+        ? 'No hay una llave de acceso configurada en este teléfono, o cancelaste el intento. Iniciá sesión con tu usuario y contraseña, y configurala desde tu Perfil.'
+        : rawMessage || 'No se pudo iniciar sesión con biometría.'
       setAuthError(message)
     } finally {
       loginBusyRef.current = false
