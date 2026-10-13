@@ -310,6 +310,7 @@ serve(async (request) => {
         if (!updatedCredential) return jsonResponse(409, { success: false, message: 'El dispositivo cambió durante el inicio de sesión. Intentá nuevamente.' })
 
         const sessionToken = await createProfessionalSession(admin, String(professional.id))
+        void admin.from('professionals').update({ last_seen_at: new Date().toISOString() }).eq('id', professional.id)
         return jsonResponse(200, { success: true, professional, sessionToken })
       }
 

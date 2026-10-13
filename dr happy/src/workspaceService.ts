@@ -42,3 +42,15 @@ export function saveTreatmentLedgerData(treatmentLedger: unknown[]): Promise<Wor
 export function updatePatientArchive(patientId: string, archiveAction: 'archive' | 'restore' | 'confirm'): Promise<WorkspaceResponse> {
   return invokeWorkspace({ action: 'archive-patient', patientId, archiveAction })
 }
+
+export function sendHeartbeat(params: {
+  minutes: number
+  consultations?: number
+  prescriptions?: number
+  certificates?: number
+  appointments?: number
+  patients?: number
+}): Promise<WorkspaceResponse> {
+  return invokeWorkspace({ action: 'heartbeat', ...params })
+}
+

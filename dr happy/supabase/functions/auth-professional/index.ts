@@ -188,6 +188,7 @@ serve(async (request) => {
 
         const { password_hash: _omit, ...sanitized } = data as Record<string, unknown>
         const sessionToken = await createProfessionalSession(admin, String(sanitized.id))
+        void admin.from('professionals').update({ last_seen_at: new Date().toISOString() }).eq('id', sanitized.id)
         return jsonResponse(200, { success: true, professional: sanitized, sessionToken })
       }
 
@@ -225,6 +226,7 @@ serve(async (request) => {
             .single()
           if (publicProfessionalError || !publicProfessional) return jsonResponse(500, { success: false, message: 'No se pudo cargar el perfil profesional.' })
           const sessionToken = await createProfessionalSession(admin, String(existing.id))
+          void admin.from('professionals').update({ last_seen_at: new Date().toISOString() }).eq('id', existing.id)
           return jsonResponse(200, { success: true, professional: publicProfessional, sessionToken })
         }
         const baseUsername = email.split('@')[0].replace(/[^a-z0-9._-]/g, '').slice(0, 40) || 'profesional'
@@ -253,6 +255,7 @@ serve(async (request) => {
         if (insertError || !inserted) return jsonResponse(500, { success: false, message: insertError?.message || 'No se pudo crear el usuario de Google.' })
         const adminEmailSent = await notifyAdminRegistration(supabaseUrl, serviceRoleKey, inserted, 'google')
         const sessionToken = await createProfessionalSession(admin, String(inserted.id))
+        void admin.from('professionals').update({ last_seen_at: new Date().toISOString() }).eq('id', inserted.id)
         return jsonResponse(200, { success: true, professional: inserted, sessionToken, adminEmailSent })
       }
 

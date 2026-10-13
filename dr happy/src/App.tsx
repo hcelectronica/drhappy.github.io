@@ -84,7 +84,8 @@ import {
 } from './publicBookingService'
 import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBookingSettings } from './publicBookingService'
 import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
-import type { AdminAIUsageStats, AdminUserStats } from './adminStatsService'
+import type { AdminAIUsageStats, AdminUserStats, AdminStatsSummary } from './adminStatsService'
+import { startTelemetry, stopTelemetry, trackClinicalAction } from './telemetryService'
 import { askSofia, transcribePaperRecord } from './aiAssistantService'
 import { DICTATION_COMMANDS_HINT, formatDictation, joinDictation } from './dictation'
 import { loadWorkspaceData, saveWorkspaceData, saveTreatmentLedgerData, updatePatientArchive } from './workspaceService'
@@ -2734,6 +2735,9 @@ function App() {
   }, [setAppError])
   // Métricas de uso por usuario (solo conteos y fechas, sin datos clínicos).
   const [adminUserStats, setAdminUserStats] = useState<AdminUserStats[]>([])
+  const [adminStatsSummary, setAdminStatsSummary] = useState<AdminStatsSummary | null>(null)
+  const [adminActivityFilter, setAdminActivityFilter] = useState<'all' | 'online' | 'high' | 'inactive'>('all')
+  const [adminActivitySearch, setAdminActivitySearch] = useState('')
   const [adminUserStatsLoading, setAdminUserStatsLoading] = useState(false)
   const [adminAIUsage, setAdminAIUsage] = useState<AdminAIUsageStats[]>([])
   const [adminAIUsageLoading, setAdminAIUsageLoading] = useState(false)
@@ -5101,6 +5105,9 @@ function App() {
         .then((res) => {
           if (res.success && res.users) {
             setAdminUserStats(res.users)
+            if (res.summary) {
+              setAdminStatsSummary(res.summary)
+            }
           }
         })
         .finally(() => setAdminUserStatsLoading(false))
@@ -5161,6 +5168,17 @@ function App() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (activeUserId) {
+      startTelemetry(activeUserId)
+      return () => {
+        stopTelemetry()
+      }
+    } else {
+      stopTelemetry()
+    }
+  }, [activeUserId])
 
   useEffect(() => {
     if (loadingUsers || !activeUserId || !isSupabaseConfigured || !supabase) {
@@ -8064,6 +8082,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
 
       setAppointments(nextAppointments)
       localStorage.setItem(appointmentsStorageKey(activeUserId), JSON.stringify(nextAppointments))
+      if (!isEdit) trackClinicalAction('appointment')
       const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
       if (currentProf) {
         void persistWorkspaceRemote(activeUserId, currentProf, patients, nextAppointments)
@@ -9089,6 +9108,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       })
       if (context !== patientDocumentContext.current) throw new Error('La ficha cambió durante el guardado. Volvé a guardar la ficha actual.')
       record.consultations = [initialEntry]
+      trackClinicalAction('patient')
+      trackClinicalAction('consultation')
     }
     if (pendingAttentionAppointmentId) {
       const appointment = attentionAppointment
@@ -9592,6 +9613,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       updatedAt: new Date().toISOString(),
     }
     persistPatient(record)
+    trackClinicalAction('consultation')
     if (canEditSelectedPatientRecord) setPatientDraft(patientToDraft(record))
     setConsultationDraft(emptyConsultationDraft)
     setClinicalAttachment(null)
@@ -10172,6 +10194,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         consultations: [historyEntry, ...certificatePatient.consultations],
         updatedAt: issuedAt,
       })
+      trackClinicalAction('certificate')
+      trackClinicalAction('consultation')
       if (!diagnosisCatalog.some((item) => normalizeSearchText(item) === normalizeSearchText(diagnostico))) {
         persistCustomDiagnosis(diagnostico)
       }
@@ -10660,6 +10684,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         updatedAt: now,
       }
       persistPatient(updatedPatient)
+      trackClinicalAction('prescription')
       setPrescriptionModalOpen(false)
       setAppNotice('Receta emitida y guardada en la historia clínica.')
       showSavedFloatingNotice()
@@ -12302,12 +12327,88 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             <section style={{ marginBottom: 24 }}>
               <div className="panel-header" style={{ marginBottom: 12 }}>
                 <div>
-                  <h3>Actividad de usuarios</h3>
+                  <h3>Actividad real de usuarios</h3>
                   <p className="flow-hint">
-                    Estadísticas de uso por profesional. Solo conteos y fechas — sin datos clínicos ni de pacientes.
+                    Presencia en tiempo real, minutos activos y acciones clínicas por profesional. Métricas agregadas y anónimas (sin datos privados de pacientes).
                   </p>
                 </div>
               </div>
+
+              {/* Tarjetas KPI de resumen */}
+              <div className="analytics-summary-grid" style={{ margin: '0 0 16px' }}>
+                <article className="analytics-stat-card">
+                  <strong style={{ color: '#10b981' }}>
+                    {adminStatsSummary?.onlineCount ?? adminUserStats.filter((u) => u.isOnline).length}
+                  </strong>
+                  <span>🟢 En línea ahora</span>
+                </article>
+                <article className="analytics-stat-card">
+                  <strong>
+                    {Math.round(((adminStatsSummary?.totalActiveMinutes7d ?? adminUserStats.reduce((acc, u) => acc + (u.activeMinutes7d || 0), 0)) / 60) * 10) / 10} hs
+                  </strong>
+                  <span>⏱️ Uso semanal ({adminStatsSummary?.totalActiveMinutes7d ?? adminUserStats.reduce((acc, u) => acc + (u.activeMinutes7d || 0), 0)} min)</span>
+                </article>
+                <article className="analytics-stat-card">
+                  <strong>
+                    {adminStatsSummary?.totalConsultations ?? adminUserStats.reduce((acc, u) => acc + (u.consultationsCount || 0), 0)}
+                  </strong>
+                  <span>🩺 Consultas registradas</span>
+                </article>
+                <article className="analytics-stat-card">
+                  <strong>
+                    {adminStatsSummary?.weeklyActiveCount ?? adminUserStats.filter((u) => (u.activeMinutes7d || 0) > 0 || u.isOnline).length} / {adminUserStats.length}
+                  </strong>
+                  <span>👥 Profesionales activos (7d)</span>
+                </article>
+              </div>
+
+              {/* Filtros de estado y búsqueda */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className={`ghost${adminActivityFilter === 'all' ? ' active' : ''}`}
+                    style={{ fontSize: '0.82rem', padding: '4px 10px', borderRadius: '8px' }}
+                    onClick={() => setAdminActivityFilter('all')}
+                  >
+                    Todos ({adminUserStats.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`ghost${adminActivityFilter === 'online' ? ' active' : ''}`}
+                    style={{ fontSize: '0.82rem', padding: '4px 10px', borderRadius: '8px' }}
+                    onClick={() => setAdminActivityFilter('online')}
+                  >
+                    🟢 En línea ({adminUserStats.filter((u) => u.isOnline).length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`ghost${adminActivityFilter === 'high' ? ' active' : ''}`}
+                    style={{ fontSize: '0.82rem', padding: '4px 10px', borderRadius: '8px' }}
+                    onClick={() => setAdminActivityFilter('high')}
+                  >
+                    🌟 Alta adopción ({adminUserStats.filter((u) => u.adoptionLevel === 'alta').length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`ghost${adminActivityFilter === 'inactive' ? ' active' : ''}`}
+                    style={{ fontSize: '0.82rem', padding: '4px 10px', borderRadius: '8px' }}
+                    onClick={() => setAdminActivityFilter('inactive')}
+                  >
+                    💤 Poca actividad ({adminUserStats.filter((u) => u.adoptionLevel === 'baja' || u.adoptionLevel === 'sin_uso').length})
+                  </button>
+                </div>
+                <div>
+                  <input
+                    type="search"
+                    placeholder="Buscar profesional..."
+                    value={adminActivitySearch}
+                    onChange={(e) => setAdminActivitySearch(e.target.value)}
+                    style={{ fontSize: '0.82rem', padding: '4px 10px', minWidth: '200px' }}
+                  />
+                </div>
+              </div>
+
               {adminUserStatsLoading ? (
                 <div className="skeleton-block">
                   <div className="skeleton-line wide" />
@@ -12319,37 +12420,96 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 <p className="flow-hint">No hay métricas disponibles todavía.</p>
               ) : (
                 <div className="admin-table-scroll">
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
                     <thead>
                       <tr style={{ textAlign: 'left', borderBottom: '2px solid #d8e2ee' }}>
                         <th style={{ padding: '8px 6px' }}>Profesional</th>
-                        <th style={{ padding: '8px 6px' }}>Email</th>
+                        <th style={{ padding: '8px 6px' }}>Presencia</th>
                         <th style={{ padding: '8px 6px' }}>Especialidad</th>
-                        <th style={{ padding: '8px 6px' }}>Pacientes</th>
-                        <th style={{ padding: '8px 6px' }}>Turnos</th>
+                        <th style={{ padding: '8px 6px' }}>Tiempo en app</th>
+                        <th style={{ padding: '8px 6px' }}>Consultas (7d / Total)</th>
+                        <th style={{ padding: '8px 6px' }}>Recetas</th>
+                        <th style={{ padding: '8px 6px', textAlign: 'center' }}>Fichas</th>
+                        <th style={{ padding: '8px 6px', textAlign: 'center' }}>Turnos</th>
                         <th style={{ padding: '8px 6px' }}>Último acceso</th>
-                        <th style={{ padding: '8px 6px' }}>Estado</th>
+                        <th style={{ padding: '8px 6px' }}>Adopción</th>
                       </tr>
                     </thead>
                     <tbody>
                       {[...adminUserStats]
-                        .sort((a, b) => (b.patientsCount + b.appointmentsCount) - (a.patientsCount + a.appointmentsCount))
+                        .filter((u) => {
+                          if (adminActivityFilter === 'online' && !u.isOnline) return false
+                          if (adminActivityFilter === 'high' && u.adoptionLevel !== 'alta') return false
+                          if (adminActivityFilter === 'inactive' && u.adoptionLevel !== 'baja' && u.adoptionLevel !== 'sin_uso') return false
+                          if (adminActivitySearch.trim()) {
+                            const query = adminActivitySearch.trim().toLowerCase()
+                            return (
+                              u.fullName.toLowerCase().includes(query) ||
+                              u.username.toLowerCase().includes(query) ||
+                              u.email.toLowerCase().includes(query) ||
+                              (u.specialty && u.specialty.toLowerCase().includes(query))
+                            )
+                          }
+                          return true
+                        })
+                        .sort((a, b) => {
+                          if (a.isOnline && !b.isOnline) return -1
+                          if (!a.isOnline && b.isOnline) return 1
+                          return ((b.activeMinutes7d || 0) + (b.patientsCount || 0)) - ((a.activeMinutes7d || 0) + (a.patientsCount || 0))
+                        })
                         .map((u) => (
                           <tr key={u.id} style={{ borderBottom: '1px solid #eef2f7' }}>
                             <td style={{ padding: '8px 6px' }}>
                               <strong>{u.fullName}</strong>
                               <span style={{ display: 'block', fontSize: '0.78rem', color: '#667' }}>@{u.username}</span>
+                              <span style={{ display: 'block', fontSize: '0.72rem', color: '#889' }}>{u.email}</span>
                             </td>
-                            <td style={{ padding: '8px 6px' }}>{u.email}</td>
+                            <td style={{ padding: '8px 6px' }}>
+                              {u.isOnline ? (
+                                <span className="status-online-badge">
+                                  <span className="dot" /> En línea
+                                </span>
+                              ) : (
+                                <span className="status-offline-badge">Desconectado</span>
+                              )}
+                            </td>
                             <td style={{ padding: '8px 6px' }}>{u.specialty || '—'}</td>
-                            <td style={{ padding: '8px 6px', textAlign: 'center' }}>{u.patientsCount}</td>
-                            <td style={{ padding: '8px 6px', textAlign: 'center' }}>{u.appointmentsCount}</td>
+                            <td style={{ padding: '8px 6px' }}>
+                              <strong>Hoy:</strong> {u.activeMinutesToday ? `${u.activeMinutesToday}m` : '0m'}
+                              <span style={{ display: 'block', fontSize: '0.76rem', color: '#556' }}>
+                                7d: {u.activeMinutes7d ? `${u.activeMinutes7d}m` : '0m'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '8px 6px' }}>
+                              <strong>{u.consultations7d ?? 0}</strong> en 7d
+                              <span style={{ display: 'block', fontSize: '0.76rem', color: '#556' }}>
+                                Total: {u.consultationsCount ?? 0}
+                              </span>
+                            </td>
+                            <td style={{ padding: '8px 6px' }}>
+                              <strong>{u.prescriptions7d ?? 0}</strong> en 7d
+                              <span style={{ display: 'block', fontSize: '0.76rem', color: '#556' }}>
+                                Total: {u.prescriptionsCount ?? 0}
+                              </span>
+                            </td>
+                            <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                              <strong>{u.patientsCount}</strong>
+                            </td>
+                            <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                              <strong>{u.appointmentsCount}</strong>
+                            </td>
                             <td style={{ padding: '8px 6px' }}>
                               {u.lastSeenAt ? formatDate(u.lastSeenAt) : 'Nunca'}
                             </td>
                             <td style={{ padding: '8px 6px' }}>
-                              <span className={u.active === false ? 'status-off' : 'status-on'}>
-                                {u.active === false ? 'Inactivo' : 'Activo'}
+                              <span className={`badge-adoption badge-adoption-${u.adoptionLevel || 'sin_uso'}`}>
+                                {u.adoptionLevel === 'alta'
+                                  ? '🌟 Alta'
+                                  : u.adoptionLevel === 'media'
+                                  ? '⚡ Regular'
+                                  : u.adoptionLevel === 'baja'
+                                  ? '💤 Baja'
+                                  : '⚠️ Sin uso'}
                               </span>
                             </td>
                           </tr>

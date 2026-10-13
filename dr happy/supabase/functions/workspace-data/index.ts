@@ -32,7 +32,34 @@ Deno.serve(async (request) => {
 
   let body: Record<string, unknown>
   try { body = await request.json() } catch { return jsonResponse(400, { success: false, message: 'Cuerpo JSON inválido.' }) }
+  if (body.action === 'heartbeat') {
+    const minutes = typeof body.minutes === 'number' && body.minutes > 0 && body.minutes <= 60 ? Math.round(body.minutes) : 1
+    const consultations = typeof body.consultations === 'number' ? Math.max(0, Math.round(body.consultations)) : 0
+    const prescriptions = typeof body.prescriptions === 'number' ? Math.max(0, Math.round(body.prescriptions)) : 0
+    const certificates = typeof body.certificates === 'number' ? Math.max(0, Math.round(body.certificates)) : 0
+    const appointments = typeof body.appointments === 'number' ? Math.max(0, Math.round(body.appointments)) : 0
+    const patients = typeof body.patients === 'number' ? Math.max(0, Math.round(body.patients)) : 0
+
+    try {
+      const { error: rpcError } = await admin.rpc('record_professional_heartbeat', {
+        p_professional_id: professionalId,
+        p_minutes: minutes,
+        p_consultations: consultations,
+        p_prescriptions: prescriptions,
+        p_certificates: certificates,
+        p_appointments: appointments,
+        p_patients: patients,
+      })
+      if (rpcError) {
+        await admin.from('professionals').update({ last_seen_at: new Date().toISOString() }).eq('id', professionalId)
+      }
+    } catch {
+      await admin.from('professionals').update({ last_seen_at: new Date().toISOString() }).eq('id', professionalId)
+    }
+    return jsonResponse(200, { success: true })
+  }
   if (body.action === 'load') {
+    void admin.from('professionals').update({ last_seen_at: new Date().toISOString() }).eq('id', professionalId)
     const [{ data: loadedWorkspace, error: workspaceError }, { data: professional, error: professionalError }] = await Promise.all([
       admin.from('user_workspaces').select('user_id, profile_json, patients_json, appointments_json, treatment_ledger_json, treatment_ledger_initialized').eq('user_id', professionalId).maybeSingle(),
       admin.from('professionals').select('id, username, full_name, specialty, license_number, dni, email, network_memberships_json, is_admin, active, enabled_modules_json, trial_started_at, subscription_status, subscription_expires_at').eq('id', professionalId).maybeSingle(),
@@ -104,6 +131,7 @@ Deno.serve(async (request) => {
     }
     const { error } = await admin.from('user_workspaces').upsert(workspaceUpdate, { onConflict: 'user_id' })
     if (error) return jsonResponse(['40001', '23505'].includes(error.code) ? 409 : 500, { success: false, message: error.message })
+    void admin.from('professionals').update({ last_seen_at: new Date().toISOString() }).eq('id', professionalId)
     return jsonResponse(200, { success: true })
   }
   if (body.action === 'save-ledger') {

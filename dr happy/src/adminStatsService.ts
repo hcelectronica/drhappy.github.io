@@ -15,9 +15,28 @@ export interface AdminUserStats {
   trialStartedAt: string | null
   createdAt: string | null
   lastSeenAt: string | null
+  isOnline?: boolean
   patientsCount: number
   appointmentsCount: number
+  consultationsCount?: number
+  prescriptionsCount?: number
   lastAppointmentDate: string | null
+  activeMinutesToday?: number
+  activeMinutes7d?: number
+  activeMinutes30d?: number
+  consultations7d?: number
+  prescriptions7d?: number
+  adoptionLevel?: 'alta' | 'media' | 'baja' | 'sin_uso'
+}
+
+export interface AdminStatsSummary {
+  totalProfessionals: number
+  onlineCount: number
+  weeklyActiveCount: number
+  totalPatientsManaged: number
+  totalAppointments: number
+  totalConsultations: number
+  totalActiveMinutes7d: number
 }
 
 export interface AdminAIUsageStats {
@@ -45,7 +64,7 @@ export async function fetchAdminAIUsage(
 
 export async function fetchAdminUserStats(
   _requesterId: string,
-): Promise<{ success: boolean; message?: string; users?: AdminUserStats[] }> {
+): Promise<{ success: boolean; message?: string; users?: AdminUserStats[]; summary?: AdminStatsSummary }> {
   void _requesterId
   if (!isSupabaseConfigured || !supabase) {
     return { success: false, message: 'Supabase no está conectado.' }
