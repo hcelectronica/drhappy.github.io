@@ -487,3 +487,5 @@ a.pp-primary { display: inline-block; text-decoration: none; text-align: center;
 .pp-link-request h2 small { font-weight: 500; color: var(--pp-muted); }
 .pp-link-request p { margin: 0; }
 .pp-link-request .pp-muted { font-size: 0.85rem; }
+
+.pp-tile.is-memory { background: linear-gradient(140deg, #c2410c, #f59e0b); }

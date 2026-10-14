@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   PATIENT_DOCUMENT_CATEGORIES,
@@ -14,10 +14,12 @@ import type { PatientDocument, PatientDocumentCategory, PatientFolderResponse, P
 import './PatientPortal.css'
 import PatientPressureView from './PatientPressureView'
 import PatientLinkRequests from './PatientLinkRequests'
+
+const MemoryWorkshop = lazy(() => import('./memory/MemoryWorkshop'))
 import type { EncodeHintType as HintKey } from '@zxing/library'
 
 type AuthMode = 'login' | 'register' | 'verify' | 'forgot' | 'reset'
-type View = 'home' | 'folder' | 'upload' | 'pressure' | 'share' | 'account'
+type View = 'home' | 'folder' | 'upload' | 'pressure' | 'memory' | 'share' | 'account'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
@@ -892,6 +894,7 @@ export function PatientPortal() {
               <button type="button" className="pp-tile is-folder" onClick={() => setView('folder')}><span aria-hidden>🗂️</span>Mi carpeta</button>
               <button type="button" className="pp-tile is-upload" onClick={() => setView('upload')}><span aria-hidden>📤</span>Subir estudio</button>
               <button type="button" className="pp-tile is-pressure" onClick={() => setView('pressure')}><span aria-hidden>❤️</span>Mi presión</button>
+              <button type="button" className="pp-tile is-memory" onClick={() => setView('memory')}><span aria-hidden>🧠</span>Taller de memoria</button>
               <button type="button" className="pp-tile is-share" onClick={() => setView('share')}><span aria-hidden>🤝</span>Compartir con mi médico</button>
               <button type="button" className="pp-tile is-account" onClick={() => setView('account')}><span aria-hidden>👤</span>Mi cuenta</button>
             </nav>
@@ -907,6 +910,11 @@ export function PatientPortal() {
           />
         )}
         {view === 'pressure' && <PatientPressureView onToast={setToast} />}
+        {view === 'memory' && (
+          <Suspense fallback={<p className="pp-muted">Cargando juegos…</p>}>
+            <MemoryWorkshop />
+          </Suspense>
+        )}
         {view === 'share' && <ShareView documents={documents} patientName={patient.fullName} onToast={setToast} />}
         {view === 'account' && <AccountView patient={patient} onUpdated={setPatient} onLogout={logout} />}
       </main>
