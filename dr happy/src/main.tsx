@@ -16,6 +16,11 @@ const isPaidDocumentsPublicRoute = Boolean(
 const PaidDocumentsPublicPage = isPaidDocumentsPublicRoute
   ? lazy(() => import('./PaidClinicalDocumentsPublicPage').then((module) => ({ default: module.PaidClinicalDocumentsPublicPage })))
   : null
+const isPatientPortalRoute = /^\/paciente\/?$/i.test(window.location.pathname)
+  || new URLSearchParams(window.location.search).has('patient_portal')
+const PatientPortal = isPatientPortalRoute && !PaidDocumentsPublicPage
+  ? lazy(() => import('./PatientPortal'))
+  : null
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -25,7 +30,9 @@ createRoot(document.getElementById('root')!).render(
           ? <Suspense fallback={<p>Cargando diseño de ficha dental...</p>}><DentalDesignPreview /></Suspense>
           : PaidDocumentsPublicPage
             ? <Suspense fallback={<p>Cargando formulario de documentos…</p>}><PaidDocumentsPublicPage /></Suspense>
-            : <App />}
+            : PatientPortal
+              ? <Suspense fallback={<p style={{ textAlign: 'center', marginTop: '30vh' }}>Abriendo tu carpeta…</p>}><PatientPortal /></Suspense>
+              : <App />}
       </ErrorNotificationProvider>
     </AppErrorBoundary>
   </StrictMode>,
