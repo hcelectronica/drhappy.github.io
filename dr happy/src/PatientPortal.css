@@ -406,3 +406,32 @@ a.pp-primary { display: inline-block; text-decoration: none; text-align: center;
 .pp-install .pp-link-btn { grid-column: 1 / -1; justify-self: center; font-size: 0.85rem; color: var(--pp-muted); padding: 0; }
 .pp-install-help { grid-column: 1 / -1; margin: 0; padding: 10px 12px; border-radius: 12px; background: #fff; color: #1f2937; font-size: 0.9rem; line-height: 1.4; }
 .pp-install.is-compact { margin-top: 0; }
+
+.pp-install-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.45);
+  animation: pp-fade-in 0.2s ease;
+}
+.pp-install-modal {
+  width: min(360px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 26px 22px 16px;
+  border-radius: 24px;
+  background: #fff;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+}
+.pp-install-modal img { border-radius: 22px; box-shadow: 0 8px 22px rgba(15, 118, 110, 0.3); }
+.pp-install-modal h2 { margin: 4px 0 0; font-size: 1.2rem; color: var(--pp-brand-dark); }
+.pp-install-modal p { margin: 0; color: var(--pp-muted); font-size: 0.95rem; line-height: 1.4; }
+.pp-install-modal .pp-primary { width: 100%; box-shadow: none; }
+.pp-install-modal .pp-install-help { background: #ecfdf5; text-align: left; }
+.pp-install-modal .pp-link-btn { color: var(--pp-muted); }
+@keyframes pp-fade-in { from { opacity: 0; } to { opacity: 1; } }

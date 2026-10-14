@@ -202,7 +202,7 @@ function AuthScreen({ onSession }: { onSession: (patient: PatientProfile) => voi
           {mode !== 'login' && <button type="button" onClick={() => go('login')}>Volver a ingresar</button>}
         </div>
       </form>
-      <InstallPatientApp compact />
+      <InstallPatientApp variant="compact" />
       <p className="pp-foot">¿Sos profesional de la salud? <a href="/">Ingresá a Dr Happy</a></p>
     </main>
   )
@@ -221,7 +221,8 @@ function isRunningInstalled(): boolean {
 }
 
 // Botón para instalar Mi Carpeta de Salud como app propia (ícono verde, separado del profesional).
-function InstallPatientApp({ compact = false }: { compact?: boolean }) {
+function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | 'compact' | 'modal'; onClose?: () => void }) {
+  const compact = variant === 'compact'
   const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(() => (window as PatientWindow).__patientInstallPrompt ?? null)
   const [installed, setInstalled] = useState(isRunningInstalled)
   const [showHelp, setShowHelp] = useState(false)
@@ -241,7 +242,9 @@ function InstallPatientApp({ compact = false }: { compact?: boolean }) {
     }
   }, [])
 
-  if (installed || snoozed || (!promptEvent && !isIos && !isAndroid)) return null
+  const hidden = installed || (snoozed && variant !== 'modal') || (!promptEvent && !isIos && !isAndroid)
+  useEffect(() => { if (hidden && onClose) onClose() }, [hidden, onClose])
+  if (hidden) return null
 
   async function install() {
     if (!promptEvent) { setShowHelp((current) => !current); return }
@@ -250,11 +253,35 @@ function InstallPatientApp({ compact = false }: { compact?: boolean }) {
     ;(window as PatientWindow).__patientInstallPrompt = undefined
     setPromptEvent(null)
     if (choice.outcome === 'accepted') setInstalled(true)
+    onClose?.()
   }
 
   function later() {
     localStorage.setItem(INSTALL_SNOOZE_KEY, String(Date.now() + 14 * 24 * 60 * 60 * 1000))
     setSnoozed(true)
+  }
+
+  const help = showHelp && (
+    <p className="pp-install-help">
+      {isIos
+        ? <>En Safari tocá <strong>Compartir</strong> (el cuadrado con la flecha ⬆️) y elegí <strong>“Agregar a inicio”</strong>.</>
+        : <>Abrí el menú del navegador (<strong>⋮</strong>) y elegí <strong>“Instalar app”</strong> o <strong>“Agregar a pantalla de inicio”</strong>.</>}
+    </p>
+  )
+
+  if (variant === 'modal') {
+    return (
+      <div className="pp-install-overlay" role="dialog" aria-modal="true" aria-labelledby="pp-install-title">
+        <div className="pp-install-modal">
+          <img src="/patient-icon-192.png?v=p1" alt="Ícono de Mi Carpeta de Salud" width={88} height={88} />
+          <h2 id="pp-install-title">¿Instalar Mi Carpeta en tu celular?</h2>
+          <p>Vas a tener este ícono en tu pantalla y tu carpeta se abre con un toque, sin buscar la página.</p>
+          <button type="button" className="pp-primary" onClick={() => void install()}>📲 Sí, instalar</button>
+          {help}
+          <button type="button" className="pp-link-btn" onClick={onClose}>Ahora no</button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -266,13 +293,8 @@ function InstallPatientApp({ compact = false }: { compact?: boolean }) {
       </div>
       <button type="button" className="pp-primary" onClick={() => void install()}>📲 Instalar</button>
       {!compact && <button type="button" className="pp-link-btn" onClick={later}>Ahora no</button>}
-      {showHelp && (
-        <p className="pp-install-help">
-          {isIos
-            ? <>En Safari tocá <strong>Compartir</strong> (el cuadrado con la flecha ⬆️) y elegí <strong>“Agregar a inicio”</strong>.</>
-            : <>Abrí el menú del navegador (<strong>⋮</strong>) y elegí <strong>“Instalar app”</strong> o <strong>“Agregar a pantalla de inicio”</strong>.</>}
-        </p>
-      )}
+      {help}
+
     </section>
   )
 }
@@ -746,6 +768,8 @@ export function PatientPortal() {
   const [documents, setDocuments] = useState<PatientDocument[]>([])
   const [loadingDocs, setLoadingDocs] = useState(false)
   const [toast, setToast] = useState('')
+  const [askInstall, setAskInstall] = useState(false)
+  const closeInstall = useCallback(() => setAskInstall(false), [])
 
   useEffect(() => {
     document.title = 'Mi Carpeta de Salud | Dr Happy'
@@ -790,7 +814,7 @@ export function PatientPortal() {
   if (checking) {
     return <main className="pp-auth"><Brand /><p className="pp-muted">Abriendo tu carpeta…</p></main>
   }
-  if (!patient) return <AuthScreen onSession={(p) => { setPatient(p); setView('home') }} />
+  if (!patient) return <AuthScreen onSession={(p) => { setPatient(p); setView('home'); setAskInstall(true) }} />
 
   const firstName = patient.firstName || patient.fullName.split(' ')[0]
   const lastDoc = documents[0]
@@ -817,7 +841,7 @@ export function PatientPortal() {
               <button type="button" className="pp-tile is-share" onClick={() => setView('share')}><span aria-hidden>🤝</span>Compartir con mi médico</button>
               <button type="button" className="pp-tile is-account" onClick={() => setView('account')}><span aria-hidden>👤</span>Mi cuenta</button>
             </nav>
-            <InstallPatientApp />
+            {!askInstall && <InstallPatientApp />}
           </>
         )}
         {view === 'folder' && <FolderView documents={documents} loading={loadingDocs} onReload={loadDocuments} />}
@@ -830,6 +854,7 @@ export function PatientPortal() {
         {view === 'share' && <ShareView documents={documents} patientName={patient.fullName} onToast={setToast} />}
         {view === 'account' && <AccountView patient={patient} onUpdated={setPatient} onLogout={logout} />}
       </main>
+      {askInstall && <InstallPatientApp variant="modal" onClose={closeInstall} />}
       {toast && <div className="pp-toast" role="status">{toast}</div>}
     </div>
   )
