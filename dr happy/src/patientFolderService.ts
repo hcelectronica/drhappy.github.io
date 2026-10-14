@@ -61,6 +61,17 @@ export interface PatientFolderResponse {
   shareId?: string
   expiresAt?: string
   updated?: boolean
+  readings?: BpReading[]
+  reading?: BpReading
+}
+
+export interface BpReading {
+  id: string
+  measuredAt: string
+  systolic: number
+  diastolic: number
+  pulse: number | null
+  note: string | null
 }
 
 export interface PatientShare {
@@ -68,6 +79,7 @@ export interface PatientShare {
   kind: 'doctor' | 'link'
   allDocuments: boolean
   documentCount: number
+  includePressure: boolean
   expiresAt: string | null
   accessCount: number
   lastAccessedAt: string | null
@@ -98,6 +110,7 @@ export interface OpenShareResponse {
   expiresAt?: string
   urlTtlSeconds?: number
   documents?: SharedDocument[]
+  pressure?: BpReading[]
 }
 
 export interface DoctorSharedFolder {
@@ -105,6 +118,7 @@ export interface DoctorSharedFolder {
   patientName: string
   sharedAt: string
   documents: SharedDocument[]
+  pressure?: BpReading[]
 }
 
 export interface DoctorFolderLink {

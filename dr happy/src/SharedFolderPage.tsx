@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { formatBytes, formatDate, openPatientShare, patientCategoryMeta } from './patientFolderService'
-import type { SharedDocument } from './patientFolderService'
+import type { BpReading, SharedDocument } from './patientFolderService'
+import { BpDoctorSummary } from './BloodPressure'
 import './PatientPortal.css'
 
 // Página pública para el médico externo: link temporal + código de 6 números que le da el paciente.
@@ -9,7 +10,7 @@ export default function SharedFolderPage({ token }: { token: string }) {
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [data, setData] = useState<{ patientName: string; birthDate: string | null; expiresAt: string; documents: SharedDocument[]; loadedAt: number; ttl: number } | null>(null)
+  const [data, setData] = useState<{ patientName: string; birthDate: string | null; expiresAt: string; documents: SharedDocument[]; pressure: BpReading[]; loadedAt: number; ttl: number } | null>(null)
   const [gone, setGone] = useState(false)
 
   useEffect(() => {
@@ -37,6 +38,7 @@ export default function SharedFolderPage({ token }: { token: string }) {
       birthDate: result.birthDate ?? null,
       expiresAt: result.expiresAt ?? '',
       documents: result.documents ?? [],
+      pressure: result.pressure ?? [],
       loadedAt: Date.now(),
       ttl: (result.urlTtlSeconds ?? 600) * 1000,
     })
@@ -84,7 +86,7 @@ export default function SharedFolderPage({ token }: { token: string }) {
             Acceso válido hasta el {new Date(data.expiresAt).toLocaleDateString('es-AR')}
           </p>
           {error && <p className="pp-error" role="alert">{error}</p>}
-          {!data.documents.length && <p className="pp-empty">El paciente todavía no tiene estudios en lo que compartió.</p>}
+          {!data.documents.length && <p className="pp-empty">{data.pressure.length ? 'El paciente no compartió estudios.' : 'El paciente todavía no tiene estudios en lo que compartió.'}</p>}
           <ul className="pp-docs">
             {data.documents.map((doc) => {
               const info = patientCategoryMeta(doc.category)
@@ -105,6 +107,13 @@ export default function SharedFolderPage({ token }: { token: string }) {
             })}
           </ul>
           <button type="button" className="pp-link-btn" onClick={() => void load()} disabled={busy}>{busy ? 'Actualizando…' : 'Actualizar'}</button>
+        </section>
+      )}
+
+      {data && data.pressure.length > 0 && (
+        <section className="pp-card">
+          <h2>❤️ Presión arterial en casa</h2>
+          <BpDoctorSummary readings={data.pressure} />
         </section>
       )}
 

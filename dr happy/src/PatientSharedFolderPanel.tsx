@@ -7,6 +7,7 @@ import {
   patientCategoryMeta,
   type DoctorSharedFolder,
 } from './patientFolderService'
+import { BpDoctorSummary } from './BloodPressure'
 
 // Estudios que el paciente compartió desde su Carpeta de Salud. Se consultan en vivo: si revoca, desaparecen.
 export default function PatientSharedFolderPanel({ dni }: { dni: string }) {
@@ -14,6 +15,7 @@ export default function PatientSharedFolderPanel({ dni }: { dni: string }) {
   const [folders, setFolders] = useState<DoctorSharedFolder[]>([])
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState('')
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -47,10 +49,17 @@ export default function PatientSharedFolderPanel({ dni }: { dni: string }) {
       <h4 className="block-title">📂 Carpeta de Salud compartida por el paciente</h4>
       <p className="paper-record-meta">El paciente te compartió estos estudios desde su app. Si deja de compartirlos, dejarán de verse acá.</p>
       {error ? <p className="access-note">{error}</p> : null}
+      {notice ? <p className="access-note">{notice}</p> : null}
       {folders.map((folder) => (
         <details key={folder.shareId} className="patient-documents-folder" open>
           <summary>{folder.patientName} · compartido el {formatDate(folder.sharedAt)} ({folder.documents.length})</summary>
-          {folder.documents.length === 0 ? <p className="paper-record-meta">La carpeta todavía no tiene estudios.</p> : (
+          {folder.pressure?.length ? (
+            <details className="patient-documents-folder" open>
+              <summary>❤️ Presión arterial en casa ({folder.pressure.length} {folder.pressure.length === 1 ? 'toma' : 'tomas'})</summary>
+              <BpDoctorSummary readings={folder.pressure} onCopy={setNotice} />
+            </details>
+          ) : null}
+          {folder.documents.length === 0 ? <p className="paper-record-meta">{folder.pressure?.length ? 'No compartió estudios, solo su registro de presión.' : 'La carpeta todavía no tiene estudios.'}</p> : (
             <ul className="paper-record-list">
               {folder.documents.map((document) => {
                 const meta = patientCategoryMeta(document.category)

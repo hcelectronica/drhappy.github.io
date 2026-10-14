@@ -12,10 +12,11 @@ import {
 } from './patientFolderService'
 import type { PatientDocument, PatientDocumentCategory, PatientFolderResponse, PatientProfile, PatientShare } from './patientFolderService'
 import './PatientPortal.css'
+import PatientPressureView from './PatientPressureView'
 import type { EncodeHintType as HintKey } from '@zxing/library'
 
 type AuthMode = 'login' | 'register' | 'verify' | 'forgot' | 'reset'
-type View = 'home' | 'folder' | 'upload' | 'share' | 'account'
+type View = 'home' | 'folder' | 'upload' | 'pressure' | 'share' | 'account'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
@@ -471,12 +472,14 @@ function FolderView({ documents, loading, onReload }: { documents: PatientDocume
   )
 }
 
-function ScopePicker({ documents, all, selected, onAll, onToggle }: {
+function ScopePicker({ documents, all, selected, onAll, onToggle, pressure, onPressure }: {
   documents: PatientDocument[]
   all: boolean
   selected: string[]
   onAll: (value: boolean) => void
   onToggle: (id: string) => void
+  pressure: boolean
+  onPressure: (value: boolean) => void
 }) {
   return (
     <fieldset className="pp-scope">
@@ -495,6 +498,7 @@ function ScopePicker({ documents, all, selected, onAll, onToggle }: {
           ))}
         </ul>
       )}
+      <label className="pp-check"><input type="checkbox" checked={pressure} onChange={(e) => onPressure(e.target.checked)} /> ❤️ Incluir mi registro de presión</label>
     </fieldset>
   )
 }
@@ -507,6 +511,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
   const [loadingShares, setLoadingShares] = useState(true)
   const [all, setAll] = useState(true)
   const [selected, setSelected] = useState<string[]>([])
+  const [pressure, setPressure] = useState(true)
   const [query, setQuery] = useState('')
   const [doctor, setDoctor] = useState<{ id: string; name: string; specialty: string } | null>(null)
   const [days, setDays] = useState(7)
@@ -526,6 +531,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
     setMode(next)
     setAll(true)
     setSelected([])
+    setPressure(true)
     setQuery('')
     setDoctor(null)
     setCreated(null)
@@ -550,10 +556,10 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
 
   async function shareWithDoctor() {
     if (!doctor || busy) return
-    if (!all && !selected.length) return setError('Elegí al menos un estudio.')
+    if (!all && !selected.length && !pressure) return setError('Elegí al menos un estudio o tu registro de presión.')
     setBusy(true)
     setError('')
-    const result = await callPatientFolder({ action: 'share-with-doctor', professionalId: doctor.id, allDocuments: all, documentIds: selected })
+    const result = await callPatientFolder({ action: 'share-with-doctor', professionalId: doctor.id, allDocuments: all, documentIds: selected, includePressure: pressure })
     setBusy(false)
     if (!result.success) return setError(result.message || 'No se pudo compartir.')
     onToast(result.updated ? 'Actualizaste lo que compartís con tu médico ✔' : `Listo, ${doctor.name || 'tu médico'} ya puede ver tus estudios ✔`)
@@ -563,10 +569,10 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
 
   async function createLink() {
     if (busy) return
-    if (!all && !selected.length) return setError('Elegí al menos un estudio.')
+    if (!all && !selected.length && !pressure) return setError('Elegí al menos un estudio o tu registro de presión.')
     setBusy(true)
     setError('')
-    const result = await callPatientFolder({ action: 'create-link-share', days, allDocuments: all, documentIds: selected }) as PatientFolderResponse & { code?: string }
+    const result = await callPatientFolder({ action: 'create-link-share', days, allDocuments: all, documentIds: selected, includePressure: pressure }) as PatientFolderResponse & { code?: string }
     setBusy(false)
     if (!result.success || !result.url || !result.code || !result.expiresAt) return setError(result.message || 'No se pudo crear el link.')
     setCreated({ url: result.url, code: result.code, expiresAt: result.expiresAt })
@@ -647,7 +653,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
                 <span aria-hidden>🩺</span>
                 <div><strong>{doctor.name || 'Profesional de Dr Happy'}</strong>{doctor.specialty && <small>{doctor.specialty}</small>}</div>
               </div>
-              <ScopePicker documents={documents} all={all} selected={selected} onAll={setAll} onToggle={toggle} />
+              <ScopePicker documents={documents} all={all} selected={selected} onAll={setAll} onToggle={toggle} pressure={pressure} onPressure={setPressure} />
               <p className="pp-muted">Si todavía no sos paciente de este médico en Dr Happy, se crea tu ficha con tu nombre, DNI y contacto.</p>
             </>
           )}
@@ -668,7 +674,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
               <button type="button" key={value} className={days === value ? 'is-active' : ''} onClick={() => setDays(Number(value))}>{label}</button>
             ))}
           </fieldset>
-          <ScopePicker documents={documents} all={all} selected={selected} onAll={setAll} onToggle={toggle} />
+          <ScopePicker documents={documents} all={all} selected={selected} onAll={setAll} onToggle={toggle} pressure={pressure} onPressure={setPressure} />
           {error && <p className="pp-error" role="alert">{error}</p>}
           <div className="pp-row">
             <button type="button" className="pp-secondary" onClick={() => reset('menu')} disabled={busy}>Volver</button>
@@ -704,7 +710,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
                 <span aria-hidden>🩺</span>
                 <div>
                   <strong>{share.doctorName || 'Profesional de Dr Happy'}</strong>
-                  <small>{share.doctorSpecialty ? `${share.doctorSpecialty} · ` : ''}{share.allDocuments ? 'Toda la carpeta' : `${share.documentCount} estudio${share.documentCount === 1 ? '' : 's'}`}{share.lastAccessedAt ? ` · Visto ${formatDate(share.lastAccessedAt)}` : ''}</small>
+                  <small>{share.doctorSpecialty ? `${share.doctorSpecialty} · ` : ''}{share.allDocuments ? 'Toda la carpeta' : `${share.documentCount} estudio${share.documentCount === 1 ? '' : 's'}`}{share.includePressure ? ' + presión' : ''}{share.lastAccessedAt ? ` · Visto ${formatDate(share.lastAccessedAt)}` : ''}</small>
                 </div>
                 <button type="button" className="is-danger" onClick={() => revoke(share)}>Dejar de compartir</button>
               </li>
@@ -714,7 +720,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
                 <span aria-hidden>🔗</span>
                 <div>
                   <strong>Link temporal</strong>
-                  <small>Vence {share.expiresAt ? formatDate(share.expiresAt) : ''} · {share.allDocuments ? 'Toda la carpeta' : `${share.documentCount} estudio${share.documentCount === 1 ? '' : 's'}`} · Abierto {share.accessCount} {share.accessCount === 1 ? 'vez' : 'veces'}</small>
+                  <small>Vence {share.expiresAt ? formatDate(share.expiresAt) : ''} · {share.allDocuments ? 'Toda la carpeta' : `${share.documentCount} estudio${share.documentCount === 1 ? '' : 's'}`}{share.includePressure ? ' + presión' : ''} · Abierto {share.accessCount} {share.accessCount === 1 ? 'vez' : 'veces'}</small>
                 </div>
                 <button type="button" className="is-danger" onClick={() => revoke(share)}>Desactivar</button>
               </li>
@@ -883,6 +889,7 @@ export function PatientPortal() {
             <nav className="pp-grid" aria-label="Menú principal">
               <button type="button" className="pp-tile is-folder" onClick={() => setView('folder')}><span aria-hidden>🗂️</span>Mi carpeta</button>
               <button type="button" className="pp-tile is-upload" onClick={() => setView('upload')}><span aria-hidden>📤</span>Subir estudio</button>
+              <button type="button" className="pp-tile is-pressure" onClick={() => setView('pressure')}><span aria-hidden>❤️</span>Mi presión</button>
               <button type="button" className="pp-tile is-share" onClick={() => setView('share')}><span aria-hidden>🤝</span>Compartir con mi médico</button>
               <button type="button" className="pp-tile is-account" onClick={() => setView('account')}><span aria-hidden>👤</span>Mi cuenta</button>
             </nav>
@@ -897,6 +904,7 @@ export function PatientPortal() {
             onDone={() => { setToast('Estudio guardado en tu carpeta ✔'); void loadDocuments(); setView('folder') }}
           />
         )}
+        {view === 'pressure' && <PatientPressureView onToast={setToast} />}
         {view === 'share' && <ShareView documents={documents} patientName={patient.fullName} onToast={setToast} />}
         {view === 'account' && <AccountView patient={patient} onUpdated={setPatient} onLogout={logout} />}
       </main>

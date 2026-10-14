@@ -241,9 +241,22 @@ serve(async (request) => {
     revoked_at: string | null
     last_accessed_at: string | null
     access_count: number
+    include_pressure: boolean
     created_at: string
   }
-  const SHARE_COLUMNS = 'id, patient_id, kind, professional_id, token, code_hash, failed_attempts, all_documents, document_ids, expires_at, revoked_at, last_accessed_at, access_count, created_at'
+  const SHARE_COLUMNS = 'id, patient_id, kind, professional_id, token, code_hash, failed_attempts, all_documents, document_ids, expires_at, revoked_at, last_accessed_at, access_count, include_pressure, created_at'
+
+  async function pressureReadings(patientId: string, days = 365) {
+    const { data, error } = await admin.from('patient_bp_readings')
+      .select('id, measured_at, systolic, diastolic, pulse, note')
+      .eq('patient_id', patientId).is('deleted_at', null)
+      .gte('measured_at', new Date(Date.now() - days * 86400000).toISOString())
+      .order('measured_at', { ascending: false }).limit(1000)
+    if (error) throw error
+    return (data ?? []).map((row) => ({
+      id: row.id, measuredAt: row.measured_at, systolic: row.systolic, diastolic: row.diastolic, pulse: row.pulse, note: row.note,
+    }))
+  }
   const hashShareCode = (shareId: string, code: string) => sha256(`patient-share:${shareId}:${code}:${pepper}`)
 
   function splitName(row: Pick<PatientRow, 'full_name' | 'first_name' | 'last_name'>): { nombre: string; apellido: string } {
@@ -480,6 +493,7 @@ serve(async (request) => {
         expiresAt: share.expires_at,
         urlTtlSeconds: SHARE_URL_TTL_SECONDS,
         documents,
+        pressure: share.include_pressure ? await pressureReadings(share.patient_id) : [],
       })
     }
 
@@ -533,6 +547,7 @@ serve(async (request) => {
             id: row.id, title: row.title, category: row.category, studyDate: row.study_date, notes: row.notes,
             mimeType: row.mime_type, sizeBytes: Number(row.size_bytes) || 0,
           })),
+          pressure: share.include_pressure ? await pressureReadings(share.patient_id) : [],
         })))
         return reply(200, { success: true, folders })
       }
@@ -717,6 +732,41 @@ serve(async (request) => {
       return reply(200, { success: true, url: data.signedUrl, mimeType: doc.mime_type })
     }
 
+    if (action === 'bp-list') {
+      return reply(200, { success: true, readings: await pressureReadings(patient.id, 3650) })
+    }
+
+    if (action === 'bp-add') {
+      const systolic = Math.round(Number(body.systolic))
+      const diastolic = Math.round(Number(body.diastolic))
+      const pulse = body.pulse === null || body.pulse === undefined || body.pulse === '' ? null : Math.round(Number(body.pulse))
+      if (!Number.isFinite(systolic) || systolic < 50 || systolic > 300) return reply(400, { success: false, message: 'La presión máxima (sistólica) tiene que estar entre 50 y 300.' })
+      if (!Number.isFinite(diastolic) || diastolic < 30 || diastolic > 200) return reply(400, { success: false, message: 'La presión mínima (diastólica) tiene que estar entre 30 y 200.' })
+      if (diastolic >= systolic) return reply(400, { success: false, message: 'La mínima tiene que ser menor que la máxima. Revisá si los cargaste al revés.' })
+      if (pulse !== null && (!Number.isFinite(pulse) || pulse < 25 || pulse > 250)) return reply(400, { success: false, message: 'El pulso tiene que estar entre 25 y 250.' })
+      const measured = body.measuredAt ? new Date(String(body.measuredAt)) : new Date()
+      if (Number.isNaN(measured.getTime()) || measured.getTime() > Date.now() + 5 * 60000 || measured.getTime() < Date.now() - 366 * 86400000) {
+        return reply(400, { success: false, message: 'Revisá la fecha y hora de la toma.' })
+      }
+      const { data, error } = await admin.from('patient_bp_readings').insert({
+        patient_id: patient.id, measured_at: measured.toISOString(), systolic, diastolic, pulse, note: text(body.note, 200) || null,
+      }).select('id, measured_at, systolic, diastolic, pulse, note').single()
+      if (error) throw error
+      return reply(200, {
+        success: true,
+        reading: { id: data.id, measuredAt: data.measured_at, systolic: data.systolic, diastolic: data.diastolic, pulse: data.pulse, note: data.note },
+      })
+    }
+
+    if (action === 'bp-delete') {
+      const readingId = text(body.readingId, 40)
+      const { data, error } = await admin.from('patient_bp_readings').update({ deleted_at: new Date().toISOString() })
+        .eq('id', readingId).eq('patient_id', patient.id).is('deleted_at', null).select('id')
+      if (error) throw error
+      if (!data?.length) return reply(404, { success: false, message: 'Esa toma ya no existe.' })
+      return reply(200, { success: true })
+    }
+
     if (action === 'find-doctor') {
       const professional = await findProfessional(text(body.query, 300))
       if (!professional) return reply(404, { success: false, message: 'No encontramos un médico de Dr Happy con ese email o link. Revisalo o compartí con un link temporal.' })
@@ -728,18 +778,20 @@ serve(async (request) => {
       const { data: professional } = await admin.from('professionals').select('id, full_name, email, active').eq('id', professionalId).maybeSingle()
       if (!professional || professional.active === false) return reply(404, { success: false, message: 'No encontramos a ese médico.' })
       const allDocuments = body.allDocuments !== false
+      const includePressure = body.includePressure !== false
       const documentIds = allDocuments ? [] : await validDocumentIds(patient.id, body.documentIds)
-      if (!allDocuments && !documentIds.length) return reply(400, { success: false, message: 'Elegí al menos un estudio para compartir.' })
+      if (!allDocuments && !documentIds.length && !includePressure) return reply(400, { success: false, message: 'Elegí al menos un estudio o tu registro de presión para compartir.' })
       const { data: existing } = await admin.from('patient_shares').select('id')
         .eq('patient_id', patient.id).eq('kind', 'doctor').eq('professional_id', professional.id).is('revoked_at', null).maybeSingle()
       if (existing) {
-        const { error } = await admin.from('patient_shares').update({ all_documents: allDocuments, document_ids: documentIds }).eq('id', existing.id)
+        const { error } = await admin.from('patient_shares').update({ all_documents: allDocuments, document_ids: documentIds, include_pressure: includePressure }).eq('id', existing.id)
         if (error) throw error
         await log(patient.id, 'share_doctor_updated')
         return reply(200, { success: true, updated: true })
       }
       const { error } = await admin.from('patient_shares').insert({
         patient_id: patient.id, kind: 'doctor', professional_id: professional.id, all_documents: allDocuments, document_ids: documentIds,
+        include_pressure: includePressure,
       })
       if (error) throw error
       await log(patient.id, 'share_doctor_created')
@@ -758,8 +810,9 @@ serve(async (request) => {
       const days = Number(body.days)
       if (!SHARE_DAYS.has(days)) return reply(400, { success: false, message: 'Elegí por cuánto tiempo compartir.' })
       const allDocuments = body.allDocuments !== false
+      const includePressure = body.includePressure !== false
       const documentIds = allDocuments ? [] : await validDocumentIds(patient.id, body.documentIds)
-      if (!allDocuments && !documentIds.length) return reply(400, { success: false, message: 'Elegí al menos un estudio para compartir.' })
+      if (!allDocuments && !documentIds.length && !includePressure) return reply(400, { success: false, message: 'Elegí al menos un estudio o tu registro de presión para compartir.' })
       const { count } = await admin.from('patient_shares').select('id', { count: 'exact', head: true })
         .eq('patient_id', patient.id).eq('kind', 'link').is('revoked_at', null).gt('expires_at', new Date().toISOString())
       if ((count ?? 0) >= MAX_ACTIVE_LINKS) return reply(400, { success: false, message: 'Tenés demasiados links activos. Desactivá alguno antes de crear otro.' })
@@ -770,7 +823,7 @@ serve(async (request) => {
       const expiresAt = new Date(Date.now() + days * 86400000).toISOString()
       const { error } = await admin.from('patient_shares').insert({
         id: shareId, patient_id: patient.id, kind: 'link', token, code_hash: await hashShareCode(shareId, code),
-        all_documents: allDocuments, document_ids: documentIds, expires_at: expiresAt,
+        all_documents: allDocuments, document_ids: documentIds, expires_at: expiresAt, include_pressure: includePressure,
       })
       if (error) throw error
       await log(patient.id, 'share_link_created')
@@ -791,7 +844,7 @@ serve(async (request) => {
         shares: rows.map((row) => {
           const professional = professionals?.find((item) => item.id === row.professional_id)
           return {
-            id: row.id, kind: row.kind, allDocuments: row.all_documents, documentCount: (row.document_ids ?? []).length,
+            id: row.id, kind: row.kind, allDocuments: row.all_documents, documentCount: (row.document_ids ?? []).length, includePressure: row.include_pressure,
             expiresAt: row.expires_at, accessCount: row.access_count, lastAccessedAt: row.last_accessed_at, createdAt: row.created_at,
             doctorName: professional?.full_name ?? '', doctorSpecialty: professional?.specialty ?? '',
             url: row.kind === 'link' && row.token ? `${PUBLIC_SITE_URL}/compartido/${row.token}` : null,
