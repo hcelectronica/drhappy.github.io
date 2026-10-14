@@ -3,7 +3,7 @@
   "name": "Mi Carpeta de Salud · Dr Happy",
   "short_name": "Mi Salud",
   "description": "Tus estudios médicos ordenados, siempre a mano y listos para compartir con tu médico. Gratis.",
-  "start_url": "/paciente",
+  "start_url": "/paciente?app=paciente",
   "scope": "/paciente",
   "display": "standalone",
   "background_color": "#f1f7f6",

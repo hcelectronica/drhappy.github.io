@@ -215,9 +215,22 @@ interface InstallPromptEvent extends Event {
 type PatientWindow = Window & { __patientInstallPrompt?: InstallPromptEvent }
 const INSTALL_SNOOZE_KEY = 'drhappy-patient-install-snooze'
 
-function isRunningInstalled(): boolean {
+function isInstalledDisplay(): boolean {
   return window.matchMedia('(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui)').matches
     || (navigator as Navigator & { standalone?: boolean }).standalone === true
+}
+
+// La app de pacientes abre con ?app=paciente; dentro de otra app instalada (Dr Happy profesional) no se puede instalar.
+function isRunningInstalled(): boolean {
+  try {
+    if (new URLSearchParams(window.location.search).get('app') === 'paciente') sessionStorage.setItem('drhappy-patient-pwa', '1')
+    if (sessionStorage.getItem('drhappy-patient-pwa')) return true
+  } catch { /* sin storage */ }
+  return (navigator as Navigator & { standalone?: boolean }).standalone === true
+}
+
+function isInsideOtherApp(): boolean {
+  return isInstalledDisplay() && !isRunningInstalled()
 }
 
 // Se ofrece una vez por sesión del navegador, salvo que ya se esté usando la app instalada.
@@ -242,6 +255,8 @@ function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | '
   const isAndroid = /android/i.test(userAgent)
   const isEdge = /edg\//i.test(userAgent)
   const isEmbedded = /electron|code\//i.test(userAgent)
+  const insideOtherApp = isInsideOtherApp()
+  const chromeIntent = 'intent://www.drhappy.com.ar/paciente#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fwww.drhappy.com.ar%2Fpaciente;end'
 
   useEffect(() => {
     const onReady = () => setPromptEvent((window as PatientWindow).__patientInstallPrompt ?? null)
@@ -273,9 +288,11 @@ function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | '
     setSnoozed(true)
   }
 
-  const help = (showHelp || (variant === 'modal' && !promptEvent)) && (
+  const help = (showHelp || (variant === 'modal' && (!promptEvent || insideOtherApp))) && (
     <p className="pp-install-help">
-      {isEmbedded
+      {insideOtherApp
+        ? <>Estás dentro de la app de Dr Happy. Para tener Mi Carpeta con su propio ícono, abrila en {isIos ? <>Safari (<strong>www.drhappy.com.ar/paciente</strong>) y tocá <strong>Compartir ⬆️ → “Agregar a inicio”</strong></> : <>Chrome y tocá <strong>“Instalar”</strong></>}.</>
+        : isEmbedded
         ? <>Este navegador no permite instalar apps. Abrí <strong>www.drhappy.com.ar/paciente</strong> en Chrome, Edge o Safari.</>
         : isIos
         ? <>En Safari tocá <strong>Compartir</strong> (el cuadrado con la flecha ⬆️) y elegí <strong>“Agregar a inicio”</strong>.</>
@@ -294,11 +311,13 @@ function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | '
           <img src="/patient-icon-192.png?v=p1" alt="Ícono de Mi Carpeta de Salud" width={88} height={88} />
           <h2 id="pp-install-title">¿Instalar Mi Carpeta de Salud?</h2>
           <p>Vas a tener este ícono en tu pantalla y se abre directo en tu carpeta, sin buscar la página.</p>
-          {promptEvent
-            ? <button type="button" className="pp-primary" onClick={() => void install()}>📲 Sí, instalar</button>
-            : <strong className="pp-install-steps">Cómo instalarla:</strong>}
+          {insideOtherApp && isAndroid
+            ? <a className="pp-primary pp-install-open" href={chromeIntent}>🌐 Abrir en Chrome para instalar</a>
+            : promptEvent && !insideOtherApp
+              ? <button type="button" className="pp-primary" onClick={() => void install()}>📲 Sí, instalar</button>
+              : <strong className="pp-install-steps">Cómo instalarla:</strong>}
           {help}
-          <button type="button" className="pp-link-btn" onClick={onClose}>{promptEvent ? 'Ahora no' : 'Entendido'}</button>
+          <button type="button" className="pp-link-btn" onClick={onClose}>{promptEvent && !insideOtherApp ? 'Ahora no' : 'Entendido'}</button>
         </div>
       </div>
     )
@@ -311,7 +330,9 @@ function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | '
         <strong>Instalá Mi Carpeta como app</strong>
         <small>Instalala como app: se abre con un toque, con su propio ícono.</small>
       </div>
-      <button type="button" className="pp-primary" onClick={() => void install()}>📲 Instalar</button>
+      {insideOtherApp && isAndroid
+        ? <a className="pp-primary pp-install-open" href={chromeIntent}>🌐 Abrir en Chrome para instalar</a>
+        : <button type="button" className="pp-primary" onClick={() => void install()}>📲 Instalar</button>}
       {!compact && <button type="button" className="pp-link-btn" onClick={later}>Ahora no</button>}
       {help}
 
