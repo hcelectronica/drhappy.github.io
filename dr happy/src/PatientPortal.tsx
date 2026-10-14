@@ -220,6 +220,16 @@ function isRunningInstalled(): boolean {
     || (navigator as Navigator & { standalone?: boolean }).standalone === true
 }
 
+// Se ofrece una vez por sesión del navegador, salvo que ya se esté usando la app instalada.
+function shouldOfferInstall(): boolean {
+  if (isRunningInstalled()) return false
+  try {
+    if (sessionStorage.getItem('drhappy-patient-install-asked')) return false
+    sessionStorage.setItem('drhappy-patient-install-asked', '1')
+  } catch { /* sin storage: preguntar igual */ }
+  return true
+}
+
 // Botón para instalar Mi Carpeta de Salud como app propia (ícono verde, separado del profesional).
 function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | 'compact' | 'modal'; onClose?: () => void }) {
   const compact = variant === 'compact'
@@ -230,6 +240,8 @@ function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | '
   const userAgent = navigator.userAgent
   const isIos = /iphone|ipad|ipod/i.test(userAgent) || (/macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1)
   const isAndroid = /android/i.test(userAgent)
+  const isEdge = /edg\//i.test(userAgent)
+  const isEmbedded = /electron|code\//i.test(userAgent)
 
   useEffect(() => {
     const onReady = () => setPromptEvent((window as PatientWindow).__patientInstallPrompt ?? null)
@@ -242,7 +254,7 @@ function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | '
     }
   }, [])
 
-  const hidden = installed || (snoozed && variant !== 'modal') || (!promptEvent && !isIos && !isAndroid)
+  const hidden = installed || (snoozed && variant !== 'modal')
   useEffect(() => { if (hidden && onClose) onClose() }, [hidden, onClose])
   if (hidden) return null
 
@@ -261,11 +273,17 @@ function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | '
     setSnoozed(true)
   }
 
-  const help = showHelp && (
+  const help = (showHelp || (variant === 'modal' && !promptEvent)) && (
     <p className="pp-install-help">
-      {isIos
+      {isEmbedded
+        ? <>Este navegador no permite instalar apps. Abrí <strong>www.drhappy.com.ar/paciente</strong> en Chrome, Edge o Safari.</>
+        : isIos
         ? <>En Safari tocá <strong>Compartir</strong> (el cuadrado con la flecha ⬆️) y elegí <strong>“Agregar a inicio”</strong>.</>
-        : <>Abrí el menú del navegador (<strong>⋮</strong>) y elegí <strong>“Instalar app”</strong> o <strong>“Agregar a pantalla de inicio”</strong>.</>}
+        : isAndroid
+        ? <>Abrí el menú del navegador (<strong>⋮</strong>) y elegí <strong>“Instalar app”</strong> o <strong>“Agregar a pantalla de inicio”</strong>.</>
+        : isEdge
+        ? <>Abrí el menú <strong>…</strong> → <strong>Aplicaciones</strong> → <strong>“Instalar este sitio como aplicación”</strong>, o tocá el ícono de instalar en la barra de direcciones.</>
+        : <>Tocá el ícono de instalar (<strong>⊕</strong>) a la derecha de la barra de direcciones, o el menú <strong>⋮</strong> → <strong>“Transmitir, guardar y compartir”</strong> → <strong>“Instalar página como app”</strong>.</>}
     </p>
   )
 
@@ -274,11 +292,13 @@ function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | '
       <div className="pp-install-overlay" role="dialog" aria-modal="true" aria-labelledby="pp-install-title">
         <div className="pp-install-modal">
           <img src="/patient-icon-192.png?v=p1" alt="Ícono de Mi Carpeta de Salud" width={88} height={88} />
-          <h2 id="pp-install-title">¿Instalar Mi Carpeta en tu celular?</h2>
-          <p>Vas a tener este ícono en tu pantalla y tu carpeta se abre con un toque, sin buscar la página.</p>
-          <button type="button" className="pp-primary" onClick={() => void install()}>📲 Sí, instalar</button>
+          <h2 id="pp-install-title">¿Instalar Mi Carpeta de Salud?</h2>
+          <p>Vas a tener este ícono en tu pantalla y se abre directo en tu carpeta, sin buscar la página.</p>
+          {promptEvent
+            ? <button type="button" className="pp-primary" onClick={() => void install()}>📲 Sí, instalar</button>
+            : <strong className="pp-install-steps">Cómo instalarla:</strong>}
           {help}
-          <button type="button" className="pp-link-btn" onClick={onClose}>Ahora no</button>
+          <button type="button" className="pp-link-btn" onClick={onClose}>{promptEvent ? 'Ahora no' : 'Entendido'}</button>
         </div>
       </div>
     )
@@ -288,7 +308,7 @@ function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | '
     <section className={`pp-install${compact ? ' is-compact' : ''}`} aria-label="Instalar Mi Carpeta de Salud">
       <img src="/patient-icon-192.png?v=p1" alt="" width={44} height={44} />
       <div>
-        <strong>Tené tu carpeta en el celular</strong>
+        <strong>Instalá Mi Carpeta como app</strong>
         <small>Instalala como app: se abre con un toque, con su propio ícono.</small>
       </div>
       <button type="button" className="pp-primary" onClick={() => void install()}>📲 Instalar</button>
@@ -783,7 +803,10 @@ export function PatientPortal() {
     document.title = 'Mi Carpeta de Salud | Dr Happy'
     if (!getPatientSessionToken()) return
     callPatientFolder({ action: 'me' }).then((result) => {
-      if (result.success && result.patient) setPatient(result.patient)
+      if (result.success && result.patient) {
+        setPatient(result.patient)
+        if (shouldOfferInstall()) setAskInstall(true)
+      }
       else setPatientSessionToken(null)
       setChecking(false)
     })
@@ -822,7 +845,7 @@ export function PatientPortal() {
   if (checking) {
     return <main className="pp-auth"><Brand /><p className="pp-muted">Abriendo tu carpeta…</p></main>
   }
-  if (!patient) return <AuthScreen onSession={(p) => { setPatient(p); setView('home'); setAskInstall(true) }} />
+  if (!patient) return <AuthScreen onSession={(p) => { setPatient(p); setView('home'); if (shouldOfferInstall()) setAskInstall(true) }} />
 
   const firstName = patient.firstName || patient.fullName.split(' ')[0]
   const lastDoc = documents[0]
