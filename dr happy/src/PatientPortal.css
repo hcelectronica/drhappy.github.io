@@ -478,3 +478,12 @@ a.pp-primary { display: inline-block; text-decoration: none; text-align: center;
 .pp-bp-alert .pp-bp-alert-symptoms { font-size: 0.85rem !important; color: var(--pp-muted) !important; background: #f8fafc; border-radius: 10px; padding: 8px 10px; text-align: left; }
 .pp-bp-alert .pp-primary { width: 100%; }
 .pp-bp-alert.is-emergency .pp-primary { background: #b91c1c; }
+
+.pp-link-requests { display: grid; gap: 12px; margin-bottom: 16px; }
+.pp-link-request { display: flex; gap: 12px; align-items: flex-start; border: 2px solid var(--pp-brand); }
+.pp-link-request-icon { font-size: 1.8rem; line-height: 1; }
+.pp-link-request > div { flex: 1; display: grid; gap: 8px; }
+.pp-link-request h2 { margin: 0; font-size: 1.05rem; }
+.pp-link-request h2 small { font-weight: 500; color: var(--pp-muted); }
+.pp-link-request p { margin: 0; }
+.pp-link-request .pp-muted { font-size: 0.85rem; }

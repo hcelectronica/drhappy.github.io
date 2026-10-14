@@ -13,6 +13,7 @@ import {
 import type { PatientDocument, PatientDocumentCategory, PatientFolderResponse, PatientProfile, PatientShare } from './patientFolderService'
 import './PatientPortal.css'
 import PatientPressureView from './PatientPressureView'
+import PatientLinkRequests from './PatientLinkRequests'
 import type { EncodeHintType as HintKey } from '@zxing/library'
 
 type AuthMode = 'login' | 'register' | 'verify' | 'forgot' | 'reset'
@@ -886,6 +887,7 @@ export function PatientPortal() {
                 ? `Tenés ${documents.length} ${documents.length === 1 ? 'estudio guardado' : 'estudios guardados'}${lastDoc ? `. El último: ${lastDoc.title}.` : '.'}`
                 : 'Tu carpeta está lista. Subí tu primer estudio.'}</p>
             </section>
+            <PatientLinkRequests onToast={setToast} />
             <nav className="pp-grid" aria-label="Menú principal">
               <button type="button" className="pp-tile is-folder" onClick={() => setView('folder')}><span aria-hidden>🗂️</span>Mi carpeta</button>
               <button type="button" className="pp-tile is-upload" onClick={() => setView('upload')}><span aria-hidden>📤</span>Subir estudio</button>

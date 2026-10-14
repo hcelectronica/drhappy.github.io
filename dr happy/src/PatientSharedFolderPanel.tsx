@@ -5,6 +5,8 @@ import {
   getDoctorSharedDocumentUrl,
   loadDoctorSharedFolders,
   patientCategoryMeta,
+  requestPatientFolderAccess,
+  type DoctorCarpetaStatus,
   type DoctorSharedFolder,
 } from './patientFolderService'
 import { BpDoctorSummary } from './BloodPressure'
@@ -16,18 +18,56 @@ export default function PatientSharedFolderPanel({ dni }: { dni: string }) {
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState('')
   const [notice, setNotice] = useState('')
+  const [carpeta, setCarpeta] = useState<DoctorCarpetaStatus | null>(null)
+  const [requesting, setRequesting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     if (cleanDni.length < 6) return
     void loadDoctorSharedFolders(cleanDni).then((result) => {
       if (cancelled) return
-      if (result.success) setFolders(result.folders ?? [])
+      if (!result.success) return
+      setFolders(result.folders ?? [])
+      setCarpeta(result.carpeta ?? null)
     })
     return () => { cancelled = true }
   }, [cleanDni])
 
-  if (!folders.length) return null
+  async function requestAccess() {
+    setRequesting(true)
+    setError('')
+    const result = await requestPatientFolderAccess(cleanDni)
+    setRequesting(false)
+    if (!result.success) {
+      setError(result.message || 'No se pudo enviar el pedido.')
+      return
+    }
+    setCarpeta({ hasAccount: true, status: 'pending', canRequest: false })
+  }
+
+  if (!folders.length) {
+    if (!carpeta?.hasAccount) return null
+    return (
+      <section className="patient-form-block paper-record-block">
+        <h4 className="block-title">📁 Este paciente tiene Carpeta de Salud</h4>
+        {carpeta.status === 'pending' ? (
+          <p className="paper-record-meta">⏳ Le pediste acceso. Cuando lo acepte desde su app, vas a ver acá sus estudios y su registro de presión.</p>
+        ) : carpeta.status === 'declined' ? (
+          <p className="paper-record-meta">El paciente prefirió no compartir su carpeta por ahora. Vas a poder volver a pedirlo en unos días.</p>
+        ) : (
+          <>
+            <p className="paper-record-meta">Guarda sus estudios y controles de presión en la app Mi Carpeta de Salud. Pedile acceso y le llega el aviso para aceptarlo con un toque.</p>
+            <div className="paper-record-buttons">
+              <button type="button" className="primary compact" disabled={requesting || !carpeta.canRequest} onClick={() => void requestAccess()}>
+                {requesting ? 'Enviando…' : 'Pedirle acceso'}
+              </button>
+            </div>
+          </>
+        )}
+        {error ? <p className="access-note">{error}</p> : null}
+      </section>
+    )
+  }
 
   async function openDocument(shareId: string, documentId: string, download: boolean) {
     setBusyId(documentId)

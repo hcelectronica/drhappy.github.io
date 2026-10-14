@@ -63,6 +63,20 @@ export interface PatientFolderResponse {
   updated?: boolean
   readings?: BpReading[]
   reading?: BpReading
+  requests?: PatientLinkRequest[]
+}
+
+export interface PatientLinkRequest {
+  id: string
+  source: 'email_match' | 'doctor_request'
+  doctorName: string
+  doctorSpecialty: string
+}
+
+export interface DoctorCarpetaStatus {
+  hasAccount: boolean
+  status: 'none' | 'pending' | 'declined'
+  canRequest: boolean
 }
 
 export interface BpReading {
@@ -163,8 +177,12 @@ export function acknowledgeDoctorFolderLinks(ids: string[]): Promise<{ success: 
   return invokeWithoutPatientSession({ action: 'doctor-ack-links', ids })
 }
 
-export function loadDoctorSharedFolders(dni: string): Promise<{ success: boolean; message?: string; folders?: DoctorSharedFolder[] }> {
+export function loadDoctorSharedFolders(dni: string): Promise<{ success: boolean; message?: string; folders?: DoctorSharedFolder[]; carpeta?: DoctorCarpetaStatus }> {
   return invokeWithoutPatientSession({ action: 'doctor-folder', dni })
+}
+
+export function requestPatientFolderAccess(dni: string): Promise<{ success: boolean; message?: string }> {
+  return invokeWithoutPatientSession({ action: 'doctor-request-access', dni })
 }
 
 export function getDoctorSharedDocumentUrl(shareId: string, documentId: string, download = false): Promise<{ success: boolean; message?: string; url?: string }> {

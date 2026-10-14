@@ -29,6 +29,7 @@ const MAX_ACTIVE_LINKS = 20
 const MAX_SHARE_CODE_FAILURES = 10
 const SHARE_DAYS = new Set([1, 7, 30])
 const PUBLIC_SITE_URL = 'https://www.drhappy.com.ar'
+const LINK_RETRY_DAYS = 7
 
 const corsHeaders = {
   ...baseCorsHeaders,
@@ -530,11 +531,25 @@ serve(async (request) => {
         return reply(200, { success: true })
       }
 
+      // Solo informa si el DNI está agendado por este profesional, para no revelar quién tiene carpeta.
+      async function doctorHasDni(dni: string): Promise<boolean> {
+        const { data, error } = await admin.rpc('professionals_with_patient_dni', { p_dni: dni, p_email: null })
+        if (error) throw error
+        return ((data ?? []) as Array<{ professional_id: string }>).some((row) => row.professional_id === professionalId)
+      }
+
+      async function verifiedAccountsByDni(dni: string) {
+        const { data } = await admin.from('patient_accounts').select('id, full_name, email, email_verified_at')
+          .eq('dni', dni).eq('active', true).not('email_verified_at', 'is', null).limit(5)
+        return data ?? []
+      }
+
       if (action === 'doctor-folder') {
         const dni = normalizeDni(body.dni)
-        if (dni.length < 6) return reply(200, { success: true, folders: [] })
+        const noAccount = { hasAccount: false, status: 'none', canRequest: false }
+        if (dni.length < 6) return reply(200, { success: true, folders: [], carpeta: noAccount })
         const { data: accounts } = await admin.from('patient_accounts').select('id, full_name').eq('dni', dni).eq('active', true).limit(5)
-        if (!accounts?.length) return reply(200, { success: true, folders: [] })
+        if (!accounts?.length) return reply(200, { success: true, folders: [], carpeta: noAccount })
         const { data: shares, error } = await admin.from('patient_shares').select(SHARE_COLUMNS)
           .eq('kind', 'doctor').eq('professional_id', professionalId).is('revoked_at', null)
           .in('patient_id', accounts.map((account) => account.id))
@@ -549,7 +564,53 @@ serve(async (request) => {
           })),
           pressure: share.include_pressure ? await pressureReadings(share.patient_id) : [],
         })))
-        return reply(200, { success: true, folders })
+        let carpeta = noAccount
+        if (!folders.length && await doctorHasDni(dni)) {
+          const verified = await verifiedAccountsByDni(dni)
+          if (verified.length) {
+            const { data: requests } = await admin.from('patient_link_requests').select('status, responded_at')
+              .eq('professional_id', professionalId).in('patient_id', verified.map((account) => account.id))
+            const pending = (requests ?? []).some((row) => row.status === 'pending')
+            const lastDecline = (requests ?? []).filter((row) => row.status !== 'pending' && row.responded_at)
+              .map((row) => new Date(row.responded_at as string).getTime()).sort((a, b) => b - a)[0]
+            const recentlyDeclined = Boolean(lastDecline && Date.now() - lastDecline < LINK_RETRY_DAYS * 86400000)
+            carpeta = {
+              hasAccount: true,
+              status: pending ? 'pending' : recentlyDeclined ? 'declined' : 'none',
+              canRequest: !pending && !recentlyDeclined,
+            }
+          }
+        }
+        return reply(200, { success: true, folders, carpeta })
+      }
+
+      if (action === 'doctor-request-access') {
+        const dni = normalizeDni(body.dni)
+        if (dni.length < 6 || !await doctorHasDni(dni)) return reply(404, { success: false, message: 'Ese paciente no está en tu lista.' })
+        const verified = await verifiedAccountsByDni(dni)
+        if (!verified.length) return reply(404, { success: false, message: 'El paciente no tiene Carpeta de Salud.' })
+        const { data: professional } = await admin.from('professionals').select('full_name, specialty').eq('id', professionalId).maybeSingle()
+        const doctorName = String(professional?.full_name || 'Tu médico').trim()
+        for (const account of verified) {
+          const { data: existing } = await admin.from('patient_link_requests').select('id, status, responded_at')
+            .eq('patient_id', account.id).eq('professional_id', professionalId).maybeSingle()
+          if (existing?.status === 'pending') continue
+          if (existing?.responded_at && Date.now() - new Date(existing.responded_at).getTime() < LINK_RETRY_DAYS * 86400000) {
+            return reply(429, { success: false, message: `El paciente respondió hace poco. Podés volver a pedirlo en ${LINK_RETRY_DAYS} días.` })
+          }
+          const row = { patient_id: account.id, professional_id: professionalId, source: 'doctor_request', status: 'pending', created_at: new Date().toISOString(), responded_at: null }
+          const { error } = existing
+            ? await admin.from('patient_link_requests').update(row).eq('id', existing.id)
+            : await admin.from('patient_link_requests').insert(row)
+          if (error) throw error
+          await log(account.id, 'link_requested')
+          await sendEmail(
+            account.email,
+            `${doctorName} te pide ver tu Carpeta de Salud — Dr Happy`,
+            `<p>Hola ${escapeHtml(account.full_name)},</p><p><strong>${escapeHtml(doctorName)}</strong>${professional?.specialty ? ` (${escapeHtml(professional.specialty)})` : ''}, que te tiene como paciente en Dr Happy, te pide ver los estudios y el registro de presión de tu Carpeta de Salud.</p><p>Entrá a tu carpeta para aceptar o rechazar el pedido. Si aceptás, podés dejar de compartir cuando quieras.</p><p><a href="${PUBLIC_SITE_URL}/paciente" style="display:inline-block;background:#0f766e;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700;">Abrir mi Carpeta de Salud</a></p>`,
+          )
+        }
+        return reply(200, { success: true })
       }
 
       if (action === 'doctor-document-url') {
@@ -773,6 +834,39 @@ serve(async (request) => {
       return reply(200, { success: true, doctor: { id: professional.id, name: professional.full_name ?? '', specialty: professional.specialty ?? '' } })
     }
 
+    async function shareWithProfessional(
+      professional: { id: string; full_name: string | null; email: string | null },
+      allDocuments: boolean,
+      documentIds: string[],
+      includePressure: boolean,
+    ): Promise<boolean> {
+      const { data: existing } = await admin.from('patient_shares').select('id')
+        .eq('patient_id', patient!.id).eq('kind', 'doctor').eq('professional_id', professional.id).is('revoked_at', null).maybeSingle()
+      if (existing) {
+        const { error } = await admin.from('patient_shares').update({ all_documents: allDocuments, document_ids: documentIds, include_pressure: includePressure }).eq('id', existing.id)
+        if (error) throw error
+        await log(patient!.id, 'share_doctor_updated')
+        return true
+      }
+      const { error } = await admin.from('patient_shares').insert({
+        patient_id: patient!.id, kind: 'doctor', professional_id: professional.id, all_documents: allDocuments, document_ids: documentIds,
+        include_pressure: includePressure,
+      })
+      if (error) throw error
+      await log(patient!.id, 'share_doctor_created')
+      await admin.from('patient_link_requests').update({ status: 'accepted', responded_at: new Date().toISOString() })
+        .eq('patient_id', patient!.id).eq('professional_id', professional.id).eq('status', 'pending')
+      if (professional.email) {
+        const doctorName = escapeHtml(String(professional.full_name || '').trim())
+        await sendEmail(
+          professional.email,
+          `${patient!.full_name} compartió su Carpeta de Salud con vos — Dr Happy`,
+          `<p>Hola${doctorName ? ` ${doctorName}` : ''},</p><p><strong>${escapeHtml(patient!.full_name)}</strong> (DNI ${escapeHtml(patient!.dni)}) compartió con vos sus estudios desde su Carpeta de Salud.</p><p>Al abrir Dr Happy lo vas a encontrar en tu lista de pacientes, con sus estudios en la sección <strong>Documentos adjuntos</strong> de la ficha.</p><p><a href="${PUBLIC_SITE_URL}/" style="display:inline-block;background:#0f766e;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700;">Abrir Dr Happy</a></p>`,
+        )
+      }
+      return false
+    }
+
     if (action === 'share-with-doctor') {
       const professionalId = text(body.professionalId, 80)
       const { data: professional } = await admin.from('professionals').select('id, full_name, email, active').eq('id', professionalId).maybeSingle()
@@ -781,29 +875,62 @@ serve(async (request) => {
       const includePressure = body.includePressure !== false
       const documentIds = allDocuments ? [] : await validDocumentIds(patient.id, body.documentIds)
       if (!allDocuments && !documentIds.length && !includePressure) return reply(400, { success: false, message: 'Elegí al menos un estudio o tu registro de presión para compartir.' })
-      const { data: existing } = await admin.from('patient_shares').select('id')
-        .eq('patient_id', patient.id).eq('kind', 'doctor').eq('professional_id', professional.id).is('revoked_at', null).maybeSingle()
-      if (existing) {
-        const { error } = await admin.from('patient_shares').update({ all_documents: allDocuments, document_ids: documentIds, include_pressure: includePressure }).eq('id', existing.id)
-        if (error) throw error
-        await log(patient.id, 'share_doctor_updated')
-        return reply(200, { success: true, updated: true })
-      }
-      const { error } = await admin.from('patient_shares').insert({
-        patient_id: patient.id, kind: 'doctor', professional_id: professional.id, all_documents: allDocuments, document_ids: documentIds,
-        include_pressure: includePressure,
-      })
-      if (error) throw error
-      await log(patient.id, 'share_doctor_created')
-      if (professional.email) {
-        const doctorName = escapeHtml(String(professional.full_name || '').trim())
-        await sendEmail(
-          professional.email,
-          `${patient.full_name} compartió su Carpeta de Salud con vos — Dr Happy`,
-          `<p>Hola${doctorName ? ` ${doctorName}` : ''},</p><p><strong>${escapeHtml(patient.full_name)}</strong> (DNI ${escapeHtml(patient.dni)}) compartió con vos sus estudios desde su Carpeta de Salud.</p><p>Al abrir Dr Happy lo vas a encontrar en tu lista de pacientes, con sus estudios en la sección <strong>Documentos adjuntos</strong> de la ficha.</p><p><a href="${PUBLIC_SITE_URL}/" style="display:inline-block;background:#0f766e;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700;">Abrir Dr Happy</a></p>`,
+      const updated = await shareWithProfessional(professional, allDocuments, documentIds, includePressure)
+      return reply(200, { success: true, updated })
+    }
+
+    // Médicos que ya tienen agendado a este paciente: con DNI + email se sugiere solo; con DNI solo, cuando el médico lo pide.
+    if (action === 'link-requests') {
+      const { data: matches, error: matchError } = await admin.rpc('professionals_with_patient_dni', { p_dni: patient.dni, p_email: patient.email })
+      if (matchError) throw matchError
+      const { data: doctorShares } = await admin.from('patient_shares').select('professional_id, revoked_at')
+        .eq('patient_id', patient.id).eq('kind', 'doctor')
+      const sharedWith = new Set((doctorShares ?? []).filter((row) => !row.revoked_at).map((row) => row.professional_id))
+      const everShared = new Set((doctorShares ?? []).map((row) => row.professional_id))
+      const { data: existingRows } = await admin.from('patient_link_requests').select('id, professional_id, source, status, created_at')
+        .eq('patient_id', patient.id)
+      const known = new Set((existingRows ?? []).map((row) => row.professional_id))
+      const fresh = ((matches ?? []) as Array<{ professional_id: string; email_match: boolean }>)
+        .filter((match) => match.email_match && !everShared.has(match.professional_id) && !known.has(match.professional_id))
+      if (fresh.length) {
+        await admin.from('patient_link_requests').upsert(
+          fresh.map((match) => ({ patient_id: patient.id, professional_id: match.professional_id, source: 'email_match', status: 'pending' })),
+          { onConflict: 'patient_id,professional_id', ignoreDuplicates: true },
         )
       }
-      return reply(200, { success: true, updated: false })
+      const { data: pendingRows, error } = await admin.from('patient_link_requests').select('id, professional_id, source, created_at')
+        .eq('patient_id', patient.id).eq('status', 'pending').order('created_at', { ascending: true }).limit(20)
+      if (error) throw error
+      const pending = (pendingRows ?? []).filter((row) => !sharedWith.has(row.professional_id))
+      const ids = pending.map((row) => row.professional_id)
+      const { data: professionals } = ids.length
+        ? await admin.from('professionals').select('id, full_name, specialty, active').in('id', ids)
+        : { data: [] as Array<{ id: string; full_name: string | null; specialty: string | null; active: boolean | null }> }
+      return reply(200, {
+        success: true,
+        requests: pending.flatMap((row) => {
+          const professional = professionals?.find((item) => item.id === row.professional_id)
+          if (!professional || professional.active === false) return []
+          return [{ id: row.id, source: row.source, doctorName: professional.full_name ?? '', doctorSpecialty: professional.specialty ?? '' }]
+        }),
+      })
+    }
+
+    if (action === 'link-respond') {
+      const requestId = text(body.requestId, 40)
+      const { data: requestRow } = await admin.from('patient_link_requests').select('id, professional_id, status')
+        .eq('id', requestId).eq('patient_id', patient.id).maybeSingle()
+      if (!requestRow || requestRow.status !== 'pending') return reply(404, { success: false, message: 'Ese pedido ya no está pendiente.' })
+      if (body.accept !== true) {
+        await admin.from('patient_link_requests').update({ status: 'declined', responded_at: new Date().toISOString() }).eq('id', requestRow.id)
+        await log(patient.id, 'link_declined')
+        return reply(200, { success: true })
+      }
+      const { data: professional } = await admin.from('professionals').select('id, full_name, email, active').eq('id', requestRow.professional_id).maybeSingle()
+      if (!professional || professional.active === false) return reply(404, { success: false, message: 'Ese médico ya no está disponible.' })
+      await shareWithProfessional(professional, true, [], body.includePressure !== false)
+      await admin.from('patient_link_requests').update({ status: 'accepted', responded_at: new Date().toISOString() }).eq('id', requestRow.id)
+      return reply(200, { success: true })
     }
 
     if (action === 'create-link-share') {
