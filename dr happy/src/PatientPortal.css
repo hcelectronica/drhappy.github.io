@@ -436,4 +436,3 @@ a.pp-primary { display: inline-block; text-decoration: none; text-align: center;
 .pp-install-modal .pp-link-btn { color: var(--pp-muted); }
 @keyframes pp-fade-in { from { opacity: 0; } to { opacity: 1; } }
 .pp-install-steps { color: var(--pp-brand-dark); font-size: 0.95rem; }
-.pp-install-open { display: block; width: 100%; text-align: center; text-decoration: none; box-sizing: border-box; grid-column: 1 / -1; }
