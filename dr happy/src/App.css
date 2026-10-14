@@ -6335,3 +6335,32 @@ body.theme-night .paid-documents-empty { border-color: #364b69; color: #a5b4c8; 
   .paid-documents-patient-preview { box-sizing: border-box; padding: 13px; }
   .paid-documents-link-card > button { width: 100%; }
 }
+/* Acceso separado: profesionales arriba, pacientes (Mi Carpeta de Salud) abajo */
+.auth-audience-label { display: block; margin: 14px 0 6px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; }
+.auth-patient-access { display: block; margin-top: 16px; text-decoration: none; color: inherit; }
+.auth-patient-divider { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; }
+.auth-patient-divider::before,
+.auth-patient-divider::after { content: ''; flex: 1; height: 1px; background: rgba(130, 153, 186, 0.45); }
+.auth-patient-row { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: center; padding: 12px 14px; border: 1.5px solid #9fd8cd; border-radius: 16px; background: #ecf8f5; transition: border-color .15s, background .15s; }
+.auth-patient-access:hover .auth-patient-row,
+.auth-patient-access:focus-visible .auth-patient-row { border-color: #0f766e; background: #e0f3ef; }
+.auth-patient-icon { font-size: 1.7rem; line-height: 1; }
+.auth-patient-copy { display: flex; flex-direction: column; min-width: 0; }
+.auth-patient-copy strong { color: #115e59; font-size: 1rem; }
+.auth-patient-copy small { color: #475569; font-size: 0.8rem; line-height: 1.35; }
+.auth-patient-cta { grid-column: 1 / -1; margin-top: 8px; padding: 10px 14px; border-radius: 12px; background: #0f766e; color: #fff; font-weight: 700; text-align: center; }
+body.theme-night .auth-patient-row { background: rgba(15, 118, 110, 0.18); border-color: #2c7d72; }
+body.theme-night .auth-patient-copy strong { color: #8ee0d2; }
+body.theme-night .auth-patient-copy small,
+body.theme-night .auth-audience-label,
+body.theme-night .auth-patient-divider { color: #a8b8cc; }
+
+@media (max-width: 899px) {
+  .auth-audience-label { margin: 2px 0 6px; }
+  .auth-patient-access { margin-top: 10px; }
+  .auth-patient-divider { margin-bottom: 8px; }
+  .auth-patient-row { padding: 10px 12px; gap: 2px 10px; }
+  .auth-patient-icon { font-size: 1.4rem; }
+  .auth-patient-copy small { font-size: 0.76rem; }
+  .auth-patient-cta { margin-top: 6px; min-height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+}

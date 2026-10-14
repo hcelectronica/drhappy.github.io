@@ -11078,6 +11078,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
               </p>
             </div>
           </div>
+          {!showEmailVerification && !recoveryOpen ? <span className="auth-audience-label">Profesionales de la salud</span> : null}
           {!showEmailVerification && !recoveryOpen ? <button
             type="button"
             className="auth-login-toggle"
@@ -11478,6 +11479,19 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
               </div>
             </div>,
             document.body,
+          ) : null}
+          {!showEmailVerification && !recoveryOpen ? (
+            <a className="auth-patient-access" href="/paciente">
+              <span className="auth-patient-divider">¿Sos paciente?</span>
+              <span className="auth-patient-row">
+                <span className="auth-patient-icon" aria-hidden="true">📂</span>
+                <span className="auth-patient-copy">
+                  <strong>Mi Carpeta de Salud</strong>
+                  <small>Guardá tus estudios gratis y compartilos con tu médico</small>
+                </span>
+                <span className="auth-patient-cta">Ingresar como paciente</span>
+              </span>
+            </a>
           ) : null}
         </section>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
