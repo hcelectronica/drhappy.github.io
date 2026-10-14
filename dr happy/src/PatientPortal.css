@@ -309,6 +309,63 @@
 .pp-soon > span { font-size: 3rem; }
 .pp-soon p { margin: 0; line-height: 1.5; }
 
+.pp-share-options { display: grid; gap: 12px; margin-top: 14px; }
+.pp-option {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  align-items: center;
+  text-align: left;
+  border: 1.5px solid var(--pp-line);
+  border-radius: 16px;
+  background: #f8fbfb;
+  box-shadow: none;
+  padding: 16px;
+  font: inherit;
+  color: var(--pp-ink);
+  cursor: pointer;
+}
+.pp-option:hover { border-color: var(--pp-brand); background: #eef8f6; }
+.pp-option > span { grid-row: span 2; font-size: 2rem; text-align: center; }
+.pp-option strong { font-size: 1.05rem; }
+.pp-option small { color: var(--pp-muted); line-height: 1.35; }
+
+.pp-scope { border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.pp-scope legend { font-weight: 600; margin-bottom: 6px; }
+.pp-form .pp-radio { flex-direction: row; align-items: center; gap: 10px; font-weight: 500; }
+.pp-radio input { width: 20px; height: 20px; flex: none; accent-color: var(--pp-brand); }
+.pp-radio small { color: var(--pp-muted); font-weight: 400; }
+.pp-pick-list { list-style: none; margin: 0; padding: 4px 0 0 4px; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow: auto; }
+.pp-form .pp-pick-list label { flex-direction: row; align-items: center; gap: 10px; font-weight: 400; }
+.pp-pick-list input { width: 20px; height: 20px; flex: none; accent-color: var(--pp-brand); }
+.pp-pick-list small { color: var(--pp-muted); margin-left: 4px; }
+
+.pp-doctor { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #eef8f6; border: 1.5px solid #bfe3dc; }
+.pp-doctor > span { font-size: 1.8rem; }
+.pp-doctor div { display: flex; flex-direction: column; }
+.pp-doctor small { color: var(--pp-muted); }
+
+.pp-created { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.pp-created .pp-row { width: 100%; }
+.pp-qr { width: 200px; height: 200px; image-rendering: pixelated; border: 1px solid var(--pp-line); border-radius: 12px; padding: 8px; background: #fff; }
+.pp-share-code { font-size: 2.2rem; font-weight: 800; letter-spacing: 8px; color: var(--pp-brand-dark); font-family: 'Plus Jakarta Sans', 'DM Sans', sans-serif; }
+.pp-wa { background: #16a34a; text-decoration: none; text-align: center; }
+.pp-primary.pp-wa:hover { background: #15803d; }
+a.pp-primary { display: inline-block; text-decoration: none; text-align: center; box-sizing: border-box; }
+.pp-link-btn { background: none; border: none; box-shadow: none; color: var(--pp-blue); font: inherit; font-weight: 600; cursor: pointer; padding: 6px; }
+
+.pp-shares { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.pp-shares li { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--pp-line); border-radius: 14px; }
+.pp-shares li > span { font-size: 1.5rem; }
+.pp-shares li > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pp-shares small { color: var(--pp-muted); line-height: 1.35; }
+.pp-shares button { flex: none; border: 1.5px solid #f3c7c7; background: #fff; color: var(--pp-danger); border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; box-shadow: none; }
+
+.pp-promo { background: linear-gradient(135deg, #0f766e, #1d4ed8); color: #fff; border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.pp-promo p { margin: 0; line-height: 1.5; opacity: 0.95; }
+.pp-promo .pp-primary { background: #fff; color: var(--pp-brand-dark); }
+
 .pp-toast {
   position: fixed;
   left: 50%;

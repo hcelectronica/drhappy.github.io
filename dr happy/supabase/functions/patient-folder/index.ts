@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import bcrypt from 'npm:bcryptjs@2.4.3'
 import { corsHeaders as baseCorsHeaders } from '../_shared/cors.ts'
+import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 
 // Carpeta de Salud: cuentas de pacientes separadas de los profesionales.
 // Toda la lectura/escritura pasa por esta función con service_role; el bucket es privado.
@@ -21,8 +22,13 @@ const ALLOWED_MIME: Record<string, string> = {
   'image/webp': 'webp',
   'application/pdf': 'pdf',
 }
-const CATEGORIES = new Set(['laboratorio', 'imagenes', 'recetas', 'informes', 'vacunas', 'otros'])
+const CATEGORIES = new Set(['laboratorio', 'imagenes', 'informes', 'vacunas', 'otros'])
 const CONSENT_VERSION = 'v1'
+const SHARE_URL_TTL_SECONDS = 600
+const MAX_ACTIVE_LINKS = 20
+const MAX_SHARE_CODE_FAILURES = 10
+const SHARE_DAYS = new Set([1, 7, 30])
+const PUBLIC_SITE_URL = 'https://www.drhappy.com.ar'
 
 const corsHeaders = {
   ...baseCorsHeaders,
@@ -36,6 +42,8 @@ type PatientRow = {
   email: string
   password_hash: string
   full_name: string
+  first_name: string | null
+  last_name: string | null
   dni: string
   birth_date: string | null
   phone: string | null
@@ -48,7 +56,7 @@ type PatientRow = {
   created_at: string
 }
 
-const PATIENT_COLUMNS = 'id, email, password_hash, full_name, dni, birth_date, phone, email_verified_at, storage_used_bytes, storage_quota_bytes, failed_login_count, locked_until, active, created_at'
+const PATIENT_COLUMNS = 'id, email, password_hash, full_name, first_name, last_name, dni, birth_date, phone, email_verified_at, storage_used_bytes, storage_quota_bytes, failed_login_count, locked_until, active, created_at'
 
 function reply(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
@@ -97,6 +105,8 @@ function publicPatient(row: PatientRow) {
     id: row.id,
     email: row.email,
     fullName: row.full_name,
+    firstName: row.first_name ?? '',
+    lastName: row.last_name ?? '',
     dni: row.dni,
     birthDate: row.birth_date,
     phone: row.phone,
@@ -217,16 +227,96 @@ serve(async (request) => {
     return total
   }
 
+  type ShareRow = {
+    id: string
+    patient_id: string
+    kind: 'doctor' | 'link'
+    professional_id: string | null
+    token: string | null
+    code_hash: string | null
+    failed_attempts: number
+    all_documents: boolean
+    document_ids: string[] | null
+    expires_at: string | null
+    revoked_at: string | null
+    last_accessed_at: string | null
+    access_count: number
+    created_at: string
+  }
+  const SHARE_COLUMNS = 'id, patient_id, kind, professional_id, token, code_hash, failed_attempts, all_documents, document_ids, expires_at, revoked_at, last_accessed_at, access_count, created_at'
+  const hashShareCode = (shareId: string, code: string) => sha256(`patient-share:${shareId}:${code}:${pepper}`)
+
+  function splitName(row: Pick<PatientRow, 'full_name' | 'first_name' | 'last_name'>): { nombre: string; apellido: string } {
+    if (row.first_name && row.last_name) return { nombre: row.first_name, apellido: row.last_name }
+    const parts = row.full_name.trim().split(/\s+/)
+    if (parts.length < 2) return { nombre: parts[0] || '', apellido: parts[0] || '' }
+    return { nombre: parts.slice(0, -1).join(' '), apellido: parts[parts.length - 1] }
+  }
+
+  async function sharedDocuments(share: Pick<ShareRow, 'patient_id' | 'all_documents' | 'document_ids'>) {
+    let query = admin.from('patient_documents')
+      .select('id, title, category, study_date, notes, mime_type, size_bytes, file_path, created_at')
+      .eq('patient_id', share.patient_id).eq('status', 'ready').is('deleted_at', null)
+    if (!share.all_documents) {
+      const ids = share.document_ids ?? []
+      if (!ids.length) return []
+      query = query.in('id', ids)
+    }
+    const { data, error } = await query.order('study_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).limit(500)
+    if (error) throw error
+    return data ?? []
+  }
+
+  function documentFileName(title: string, path: string): string {
+    return `${title.replace(/[^\p{L}\p{N} _-]/gu, '').trim().slice(0, 60) || 'estudio'}.${path.split('.').pop()}`
+  }
+
+  async function signedViewUrl(path: string, title: string, download = false): Promise<string> {
+    const { data, error } = await admin.storage.from(BUCKET)
+      .createSignedUrl(path, SHARE_URL_TTL_SECONDS, download ? { download: documentFileName(title, path) } : undefined)
+    if (error || !data) throw error || new Error('No se pudo abrir el archivo.')
+    return data.signedUrl
+  }
+
+  async function validDocumentIds(patientId: string, raw: unknown): Promise<string[]> {
+    const ids = Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id)).slice(0, 500) : []
+    if (!ids.length) return []
+    const { data } = await admin.from('patient_documents').select('id')
+      .eq('patient_id', patientId).eq('status', 'ready').is('deleted_at', null).in('id', ids)
+    return (data ?? []).map((row) => row.id)
+  }
+
+  async function findProfessional(rawQuery: string) {
+    const raw = rawQuery.trim()
+    if (!raw) return null
+    let professionalId: string | null = null
+    if (raw.includes('@') && !raw.includes('/')) {
+      const { data } = await admin.from('professionals').select('id').ilike('email', raw.toLowerCase()).limit(1).maybeSingle()
+      professionalId = data?.id ?? null
+    } else {
+      const token = (raw.match(/registro\/([a-z0-9-]+)/i)?.[1] ?? raw).toLowerCase()
+      if (/^[a-z0-9-]{6,80}$/.test(token)) {
+        const { data } = await admin.from('patient_invite_links').select('professional_id').eq('token', token).maybeSingle()
+        professionalId = data?.professional_id ?? null
+      }
+    }
+    if (!professionalId) return null
+    const { data: professional } = await admin.from('professionals').select('id, full_name, specialty, email, active').eq('id', professionalId).maybeSingle()
+    return professional && professional.active !== false ? professional : null
+  }
+
   try {
     // ---------- Acciones públicas ----------
     if (action === 'register') {
       const email = normalizeEmail(body.email)
       const password = typeof body.password === 'string' ? body.password : ''
-      const fullName = text(body.fullName, 160)
+      const firstName = text(body.firstName, 80)
+      const lastName = text(body.lastName, 80)
+      const fullName = firstName && lastName ? `${firstName} ${lastName}` : text(body.fullName, 160)
       const dni = normalizeDni(body.dni)
       const birthDate = validDate(body.birthDate)
       const phone = text(body.phone, 40) || null
-      if (!fullName || !email || !password || !dni) return reply(400, { success: false, message: 'Completá nombre, DNI, email y contraseña.' })
+      if (!fullName || !email || !password || !dni) return reply(400, { success: false, message: 'Completá nombre, apellido, DNI, email y contraseña.' })
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return reply(400, { success: false, message: 'El email no es válido.' })
       if (dni.length < 6 || dni.length > 10) return reply(400, { success: false, message: 'Revisá el DNI (solo números).' })
       if (password.length < 8 || password.length > 200) return reply(400, { success: false, message: 'La contraseña debe tener al menos 8 caracteres.' })
@@ -243,7 +333,8 @@ serve(async (request) => {
       }
       const now = new Date().toISOString()
       const values = {
-        email, password_hash: await bcrypt.hash(password, BCRYPT_ROUNDS), full_name: fullName, dni, birth_date: birthDate, phone,
+        email, password_hash: await bcrypt.hash(password, BCRYPT_ROUNDS), full_name: fullName,
+        first_name: firstName || null, last_name: lastName || null, dni, birth_date: birthDate, phone,
         consent_accepted_at: now, consent_version: CONSENT_VERSION, updated_at: now,
       }
       let patient: PatientRow
@@ -350,6 +441,122 @@ serve(async (request) => {
       return reply(200, { success: true, sessionToken: token, patient: publicPatient(patient) })
     }
 
+    // ---------- Link público (médico externo) ----------
+    if (action === 'open-share') {
+      const token = text(body.token, 60)
+      const code = text(body.code, 6)
+      const notFound = () => reply(404, { success: false, message: 'Este link no existe, venció o el paciente dejó de compartirlo.' })
+      if (!/^[A-Za-z0-9_-]{16,60}$/.test(token)) return notFound()
+      const { data: shareData } = await admin.from('patient_shares').select(SHARE_COLUMNS).eq('token', token).eq('kind', 'link').maybeSingle()
+      const share = shareData as ShareRow | null
+      if (!share || share.revoked_at || !share.expires_at || new Date(share.expires_at).getTime() < Date.now()) return notFound()
+      if (share.failed_attempts >= MAX_SHARE_CODE_FAILURES) return notFound()
+      if (!/^\d{6}$/.test(code)) return reply(400, { success: false, step: 'code', message: 'Ingresá el código de 6 números que te dio el paciente.' })
+      if (await hashShareCode(share.id, code) !== share.code_hash) {
+        const failures = share.failed_attempts + 1
+        await admin.from('patient_shares').update({
+          failed_attempts: failures,
+          ...(failures >= MAX_SHARE_CODE_FAILURES ? { revoked_at: new Date().toISOString() } : {}),
+        }).eq('id', share.id)
+        return reply(400, { success: false, step: 'code', message: 'El código no es correcto.' })
+      }
+      const { data: owner } = await admin.from('patient_accounts').select('full_name, birth_date, active').eq('id', share.patient_id).maybeSingle()
+      if (!owner?.active) return notFound()
+      const docs = await sharedDocuments(share)
+      const documents = await Promise.all(docs.map(async (row) => ({
+        id: row.id, title: row.title, category: row.category, studyDate: row.study_date, notes: row.notes,
+        mimeType: row.mime_type, sizeBytes: Number(row.size_bytes) || 0,
+        url: await signedViewUrl(row.file_path, row.title),
+        downloadUrl: await signedViewUrl(row.file_path, row.title, true),
+      })))
+      await admin.from('patient_shares').update({
+        access_count: share.access_count + 1, last_accessed_at: new Date().toISOString(), failed_attempts: 0,
+      }).eq('id', share.id)
+      await log(share.patient_id, 'share_link_opened')
+      return reply(200, {
+        success: true,
+        patientName: owner.full_name,
+        birthDate: owner.birth_date,
+        expiresAt: share.expires_at,
+        urlTtlSeconds: SHARE_URL_TTL_SECONDS,
+        documents,
+      })
+    }
+
+    // ---------- Acciones del profesional (app Dr Happy) ----------
+    if (action.startsWith('doctor-')) {
+      const professionalId = await resolveProfessionalId(request, admin)
+      if (!professionalId) return reply(401, { success: false, message: 'Sesión profesional requerida.' })
+
+      if (action === 'doctor-pull-links') {
+        const { data, error } = await admin.from('patient_shares')
+          .select('id, created_at, patient_accounts!inner(full_name, first_name, last_name, dni, birth_date, phone, email, active)')
+          .eq('kind', 'doctor').eq('professional_id', professionalId).is('revoked_at', null).is('imported_at', null)
+          .order('created_at', { ascending: true }).limit(200)
+        if (error) throw error
+        const links = (data ?? []).flatMap((row) => {
+          const account = row.patient_accounts as unknown as Pick<PatientRow, 'full_name' | 'first_name' | 'last_name' | 'dni' | 'birth_date' | 'phone' | 'email' | 'active'>
+          if (!account?.active) return []
+          const { nombre, apellido } = splitName(account)
+          return [{
+            id: row.id, created_at: row.created_at, nombre, apellido, dni: account.dni,
+            birth_date: account.birth_date, phone: account.phone, email: account.email,
+          }]
+        })
+        return reply(200, { success: true, links })
+      }
+
+      if (action === 'doctor-ack-links') {
+        const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id)).slice(0, 200) : []
+        if (ids.length) {
+          const { error } = await admin.from('patient_shares').update({ imported_at: new Date().toISOString() })
+            .eq('kind', 'doctor').eq('professional_id', professionalId).in('id', ids)
+          if (error) throw error
+        }
+        return reply(200, { success: true })
+      }
+
+      if (action === 'doctor-folder') {
+        const dni = normalizeDni(body.dni)
+        if (dni.length < 6) return reply(200, { success: true, folders: [] })
+        const { data: accounts } = await admin.from('patient_accounts').select('id, full_name').eq('dni', dni).eq('active', true).limit(5)
+        if (!accounts?.length) return reply(200, { success: true, folders: [] })
+        const { data: shares, error } = await admin.from('patient_shares').select(SHARE_COLUMNS)
+          .eq('kind', 'doctor').eq('professional_id', professionalId).is('revoked_at', null)
+          .in('patient_id', accounts.map((account) => account.id))
+        if (error) throw error
+        const folders = await Promise.all(((shares ?? []) as ShareRow[]).map(async (share) => ({
+          shareId: share.id,
+          patientName: accounts.find((account) => account.id === share.patient_id)?.full_name ?? '',
+          sharedAt: share.created_at,
+          documents: (await sharedDocuments(share)).map((row) => ({
+            id: row.id, title: row.title, category: row.category, studyDate: row.study_date, notes: row.notes,
+            mimeType: row.mime_type, sizeBytes: Number(row.size_bytes) || 0,
+          })),
+        })))
+        return reply(200, { success: true, folders })
+      }
+
+      if (action === 'doctor-document-url') {
+        const shareId = text(body.shareId, 40)
+        const documentId = text(body.documentId, 40)
+        const { data: shareData } = await admin.from('patient_shares').select(SHARE_COLUMNS)
+          .eq('id', shareId).eq('kind', 'doctor').eq('professional_id', professionalId).is('revoked_at', null).maybeSingle()
+        const share = shareData as ShareRow | null
+        if (!share) return reply(404, { success: false, message: 'El paciente dejó de compartir su carpeta.' })
+        if (!share.all_documents && !(share.document_ids ?? []).includes(documentId)) return reply(404, { success: false, message: 'Ese estudio ya no está compartido.' })
+        const { data: doc } = await admin.from('patient_documents').select('id, file_path, title, mime_type')
+          .eq('id', documentId).eq('patient_id', share.patient_id).eq('status', 'ready').is('deleted_at', null).maybeSingle()
+        if (!doc) return reply(404, { success: false, message: 'El paciente borró ese estudio.' })
+        const url = await signedViewUrl(doc.file_path, doc.title, body.download === true)
+        await admin.from('patient_shares').update({ access_count: share.access_count + 1, last_accessed_at: new Date().toISOString() }).eq('id', share.id)
+        await log(share.patient_id, 'doctor_viewed', doc.id)
+        return reply(200, { success: true, url, mimeType: doc.mime_type })
+      }
+
+      return reply(400, { success: false, message: 'Acción no válida.' })
+    }
+
     // ---------- Acciones con sesión de paciente ----------
     const patient = await resolveSession()
     if (!patient) return reply(401, { success: false, code: 'SESSION_EXPIRED', message: 'Tu sesión terminó. Ingresá nuevamente.' })
@@ -365,12 +572,17 @@ serve(async (request) => {
     }
 
     if (action === 'update-profile') {
-      const fullName = text(body.fullName, 160)
+      const firstName = text(body.firstName, 80)
+      const lastName = text(body.lastName, 80)
+      const fullName = firstName && lastName ? `${firstName} ${lastName}` : text(body.fullName, 160)
       const phone = text(body.phone, 40) || null
       const birthDate = body.birthDate ? validDate(body.birthDate) : null
       if (!fullName) return reply(400, { success: false, message: 'El nombre es obligatorio.' })
       const { data, error } = await admin.from('patient_accounts')
-        .update({ full_name: fullName, phone, birth_date: birthDate, updated_at: new Date().toISOString() })
+        .update({
+          full_name: fullName, first_name: firstName || patient.first_name, last_name: lastName || patient.last_name,
+          phone, birth_date: birthDate, updated_at: new Date().toISOString(),
+        })
         .eq('id', patient.id).select(PATIENT_COLUMNS).single()
       if (error) throw error
       return reply(200, { success: true, patient: publicPatient(data as PatientRow) })
@@ -497,6 +709,99 @@ serve(async (request) => {
       if (error || !data) throw error || new Error('No se pudo abrir el archivo.')
       await log(patient.id, download ? 'document_downloaded' : 'document_viewed', doc.id)
       return reply(200, { success: true, url: data.signedUrl, mimeType: doc.mime_type })
+    }
+
+    if (action === 'find-doctor') {
+      const professional = await findProfessional(text(body.query, 300))
+      if (!professional) return reply(404, { success: false, message: 'No encontramos un médico de Dr Happy con ese email o link. Revisalo o compartí con un link temporal.' })
+      return reply(200, { success: true, doctor: { id: professional.id, name: professional.full_name ?? '', specialty: professional.specialty ?? '' } })
+    }
+
+    if (action === 'share-with-doctor') {
+      const professionalId = text(body.professionalId, 80)
+      const { data: professional } = await admin.from('professionals').select('id, full_name, email, active').eq('id', professionalId).maybeSingle()
+      if (!professional || professional.active === false) return reply(404, { success: false, message: 'No encontramos a ese médico.' })
+      const allDocuments = body.allDocuments !== false
+      const documentIds = allDocuments ? [] : await validDocumentIds(patient.id, body.documentIds)
+      if (!allDocuments && !documentIds.length) return reply(400, { success: false, message: 'Elegí al menos un estudio para compartir.' })
+      const { data: existing } = await admin.from('patient_shares').select('id')
+        .eq('patient_id', patient.id).eq('kind', 'doctor').eq('professional_id', professional.id).is('revoked_at', null).maybeSingle()
+      if (existing) {
+        const { error } = await admin.from('patient_shares').update({ all_documents: allDocuments, document_ids: documentIds }).eq('id', existing.id)
+        if (error) throw error
+        await log(patient.id, 'share_doctor_updated')
+        return reply(200, { success: true, updated: true })
+      }
+      const { error } = await admin.from('patient_shares').insert({
+        patient_id: patient.id, kind: 'doctor', professional_id: professional.id, all_documents: allDocuments, document_ids: documentIds,
+      })
+      if (error) throw error
+      await log(patient.id, 'share_doctor_created')
+      if (professional.email) {
+        const doctorName = escapeHtml(String(professional.full_name || '').trim())
+        await sendEmail(
+          professional.email,
+          `${patient.full_name} compartió su Carpeta de Salud con vos — Dr Happy`,
+          `<p>Hola${doctorName ? ` ${doctorName}` : ''},</p><p><strong>${escapeHtml(patient.full_name)}</strong> (DNI ${escapeHtml(patient.dni)}) compartió con vos sus estudios desde su Carpeta de Salud.</p><p>Al abrir Dr Happy lo vas a encontrar en tu lista de pacientes, con sus estudios en la sección <strong>Documentos adjuntos</strong> de la ficha.</p><p><a href="${PUBLIC_SITE_URL}/" style="display:inline-block;background:#0f766e;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700;">Abrir Dr Happy</a></p>`,
+        )
+      }
+      return reply(200, { success: true, updated: false })
+    }
+
+    if (action === 'create-link-share') {
+      const days = Number(body.days)
+      if (!SHARE_DAYS.has(days)) return reply(400, { success: false, message: 'Elegí por cuánto tiempo compartir.' })
+      const allDocuments = body.allDocuments !== false
+      const documentIds = allDocuments ? [] : await validDocumentIds(patient.id, body.documentIds)
+      if (!allDocuments && !documentIds.length) return reply(400, { success: false, message: 'Elegí al menos un estudio para compartir.' })
+      const { count } = await admin.from('patient_shares').select('id', { count: 'exact', head: true })
+        .eq('patient_id', patient.id).eq('kind', 'link').is('revoked_at', null).gt('expires_at', new Date().toISOString())
+      if ((count ?? 0) >= MAX_ACTIVE_LINKS) return reply(400, { success: false, message: 'Tenés demasiados links activos. Desactivá alguno antes de crear otro.' })
+      const shareId = crypto.randomUUID()
+      const bytes = crypto.getRandomValues(new Uint8Array(18))
+      const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+      const code = createCode()
+      const expiresAt = new Date(Date.now() + days * 86400000).toISOString()
+      const { error } = await admin.from('patient_shares').insert({
+        id: shareId, patient_id: patient.id, kind: 'link', token, code_hash: await hashShareCode(shareId, code),
+        all_documents: allDocuments, document_ids: documentIds, expires_at: expiresAt,
+      })
+      if (error) throw error
+      await log(patient.id, 'share_link_created')
+      return reply(200, { success: true, shareId, url: `${PUBLIC_SITE_URL}/compartido/${token}`, code, expiresAt })
+    }
+
+    if (action === 'list-shares') {
+      const { data, error } = await admin.from('patient_shares').select(SHARE_COLUMNS)
+        .eq('patient_id', patient.id).is('revoked_at', null).order('created_at', { ascending: false }).limit(100)
+      if (error) throw error
+      const rows = ((data ?? []) as ShareRow[]).filter((row) => row.kind === 'doctor' || (row.expires_at && new Date(row.expires_at).getTime() > Date.now()))
+      const professionalIds = [...new Set(rows.map((row) => row.professional_id).filter((id): id is string => Boolean(id)))]
+      const { data: professionals } = professionalIds.length
+        ? await admin.from('professionals').select('id, full_name, specialty').in('id', professionalIds)
+        : { data: [] as Array<{ id: string; full_name: string | null; specialty: string | null }> }
+      return reply(200, {
+        success: true,
+        shares: rows.map((row) => {
+          const professional = professionals?.find((item) => item.id === row.professional_id)
+          return {
+            id: row.id, kind: row.kind, allDocuments: row.all_documents, documentCount: (row.document_ids ?? []).length,
+            expiresAt: row.expires_at, accessCount: row.access_count, lastAccessedAt: row.last_accessed_at, createdAt: row.created_at,
+            doctorName: professional?.full_name ?? '', doctorSpecialty: professional?.specialty ?? '',
+            url: row.kind === 'link' && row.token ? `${PUBLIC_SITE_URL}/compartido/${row.token}` : null,
+          }
+        }),
+      })
+    }
+
+    if (action === 'revoke-share') {
+      const shareId = text(body.shareId, 40)
+      const { data, error } = await admin.from('patient_shares').update({ revoked_at: new Date().toISOString() })
+        .eq('id', shareId).eq('patient_id', patient.id).is('revoked_at', null).select('id')
+      if (error) throw error
+      if (!data?.length) return reply(404, { success: false, message: 'Ese acceso ya no estaba activo.' })
+      await log(patient.id, 'share_revoked')
+      return reply(200, { success: true })
     }
 
     return reply(400, { success: false, message: 'Acción no válida.' })

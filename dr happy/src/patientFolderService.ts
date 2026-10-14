@@ -3,21 +3,26 @@ import { supabase, isSupabaseConfigured } from './supabaseClient'
 export const PATIENT_SESSION_KEY = 'drhappy-patient-session'
 const SESSION_HEADER = 'x-drhappy-patient-session'
 
-export type PatientDocumentCategory = 'laboratorio' | 'imagenes' | 'recetas' | 'informes' | 'vacunas' | 'otros'
+export type PatientDocumentCategory = 'laboratorio' | 'imagenes' | 'informes' | 'vacunas' | 'otros'
 
 export const PATIENT_DOCUMENT_CATEGORIES: Array<{ id: PatientDocumentCategory; label: string; icon: string }> = [
   { id: 'laboratorio', label: 'Laboratorio', icon: '🧪' },
   { id: 'imagenes', label: 'Imágenes', icon: '🩻' },
-  { id: 'recetas', label: 'Recetas', icon: '💊' },
   { id: 'informes', label: 'Informes', icon: '📋' },
   { id: 'vacunas', label: 'Vacunas', icon: '💉' },
   { id: 'otros', label: 'Otros', icon: '📁' },
 ]
 
+export function patientCategoryMeta(category: string) {
+  return PATIENT_DOCUMENT_CATEGORIES.find((item) => item.id === category) ?? PATIENT_DOCUMENT_CATEGORIES[PATIENT_DOCUMENT_CATEGORIES.length - 1]
+}
+
 export interface PatientProfile {
   id: string
   email: string
   fullName: string
+  firstName: string
+  lastName: string
   dni: string
   birthDate: string | null
   phone: string | null
@@ -51,6 +56,105 @@ export interface PatientFolderResponse {
   uploadToken?: string
   url?: string
   mimeType?: string
+  doctor?: { id: string; name: string; specialty: string }
+  shares?: PatientShare[]
+  shareId?: string
+  expiresAt?: string
+  updated?: boolean
+}
+
+export interface PatientShare {
+  id: string
+  kind: 'doctor' | 'link'
+  allDocuments: boolean
+  documentCount: number
+  expiresAt: string | null
+  accessCount: number
+  lastAccessedAt: string | null
+  createdAt: string
+  doctorName: string
+  doctorSpecialty: string
+  url: string | null
+}
+
+export interface SharedDocument {
+  id: string
+  title: string
+  category: string
+  studyDate: string | null
+  notes: string | null
+  mimeType: string
+  sizeBytes: number
+  url?: string
+  downloadUrl?: string
+}
+
+export interface OpenShareResponse {
+  success: boolean
+  message?: string
+  step?: 'code'
+  patientName?: string
+  birthDate?: string | null
+  expiresAt?: string
+  urlTtlSeconds?: number
+  documents?: SharedDocument[]
+}
+
+export interface DoctorSharedFolder {
+  shareId: string
+  patientName: string
+  sharedAt: string
+  documents: SharedDocument[]
+}
+
+export interface DoctorFolderLink {
+  id: string
+  created_at: string
+  nombre: string
+  apellido: string
+  dni: string
+  birth_date: string | null
+  phone: string | null
+  email: string | null
+}
+
+// Acciones públicas o del profesional: no envían la sesión del paciente.
+async function invokeWithoutPatientSession<T extends { success: boolean; message?: string }>(body: Record<string, unknown>): Promise<T> {
+  if (!isSupabaseConfigured || !supabase) return { success: false, message: 'El servicio no está disponible en este momento.' } as T
+  const { data, error } = await supabase.functions.invoke('patient-folder', { body })
+  if (error) {
+    const context = (error as { context?: Response }).context
+    if (context && typeof context.json === 'function') {
+      try {
+        const payload = await context.json() as T
+        if (payload?.message) return { ...payload, success: false }
+      } catch {
+        // sin cuerpo JSON
+      }
+    }
+    return { success: false, message: 'No hay conexión con el servidor. Revisá tu internet e intentá de nuevo.' } as T
+  }
+  return (data as T) ?? ({ success: false, message: 'Respuesta vacía del servidor.' } as T)
+}
+
+export function openPatientShare(token: string, code: string): Promise<OpenShareResponse> {
+  return invokeWithoutPatientSession<OpenShareResponse>({ action: 'open-share', token, code })
+}
+
+export function pullDoctorFolderLinks(): Promise<{ success: boolean; message?: string; links?: DoctorFolderLink[] }> {
+  return invokeWithoutPatientSession({ action: 'doctor-pull-links' })
+}
+
+export function acknowledgeDoctorFolderLinks(ids: string[]): Promise<{ success: boolean; message?: string }> {
+  return invokeWithoutPatientSession({ action: 'doctor-ack-links', ids })
+}
+
+export function loadDoctorSharedFolders(dni: string): Promise<{ success: boolean; message?: string; folders?: DoctorSharedFolder[] }> {
+  return invokeWithoutPatientSession({ action: 'doctor-folder', dni })
+}
+
+export function getDoctorSharedDocumentUrl(shareId: string, documentId: string, download = false): Promise<{ success: boolean; message?: string; url?: string }> {
+  return invokeWithoutPatientSession({ action: 'doctor-document-url', shareId, documentId, download })
 }
 
 export function getPatientSessionToken(): string {
@@ -139,4 +243,10 @@ export async function uploadPatientDocument(
 export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`
+}
+
+export function formatDate(value: string | null): string {
+  if (!value) return 'Sin fecha'
+  const [year, month, day] = value.slice(0, 10).split('-')
+  return `${day}/${month}/${year}`
 }

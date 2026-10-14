@@ -42,6 +42,8 @@ import { AdminSupportInbox } from './AdminSupportInbox'
 import { SignaturePad } from './SignaturePad'
 import { blobToBase64, buildCertificatePdf, buildQrDataUrl, certificateFileName, certificateSignedContent, formatCertificateDate } from './medicalCertificate'
 import { acknowledgePatientInviteSubmissions, buildPatientInviteUrl, getPatientInviteLink, pullPatientInviteSubmissions } from './patientInviteService'
+import { acknowledgeDoctorFolderLinks, pullDoctorFolderLinks } from './patientFolderService'
+import PatientSharedFolderPanel from './PatientSharedFolderPanel'
 import { VirtualConsultInbox } from './VirtualConsultInbox'
 import { PaidClinicalDocumentsPanel } from './PaidClinicalDocumentsPanel'
 import { completePaidClinicalDocumentRequest, listPaidClinicalDocumentLedgerRequests } from './paidClinicalDocumentsService'
@@ -10386,13 +10388,29 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     if (!activeUserId || !profile || !isSupabaseConfigured || inviteSyncBusyRef.current) return
     inviteSyncBusyRef.current = true
     try {
-      const result = await pullPatientInviteSubmissions()
-      const submissions = result.success ? result.submissions ?? [] : []
+      const [result, folderResult] = await Promise.all([pullPatientInviteSubmissions(), pullDoctorFolderLinks()])
+      const inviteSubmissions = (result.success ? result.submissions ?? [] : []).map((submission) => ({ ...submission, fromFolder: false }))
+      const folderSubmissions = (folderResult.success ? folderResult.links ?? [] : []).map((link) => ({
+        id: link.id,
+        created_at: link.created_at,
+        nombre: link.nombre,
+        apellido: link.apellido,
+        dni: link.dni,
+        birth_date: link.birth_date,
+        phone: link.phone,
+        email: link.email,
+        obra_social: '',
+        numero_afiliado: '',
+        fromFolder: true,
+      }))
+      const submissions = [...inviteSubmissions, ...folderSubmissions]
       if (!submissions.length) return
       const now = new Date().toISOString()
       const working = [...patients]
       const changed = new Map<string, PatientRecord>()
       const processedIds: string[] = []
+      const processedFolderIds: string[] = []
+      const folderNames: string[] = []
       let archivedSubmissions = 0
       let created = 0
       for (const submission of submissions) {
@@ -10401,7 +10419,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           archivedSubmissions += 1
           continue
         }
-        processedIds.push(submission.id)
+        if (submission.fromFolder) {
+          processedFolderIds.push(submission.id)
+          folderNames.push(`${submission.nombre} ${submission.apellido}`.trim())
+        } else {
+          processedIds.push(submission.id)
+        }
         const index = dni ? working.findIndex((patient) => patient.dni.replace(/\D/g, '') === dni) : -1
         if (index >= 0) {
           const current = working[index]
@@ -10452,13 +10475,16 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         }
       }
       if (archivedSubmissions) setAppError('Hay una invitación de un paciente archivado. Revisá Pacientes eliminados antes de incorporarlo nuevamente.')
-      if (!processedIds.length) return
+      if (!processedIds.length && !processedFolderIds.length) return
       persistPatientsBatch(Array.from(changed.values()))
       if (!await persistWorkspaceRemote(activeUserId, profile, sortPatientsByName(working), appointments)) return
-      await acknowledgePatientInviteSubmissions(processedIds)
-      const message = created > 0
-        ? `🎉 ${created} paciente${created === 1 ? '' : 's'} se registr${created === 1 ? 'ó' : 'aron'} con tu link de invitación.`
-        : 'Se actualizaron datos de pacientes que usaron tu link de invitación.'
+      if (processedIds.length) await acknowledgePatientInviteSubmissions(processedIds)
+      if (processedFolderIds.length) await acknowledgeDoctorFolderLinks(processedFolderIds)
+      const message = folderNames.length
+        ? `📂 ${folderNames.length === 1 ? `${folderNames[0]} te compartió` : `${folderNames.length} pacientes te compartieron`} su Carpeta de Salud. Los estudios están en la ficha del paciente.`
+        : created > 0
+          ? `🎉 ${created} paciente${created === 1 ? '' : 's'} se registr${created === 1 ? 'ó' : 'aron'} con tu link de invitación.`
+          : 'Se actualizaron datos de pacientes que usaron tu link de invitación.'
       setAppNotice(message)
       showSavedFloatingNotice(created > 0 ? `${created} paciente${created === 1 ? '' : 's'} nuevo${created === 1 ? '' : 's'}` : 'Pacientes actualizados')
     } finally {
@@ -15106,6 +15132,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                   </div>
                 </section>)}
                 {renderPaperRecords(canManagePaperRecords)}
+                {selectedPatient?.dni ? <PatientSharedFolderPanel key={selectedPatient.id} dni={selectedPatient.dni} /> : null}
                 <div className="record-document-actions">
                   {canUseMedicalTools && selectedPatient?.ownerUserId === activeUserId ? (
                     <button type="button" className="ghost" disabled={videoAccessBusy} onClick={() => { void handleOpenVideoConsultation({ patientId: selectedPatient.id }) }}>📹 Videoconsulta</button>
@@ -15371,6 +15398,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 </fieldset>
               </form>
               {selectedPatient ? renderPaperRecords(false) : null}
+              {selectedPatient?.dni ? <PatientSharedFolderPanel key={selectedPatient.id} dni={selectedPatient.dni} /> : null}
               <ul className="consultation-list">
                 {selectedPatient?.consultations.map((entry) => (
                   <li key={entry.id}>

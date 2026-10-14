@@ -21,4 +21,5 @@
   RewriteRule ^documentos/([a-z0-9-]+)/?$ /index.html?paid_documents_slug=$1 [QSA,L]
   # Carpeta de Salud del paciente: acceso independiente de la app profesional.
   RewriteRule ^paciente/?$ /index.html?patient_portal=1 [QSA,L]
+  RewriteRule ^compartido/([A-Za-z0-9_-]+)/?$ /index.html?patient_share=$1 [QSA,L]
 </IfModule>

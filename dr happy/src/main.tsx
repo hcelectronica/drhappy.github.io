@@ -21,6 +21,12 @@ const isPatientPortalRoute = /^\/paciente\/?$/i.test(window.location.pathname)
 const PatientPortal = isPatientPortalRoute && !PaidDocumentsPublicPage
   ? lazy(() => import('./PatientPortal'))
   : null
+const sharedFolderToken = window.location.pathname.match(/^\/compartido\/([A-Za-z0-9_-]{16,60})\/?$/)?.[1]
+  || new URLSearchParams(window.location.search).get('patient_share')
+  || ''
+const SharedFolderPage = sharedFolderToken && !PaidDocumentsPublicPage && !PatientPortal
+  ? lazy(() => import('./SharedFolderPage'))
+  : null
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -32,7 +38,9 @@ createRoot(document.getElementById('root')!).render(
             ? <Suspense fallback={<p>Cargando formulario de documentos…</p>}><PaidDocumentsPublicPage /></Suspense>
             : PatientPortal
               ? <Suspense fallback={<p style={{ textAlign: 'center', marginTop: '30vh' }}>Abriendo tu carpeta…</p>}><PatientPortal /></Suspense>
-              : <App />}
+              : SharedFolderPage
+                ? <Suspense fallback={<p style={{ textAlign: 'center', marginTop: '30vh' }}>Abriendo estudios…</p>}><SharedFolderPage token={sharedFolderToken} /></Suspense>
+                : <App />}
       </ErrorNotificationProvider>
     </AppErrorBoundary>
   </StrictMode>,

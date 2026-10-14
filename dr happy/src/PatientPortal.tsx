@@ -1,29 +1,52 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   PATIENT_DOCUMENT_CATEGORIES,
   callPatientFolder,
   formatBytes,
+  formatDate,
   getPatientSessionToken,
+  patientCategoryMeta,
   setPatientSessionToken,
   uploadPatientDocument,
 } from './patientFolderService'
-import type { PatientDocument, PatientDocumentCategory, PatientFolderResponse, PatientProfile } from './patientFolderService'
+import type { PatientDocument, PatientDocumentCategory, PatientFolderResponse, PatientProfile, PatientShare } from './patientFolderService'
 import './PatientPortal.css'
+import type { EncodeHintType as HintKey } from '@zxing/library'
 
 type AuthMode = 'login' | 'register' | 'verify' | 'forgot' | 'reset'
 type View = 'home' | 'folder' | 'upload' | 'share' | 'account'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
-function formatDate(value: string | null): string {
-  if (!value) return 'Sin fecha'
-  const [year, month, day] = value.slice(0, 10).split('-')
-  return `${day}/${month}/${year}`
-}
+const categoryInfo = patientCategoryMeta
 
-function categoryInfo(id: string) {
-  return PATIENT_DOCUMENT_CATEGORIES.find((item) => item.id === id) ?? PATIENT_DOCUMENT_CATEGORIES[PATIENT_DOCUMENT_CATEGORIES.length - 1]
+function QrCanvas({ text, size = 200 }: { text: string; size?: number }) {
+  const ref = useRef<HTMLCanvasElement>(null)
+  useEffect(() => {
+    let cancelled = false
+    void import('@zxing/library').then(({ BarcodeFormat, EncodeHintType, QRCodeWriter }) => {
+      const canvas = ref.current
+      const context = canvas?.getContext('2d')
+      if (cancelled || !canvas || !context) return
+      const hints = new Map<HintKey, unknown>([[EncodeHintType.MARGIN, 1], [EncodeHintType.ERROR_CORRECTION, 'M']])
+      const matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 0, 0, hints as Map<HintKey, never>)
+      const modules = matrix.getWidth()
+      const cell = Math.max(1, Math.floor(size / modules))
+      canvas.width = cell * modules
+      canvas.height = cell * modules
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.fillStyle = '#0f172a'
+      for (let row = 0; row < modules; row += 1) {
+        for (let column = 0; column < modules; column += 1) {
+          if (matrix.get(column, row)) context.fillRect(column * cell, row * cell, cell, cell)
+        }
+      }
+    })
+    return () => { cancelled = true }
+  }, [text, size])
+  return <canvas ref={ref} className="pp-qr" width={size} height={size} aria-label="Código QR del link" />
 }
 
 function Brand() {
@@ -45,7 +68,8 @@ function AuthScreen({ onSession }: { onSession: (patient: PatientProfile) => voi
   const [info, setInfo] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [dni, setDni] = useState('')
   const [birthDate, setBirthDate] = useState('')
   const [phone, setPhone] = useState('')
@@ -82,7 +106,7 @@ function AuthScreen({ onSession }: { onSession: (patient: PatientProfile) => voi
       } else if (mode === 'register') {
         if (password.length < 8) return setError('La contraseña debe tener al menos 8 caracteres.')
         if (!consent) return setError('Para continuar tenés que aceptar el uso de tus datos.')
-        const result = await callPatientFolder({ action: 'register', email, password, fullName, dni, birthDate, phone, consent })
+        const result = await callPatientFolder({ action: 'register', email, password, firstName, lastName, dni, birthDate, phone, consent })
         if (!result.success) return setError(result.message || 'No pudimos crear tu carpeta.')
         go('verify', `Te enviamos un código de 6 números a ${email}. Revisá también Spam o Promociones.`)
       } else if (mode === 'verify') {
@@ -131,7 +155,8 @@ function AuthScreen({ onSession }: { onSession: (patient: PatientProfile) => voi
 
         {mode === 'register' && (
           <>
-            <label>Nombre y apellido<input value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required maxLength={160} /></label>
+            <label>Nombre<input value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="given-name" required maxLength={80} /></label>
+            <label>Apellido<input value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="family-name" required maxLength={80} /></label>
             <label>DNI<input value={dni} onChange={(e) => setDni(e.target.value.replace(/\D/g, ''))} inputMode="numeric" required maxLength={10} /></label>
             <label>Fecha de nacimiento<input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} max={todayIso()} /></label>
             <label>Celular (opcional)<input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" maxLength={40} /></label>
@@ -326,8 +351,265 @@ function FolderView({ documents, loading, onReload }: { documents: PatientDocume
   )
 }
 
+function ScopePicker({ documents, all, selected, onAll, onToggle }: {
+  documents: PatientDocument[]
+  all: boolean
+  selected: string[]
+  onAll: (value: boolean) => void
+  onToggle: (id: string) => void
+}) {
+  return (
+    <fieldset className="pp-scope">
+      <legend>¿Qué querés compartir?</legend>
+      <label className="pp-radio"><input type="radio" checked={all} onChange={() => onAll(true)} /> Toda mi carpeta <small>(incluye lo que subas después)</small></label>
+      <label className="pp-radio"><input type="radio" checked={!all} onChange={() => onAll(false)} disabled={!documents.length} /> Elegir estudios</label>
+      {!all && (
+        <ul className="pp-pick-list">
+          {documents.map((doc) => (
+            <li key={doc.id}>
+              <label>
+                <input type="checkbox" checked={selected.includes(doc.id)} onChange={() => onToggle(doc.id)} />
+                <span>{categoryInfo(doc.category).icon} {doc.title} <small>{formatDate(doc.studyDate)}</small></span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+    </fieldset>
+  )
+}
+
+type ShareMode = 'menu' | 'doctor' | 'link'
+
+function ShareView({ documents, patientName, onToast }: { documents: PatientDocument[]; patientName: string; onToast: (message: string) => void }) {
+  const [mode, setMode] = useState<ShareMode>('menu')
+  const [shares, setShares] = useState<PatientShare[]>([])
+  const [loadingShares, setLoadingShares] = useState(true)
+  const [all, setAll] = useState(true)
+  const [selected, setSelected] = useState<string[]>([])
+  const [query, setQuery] = useState('')
+  const [doctor, setDoctor] = useState<{ id: string; name: string; specialty: string } | null>(null)
+  const [days, setDays] = useState(7)
+  const [created, setCreated] = useState<{ url: string; code: string; expiresAt: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const loadShares = useCallback(async () => {
+    const result = await callPatientFolder({ action: 'list-shares' })
+    setLoadingShares(false)
+    if (result.success) setShares(result.shares ?? [])
+  }, [])
+
+  useEffect(() => { void loadShares() }, [loadShares])
+
+  function reset(next: ShareMode) {
+    setMode(next)
+    setAll(true)
+    setSelected([])
+    setQuery('')
+    setDoctor(null)
+    setCreated(null)
+    setError('')
+  }
+
+  function toggle(id: string) {
+    setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+  }
+
+  async function findDoctor(event: FormEvent) {
+    event.preventDefault()
+    if (busy) return
+    setBusy(true)
+    setError('')
+    setDoctor(null)
+    const result = await callPatientFolder({ action: 'find-doctor', query })
+    setBusy(false)
+    if (!result.success || !result.doctor) return setError(result.message || 'No encontramos a ese médico.')
+    setDoctor(result.doctor)
+  }
+
+  async function shareWithDoctor() {
+    if (!doctor || busy) return
+    if (!all && !selected.length) return setError('Elegí al menos un estudio.')
+    setBusy(true)
+    setError('')
+    const result = await callPatientFolder({ action: 'share-with-doctor', professionalId: doctor.id, allDocuments: all, documentIds: selected })
+    setBusy(false)
+    if (!result.success) return setError(result.message || 'No se pudo compartir.')
+    onToast(result.updated ? 'Actualizaste lo que compartís con tu médico ✔' : `Listo, ${doctor.name || 'tu médico'} ya puede ver tus estudios ✔`)
+    reset('menu')
+    void loadShares()
+  }
+
+  async function createLink() {
+    if (busy) return
+    if (!all && !selected.length) return setError('Elegí al menos un estudio.')
+    setBusy(true)
+    setError('')
+    const result = await callPatientFolder({ action: 'create-link-share', days, allDocuments: all, documentIds: selected }) as PatientFolderResponse & { code?: string }
+    setBusy(false)
+    if (!result.success || !result.url || !result.code || !result.expiresAt) return setError(result.message || 'No se pudo crear el link.')
+    setCreated({ url: result.url, code: result.code, expiresAt: result.expiresAt })
+    void loadShares()
+  }
+
+  async function revoke(share: PatientShare) {
+    const question = share.kind === 'doctor'
+      ? `¿Dejar de compartir tus estudios con ${share.doctorName || 'este médico'}? Ya no va a poder verlos.`
+      : '¿Desactivar este link? Quien lo tenga ya no va a poder abrirlo.'
+    if (!window.confirm(question)) return
+    const result = await callPatientFolder({ action: 'revoke-share', shareId: share.id })
+    if (!result.success) return setError(result.message || 'No se pudo desactivar.')
+    onToast('Acceso desactivado ✔')
+    void loadShares()
+  }
+
+  const shareText = created ? `Hola, te comparto mis estudios de Mi Carpeta de Salud (Dr Happy).\nLink: ${created.url}\nCódigo: ${created.code}` : ''
+
+  async function copy(value: string) {
+    try {
+      await navigator.clipboard.writeText(value)
+      onToast('Copiado ✔')
+    } catch {
+      window.prompt('Copiá este texto:', value)
+    }
+  }
+
+  async function nativeShare() {
+    if (!created) return
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: `Estudios de ${patientName}`, text: shareText })
+        return
+      } catch (shareError) {
+        if (shareError instanceof DOMException && shareError.name === 'AbortError') return
+      }
+    }
+    await copy(shareText)
+  }
+
+  const doctorShares = shares.filter((share) => share.kind === 'doctor')
+  const linkShares = shares.filter((share) => share.kind === 'link')
+
+  return (
+    <section className="pp-stack">
+      {mode === 'menu' && (
+        <div className="pp-card">
+          <h2>Compartir con mi médico</h2>
+          <p className="pp-muted">Vos decidís qué estudios compartir y podés dejar de hacerlo cuando quieras.</p>
+          <div className="pp-share-options">
+            <button type="button" className="pp-option" onClick={() => reset('doctor')}>
+              <span aria-hidden>🩺</span>
+              <strong>Mi médico usa Dr Happy</strong>
+              <small>Tus estudios aparecen directo en tu ficha, en su app.</small>
+            </button>
+            <button type="button" className="pp-option" onClick={() => reset('link')}>
+              <span aria-hidden>🔗</span>
+              <strong>Otro médico</strong>
+              <small>Link temporal + código. Lo abre desde cualquier celular o PC.</small>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'doctor' && (
+        <div className="pp-card pp-form">
+          <h2>Mi médico usa Dr Happy</h2>
+          <form className="pp-form" onSubmit={findDoctor}>
+            <label>Email de tu médico o su link de registro de Dr Happy
+              <input value={query} onChange={(e) => { setQuery(e.target.value); setDoctor(null) }} placeholder="Ej: dra.gomez@gmail.com" required maxLength={300} />
+            </label>
+            {!doctor && <button type="submit" className="pp-secondary" disabled={busy || !query.trim()}>{busy ? 'Buscando…' : 'Buscar médico'}</button>}
+          </form>
+          {doctor && (
+            <>
+              <div className="pp-doctor">
+                <span aria-hidden>🩺</span>
+                <div><strong>{doctor.name || 'Profesional de Dr Happy'}</strong>{doctor.specialty && <small>{doctor.specialty}</small>}</div>
+              </div>
+              <ScopePicker documents={documents} all={all} selected={selected} onAll={setAll} onToggle={toggle} />
+              <p className="pp-muted">Si todavía no sos paciente de este médico en Dr Happy, se crea tu ficha con tu nombre, DNI y contacto.</p>
+            </>
+          )}
+          {error && <p className="pp-error" role="alert">{error}</p>}
+          <div className="pp-row">
+            <button type="button" className="pp-secondary" onClick={() => reset('menu')} disabled={busy}>Volver</button>
+            {doctor && <button type="button" className="pp-primary" onClick={shareWithDoctor} disabled={busy}>{busy ? 'Compartiendo…' : 'Compartir'}</button>}
+          </div>
+        </div>
+      )}
+
+      {mode === 'link' && !created && (
+        <div className="pp-card pp-form">
+          <h2>Link temporal</h2>
+          <fieldset className="pp-chips">
+            <legend>¿Por cuánto tiempo?</legend>
+            {[[1, '24 horas'], [7, '7 días'], [30, '30 días']].map(([value, label]) => (
+              <button type="button" key={value} className={days === value ? 'is-active' : ''} onClick={() => setDays(Number(value))}>{label}</button>
+            ))}
+          </fieldset>
+          <ScopePicker documents={documents} all={all} selected={selected} onAll={setAll} onToggle={toggle} />
+          {error && <p className="pp-error" role="alert">{error}</p>}
+          <div className="pp-row">
+            <button type="button" className="pp-secondary" onClick={() => reset('menu')} disabled={busy}>Volver</button>
+            <button type="button" className="pp-primary" onClick={createLink} disabled={busy}>{busy ? 'Creando…' : 'Crear link'}</button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'link' && created && (
+        <div className="pp-card pp-created">
+          <h2>¡Listo! Mostrale esto a tu médico</h2>
+          <QrCanvas text={created.url} />
+          <p className="pp-muted">Código de acceso</p>
+          <div className="pp-share-code">{created.code}</div>
+          <p className="pp-muted">Vence el {new Date(created.expiresAt).toLocaleDateString('es-AR')}. Guardá el código: por seguridad no lo volvemos a mostrar.</p>
+          <div className="pp-row">
+            <button type="button" className="pp-secondary" onClick={() => copy(shareText)}>Copiar</button>
+            <a className="pp-primary pp-wa" href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noreferrer">WhatsApp</a>
+          </div>
+          <button type="button" className="pp-link-btn" onClick={nativeShare}>Más opciones para compartir</button>
+          <button type="button" className="pp-link-btn" onClick={() => reset('menu')}>Terminar</button>
+        </div>
+      )}
+
+      {mode === 'menu' && (
+        <div className="pp-card">
+          <h2>Con quién compartís</h2>
+          {loadingShares && <p className="pp-muted">Cargando…</p>}
+          {!loadingShares && !shares.length && <p className="pp-empty">Todavía no compartiste tus estudios con nadie.</p>}
+          <ul className="pp-shares">
+            {doctorShares.map((share) => (
+              <li key={share.id}>
+                <span aria-hidden>🩺</span>
+                <div>
+                  <strong>{share.doctorName || 'Profesional de Dr Happy'}</strong>
+                  <small>{share.doctorSpecialty ? `${share.doctorSpecialty} · ` : ''}{share.allDocuments ? 'Toda la carpeta' : `${share.documentCount} estudio${share.documentCount === 1 ? '' : 's'}`}{share.lastAccessedAt ? ` · Visto ${formatDate(share.lastAccessedAt)}` : ''}</small>
+                </div>
+                <button type="button" className="is-danger" onClick={() => revoke(share)}>Dejar de compartir</button>
+              </li>
+            ))}
+            {linkShares.map((share) => (
+              <li key={share.id}>
+                <span aria-hidden>🔗</span>
+                <div>
+                  <strong>Link temporal</strong>
+                  <small>Vence {share.expiresAt ? formatDate(share.expiresAt) : ''} · {share.allDocuments ? 'Toda la carpeta' : `${share.documentCount} estudio${share.documentCount === 1 ? '' : 's'}`} · Abierto {share.accessCount} {share.accessCount === 1 ? 'vez' : 'veces'}</small>
+                </div>
+                <button type="button" className="is-danger" onClick={() => revoke(share)}>Desactivar</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function AccountView({ patient, onUpdated, onLogout }: { patient: PatientProfile; onUpdated: (p: PatientProfile) => void; onLogout: () => void }) {
-  const [fullName, setFullName] = useState(patient.fullName)
+  const fallbackParts = patient.fullName.trim().split(/\s+/)
+  const [firstName, setFirstName] = useState(patient.firstName || fallbackParts.slice(0, -1).join(' ') || fallbackParts[0] || '')
+  const [lastName, setLastName] = useState(patient.lastName || (fallbackParts.length > 1 ? fallbackParts[fallbackParts.length - 1] : ''))
   const [phone, setPhone] = useState(patient.phone || '')
   const [birthDate, setBirthDate] = useState(patient.birthDate || '')
   const [currentPassword, setCurrentPassword] = useState('')
@@ -340,7 +622,7 @@ function AccountView({ patient, onUpdated, onLogout }: { patient: PatientProfile
     event.preventDefault()
     setMessage('')
     setError('')
-    const result = await callPatientFolder({ action: 'update-profile', fullName, phone, birthDate })
+    const result = await callPatientFolder({ action: 'update-profile', firstName, lastName, phone, birthDate })
     if (!result.success || !result.patient) return setError(result.message || 'No se pudieron guardar los datos.')
     onUpdated(result.patient)
     setMessage('Datos guardados.')
@@ -366,7 +648,8 @@ function AccountView({ patient, onUpdated, onLogout }: { patient: PatientProfile
       </div>
       <form className="pp-card pp-form" onSubmit={saveProfile}>
         <h2>Mis datos</h2>
-        <label>Nombre y apellido<input value={fullName} onChange={(e) => setFullName(e.target.value)} required maxLength={160} /></label>
+        <label>Nombre<input value={firstName} onChange={(e) => setFirstName(e.target.value)} required maxLength={80} /></label>
+        <label>Apellido<input value={lastName} onChange={(e) => setLastName(e.target.value)} required maxLength={80} /></label>
         <label>DNI<input value={patient.dni} disabled /></label>
         <label>Email<input value={patient.email} disabled /></label>
         <label>Fecha de nacimiento<input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} max={todayIso()} /></label>
@@ -439,7 +722,7 @@ export function PatientPortal() {
   }
   if (!patient) return <AuthScreen onSession={(p) => { setPatient(p); setView('home') }} />
 
-  const firstName = patient.fullName.split(' ')[0]
+  const firstName = patient.firstName || patient.fullName.split(' ')[0]
   const lastDoc = documents[0]
 
   return (
@@ -473,15 +756,7 @@ export function PatientPortal() {
             onDone={() => { setToast('Estudio guardado en tu carpeta ✔'); void loadDocuments(); setView('folder') }}
           />
         )}
-        {view === 'share' && (
-          <section className="pp-card pp-soon">
-            <span aria-hidden>🤝</span>
-            <h2>Compartir con tu médico</h2>
-            <p>Muy pronto vas a poder elegir estudios y compartirlos con tu médico mediante un enlace seguro o un código QR, por el tiempo que vos decidas.</p>
-            <p className="pp-muted">Mientras tanto, podés abrir o descargar cualquier estudio desde “Mi carpeta”.</p>
-            <button type="button" className="pp-primary" onClick={() => setView('folder')}>Ir a mi carpeta</button>
-          </section>
-        )}
+        {view === 'share' && <ShareView documents={documents} patientName={patient.fullName} onToast={setToast} />}
         {view === 'account' && <AccountView patient={patient} onUpdated={setPatient} onLogout={logout} />}
       </main>
       {toast && <div className="pp-toast" role="status">{toast}</div>}
