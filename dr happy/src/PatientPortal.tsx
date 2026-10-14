@@ -146,6 +146,7 @@ function AuthScreen({ onSession }: { onSession: (patient: PatientProfile) => voi
   return (
     <main className="pp-auth">
       <Brand />
+      <InstallPatientApp variant="compact" />
       {mode === 'login' && (
         <p className="pp-auth-pitch">Tus estudios médicos ordenados en un solo lugar, siempre a mano y listos para mostrarle a tu médico. <strong>Gratis.</strong></p>
       )}
@@ -202,7 +203,6 @@ function AuthScreen({ onSession }: { onSession: (patient: PatientProfile) => voi
           {mode !== 'login' && <button type="button" onClick={() => go('login')}>Volver a ingresar</button>}
         </div>
       </form>
-      <InstallPatientApp variant="compact" />
       <p className="pp-foot">¿Sos profesional de la salud? <a href="/">Ingresá a Dr Happy</a></p>
     </main>
   )
@@ -799,6 +799,13 @@ export function PatientPortal() {
   const [askInstall, setAskInstall] = useState(false)
   const closeInstall = useCallback(() => setAskInstall(false), [])
 
+  // Al entrar al login de Mi Carpeta se ofrece instalarla (una vez por sesión del navegador).
+  useEffect(() => {
+    if (patient || checking) return
+    const timer = window.setTimeout(() => { if (shouldOfferInstall()) setAskInstall(true) }, 1200)
+    return () => window.clearTimeout(timer)
+  }, [patient, checking])
+
   useEffect(() => {
     document.title = 'Mi Carpeta de Salud | Dr Happy'
     if (!getPatientSessionToken()) return
@@ -845,7 +852,14 @@ export function PatientPortal() {
   if (checking) {
     return <main className="pp-auth"><Brand /><p className="pp-muted">Abriendo tu carpeta…</p></main>
   }
-  if (!patient) return <AuthScreen onSession={(p) => { setPatient(p); setView('home'); if (shouldOfferInstall()) setAskInstall(true) }} />
+  if (!patient) {
+    return (
+      <>
+        <AuthScreen onSession={(p) => { setPatient(p); setView('home'); if (shouldOfferInstall()) setAskInstall(true) }} />
+        {askInstall && <InstallPatientApp variant="modal" onClose={closeInstall} />}
+      </>
+    )
+  }
 
   const firstName = patient.firstName || patient.fullName.split(' ')[0]
   const lastDoc = documents[0]
