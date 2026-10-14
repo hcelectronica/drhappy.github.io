@@ -627,7 +627,7 @@ serve(async (request) => {
       if (!ALLOWED_MIME[mimeType]) return reply(400, { success: false, message: 'Solo se aceptan fotos (JPG, PNG, WEBP) o PDF.' })
       if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > MAX_FILE_BYTES) return reply(400, { success: false, message: 'Cada archivo puede pesar hasta 10 MB.' })
       const used = await recalcUsage(admin, patient.id)
-      if (used + sizeBytes > Number(patient.storage_quota_bytes)) return reply(400, { success: false, message: 'Llegaste al límite de espacio de tu carpeta. Borrá estudios que ya no necesites.' })
+      if (used + sizeBytes > Number(patient.storage_quota_bytes)) return reply(400, { success: false, message: 'Llegaste al límite de espacio de tu carpeta (50 MB). Borrá estudios que ya no necesites.' })
 
       // Limpia subidas abandonadas de más de un día.
       const stale = new Date(Date.now() - 86400000).toISOString()
@@ -665,7 +665,13 @@ serve(async (request) => {
       if (!object || size <= 0) return reply(400, { success: false, message: 'El archivo no llegó a subirse. Intentá nuevamente.' })
       if (doc.status !== 'ready') {
         await admin.from('patient_documents').update({ status: 'ready', size_bytes: size, updated_at: new Date().toISOString() }).eq('id', doc.id)
-        await recalcUsage(admin, patient.id)
+        const total = await recalcUsage(admin, patient.id)
+        if (size > MAX_FILE_BYTES || total > Number(patient.storage_quota_bytes)) {
+          await admin.storage.from(BUCKET).remove([doc.file_path])
+          await admin.from('patient_documents').delete().eq('id', doc.id)
+          await recalcUsage(admin, patient.id)
+          return reply(400, { success: false, message: 'Llegaste al límite de espacio de tu carpeta (50 MB). Borrá estudios que ya no necesites.' })
+        }
         await log(patient.id, 'document_uploaded', doc.id)
       }
       return reply(200, { success: true })

@@ -299,7 +299,8 @@ function InstallPatientApp({ variant = 'card', onClose }: { variant?: 'card' | '
   )
 }
 
-function UploadView({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+function UploadView({ onDone, onCancel, freeBytes }: { onDone: () => void; onCancel: () => void; freeBytes: number }) {
+  const full = freeBytes <= 0
   const [file, setFile] = useState<File | null>(null)
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState<PatientDocumentCategory>('laboratorio')
@@ -313,6 +314,10 @@ function UploadView({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
     if (!selected) return
     if (!/^(image\/(jpeg|png|webp)|application\/pdf)$/.test(selected.type)) {
       setError('Solo se aceptan fotos (JPG, PNG) o archivos PDF.')
+      return
+    }
+    if (selected.type === 'application/pdf' && selected.size > freeBytes) {
+      setError(`No hay lugar para este archivo: te quedan  libres de 50 MB. Borrá estudios que ya no necesites.`)
       return
     }
     setFile(selected)
@@ -333,6 +338,9 @@ function UploadView({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
   return (
     <form className="pp-card pp-form" onSubmit={submit}>
       <h2>Subir estudio</h2>
+      <p className={full ? 'pp-error' : 'pp-muted'}>{full
+        ? 'Tu carpeta está llena (50 MB). Borrá estudios que ya no necesites para subir nuevos.'
+        : `Espacio libre:  de 50 MB.`}</p>
       <div className="pp-pick">
         <label className="pp-pick-btn">
           <span aria-hidden>📷</span> Sacar foto
@@ -358,7 +366,7 @@ function UploadView({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
       {error && <p className="pp-error" role="alert">{error}</p>}
       <div className="pp-row">
         <button type="button" className="pp-secondary" onClick={onCancel} disabled={busy}>Cancelar</button>
-        <button type="submit" className="pp-primary" disabled={!file || busy}>{busy ? 'Subiendo…' : 'Guardar en mi carpeta'}</button>
+        <button type="submit" className="pp-primary" disabled={!file || busy || full}>{busy ? 'Subiendo…' : 'Guardar en mi carpeta'}</button>
       </div>
     </form>
   )
@@ -847,6 +855,7 @@ export function PatientPortal() {
         {view === 'folder' && <FolderView documents={documents} loading={loadingDocs} onReload={loadDocuments} />}
         {view === 'upload' && (
           <UploadView
+            freeBytes={patient.storageQuotaBytes - patient.storageUsedBytes}
             onCancel={() => setView('home')}
             onDone={() => { setToast('Estudio guardado en tu carpeta ✔'); void loadDocuments(); setView('folder') }}
           />
