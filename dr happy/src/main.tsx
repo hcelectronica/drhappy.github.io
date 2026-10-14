@@ -21,6 +21,13 @@ const isPatientPortalRoute = /^\/paciente\/?$/i.test(window.location.pathname)
 const PatientPortal = isPatientPortalRoute && !PaidDocumentsPublicPage
   ? lazy(() => import('./PatientPortal'))
   : null
+if (PatientPortal) {
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault()
+    ;(window as Window & { __patientInstallPrompt?: Event }).__patientInstallPrompt = event
+    window.dispatchEvent(new Event('patient-install-ready'))
+  })
+}
 const sharedFolderToken = window.location.pathname.match(/^\/compartido\/([A-Za-z0-9_-]{16,60})\/?$/)?.[1]
   || new URLSearchParams(window.location.search).get('patient_share')
   || ''

@@ -386,3 +386,23 @@ a.pp-primary { display: inline-block; text-decoration: none; text-align: center;
   .pp-doc { flex-wrap: wrap; }
   .pp-doc-actions { width: 100%; justify-content: flex-end; }
 }
+
+/* Instalar Mi Carpeta como app */
+.pp-install {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 12px;
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #ecfdf5, #e0f2f1);
+  border: 1.5px solid #a7f3d0;
+}
+.pp-install img { border-radius: 12px; display: block; }
+.pp-install strong { display: block; color: var(--pp-brand-dark); font-size: 0.98rem; }
+.pp-install small { display: block; color: var(--pp-muted); font-size: 0.82rem; line-height: 1.3; margin-top: 2px; }
+.pp-install .pp-primary { grid-column: 1 / -1; width: 100%; padding: 12px 14px; font-size: 0.98rem; box-shadow: none; }
+.pp-install .pp-link-btn { grid-column: 1 / -1; justify-self: center; font-size: 0.85rem; color: var(--pp-muted); padding: 0; }
+.pp-install-help { grid-column: 1 / -1; margin: 0; padding: 10px 12px; border-radius: 12px; background: #fff; color: #1f2937; font-size: 0.9rem; line-height: 1.4; }
+.pp-install.is-compact { margin-top: 0; }

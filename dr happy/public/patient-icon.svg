@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><title>Mi Carpeta de Salud</title><rect x="4" y="4" width="92" height="92" rx="27" fill="#0F766E"/>  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M19 24v31h6c10 0 15-6 15-15.5S35 24 25 24z M45 55V42m0 5c0-4 3-6 6-6" stroke="#fff" stroke-width="3.6"/>
+    <path d="M65 25v30 M81 25v30 M65 40h16" stroke="#A7F3D0" stroke-width="4"/>
+    <path d="M30 71q14 11 28 0" stroke="#fff" stroke-width="3.5"/>
+  </g>
+  <circle cx="56" cy="54" r="1.7" fill="#fff"/>
+  <circle cx="78" cy="77" r="14" fill="#fff"/>
+  <path d="M70 71.5h5.5l2 2.2H86a1 1 0 0 1 1 1v8.3a1 1 0 0 1-1 1H70a1 1 0 0 1-1-1v-10.5a1 1 0 0 1 1-1z" fill="#0F766E"/>
+  <path d="M78 76.2v5.2M75.4 78.8h5.2" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>

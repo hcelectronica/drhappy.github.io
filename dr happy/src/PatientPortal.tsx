@@ -202,8 +202,78 @@ function AuthScreen({ onSession }: { onSession: (patient: PatientProfile) => voi
           {mode !== 'login' && <button type="button" onClick={() => go('login')}>Volver a ingresar</button>}
         </div>
       </form>
+      <InstallPatientApp compact />
       <p className="pp-foot">¿Sos profesional de la salud? <a href="/">Ingresá a Dr Happy</a></p>
     </main>
+  )
+}
+
+interface InstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
+type PatientWindow = Window & { __patientInstallPrompt?: InstallPromptEvent }
+const INSTALL_SNOOZE_KEY = 'drhappy-patient-install-snooze'
+
+function isRunningInstalled(): boolean {
+  return window.matchMedia('(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui)').matches
+    || (navigator as Navigator & { standalone?: boolean }).standalone === true
+}
+
+// Botón para instalar Mi Carpeta de Salud como app propia (ícono verde, separado del profesional).
+function InstallPatientApp({ compact = false }: { compact?: boolean }) {
+  const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(() => (window as PatientWindow).__patientInstallPrompt ?? null)
+  const [installed, setInstalled] = useState(isRunningInstalled)
+  const [showHelp, setShowHelp] = useState(false)
+  const [snoozed, setSnoozed] = useState(() => Number(localStorage.getItem(INSTALL_SNOOZE_KEY) || 0) > Date.now())
+  const userAgent = navigator.userAgent
+  const isIos = /iphone|ipad|ipod/i.test(userAgent) || (/macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1)
+  const isAndroid = /android/i.test(userAgent)
+
+  useEffect(() => {
+    const onReady = () => setPromptEvent((window as PatientWindow).__patientInstallPrompt ?? null)
+    const onInstalled = () => { setInstalled(true); setPromptEvent(null) }
+    window.addEventListener('patient-install-ready', onReady)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      window.removeEventListener('patient-install-ready', onReady)
+      window.removeEventListener('appinstalled', onInstalled)
+    }
+  }, [])
+
+  if (installed || snoozed || (!promptEvent && !isIos && !isAndroid)) return null
+
+  async function install() {
+    if (!promptEvent) { setShowHelp((current) => !current); return }
+    await promptEvent.prompt()
+    const choice = await promptEvent.userChoice
+    ;(window as PatientWindow).__patientInstallPrompt = undefined
+    setPromptEvent(null)
+    if (choice.outcome === 'accepted') setInstalled(true)
+  }
+
+  function later() {
+    localStorage.setItem(INSTALL_SNOOZE_KEY, String(Date.now() + 14 * 24 * 60 * 60 * 1000))
+    setSnoozed(true)
+  }
+
+  return (
+    <section className={`pp-install${compact ? ' is-compact' : ''}`} aria-label="Instalar Mi Carpeta de Salud">
+      <img src="/patient-icon-192.png?v=p1" alt="" width={44} height={44} />
+      <div>
+        <strong>Tené tu carpeta en el celular</strong>
+        <small>Instalala como app: se abre con un toque, con su propio ícono.</small>
+      </div>
+      <button type="button" className="pp-primary" onClick={() => void install()}>📲 Instalar</button>
+      {!compact && <button type="button" className="pp-link-btn" onClick={later}>Ahora no</button>}
+      {showHelp && (
+        <p className="pp-install-help">
+          {isIos
+            ? <>En Safari tocá <strong>Compartir</strong> (el cuadrado con la flecha ⬆️) y elegí <strong>“Agregar a inicio”</strong>.</>
+            : <>Abrí el menú del navegador (<strong>⋮</strong>) y elegí <strong>“Instalar app”</strong> o <strong>“Agregar a pantalla de inicio”</strong>.</>}
+        </p>
+      )}
+    </section>
   )
 }
 
@@ -747,6 +817,7 @@ export function PatientPortal() {
               <button type="button" className="pp-tile is-share" onClick={() => setView('share')}><span aria-hidden>🤝</span>Compartir con mi médico</button>
               <button type="button" className="pp-tile is-account" onClick={() => setView('account')}><span aria-hidden>👤</span>Mi cuenta</button>
             </nav>
+            <InstallPatientApp />
           </>
         )}
         {view === 'folder' && <FolderView documents={documents} loading={loadingDocs} onReload={loadDocuments} />}

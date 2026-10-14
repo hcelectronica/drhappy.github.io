@@ -76,6 +76,21 @@
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
     <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png?v=drh-08" />
     <script>
+      // Mi Carpeta de Salud se instala como una app separada (ícono y nombre propios).
+      (function() {
+        if (!/^\/paciente\/?$/i.test(window.location.pathname)) return;
+        function set(selector, attr, value) {
+          var node = document.querySelector(selector);
+          if (node) node.setAttribute(attr, value);
+        }
+        set('link[rel="manifest"]', 'href', '/paciente.webmanifest');
+        set('link[rel="apple-touch-icon"]', 'href', '/patient-apple-touch-icon.png?v=p1');
+        set('link[rel="icon"]', 'href', '/patient-icon-192.png?v=p1');
+        set('meta[name="apple-mobile-web-app-title"]', 'content', 'Mi Salud');
+        set('meta[name="theme-color"]', 'content', '#0f766e');
+      })();
+    </script>
+    <script>
       // Redirección inmediata desde GitHub Pages hacia el dominio oficial unificado drhappy.com.ar
       (function() {
         var host = window.location.hostname;
