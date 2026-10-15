@@ -10,6 +10,12 @@ Web app base en React + TypeScript para:
 
 ## Ficha clínica y seguimiento
 
+### Invitar amigos a Mi Carpeta de Salud
+
+El inicio del portal de pacientes incluye **Compartir con un amigo · Por WhatsApp**. Abre WhatsApp con una invitación a crear una carpeta propia en `https://www.drhappy.com.ar/paciente`; el paciente elige el contacto y confirma el envío allí. El mensaje es público y fijo: no incluye identidad, sesión, estudios ni enlaces de acceso a la carpeta de quien invita. Esta acción es independiente de **Compartir con mi médico**, que mantiene su circuito de autorización.
+
+Prueba: `node --test tests/patient-app-share.test.mjs`.
+
 ### Barra inferior y zona segura de Android
 
 `index.html` debe conservar el viewport estándar, sin `viewport-fit=cover`: la barra inferior fija ya considera las zonas seguras, y extender la página hasta el borde puede hacer que el menú quede desplazado sobre la navegación del sistema. Tras publicar cambios del viewport, comprobar el HTML servido por Hostinger y abrir la app Android instalada; no alcanza con validar el navegador de escritorio.

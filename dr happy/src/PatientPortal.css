@@ -235,6 +235,9 @@
 .pp-tile.is-upload { background: linear-gradient(140deg, #1d4ed8, #3b82f6); }
 .pp-tile.is-share { background: linear-gradient(140deg, #7c3aed, #a78bfa); }
 .pp-tile.is-account { background: linear-gradient(140deg, #334155, #64748b); }
+.pp-tile.is-friend { background: linear-gradient(140deg, #166534, #15803d); color: #fff; text-decoration: none; }
+.pp-tile.is-friend small { font-size: 0.85rem; font-weight: 600; }
+.pp-tile.is-friend:focus-visible { outline: 3px solid #14532d; outline-offset: 4px; }
 
 .pp-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .pp-form .pp-pick-btn {

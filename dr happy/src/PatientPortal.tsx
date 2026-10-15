@@ -14,6 +14,7 @@ import type { PatientDocument, PatientDocumentCategory, PatientFolderResponse, P
 import './PatientPortal.css'
 import PatientPressureView from './PatientPressureView'
 import PatientLinkRequests from './PatientLinkRequests'
+import { PATIENT_APP_WHATSAPP_URL } from './patientAppShare'
 
 const MemoryWorkshop = lazy(() => import('./memory/MemoryWorkshop'))
 import type { EncodeHintType as HintKey } from '@zxing/library'
@@ -896,6 +897,11 @@ export function PatientPortal() {
               <button type="button" className="pp-tile is-pressure" onClick={() => setView('pressure')}><span aria-hidden>❤️</span>Mi presión</button>
               <button type="button" className="pp-tile is-memory" onClick={() => setView('memory')}><span aria-hidden>🧠</span>Taller de memoria</button>
               <button type="button" className="pp-tile is-share" onClick={() => setView('share')}><span aria-hidden>🤝</span>Compartir con mi médico</button>
+              <a className="pp-tile is-friend" href={PATIENT_APP_WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
+                <span aria-hidden>💬</span>
+                Compartir con un amigo
+                <small>Por WhatsApp</small>
+              </a>
               <button type="button" className="pp-tile is-account" onClick={() => setView('account')}><span aria-hidden>👤</span>Mi cuenta</button>
             </nav>
             {!askInstall && <InstallPatientApp />}
