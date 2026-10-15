@@ -5,28 +5,47 @@ import WordList from './WordList'
 import ChainMath from './ChainMath'
 import PathGrid from './PathGrid'
 import WordSearch from './WordSearch'
+import Crossword from './Crossword'
+import SpeedGame from './SpeedGame'
+import Fluency from './Fluency'
+import StoryRecall from './StoryRecall'
+import ShopMath from './ShopMath'
 import { currentStreak, dayKey, gameStats, loadWorkshop, recordPlay } from './memoryCore'
 import type { GameId, GameProps, GameResult } from './memoryCore'
-import { CARD_LEVELS, CHAIN_LEVELS, PATH_LEVELS, SEARCH_LEVELS, WORD_LEVELS } from './memoryLevels'
+import { CARD_LEVELS, CHAIN_LEVELS, CROSSWORD_LEVELS, FLUENCY_LEVELS, PATH_LEVELS, SEARCH_LEVELS, SHOP_LEVELS, SPEED_LEVELS, STORY_LEVELS, WORD_LEVELS } from './memoryLevels'
 import './MemoryWorkshop.css'
+
+type Area = 'memory' | 'attention' | 'language' | 'math'
+
+const AREAS: { id: Area; title: string; note: string }[] = [
+  { id: 'memory', title: '🧠 Memoria', note: 'Recordar listas, imágenes, historias y recorridos' },
+  { id: 'attention', title: '⚡ Atención y velocidad', note: 'Mirar rápido y encontrar lo importante' },
+  { id: 'language', title: '🗣️ Lenguaje', note: 'Encontrar las palabras justas' },
+  { id: 'math', title: '➗ Cálculo', note: 'Cuentas de todos los días' },
+]
 
 interface GameMeta {
   id: GameId
   emoji: string
   title: string
   skill: string
+  area: Area
   levels: number
   component: ComponentType<GameProps>
 }
 
 const GAMES: GameMeta[] = [
-  { id: 'cards', emoji: '🃏', title: 'Fichas de memoria', skill: 'Memoria visual', levels: CARD_LEVELS.length, component: MemoryCards },
-  { id: 'words', emoji: '📝', title: 'Lista para recordar', skill: 'Memoria verbal', levels: WORD_LEVELS.length, component: WordList },
-  { id: 'chain', emoji: '➕', title: 'Cuenta encadenada', skill: 'Cálculo mental', levels: CHAIN_LEVELS.length, component: ChainMath },
-  { id: 'path', emoji: '🔷', title: 'Seguí el camino', skill: 'Atención y secuencias', levels: PATH_LEVELS.length, component: PathGrid },
-  { id: 'search', emoji: '🔤', title: 'Sopa de letras', skill: 'Atención y vocabulario', levels: SEARCH_LEVELS.length, component: WordSearch },
+  { id: 'cards', emoji: '🃏', title: 'Fichas de memoria', skill: 'Memoria visual', area: 'memory', levels: CARD_LEVELS.length, component: MemoryCards },
+  { id: 'words', emoji: '📝', title: 'Lista para recordar', skill: 'Memoria verbal', area: 'memory', levels: WORD_LEVELS.length, component: WordList },
+  { id: 'story', emoji: '📖', title: 'Historias para recordar', skill: 'Memoria de relatos', area: 'memory', levels: STORY_LEVELS.length, component: StoryRecall },
+  { id: 'path', emoji: '🔷', title: 'Seguí el camino', skill: 'Memoria de secuencias', area: 'memory', levels: PATH_LEVELS.length, component: PathGrid },
+  { id: 'speed', emoji: '👁️', title: 'Ojo rápido', skill: 'Velocidad de atención', area: 'attention', levels: SPEED_LEVELS.length, component: SpeedGame },
+  { id: 'search', emoji: '🔤', title: 'Sopa de letras', skill: 'Atención visual', area: 'attention', levels: SEARCH_LEVELS.length, component: WordSearch },
+  { id: 'crossword', emoji: '✏️', title: 'Crucigrama', skill: 'Vocabulario y memoria', area: 'language', levels: CROSSWORD_LEVELS.length, component: Crossword },
+  { id: 'fluency', emoji: '💬', title: 'Palabras al vuelo', skill: 'Fluidez verbal', area: 'language', levels: FLUENCY_LEVELS.length, component: Fluency },
+  { id: 'chain', emoji: '➕', title: 'Cuenta encadenada', skill: 'Cálculo mental', area: 'math', levels: CHAIN_LEVELS.length, component: ChainMath },
+  { id: 'shop', emoji: '🛒', title: 'Hacer los mandados', skill: 'Cuentas con plata', area: 'math', levels: SHOP_LEVELS.length, component: ShopMath },
 ]
-
 function dailyGame(): GameMeta {
   const start = new Date(new Date().getFullYear(), 0, 0).getTime()
   const day = Math.floor((Date.now() - start) / 86_400_000)
@@ -116,20 +135,27 @@ export default function MemoryWorkshop() {
         <span>{dailyDone ? 'Podés volver a jugarlo cuando quieras' : 'Tocá para empezar'}</span>
       </button>
 
-      <div className="mw-games">
-        {GAMES.map((game) => {
-          const stats = gameStats(state, game.id)
-          return (
-            <button key={game.id} type="button" className={`mw-game-card is-${game.id}`} onClick={() => play(game)}>
-              <span className="mw-game-emoji" aria-hidden>{game.emoji}</span>
-              <strong>{game.title}</strong>
-              <span>{game.skill}</span>
-              <span className="mw-level">Nivel {stats.level} de {game.levels}{stats.plays ? ` · ${stats.plays} ${stats.plays === 1 ? 'partida' : 'partidas'}` : ''}</span>
-            </button>
-          )
-        })}
-      </div>
-
+      {AREAS.map((area) => (
+        <div key={area.id} className="mw-area">
+          <div className="mw-area-head">
+            <h2>{area.title}</h2>
+            <span>{area.note}</span>
+          </div>
+          <div className="mw-games">
+            {GAMES.filter((game) => game.area === area.id).map((game) => {
+              const stats = gameStats(state, game.id)
+              return (
+                <button key={game.id} type="button" className={`mw-game-card is-${game.area}`} onClick={() => play(game)}>
+                  <span className="mw-game-emoji" aria-hidden>{game.emoji}</span>
+                  <strong>{game.title}</strong>
+                  <span>{game.skill}</span>
+                  <span className="mw-level">Nivel {stats.level} de {game.levels}{stats.plays ? ` · ${stats.plays} ${stats.plays === 1 ? 'partida' : 'partidas'}` : ''}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
       <p className="mw-disclaimer">Estos juegos son para ejercitar y entretenerse. No son una evaluación médica: si notás olvidos que te preocupan, consultalo con tu médico.</p>
     </section>
   )

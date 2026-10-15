@@ -43,3 +43,48 @@ export const SEARCH_LEVELS = [
   { size: 11, words: 8, diagonal: true, reverse: true },
   { size: 12, words: 9, diagonal: true, reverse: true },
 ]
+
+export const CROSSWORD_LEVELS = [
+  { words: 5, size: 8 },
+  { words: 6, size: 9 },
+  { words: 8, size: 10 },
+  { words: 9, size: 11 },
+  { words: 11, size: 12 },
+  { words: 12, size: 12 },
+]
+
+// ms = tiempo inicial que se muestra la imagen; options = figuras posibles en el centro.
+export const SPEED_LEVELS = [
+  { ms: 900, options: 2, distractors: false },
+  { ms: 700, options: 2, distractors: false },
+  { ms: 650, options: 3, distractors: false },
+  { ms: 600, options: 3, distractors: true },
+  { ms: 500, options: 4, distractors: true },
+  { ms: 420, options: 4, distractors: true },
+]
+
+export const FLUENCY_LEVELS = [
+  { seconds: 90, mode: 'category-easy', minLength: 0, target: 8 },
+  { seconds: 90, mode: 'letter', minLength: 3, target: 8 },
+  { seconds: 75, mode: 'category-hard', minLength: 0, target: 8 },
+  { seconds: 75, mode: 'letter', minLength: 5, target: 7 },
+  { seconds: 60, mode: 'category-hard', minLength: 0, target: 8 },
+  { seconds: 60, mode: 'letter', minLength: 5, target: 8 },
+] as const
+
+export const STORY_LEVELS = [
+  { questions: 4, math: 0, readSeconds: 0 },
+  { questions: 5, math: 20, readSeconds: 0 },
+  { questions: 5, math: 30, readSeconds: 60 },
+  { questions: 6, math: 30, readSeconds: 50 },
+  { questions: 6, math: 45, readSeconds: 40 },
+]
+
+export const SHOP_LEVELS = [
+  { items: 2, quantities: false, discount: false },
+  { items: 3, quantities: false, discount: false },
+  { items: 3, quantities: true, discount: false },
+  { items: 4, quantities: true, discount: false },
+  { items: 4, quantities: true, discount: true },
+  { items: 5, quantities: true, discount: true },
+]

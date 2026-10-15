@@ -1,4 +1,4 @@
-export type GameId = 'cards' | 'words' | 'chain' | 'path' | 'search'
+export type GameId = 'cards' | 'words' | 'chain' | 'path' | 'search' | 'crossword' | 'speed' | 'fluency' | 'story' | 'shop'
 export type Outcome = 'up' | 'same' | 'down'
 
 export interface GameResult {
