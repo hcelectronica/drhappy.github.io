@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
+import { sendPatientRegistrationNotice } from '../_shared/patientRegistrationEmail.ts'
 
 // Métricas de uso por usuario para el panel de administración.
 // IMPORTANTÍSIMO: esta función devuelve SOLO estadísticas agregadas
@@ -12,8 +13,9 @@ import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 // requesterId exista en professionals con is_admin = true.
 
 interface RequestBody {
-  action: 'user-stats' | 'ai-usage'
+  action: 'user-stats' | 'ai-usage' | 'patient-stats' | 'patient-notice-retry'
   requesterId?: string
+  page?: number
 }
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
@@ -48,7 +50,7 @@ serve(async (request) => {
   }
 
   try {
-    if (body.action !== 'user-stats' && body.action !== 'ai-usage') {
+    if (!['user-stats', 'ai-usage', 'patient-stats', 'patient-notice-retry'].includes(body.action)) {
       return jsonResponse(400, { success: false, message: 'Acción no soportada.' })
     }
 
@@ -63,6 +65,26 @@ serve(async (request) => {
       .maybeSingle()
     if (requesterError || !requester || requester.is_admin !== true) {
       return jsonResponse(403, { success: false, message: 'Solo el administrador puede ver estas métricas.' })
+    }
+
+    if (body.action === 'patient-notice-retry') {
+      const { data: notices, error } = await admin.from('patient_registration_notices')
+        .select('patient_id').neq('status', 'sent').order('updated_at').limit(10)
+      if (error) throw error
+      let sent = 0
+      for (const notice of notices ?? []) {
+        if (await sendPatientRegistrationNotice(admin, supabaseUrl, serviceRoleKey, notice.patient_id)) sent++
+      }
+      return jsonResponse(200, { success: true, sent })
+    }
+
+    if (body.action === 'patient-stats') {
+      if (body.page !== undefined && (!Number.isInteger(body.page) || body.page < 0 || body.page > 100000)) {
+        return jsonResponse(400, { success: false, message: 'Página inválida.' })
+      }
+      const { data, error } = await admin.rpc('patient_admin_stats', { p_page: body.page ?? 0 })
+      if (error) throw error
+      return jsonResponse(200, { success: true, stats: data })
     }
 
     if (body.action === 'ai-usage') {

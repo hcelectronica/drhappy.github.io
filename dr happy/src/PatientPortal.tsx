@@ -15,6 +15,7 @@ import './PatientPortal.css'
 import PatientPressureView from './PatientPressureView'
 import PatientLinkRequests from './PatientLinkRequests'
 import { PATIENT_APP_WHATSAPP_URL } from './patientAppShare'
+import { trackPatientActivity } from './patientActivity'
 
 const MemoryWorkshop = lazy(() => import('./memory/MemoryWorkshop'))
 import type { EncodeHintType as HintKey } from '@zxing/library'
@@ -809,6 +810,25 @@ export function PatientPortal() {
   const [askInstall, setAskInstall] = useState(false)
   const closeInstall = useCallback(() => setAskInstall(false), [])
 
+  useEffect(() => {
+    if (!patient?.id) return
+    void trackPatientActivity('view', view)
+  }, [patient?.id, view])
+
+  useEffect(() => {
+    if (!patient?.id) return
+    const heartbeat = () => {
+      if (document.visibilityState === 'visible') void trackPatientActivity('heartbeat')
+    }
+    heartbeat()
+    const timer = window.setInterval(heartbeat, 60000)
+    document.addEventListener('visibilitychange', heartbeat)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', heartbeat)
+    }
+  }, [patient?.id])
+
   // Al entrar al login de Mi Carpeta se ofrece instalarla (una vez por sesión del navegador).
   useEffect(() => {
     if (patient || checking) return
@@ -897,7 +917,7 @@ export function PatientPortal() {
               <button type="button" className="pp-tile is-pressure" onClick={() => setView('pressure')}><span aria-hidden>❤️</span>Mi presión</button>
               <button type="button" className="pp-tile is-memory" onClick={() => setView('memory')}><span aria-hidden>🧠</span>Taller de memoria</button>
               <button type="button" className="pp-tile is-share" onClick={() => setView('share')}><span aria-hidden>🤝</span>Compartir con mi médico</button>
-              <a className="pp-tile is-friend" href={PATIENT_APP_WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
+              <a className="pp-tile is-friend" href={PATIENT_APP_WHATSAPP_URL} target="_blank" rel="noopener noreferrer" onClick={() => { void trackPatientActivity('invite_clicked') }}>
                 <span aria-hidden>💬</span>
                 Compartir con un amigo
                 <small>Por WhatsApp</small>

@@ -39,6 +39,7 @@ import { filterLedgerPatients, groupLedgerByPatient, summarizeLedger } from './l
 import { getHolidayName } from './argentineHolidays'
 import { SupportContactForm } from './SupportContactForm'
 import { AdminSupportInbox } from './AdminSupportInbox'
+import { AdminPatientStats } from './AdminPatientStats'
 import { SignaturePad } from './SignaturePad'
 import { blobToBase64, buildCertificatePdf, buildQrDataUrl, certificateFileName, certificateSignedContent, formatCertificateDate } from './medicalCertificate'
 import { acknowledgePatientInviteSubmissions, buildPatientInviteUrl, getPatientInviteLink, pullPatientInviteSubmissions } from './patientInviteService'
@@ -2793,7 +2794,7 @@ function App() {
   const [prescriptionSaving, setPrescriptionSaving] = useState(false)
 
   const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult' | 'community'>('protocols')
-  const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo' | 'mensajes'>('usuarios')
+  const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo' | 'mensajes' | 'pacientes'>('usuarios')
   const [adminUserQuery, setAdminUserQuery] = useState('')
   const [adminExpandedUserId, setAdminExpandedUserId] = useState<string | null>(null)
   const [premiumPrompt, setPremiumPrompt] = useState<{ icon: string; title: string; pitch: string; bullets: string[] } | null>(null)
@@ -12340,6 +12341,9 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </div>
 
             <nav className="screen-action-bar" aria-label="Secciones de administración">
+              <button type="button" className={`screen-action${adminSection === 'pacientes' ? ' active' : ''}`} onClick={() => setAdminSection('pacientes')}>
+                <span aria-hidden="true">📁</span> Mi Carpeta de Salud
+              </button>
               <button type="button" className={`screen-action${adminSection === 'usuarios' ? ' active' : ''}`} onClick={() => setAdminSection('usuarios')}>
                 <span aria-hidden="true">👥</span> Usuarios y planes
               </button>
@@ -12361,6 +12365,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </nav>
 
             {adminSection === 'mensajes' ? <AdminSupportInbox /> : null}
+            {adminSection === 'pacientes' ? <AdminPatientStats /> : null}
 
             {/* Métricas de uso por usuario — solo conteos y fechas, sin datos clínicos */}
             {adminSection === 'actividad' ? (

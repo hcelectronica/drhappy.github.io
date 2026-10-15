@@ -10,6 +10,18 @@ Web app base en React + TypeScript para:
 
 ## Ficha clínica y seguimiento
 
+### Monitoreo administrativo de Mi Carpeta de Salud
+
+Administración → **Mi Carpeta de Salud** ofrece cuentas creadas/verificadas/pendientes, altas en 7/30 días, usuarios activos hoy/7/30 días, minutos con la app visible, aperturas de herramientas, partidas terminadas, clics en invitar, conteos de estudios/presión/accesos compartidos y almacenamiento. Incluye serie diaria (30 días) y altas paginadas de 50 cuentas con nombre, email, estado y fechas; no devuelve DNI, estudios ni mediciones. Los totales se agregan en PostgreSQL, sin el límite de 1.000 filas de PostgREST. Las fechas se agrupan en `America/Argentina/Buenos_Aires`.
+
+La telemetría empieza con esta versión: no se reconstruye uso histórico ni se equipara un clic en WhatsApp con un mensaje enviado. El heartbeat solo corre con la app visible; el servidor limita el conteo a una vez por minuto entre pestañas y no acumula tiempos de ausencia. La API resuelve la cuenta desde su sesión, no desde un ID aportado por el navegador.
+
+Al verificar el email por primera vez, un trigger encola un aviso a la misma casilla administrativa de las altas profesionales. El envío se confirma con `send-email`; si falla, el alta sigue funcionando y el aviso queda persistido como pendiente/fallido. El panel permite reintentar hasta 10 avisos; las reclamaciones de envío abandonadas se recuperan tras 10 minutos. No se envían avisos retroactivos. Los estados normales evitan el reenvío de avisos confirmados; una interrupción entre SMTP y la confirmación de base podría producir un duplicado al reintentar.
+
+Despliegue: migración `20261015010000_patient_monitoring.sql` y funciones `patient-folder` / `admin-stats`. Las tablas y RPC de monitoreo solo admiten `service_role`; ambas acciones administrativas validan una sesión con `is_admin`. Pruebas: `node --test tests/patient-monitoring.test.mjs tests/patient-app-share.test.mjs`, más `supabase db query --linked -f tests/patient-monitoring.database.sql` (fixtures ficticios y rollback).
+
+La prueba opcional de navegador `tests/patient-monitoring.browser.mjs` usa el fixture `tests/patient-monitoring.ui.html`, un Vite local en el puerto 5194 (con `VITE_SUPABASE_URL=https://patient-ui-fixture.supabase.co` y `VITE_SUPABASE_ANON_KEY=public-ui-fixture`) y Edge/Chrome con depuración CDP en el puerto 9379. Todas las llamadas de funciones se interceptan con datos ficticios; no manda correos ni escribe en producción.
+
 ### Invitar amigos a Mi Carpeta de Salud
 
 El inicio del portal de pacientes incluye **Compartir con un amigo · Por WhatsApp**. Abre WhatsApp con una invitación a crear una carpeta propia en `https://www.drhappy.com.ar/paciente`; el paciente elige el contacto y confirma el envío allí. El mensaje es público y fijo: no incluye identidad, sesión, estudios ni enlaces de acceso a la carpeta de quien invita. Esta acción es independiente de **Compartir con mi médico**, que mantiene su circuito de autorización.

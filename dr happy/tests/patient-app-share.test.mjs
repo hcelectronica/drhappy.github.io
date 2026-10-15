@@ -23,6 +23,6 @@ test('invitation never reads patient data, session, or current URL', () => {
 
 test('home menu has a clearly labeled WhatsApp link separate from medical sharing', () => {
   const portal = readFileSync(new URL('../src/PatientPortal.tsx', import.meta.url), 'utf8')
-  assert.match(portal, /<a className="pp-tile is-friend" href=\{PATIENT_APP_WHATSAPP_URL\} target="_blank" rel="noopener noreferrer">[\s\S]*?Compartir con un amigo[\s\S]*?Por WhatsApp[\s\S]*?<\/a>/)
+  assert.match(portal, /<a className="pp-tile is-friend" href=\{PATIENT_APP_WHATSAPP_URL\} target="_blank" rel="noopener noreferrer"[^>]*>[\s\S]*?Compartir con un amigo[\s\S]*?Por WhatsApp[\s\S]*?<\/a>/)
   assert.match(portal, /setView\('share'\).*Compartir con mi médico/)
 })

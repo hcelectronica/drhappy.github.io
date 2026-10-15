@@ -1,5 +1,35 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient'
 
+export interface AdminPatientStatsData {
+  summary: {
+    total: number; verified: number; pending: number; registrations7d: number; registrations30d: number
+    active_today: number; active7d: number; active30d: number; minutes30d: number; games30d: number; invites30d: number
+  }
+  documents: { count: number; bytes: number; patients: number }
+  pressure: { count: number; patients: number }
+  shares: { doctor: number; link: number }
+  notices: { sent: number; pending: number }
+  daily: { date: string; registrations: number; verified: number; active: number }[]
+  features: Record<string, number>
+  recent: { id: string; full_name: string; email: string; created_at: string; email_verified_at: string | null; last_login_at: string | null; last_seen_at: string | null; active: boolean }[]
+  trackingSince: string | null
+  generatedAt: string
+}
+
+export async function fetchAdminPatientStats(page = 0): Promise<{ success: boolean; message?: string; stats?: AdminPatientStatsData }> {
+  if (!isSupabaseConfigured || !supabase) return { success: false, message: 'Supabase no está conectado.' }
+  const { data, error } = await supabase.functions.invoke('admin-stats', { body: { action: 'patient-stats', page } })
+  if (error) return { success: false, message: error.message || 'No se pudieron cargar las estadísticas de pacientes.' }
+  return data
+}
+
+export async function retryPatientNotices(): Promise<{ success: boolean; message?: string; sent?: number }> {
+  if (!isSupabaseConfigured || !supabase) return { success: false, message: 'Supabase no está conectado.' }
+  const { data, error } = await supabase.functions.invoke('admin-stats', { body: { action: 'patient-notice-retry' } })
+  if (error) return { success: false, message: error.message || 'No se pudieron reintentar los avisos.' }
+  return data
+}
+
 // Métricas de uso por usuario para el panel de administración.
 // Solo devuelve conteos y fechas — nunca datos clínicos.
 

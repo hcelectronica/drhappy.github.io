@@ -1,0 +1,9 @@
+.admin-patient-stats { min-width: 0; margin-top: 20px; }
+.admin-patient-stats .analytics-stat-card span { display: block; }
+.aps-table-scroll { max-width: 100%; overflow-x: auto; max-height: 460px; }
+.aps-table-scroll table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.aps-table-scroll th, .aps-table-scroll td { text-align: left; padding: 10px; border-bottom: 1px solid #cbd5e1; overflow-wrap: anywhere; }
+.aps-table-scroll th { position: sticky; top: 0; background: #f1f5f9; color: #0f172a; }
+.aps-features { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 8px; }
+.aps-features li { display: flex; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 10px; }
+.aps-actions { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }

@@ -14,6 +14,7 @@ import { currentStreak, dayKey, gameStats, loadWorkshop, recordPlay } from './me
 import type { GameId, GameProps, GameResult } from './memoryCore'
 import { CARD_LEVELS, CHAIN_LEVELS, CROSSWORD_LEVELS, FLUENCY_LEVELS, PATH_LEVELS, SEARCH_LEVELS, SHOP_LEVELS, SPEED_LEVELS, STORY_LEVELS, WORD_LEVELS } from './memoryLevels'
 import './MemoryWorkshop.css'
+import { trackPatientActivity } from '../patientActivity'
 
 type Area = 'memory' | 'attention' | 'language' | 'math'
 
@@ -76,6 +77,7 @@ export default function MemoryWorkshop() {
 
   function handleFinish(result: GameResult) {
     if (!playing) return
+    void trackPatientActivity('game_completed')
     const before = gameStats(state, playing.game.id).level
     const next = recordPlay(state, playing.game.id, result.outcome, playing.game.levels, playing.daily)
     setState(next)

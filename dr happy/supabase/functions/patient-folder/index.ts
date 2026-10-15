@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import bcrypt from 'npm:bcryptjs@2.4.3'
 import { corsHeaders as baseCorsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
+import { sendPatientRegistrationNotice } from '../_shared/patientRegistrationEmail.ts'
 
 // Carpeta de Salud: cuentas de pacientes separadas de los profesionales.
 // Toda la lectura/escritura pasa por esta función con service_role; el bucket es privado.
@@ -391,10 +392,20 @@ serve(async (request) => {
       if (patient.email_verified_at) return reply(400, { success: false, message: 'Tu cuenta ya está activa. Ingresá con tu email y contraseña.' })
       const problem = await consumeCode(patient, 'verify', code)
       if (problem) return reply(400, { success: false, message: problem })
-      await admin.from('patient_accounts').update({ email_verified_at: new Date().toISOString() }).eq('id', patient.id)
+      const { data: verified, error: verifyError } = await admin.from('patient_accounts')
+        .update({ email_verified_at: new Date().toISOString() }).eq('id', patient.id)
+        .is('email_verified_at', null).select('id').maybeSingle()
+      if (verifyError) throw verifyError
+      if (!verified) return reply(409, { success: false, message: 'Tu cuenta ya está activa. Ingresá con tu email y contraseña.' })
       await log(patient.id, 'account_verified')
       const token = await createSession(patient.id)
-      return reply(200, { success: true, sessionToken: token, patient: publicPatient(patient) })
+      let adminEmailSent = false
+      try {
+        adminEmailSent = await sendPatientRegistrationNotice(admin, supabaseUrl, serviceRoleKey, patient.id)
+      } catch (error) {
+        console.error('[patient-registration-email] No se pudo procesar el aviso', error)
+      }
+      return reply(200, { success: true, sessionToken: token, patient: publicPatient(patient), adminEmailSent })
     }
 
     if (action === 'login') {
@@ -636,6 +647,18 @@ serve(async (request) => {
     // ---------- Acciones con sesión de paciente ----------
     const patient = await resolveSession()
     if (!patient) return reply(401, { success: false, code: 'SESSION_EXPIRED', message: 'Tu sesión terminó. Ingresá nuevamente.' })
+
+    if (action === 'activity') {
+      const event = text(body.event, 30)
+      const feature = text(body.feature, 30) || null
+      if (!['heartbeat', 'view', 'game_completed', 'invite_clicked'].includes(event)
+        || (event === 'view' && !['home', 'folder', 'upload', 'pressure', 'memory', 'share', 'account'].includes(feature || ''))) {
+        return reply(400, { success: false, message: 'Evento de actividad inválido.' })
+      }
+      const { error } = await admin.rpc('record_patient_activity', { p_patient_id: patient.id, p_event: event, p_feature: feature })
+      if (error) throw error
+      return reply(200, { success: true })
+    }
 
     if (action === 'me') {
       return reply(200, { success: true, patient: publicPatient(patient) })
