@@ -1,9 +1,43 @@
-.admin-patient-stats { min-width: 0; margin-top: 20px; }
-.admin-patient-stats .analytics-stat-card span { display: block; }
-.aps-table-scroll { max-width: 100%; overflow-x: auto; max-height: 460px; }
-.aps-table-scroll table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-.aps-table-scroll th, .aps-table-scroll td { text-align: left; padding: 10px; border-bottom: 1px solid #cbd5e1; overflow-wrap: anywhere; }
+.admin-patient-stats { min-width: 0; width: 100%; max-width: 100%; margin-top: 20px; box-sizing: border-box; }
+.admin-patient-stats > *, .admin-patient-stats .panel-header > * { min-width: 0; }
+.admin-patient-stats h3, .admin-patient-stats h4, .admin-patient-stats p { overflow-wrap: anywhere; }
+.admin-patient-stats button { min-height: 44px; white-space: normal; max-width: 100%; }
+.aps-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.aps-stat { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 14px; border: 1px solid #cbd5e1; border-radius: 14px; background: #f8fbff; }
+.aps-stat strong { font-size: 1.55rem; color: #1d4ed8; overflow-wrap: anywhere; }
+.aps-stat span { font-size: .85rem; color: #475569; line-height: 1.4; overflow-wrap: anywhere; }
+.aps-usage { list-style: none; padding: 0; display: grid; gap: 8px; }
+.aps-usage li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #cbd5e1; }
+.aps-usage li span { min-width: 0; overflow-wrap: anywhere; }
+.aps-usage li strong { flex-shrink: 0; }
+.aps-daily { margin: 18px 0; min-width: 0; }
+.aps-daily summary { cursor: pointer; font-weight: 700; padding: 12px 0; overflow-wrap: anywhere; }
+.aps-table-scroll { width: 100%; min-width: 0; overflow: auto; max-height: 400px; }
+.aps-table-scroll table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: collapse; font-size: .85rem; }
+.aps-table-scroll th, .aps-table-scroll td { text-align: left; padding: 8px 5px; border-bottom: 1px solid #cbd5e1; overflow-wrap: anywhere; }
 .aps-table-scroll th { position: sticky; top: 0; background: #f1f5f9; color: #0f172a; }
-.aps-features { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 8px; }
-.aps-features li { display: flex; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 10px; }
-.aps-actions { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.aps-patients { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.aps-patients li { min-width: 0; padding: 14px; display: grid; align-content: start; gap: 8px; border: 1px solid #cbd5e1; border-radius: 14px; }
+.aps-patients strong, .aps-email { overflow-wrap: anywhere; }
+.aps-email { font-size: .9rem; }
+.aps-status { justify-self: start; background: #e0f2fe; color: #075985; padding: 4px 8px; border-radius: 8px; font-size: .8rem; }
+.aps-patients dl { display: grid; gap: 8px; margin: 0; font-size: .85rem; }
+.aps-patients dl div { display: grid; gap: 2px; }
+.aps-patients dt { font-weight: 600; }
+.aps-patients dd { margin: 0; overflow-wrap: anywhere; }
+.aps-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+body.theme-night .aps-stat { background: #1a2d47; border-color: #526b8b; }
+body.theme-night .aps-stat strong { color: #b8d2ff; }
+body.theme-night .aps-stat span { color: #c2d3eb; }
+@media (max-width: 600px) {
+  .admin-patient-stats .panel-header { flex-direction: column; align-items: stretch; gap: 10px; }
+  .admin-patient-stats h3 { font-size: 1.1rem; }
+  .aps-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .aps-stat { padding: 12px 10px; }
+  .aps-patients { grid-template-columns: minmax(0, 1fr); }
+  .aps-table-scroll table, .aps-table-scroll tbody { display: block; }
+  .aps-table-scroll thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .aps-table-scroll tr { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid #cbd5e1; }
+  .aps-table-scroll td { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border: 0; }
+  .aps-table-scroll td::before { content: attr(data-label); font-weight: 600; }
+}

@@ -7,11 +7,6 @@ import './adminPatientStats.css'
 const dateTime = (value: string | null) => value
   ? new Date(value).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' }) : '—'
 const number = (value: number) => value.toLocaleString('es-AR')
-const FEATURES: Record<string, string> = {
-  home: 'Inicio', folder: 'Mi carpeta', upload: 'Subir estudio', pressure: 'Mi presión',
-  memory: 'Taller de memoria', share: 'Compartir con mi médico', account: 'Mi cuenta',
-  game_completed: 'Partidas terminadas', invite_clicked: 'Clics en invitar por WhatsApp',
-}
 
 export function AdminPatientStats() {
   const [stats, setStats] = useState<AdminPatientStatsData | null>(null)
@@ -60,7 +55,8 @@ export function AdminPatientStats() {
       {loading && <p role="status">Cargando estadísticas…</p>}
       {stats && !loading && (
         <>
-          <div className="analytics-summary-grid">
+          <h4>Registros y uso de la mini app</h4>
+          <div className="aps-summary">
             {([
               ['Cuentas creadas', stats.summary.total],
               ['Email verificado', stats.summary.verified],
@@ -70,47 +66,48 @@ export function AdminPatientStats() {
               ['Pacientes activos hoy', stats.summary.active_today],
               ['Activos · 7 días', stats.summary.active7d],
               ['Activos · 30 días', stats.summary.active30d],
-              ['Minutos visibles · 30 días', stats.summary.minutes30d],
-              ['Partidas terminadas · 30 días', stats.summary.games30d],
               ['Clics WhatsApp · 30 días', stats.summary.invites30d],
-              ['Estudios guardados', stats.documents.count],
-              ['Pacientes con estudios', stats.documents.patients],
-              ['Registros de presión', stats.pressure.count],
-              ['Pacientes que anotaron presión', stats.pressure.patients],
-              ['Accesos a médicos vigentes', stats.shares.doctor],
-              ['Links compartidos vigentes', stats.shares.link],
             ] as const).map(([label, value]) => (
-              <article key={label} className="analytics-stat-card"><strong>{number(value)}</strong><span>{label}</span></article>
+              <article key={label} className="aps-stat"><strong>{number(value)}</strong><span>{label}</span></article>
             ))}
           </div>
+          <h4>Uso de la carpeta</h4>
+          <ul className="aps-usage">
+            <li><span>Estudios guardados</span><strong>{number(stats.documents.count)}</strong></li>
+            <li><span>Pacientes con estudios</span><strong>{number(stats.documents.patients)}</strong></li>
+            <li><span>Pacientes que registran su presión</span><strong>{number(stats.pressure.patients)}</strong></li>
+            <li><span>Accesos a médicos vigentes</span><strong>{number(stats.shares.doctor)}</strong></li>
+            <li><span>Links compartidos vigentes</span><strong>{number(stats.shares.link)}</strong></li>
+          </ul>
           <p className="flow-hint">
             Almacenamiento de estudios: {(stats.documents.bytes / 1048576).toLocaleString('es-AR', { maximumFractionDigits: 1 })} MB.
             {' '}Actividad medida desde {stats.trackingSince || 'el primer ingreso posterior a esta actualización'}.
-            {' '}Los días usan horario argentino. Los minutos cuentan la app visible, no garantizan interacción.
+            {' '}Los días usan horario argentino. Activos son pacientes que abrieron la mini app en el período.
             {' '}Un clic en WhatsApp no confirma que se haya enviado una invitación.
           </p>
-          <h4>Aperturas de herramientas · últimos 30 días</h4>
-          <ul className="aps-features">
-            {Object.entries(FEATURES).map(([key, label]) => <li key={key}><span>{label}</span><strong>{number(stats.features[key] ?? 0)}</strong></li>)}
-          </ul>
-          <h4>Altas y actividad por día · últimos 30 días</h4>
+          <details className="aps-daily">
+          <summary>Ver altas y actividad por día · últimos 30 días</summary>
           <div className="aps-table-scroll">
             <table><thead><tr><th>Fecha</th><th>Cuentas creadas</th><th>Verificadas</th><th>Pacientes activos</th></tr></thead>
-              <tbody>{stats.daily.map(day => <tr key={day.date}><td>{day.date.split('-').reverse().join('/')}</td><td>{number(day.registrations)}</td><td>{number(day.verified)}</td><td>{number(day.active)}</td></tr>)}</tbody>
+              <tbody>{stats.daily.map(day => <tr key={day.date}><td data-label="Fecha">{day.date.split('-').reverse().join('/')}</td><td data-label="Cuentas creadas">{number(day.registrations)}</td><td data-label="Verificadas">{number(day.verified)}</td><td data-label="Pacientes activos">{number(day.active)}</td></tr>)}</tbody>
             </table>
           </div>
+          </details>
           <h4>Pacientes registrados · más recientes primero</h4>
           <p className="flow-hint">Solo datos básicos de la cuenta para administrar las altas. No se muestran DNI ni información clínica.</p>
-          <div className="aps-table-scroll">
-            <table><thead><tr><th>Nombre</th><th>Email</th><th>Registro</th><th>Estado</th><th>Último inicio de sesión</th><th>Última actividad</th></tr></thead>
-              <tbody>{stats.recent.map(patient => <tr key={patient.id}>
-                <td>{patient.full_name}</td><td>{patient.email}</td><td>{dateTime(patient.created_at)}</td>
-                <td>{!patient.active ? 'Desactivada' : patient.email_verified_at ? 'Verificada' : 'Sin verificar'}</td>
-                <td>{dateTime(patient.last_login_at)}</td>
-                <td>{dateTime(patient.last_seen_at)}</td>
-              </tr>)}</tbody>
-            </table>
-          </div>
+          <ul className="aps-patients">
+            {stats.recent.map(patient => (
+              <li key={patient.id}>
+                <strong>{patient.full_name}</strong>
+                <span className="aps-email">{patient.email}</span>
+                <span className="aps-status">{!patient.active ? 'Desactivada' : patient.email_verified_at ? 'Verificada' : 'Sin verificar'}</span>
+                <dl>
+                  <div><dt>Registro</dt><dd>{dateTime(patient.created_at)}</dd></div>
+                  <div><dt>Última actividad</dt><dd>{dateTime(patient.last_seen_at || patient.last_login_at)}</dd></div>
+                </dl>
+              </li>
+            ))}
+          </ul>
           {stats.recent.length === 0 && <p>Todavía no hay pacientes en esta página.</p>}
           <div className="aps-actions">
             <button type="button" className="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>Anterior</button>

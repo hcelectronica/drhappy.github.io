@@ -25,7 +25,7 @@ function fixture(page) {
     daily: [{ date: '2026-10-15', registrations: 8, verified: 7, active: 4 }],
     features: { memory: 12, game_completed: 7, invite_clicked: 3 },
     recent: [{ id: 'fixture', full_name: page ? 'Paciente página dos' : 'Paciente de prueba',
-      email: 'fixture@example.invalid', created_at: '2026-10-15T18:00:00Z',
+      email: 'un-correo-largo-para-validar-el-encuadre-en-movil@example.invalid', created_at: '2026-10-15T18:00:00Z',
       email_verified_at: null, active: true, last_login_at: null, last_seen_at: null }],
     trackingSince: '2026-10-15', generatedAt: '2026-10-15T18:00:00Z',
   }
@@ -74,10 +74,21 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
   await send('Page.navigate', { url: `${origin}/tests/patient-monitoring.ui.html` })
   await wait(`document.body.innerText.includes('Cuentas creadas')`)
-  assert.equal(await evaluate(`document.querySelectorAll('.analytics-stat-card').length`), 17)
+  assert.equal(await evaluate(`document.querySelectorAll('.aps-stat').length`), 9)
+  assert.equal(await evaluate(`document.body.innerText.includes('Partidas terminadas')`), false)
+  assert.equal(await evaluate(`document.body.innerText.includes('Aperturas de herramientas')`), false)
   for (const width of [320, 390, 1280]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: width < 500 })
     assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `Overflow at ${width}`)
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('.aps-summary')).gridTemplateColumns.split(' ').length`), width < 500 ? 2 : 3)
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('.aps-patients')).gridTemplateColumns.split(' ').length`), width < 500 ? 1 : 2)
+    await evaluate(`document.querySelector('.aps-daily').open = true`)
+    assert.equal(await evaluate(`document.documentElement.scrollWidth <= innerWidth`), true, `Expanded daily overflow at ${width}`)
+    if (process.env.TEST_PATIENT_SCREENSHOT) {
+      const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true })
+      await writeFile(join(process.env.TEST_PATIENT_SCREENSHOT, `patient-stats-${width}.png`), Buffer.from(screenshot.data, 'base64'))
+    }
+    await evaluate(`document.querySelector('.aps-daily').open = false`)
   }
   await click('Siguiente')
   await wait(`document.body.innerText.includes('Paciente página dos')`)
@@ -87,7 +98,7 @@ try {
   failure = true
   await click('Actualizar')
   await wait(`document.body.innerText.includes('Error controlado de prueba')`)
-  assert.equal(await evaluate(`document.querySelectorAll('.analytics-stat-card').length`), 0)
+  assert.equal(await evaluate(`document.querySelectorAll('.aps-stat').length`), 0)
   failure = false
   await click('Actualizar')
   await wait(`document.body.innerText.includes('Cuentas creadas')`)
