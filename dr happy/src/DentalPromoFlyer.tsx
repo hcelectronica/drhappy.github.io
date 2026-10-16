@@ -16,16 +16,16 @@ function Surfaces({ animated = false }: { animated?: boolean }) {
   </>
 }
 
-export function DentalPromoFlyer() {
+export function DentalPromoFlyer({ interactive = true }: { interactive?: boolean }) {
   const [active, setActive] = useState(false)
   const [replay, setReplay] = useState(0)
-  const play = () => { setActive(true); setReplay((value) => value + 1) }
+  const play = () => { if (interactive) { setActive(true); setReplay((value) => value + 1) } }
   return <article
     className={`flyer-tool auth-promo-tool auth-promo-tool--green dental-promo-flyer${active ? ' dental-promo-flyer--active' : ''}`}
-    role="button"
-    tabIndex={0}
-    aria-label="Odontograma interactivo. Ver demostración de selección de pieza y superficies en rojo y azul. Escape para volver."
-    aria-pressed={active}
+    role={interactive ? 'button' : undefined}
+    tabIndex={interactive ? 0 : undefined}
+    aria-label={interactive ? 'Odontograma interactivo. Ver demostración de selección de pieza y superficies en rojo y azul. Escape para volver.' : undefined}
+    aria-pressed={interactive ? active : undefined}
     onPointerEnter={(event) => { if (event.pointerType === 'mouse') play() }}
     onPointerLeave={(event) => { if (event.pointerType === 'mouse') setActive(false) }}
     onClick={play}
@@ -44,7 +44,7 @@ export function DentalPromoFlyer() {
     </div>
     <strong>Odontograma interactivo</strong>
     <small>Registrá hallazgos por pieza y superficie. Tratamientos, presupuestos, costos y pagos conectados al balance. Adaptado al celular, con ficha completa en PDF a color.</small>
-    <small className="dental-promo-hint">Pasá el mouse o tocá para ver cómo funciona.</small>
+    {interactive ? <small className="dental-promo-hint">Pasá el mouse o tocá para ver cómo funciona.</small> : null}
     {active ? <div key={replay} className="dental-promo-demo" aria-hidden="true">
       <div className="dental-promo-demo-heading"><span>ODONTOGRAMA EN ACCIÓN</span><span>DEMO</span></div>
       <svg viewBox="0 0 340 270">

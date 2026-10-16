@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Guía de herramientas - prueba</title>
+    <title>Flyers promocionales - prueba</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module">
       import React from 'react'
       import { createRoot } from 'react-dom/client'
-      import { HomeToolGuide } from '../src/HomeToolGuide.tsx'
+      import { HomePromoCarousel } from '../src/HomePromoCarousel.tsx'
       import '../src/index.css'
       import '../src/App.css'
       const actions = [
@@ -28,7 +28,7 @@
         onClick: () => { window.toolNavigationCount = (window.toolNavigationCount || 0) + 1 },
       }))
       createRoot(document.getElementById('root')).render(
-        React.createElement('main', { className: 'app' }, React.createElement(HomeToolGuide, { actions }))
+        React.createElement('main', { className: 'app' }, React.createElement(HomePromoCarousel, { actions }))
       )
     </script>
   </body>

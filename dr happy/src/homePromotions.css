@@ -1,0 +1,68 @@
+.home-promo-carousel {
+  width: min(100%, 760px);
+  margin: 18px auto 0;
+  padding-bottom: calc(112px + env(safe-area-inset-bottom));
+  color: var(--text-primary);
+}
+.home-promo-carousel h2 { margin: 4px 0 14px; font-size: 1.1rem; }
+.home-promo-slide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  min-height: 218px;
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  background: var(--surface-bg);
+  overflow: hidden;
+}
+.home-promo-art { min-width: 0; display: grid; }
+.home-promo-art .auth-promo-tool-art {
+  box-sizing: border-box;
+  min-height: 218px;
+  border-radius: 0;
+  padding: 24px 82px 24px 22px;
+  justify-content: center;
+  gap: 12px;
+}
+.home-promo-art .auth-promo-tool-art > strong { font-size: 1.45rem; line-height: 1.12; }
+.home-promo-art .auth-promo-tool-art > small { font-size: .8rem; line-height: 1.35; }
+.home-promo-art .auth-promo-service-icon { width: 52px; height: 52px; right: 18px; }
+.home-promo-copy { padding: 24px; display: flex; flex-direction: column; justify-content: center; }
+.home-promo-copy h3 { margin: 0 0 10px; font-size: 1.1rem; color: var(--text-primary); }
+.home-promo-copy p { margin: 0; font-size: .9rem; line-height: 1.55; color: var(--text-primary); }
+.home-promo-brand { margin-top: 16px; font-size: .7rem; color: var(--text-secondary); }
+.home-promo-controls { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 10px; }
+.home-promo-controls button { min-width: 44px; min-height: 44px; padding: 8px 12px; }
+.home-promo-controls > span { font-size: .8rem; color: var(--text-secondary); min-width: 44px; text-align: center; }
+.home-promo-controls .home-promo-pause { margin-left: 10px; font-size: .8rem; }
+.home-promo-sofia { padding: 22px; display: flex; flex-direction: column; justify-content: center; gap: 10px; background: #edf1ff; color: #233d6b; }
+.home-promo-sofia > span { font-size: .7rem; font-weight: 700; letter-spacing: .08em; }
+.home-promo-sofia > strong { font-size: 1.35rem; line-height: 1.2; }
+.home-promo-sofia > small { font-size: .8rem; }
+.home-promo-sofia .sofia-avatar { width: 42px; height: 42px; }
+body.theme-night .home-promo-sofia { background: #1b3358; color: #eef4fc; }
+.home-promo-art .dental-promo-flyer { margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+.home-promo-art .dental-promo-flyer > strong,
+.home-promo-art .dental-promo-flyer > small { display: none; }
+.home-promo-art .dental-promo-flyer .auth-promo-tool-art { padding-right: 82px; }
+
+.auth-developer-contact {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 22px;
+  background: var(--surface-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  color: var(--text-primary);
+}
+.auth-developer-contact h2 { margin: 0 0 6px; font-size: 1.15rem; }
+.auth-developer-contact p { margin: 0; color: var(--text-secondary); line-height: 1.5; }
+.auth-developer-contact button { min-height: 44px; white-space: normal; }
+@media (max-width: 899px) { .home-promo-carousel { display: none; } }
+@media (max-width: 600px) {
+  .auth-developer-contact { padding: 18px; }
+  .auth-developer-contact button { width: 100%; }
+}

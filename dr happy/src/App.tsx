@@ -18,7 +18,7 @@ import { allergyDetails, clinicalChecklist, firstAttentionSummary, hasClinicalCo
 import { ClinicalWeightReview } from './ClinicalWeightReview'
 import { useDesktopDock } from './useDesktopDock'
 import { MobileHomeMenu } from './MobileHomeMenu'
-import { HomeToolGuide } from './HomeToolGuide'
+import { HomePromoCarousel } from './HomePromoCarousel'
 import type { MobileHomeAction } from './MobileHomeMenu'
 import { consultationCorrectionError, correctionSignedContent, consultationRevisionText } from './consultationCorrection'
 import type { ConsultationRevision } from './consultationCorrection'
@@ -31,7 +31,7 @@ import { createVideoAccessUrl } from './videoConsultationService'
 import { SubscriptionAccountModal } from './SubscriptionAccountModal'
 import { loadSubscriptionAccount } from './subscriptionAccountService'
 import { SubscriptionBenefits } from './SubscriptionBenefits'
-import { ServiceIllustration } from './ServiceIllustration'
+import { PromotionalArtwork } from './PromotionalArtwork'
 import { DentalPatientChart } from './dental/DentalPatientChart'
 import { DentalPromoFlyer } from './DentalPromoFlyer'
 import type { DentalSaveResult } from './dental/dentalService'
@@ -10907,35 +10907,23 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </div>
             <div className="flyer-grid auth-promo-tool-grid">
               <article className="flyer-tool auth-promo-tool auth-promo-tool--blue">
-                <div className="auth-promo-tool-art auth-promo-tool-art--care" aria-hidden="true">
-                  <ServiceIllustration service="care" />
-                  <span>PARA MÉDICOS</span><strong>ATENCIÓN<br />MÉDICA</strong><small>Historia clínica y seguimiento en contexto</small>
-                </div>
+                <PromotionalArtwork service="care" />
                 <strong>Atención médica</strong>
                 <small>Historias clínicas y consultas en un mismo espacio.</small>
               </article>
               <DentalPromoFlyer />
               <article className="flyer-tool auth-promo-tool auth-promo-tool--amber">
-                <div className="auth-promo-tool-art auth-promo-tool-art--calendar" aria-hidden="true">
-                  <ServiceIllustration service="calendar" />
-                  <span>AGENDA INTELIGENTE</span><strong>MENOS AUSENCIAS.<br />MÁS CONSULTAS.</strong><small>Recordatorios automáticos de turnos</small>
-                </div>
+                <PromotionalArtwork service="calendar" />
                 <strong>Turnera</strong>
                 <small>Turnera inteligente con recordatorios de turnos para ayudar a reducir ausencias.</small>
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--violet">
-                <div className="auth-promo-tool-art auth-promo-tool-art--video" aria-hidden="true">
-                  <ServiceIllustration service="video" />
-                  <span>ATENCIÓN A DISTANCIA</span><strong>VIDEOCONSULTA<br />PROFESIONAL</strong><small>Acceso seguro desde la ficha o el turno</small>
-                </div>
+                <PromotionalArtwork service="video" />
                 <strong>Videoconsulta</strong>
                 <small>Iniciá una consulta por video desde la ficha del paciente o el turno, con un acceso temporal y protegido.</small>
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--green">
-                <div className="auth-promo-tool-art auth-promo-tool-art--emergency" aria-hidden="true">
-                  <ServiceIllustration service="emergency" />
-                  <span>TRASLADOS Y GUARDIA</span><strong>ATENCIÓN<br />EN MOVIMIENTO</strong><small>Asistencia clínica cuando cada minuto cuenta</small>
-                </div>
+                <PromotionalArtwork service="emergency" />
                 <strong>Modo ambulancia</strong>
                 <small>Información organizada para traslados y guardias.</small>
               </article>
@@ -10989,42 +10977,27 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 </div>
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--cyan">
-                <div className="auth-promo-tool-art auth-promo-tool-art--patients" aria-hidden="true">
-                  <ServiceIllustration service="patients" />
-                  <span>HISTORIA CLÍNICA</span><strong>DIGITAL</strong><small>Asesorada con Sofía IA</small>
-                </div>
+                <PromotionalArtwork service="patients" />
                 <strong>Historia clínica digital</strong>
                 <small>Asesorada con Sofía IA para preparar y organizar tus evoluciones.</small>
               </article>
               <article className="flyer-tool auth-promo-tool">
-                <div className="auth-promo-tool-art auth-promo-tool-art--certificates" aria-hidden="true">
-                  <ServiceIllustration service="certificates" />
-                  <span>DOCUMENTOS CLÍNICOS</span><strong>CERTIFICADOS<br />EN MINUTOS</strong><small>Con tu firma y código QR</small>
-                </div>
+                <PromotionalArtwork service="certificates" />
                 <strong>Emití certificados médicos</strong>
                 <small>Prepará, firmá y compartí certificados desde la ficha del paciente.</small>
               </article>
               <article className="flyer-tool auth-promo-tool">
-                <div className="auth-promo-tool-art auth-promo-tool-art--invite" aria-hidden="true">
-                  <ServiceIllustration service="invite" />
-                  <span>TUS PACIENTES, MÁS CERCA</span><strong>INVITÁ.<br />ELLOS SE REGISTRAN.</strong><small>Por link o código QR</small>
-                </div>
+                <PromotionalArtwork service="invite" />
                 <strong>Invitá pacientes</strong>
                 <small>Compartí tu link personal y sumalos a Mis pacientes sin cargar sus datos a mano.</small>
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--violet">
-                <div className="auth-promo-tool-art auth-promo-tool-art--protocols" aria-hidden="true">
-                  <ServiceIllustration service="protocols" />
-                  <span>RECURSOS CLÍNICOS</span><strong>CRITERIO<br />A MANO</strong><small>Protocolos, guías y vademécum</small>
-                </div>
+                <PromotionalArtwork service="protocols" />
                 <strong>Protocolos y vademécum</strong>
                 <small>Recursos clínicos a mano durante la consulta.</small>
               </article>
               <article className="flyer-tool auth-promo-tool auth-promo-tool--red">
-                <div className="auth-promo-tool-art auth-promo-tool-art--ledger" aria-hidden="true">
-                  <ServiceIllustration service="ledger" />
-                  <span>GESTIÓN SIMPLE</span><strong>COBROS<br />MÁS CLAROS</strong><small>Pagos, saldos y seguimiento</small>
-                </div>
+                <PromotionalArtwork service="ledger" />
                 <strong>Balance de pagos</strong>
                 <small>Un registro claro de cobros y saldos.</small>
               </article>
@@ -13769,7 +13742,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           ) : null}
 
           {activeUserId ? <MobileHomeMenu key={activeUserId} userId={activeUserId} actions={homeQuickActions} onError={setAppError} /> : null}
-          <HomeToolGuide actions={[{ key: 'sofia', icon: '✨', label: 'Sofía, tu asistente' }, ...homeQuickActions]} />
+          <HomePromoCarousel actions={[{ key: 'sofia', icon: '✨', label: 'Sofía, tu asistente' }, ...homeQuickActions]} />
         </div>
       ) : null}
 
