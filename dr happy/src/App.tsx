@@ -18,6 +18,7 @@ import { allergyDetails, clinicalChecklist, firstAttentionSummary, hasClinicalCo
 import { ClinicalWeightReview } from './ClinicalWeightReview'
 import { useDesktopDock } from './useDesktopDock'
 import { MobileHomeMenu } from './MobileHomeMenu'
+import { HomeToolGuide } from './HomeToolGuide'
 import type { MobileHomeAction } from './MobileHomeMenu'
 import { consultationCorrectionError, correctionSignedContent, consultationRevisionText } from './consultationCorrection'
 import type { ConsultationRevision } from './consultationCorrection'
@@ -11253,15 +11254,6 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 >
                   📲 Compartir con un amigo
                 </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  style={{ fontSize: '0.82rem', padding: '6px 10px' }}
-                  onClick={() => setContactModalOpen(true)}
-                  title="Contactar con el equipo de soporte y desarrolladores"
-                >
-                  💬 Contactar desarrolladores
-                </button>
               </div>
               </details>
             </form>
@@ -11495,6 +11487,15 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </a>
           ) : null}
         </section>
+        <footer className="auth-developer-contact">
+          <div>
+            <h2>Estamos para ayudarte</h2>
+            <p>Consultas, sugerencias o problemas con Dr Happy: escribile a nuestro equipo.</p>
+          </div>
+          <button type="button" onClick={() => setContactModalOpen(true)}>
+            💬 Contactar con los desarrolladores
+          </button>
+        </footer>
         {floatingNotice ? <div className="floating-toast">{floatingNotice}</div> : null}
         {renderLoginProgress()}
         {contactModalOpen ? (
@@ -13768,7 +13769,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           ) : null}
 
           {activeUserId ? <MobileHomeMenu key={activeUserId} userId={activeUserId} actions={homeQuickActions} onError={setAppError} /> : null}
-
+          <HomeToolGuide actions={homeQuickActions} />
         </div>
       ) : null}
 

@@ -10,6 +10,12 @@ Web app base en React + TypeScript para:
 
 ## Ficha clínica y seguimiento
 
+### Guía de herramientas y contacto público
+
+El inicio profesional muestra tarjetas informativas breves, sin enlaces ni botones que dupliquen el menú. La guía respeta las herramientas habilitadas para la cuenta y usa sus mismos nombres; se adapta a móvil y modo nocturno. El contacto con desarrolladores está visible al pie de la página pública, fuera del formulario de acceso y de «Más opciones», y abre el formulario de soporte existente sin exigir inicio de sesión.
+
+Pruebas: `node --test tests/home-tool-guide.test.mjs`. La prueba `node tests/home-tool-guide.browser.mjs` requiere un Vite aislado en 5194 y Edge/Chrome con CDP en 9379 (configurables mediante `TEST_GUIDE_ORIGIN` y `TEST_GUIDE_CDP`); valida 320/390/1280 px, tema nocturno y apertura del soporte sin login, sin enviar mensajes.
+
 ### Monitoreo administrativo de Mi Carpeta de Salud
 
 Administración → **Mi Carpeta de Salud** ofrece cuentas creadas/verificadas/pendientes, altas en 7/30 días, usuarios activos hoy/7/30 días, minutos con la app visible, aperturas de herramientas, partidas terminadas, clics en invitar, conteos de estudios/presión/accesos compartidos y almacenamiento. Incluye serie diaria (30 días) y altas paginadas de 50 cuentas con nombre, email, estado y fechas; no devuelve DNI, estudios ni mediciones. Los totales se agregan en PostgreSQL, sin el límite de 1.000 filas de PostgREST. Las fechas se agrupan en `America/Argentina/Buenos_Aires`.

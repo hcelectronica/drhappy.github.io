@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Guía de herramientas - prueba</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import React from 'react'
+      import { createRoot } from 'react-dom/client'
+      import { HomeToolGuide } from '../src/HomeToolGuide.tsx'
+      import '../src/index.css'
+      import '../src/App.css'
+      const actions = [
+        ['attention', '🩺', 'Atención médica'], ['appointments', '📅', 'Turnera'],
+        ['patients', '👥', 'Mis pacientes'], ['invite', '📨', 'Invitar paciente'],
+        ['tools', '💊', 'Herramientas'], ['ledger', '💰', 'Balance'],
+      ].map(([key, icon, label]) => ({ key, icon, label }))
+      createRoot(document.getElementById('root')).render(
+        React.createElement('main', { className: 'app' }, React.createElement(HomeToolGuide, { actions }))
+      )
+    </script>
+  </body>
+</html>
