@@ -39,7 +39,7 @@ const viewport = width => send('Emulation.setDeviceMetricsOverride', {
 
 try {
   await send('Page.enable')
-  await viewport(390)
+  await viewport(1280)
   await send('Page.navigate', { url: `${origin}/tests/home-tool-guide.ui.html` })
   await wait(`document.querySelector('.home-tool-flyer')`)
   const next = () => evaluate(`document.querySelector('[aria-label="Tutorial siguiente"]').click()`)
@@ -49,7 +49,7 @@ try {
   await position(13)
   await next()
   await position(1)
-  for (const width of [320, 390, 1280]) {
+  for (const width of [900, 1280, 1920]) {
     await viewport(width)
     assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `Guide overflow: ${width}`)
     assert.equal(await evaluate(`document.querySelectorAll('.home-tool-flyer').length`), 1)
@@ -59,7 +59,10 @@ try {
       await position(index)
       await evaluate(`document.querySelector('.home-tool-flyer').focus(); document.querySelector('.home-tool-flyer').click()`)
       await wait(`document.querySelector('.home-tutorial-dialog')?.open`)
-      await wait(`document.querySelector('.home-tutorial-dialog img')?.naturalWidth > 0`)
+      assert.equal(await evaluate(`document.querySelector('[aria-label="Navegación de pasos"] button').disabled`), true)
+      for (let step = 1; step <= 3; step++) {
+      await wait(`document.querySelector('.home-tutorial-dialog img')?.src.endsWith('-${step}.png') && document.querySelector('.home-tutorial-dialog img')?.naturalWidth >= 1200`)
+      assert.equal(await evaluate(`document.querySelector('.home-tutorial-step-controls > span').textContent`), `Paso ${step} de 3`)
       const summary = await evaluate(`(() => {
         const p=document.querySelector('.home-tutorial-summary');
         return {lines:p.getBoundingClientRect().height/parseFloat(getComputedStyle(p).lineHeight),
@@ -80,6 +83,10 @@ try {
       })()`)
       assert.ok(contrast >= 4.5, `Night summary contrast: ${contrast}`)
       await evaluate(`document.body.classList.remove('theme-night')`)
+      if (step < 3) await evaluate(`document.querySelector('.home-tutorial-step-controls button:last-child').click()`)
+      }
+      await evaluate(`document.querySelector('.home-tutorial-stepper li:first-child button').click()`)
+      await wait(`document.querySelector('.home-tutorial-step-controls > span').textContent === 'Paso 1 de 3'`)
       await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
       await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
       await wait(`!document.querySelector('.home-tutorial-dialog')`)
@@ -101,12 +108,27 @@ try {
       await evaluate(`document.querySelector('.home-tool-flyer').click()`)
       await wait(`document.querySelector('.home-tutorial-dialog')?.open`)
       const image = index === 3 ? 'attention-dental' : 'tools-dental'
-      assert.equal(await evaluate(`document.querySelector('.home-tutorial-dialog img').src.endsWith('/${image}.jpg')`), true)
-      await wait(`document.querySelector('.home-tutorial-dialog img').naturalWidth > 0`)
+      for (let step = 1; step <= 3; step++) {
+        await wait(`document.querySelector('.home-tutorial-dialog img').src.endsWith('/${image}-${step}.png') && document.querySelector('.home-tutorial-dialog img').naturalWidth >= 1200`)
+        if (step < 3) await evaluate(`document.querySelector('.home-tutorial-step-controls button:last-child').click()`)
+      }
       await evaluate(`document.querySelector('[aria-label="Cerrar mini tutorial"]').click()`)
       await wait(`!document.querySelector('.home-tutorial-dialog')`)
     }
     await next()
+  }
+  await evaluate(`document.querySelector('.home-tool-flyer').click()`)
+  await wait(`document.querySelector('.home-tutorial-dialog')?.open`)
+  await viewport(390)
+  await wait(`!document.querySelector('.home-tool-guide') && !document.querySelector('.home-tutorial-dialog')`)
+  assert.equal(await evaluate(`document.body.style.overflow`), '')
+  for (const width of [320, 390, 844, 899]) {
+    await viewport(width)
+    await send('Page.navigate', { url: `${origin}/tests/home-tool-guide.ui.html` })
+    await wait(`document.querySelector('#root > main')`)
+    assert.equal(await evaluate(`document.querySelector('.home-tool-guide') === null`), true)
+    assert.equal(await evaluate(`performance.getEntriesByType('resource').filter(r=>r.name.includes('/tool-tutorials/')).length`), 0)
+    assert.equal(await evaluate(`document.querySelector('#root > main').innerHTML`), '')
   }
   await send('Page.navigate', { url: origin })
   await wait(`document.querySelector('.auth-developer-contact button')`)
@@ -122,7 +144,7 @@ try {
   assert.equal(await evaluate(`!!document.querySelector('[aria-labelledby="contact-modal-title-login"] form')`), true)
   await evaluate(`document.querySelector('[aria-labelledby="contact-modal-title-login"] [aria-label="Cerrar ventana"]').click()`)
   assert.equal(await evaluate(`!!document.querySelector('[aria-labelledby="contact-modal-title-login"]')`), false)
-  console.log('PASS: 13 tutorials at 320/390/1280 px, one flyer, manual wraparound, loaded screenshots, four-line summaries without truncation, dental variants, Escape/focus, night theme and public support.')
+  console.log('PASS: 13 desktop tutorials x 3 illustrated steps at 900/1280/1920 px; high-DPI screenshots, four-line summaries, dental variants, keyboard/focus/contrast. No tutorial DOM or images at 320/390/844/899 px; resize closes dialog. Public support preserved.')
 } finally {
   const closed = new Promise(resolve => socket.addEventListener('close', resolve, { once: true }))
   socket.close()

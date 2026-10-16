@@ -7,6 +7,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 const require = createRequire(import.meta.url)
+globalThis.matchMedia = () => ({ matches: true })
 const modelSource = readFileSync(new URL('../src/homeToolTutorials.ts', import.meta.url), 'utf8')
 const compile = source => ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
@@ -38,12 +39,12 @@ test('guide shows one tutorial flyer, not a grid or duplicate tool navigation', 
 test('specialty labels and account availability are preserved', () => {
   const html = render([{ key: 'attention', icon: 'A', label: 'Atención odontológica' }])
   assert.match(html, /Atención odontológica/)
-  assert.match(html, /attention-dental\.jpg/)
+  assert.match(html, /attention-dental-1\.png/)
   assert.doesNotMatch(html, /Videoconsulta|Balance|Atención médica/)
   assert.equal(render([]), '')
 })
 
-test('every tutorial has a short instructional summary and its own real screenshot', () => {
+test('every tutorial has benefit copy and three short illustrated steps in lossless high DPI', () => {
   const tutorials = [
     ...Object.values(model.homeToolTutorials),
     model.getHomeToolTutorial('attention', 'Atención odontológica'),
@@ -53,11 +54,27 @@ test('every tutorial has a short instructional summary and its own real screensh
   assert.equal(model.getHomeToolTutorial('__proto__', 'Inexistente'), undefined)
   assert.equal(new Set(tutorials.map(t => t.image)).size, tutorials.length)
   for (const tutorial of tutorials) {
-    assert.ok(tutorial.summary.length <= 120, tutorial.summary)
-    const image = readFileSync(new URL(`../public/tool-tutorials/${tutorial.image}.jpg`, import.meta.url))
-    assert.equal(image.readUInt16BE(0), 0xffd8)
-    assert.ok(image.length > 5000)
-    assert.equal(model.homeToolTutorialImage(tutorial.image), `/tool-tutorials/${tutorial.image}.jpg`)
+    assert.ok(tutorial.benefit.length > 15)
+    assert.ok(tutorial.promise.length > 15)
+    assert.equal(tutorial.steps.length, 3)
+    assert.equal(new Set(tutorial.steps.map(step => step.title)).size, 3)
+    tutorial.steps.forEach((step, index) => {
+      assert.ok(step.summary.length <= 120, step.summary)
+      const image = readFileSync(new URL(`../public/tool-tutorials/${tutorial.image}-${index + 1}.png`, import.meta.url))
+      assert.equal(image.subarray(1, 4).toString(), 'PNG')
+      assert.ok(image.readUInt32BE(16) >= 1200, 'Capture must be at least 1200 physical pixels wide')
+      assert.ok(image.readUInt32BE(20) >= 720, 'Capture must be at least 720 physical pixels tall')
+      assert.equal(model.homeToolTutorialImage(tutorial.image, index), `/tool-tutorials/${tutorial.image}-${index + 1}.png`)
+    })
+  }
+})
+
+test('mobile home has no tutorial elements or images', () => {
+  globalThis.matchMedia = () => ({ matches: false })
+  try {
+    assert.equal(render([{ key: 'patients', icon: 'P', label: 'Mis pacientes' }]), '')
+  } finally {
+    globalThis.matchMedia = () => ({ matches: true })
   }
 })
 

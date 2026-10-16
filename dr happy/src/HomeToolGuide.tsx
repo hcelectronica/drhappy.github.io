@@ -11,6 +11,8 @@ function TutorialDialog({ slide, onClose }: { slide: GuideSlide; onClose: () => 
   const dialog = useRef<HTMLDialogElement>(null)
   const titleId = useId()
   const summaryId = useId()
+  const [stepIndex, setStepIndex] = useState(0)
+  const step = slide.tutorial.steps[stepIndex]
   useEffect(() => {
     const element = dialog.current
     const previous = document.activeElement
@@ -31,22 +33,43 @@ function TutorialDialog({ slide, onClose }: { slide: GuideSlide; onClose: () => 
       <div className="home-tutorial-content">
         <header>
           <div>
-            <span className="section-kicker">Mini tutorial</span>
+            <span className="section-kicker">Tu próxima tarea, más simple</span>
             <h2 id={titleId}>{slide.label}</h2>
           </div>
           <button type="button" className="ghost" onClick={onClose} aria-label="Cerrar mini tutorial" autoFocus>Cerrar</button>
         </header>
-        <p className="home-tutorial-summary" id={summaryId}>{slide.tutorial.summary}</p>
-        <figure>
-          <img src={homeToolTutorialImage(slide.tutorial.image)} alt={`Captura de ${slide.label} con datos de ejemplo`} />
-          <figcaption>Pantalla de ejemplo. Los datos son ficticios.</figcaption>
+        <ol className="home-tutorial-stepper" aria-label="Pasos del tutorial">
+          {slide.tutorial.steps.map((item, index) => (
+            <li key={item.title}>
+              <button type="button" aria-current={index === stepIndex ? 'step' : undefined}
+                onClick={() => setStepIndex(index)}>
+                <span>{index + 1}</span>{item.title}
+              </button>
+            </li>
+          ))}
+        </ol>
+        <div className="home-tutorial-step-copy" aria-live="polite" aria-atomic="true">
+          <h3><span>{stepIndex + 1}</span>{step.title}</h3>
+          <p className="home-tutorial-summary" id={summaryId}>{step.summary}</p>
+        </div>
+        <figure className="home-tutorial-step-image">
+          <img key={stepIndex} src={homeToolTutorialImage(slide.tutorial.image, stepIndex)}
+            alt={`Paso ${stepIndex + 1}: ${step.title}. Zona de ${slide.label} resaltada con datos ficticios.`} />
+          <figcaption>Vista ampliada · Seguí el recuadro numerado · Datos ficticios</figcaption>
         </figure>
+        <nav className="home-tutorial-step-controls" aria-label="Navegación de pasos">
+          <button type="button" className="ghost" disabled={stepIndex === 0} onClick={() => setStepIndex(stepIndex - 1)}>← Atrás</button>
+          <span aria-live="polite">Paso {stepIndex + 1} de 3</span>
+          {stepIndex < 2
+            ? <button type="button" onClick={() => setStepIndex(stepIndex + 1)}>Siguiente paso →</button>
+            : <button type="button" onClick={onClose}>Entendido ✓</button>}
+        </nav>
       </div>
     </dialog>
   )
 }
 
-export function HomeToolGuide({ actions }: {
+function GuideCarousel({ actions }: {
   actions: ReadonlyArray<GuideAction>
 }) {
   const slides = actions.flatMap((action) => {
@@ -73,13 +96,16 @@ export function HomeToolGuide({ actions }: {
         <button type="button" className="home-tool-flyer" aria-label={`Ver mini tutorial de ${current.label}`}
           aria-haspopup="dialog" onClick={() => setOpenedKey(current.key)}>
           <span className="home-tool-flyer-preview">
-            <img src={homeToolTutorialImage(current.tutorial.image)} alt="" />
+            <span className="home-tool-preview-badge">DR HAPPY · GUÍA VISUAL</span>
+            <img src={homeToolTutorialImage(current.tutorial.image)} alt="" decoding="async" />
+            <span className="home-tool-preview-caption"><span aria-hidden="true">① ② ③</span> Tres pasos para empezar</span>
           </span>
           <span className="home-tool-flyer-copy">
             <span className="home-tool-guide-icon" aria-hidden="true">{current.icon}</span>
-            <strong>{current.label}</strong>
-            <span>Conocé cómo se usa, paso a paso.</span>
-            <span className="home-tool-flyer-hint">Ver mini tutorial</span>
+            <span className="home-tool-flyer-label">{current.label}</span>
+            <strong>{current.tutorial.benefit}</strong>
+            <span>{current.tutorial.promise}</span>
+            <span className="home-tool-flyer-hint">Mirá cómo se usa en 3 pasos <span aria-hidden="true">↗</span></span>
           </span>
         </button>
         <nav className="home-tool-carousel-controls" aria-label="Recorrer mini tutoriales">
@@ -91,4 +117,15 @@ export function HomeToolGuide({ actions }: {
       {opened ? <TutorialDialog slide={opened} onClose={() => setOpenedKey(null)} /> : null}
     </section>
   )
+}
+
+export function HomeToolGuide({ actions }: { actions: ReadonlyArray<GuideAction> }) {
+  const [desktop, setDesktop] = useState(() => matchMedia('(min-width: 900px)').matches)
+  useEffect(() => {
+    const query = matchMedia('(min-width: 900px)')
+    const update = () => setDesktop(query.matches)
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return desktop ? <GuideCarousel actions={actions} /> : null
 }
