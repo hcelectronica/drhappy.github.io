@@ -7,6 +7,7 @@ export default function PatientLinkRequests({ onToast }: { onToast: (message: st
   const [requests, setRequests] = useState<PatientLinkRequest[]>([])
   const [busyId, setBusyId] = useState('')
   const [error, setError] = useState('')
+  const [glucose, setGlucose] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -21,7 +22,7 @@ export default function PatientLinkRequests({ onToast }: { onToast: (message: st
   async function respond(request: PatientLinkRequest, accept: boolean) {
     setBusyId(request.id)
     setError('')
-    const result = await callPatientFolder({ action: 'link-respond', requestId: request.id, accept })
+    const result = await callPatientFolder({ action: 'link-respond', requestId: request.id, accept, includeGlucose: glucose[request.id] === true })
     setBusyId('')
     if (!result.success) {
       setError(result.message || 'No se pudo responder. Intentá de nuevo.')
@@ -45,6 +46,7 @@ export default function PatientLinkRequests({ onToast }: { onToast: (message: st
               {' '}¿Querés compartirle tus estudios y tu registro de presión?
             </p>
             <p className="pp-muted">Lo va a ver en tu ficha. Podés dejar de compartir cuando quieras desde “Compartir con mi médico”.</p>
+            <label className="pp-check"><input type="checkbox" checked={glucose[request.id] === true} onChange={e => setGlucose(current => ({ ...current, [request.id]: e.target.checked }))} /> Incluir glucosa y tratamiento de diabetes (también futuras actualizaciones)</label>
             <div className="pp-row">
               <button type="button" className="pp-secondary" disabled={busyId === request.id} onClick={() => void respond(request, false)}>Ahora no</button>
               <button type="button" className="pp-primary" disabled={busyId === request.id} onClick={() => void respond(request, true)}>

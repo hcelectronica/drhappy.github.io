@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Patient tools fixture</title></head>
+<body><div id="root"></div><script type="module">
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import PatientGlucoseView from '../src/PatientGlucoseView.tsx'
+import { PatientPortal } from '../src/PatientPortal.tsx'
+import { GlucoseSummary } from '../src/GlucoseSummary.tsx'
+import SharedFolderPage from '../src/SharedFolderPage.tsx'
+import { AdminPatientCommunications } from '../src/AdminPatientCommunications.tsx'
+import '../src/index.css'
+import '../src/App.css'
+import '../src/PatientPortal.css'
+
+const params = new URLSearchParams(location.search)
+const patient = { id: 'fixture-patient', firstName: 'Paciente', lastName: 'Ficticio', fullName: 'Paciente Ficticio',
+  email: 'fixture@example.invalid', dni: '00000000', birthDate: null, phone: null, storageUsedBytes: 0, storageQuotaBytes: 104857600, createdAt: new Date().toISOString() }
+let record = JSON.parse(sessionStorage.getItem('patient-tools-record') || '{"readings":[],"totalReadings":0,"treatment":null,"updatedAt":null}')
+let campaign = null, news = false
+window.fixtureCalls = []
+window.fixtureNotices = []
+const realFetch = window.fetch.bind(window)
+const store = () => sessionStorage.setItem('patient-tools-record', JSON.stringify(record))
+window.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : input.url || String(input)
+  if (!url.includes('.supabase.co')) return realFetch(input, init)
+  if (!url.includes('/functions/v1/')) throw new Error(`Unexpected fixture network request: ${url}`)
+  const body = JSON.parse(init?.body || '{}')
+  window.fixtureCalls.push({ endpoint: url.split('/').at(-1), ...body })
+  let result = { success: true }, status = 200
+  if (url.includes('patient-communications')) {
+    if (body.action === 'contacts') result = { ...result, virtualReady: true, contacts: [
+      { id: '1', name: 'Paciente Uno', email: 'uno@example.invalid', eligible: true, reason: '' },
+      { id: '2', name: 'Paciente Dos', email: 'dos@example.invalid', eligible: body.audience === 'own', reason: body.audience === 'own' ? '' : 'No aceptó novedades' },
+    ] }
+    if (body.action === 'preview') {
+      const total = body.all ? body.audience === 'folder' ? 1 : 2 : body.contactIds.length
+      campaign = { id: body.campaignId, audience: body.audience, template: body.template, subject: body.subject, message: body.message,
+        link: body.template === 'folder' ? 'https://www.drhappy.com.ar/paciente' : 'https://www.drhappy.com.ar/consulta/fixture',
+        created_at: new Date().toISOString(), status: 'draft', total, counts: { pending: total, sending: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 } }
+      result.campaign = campaign
+    }
+    if (body.action === 'send-batch') {
+      campaign.status = 'active'; campaign.counts.sent = campaign.total; campaign.counts.pending = 0; result.campaign = campaign
+    }
+    if (body.action === 'status') result.campaign = campaign
+    if (body.action === 'history') result.campaigns = campaign ? [campaign] : []
+  } else {
+    if (body.action === 'me') result.patient = patient
+    if (body.action === 'list-documents') result = { ...result, patient, documents: [] }
+    if (body.action === 'link-requests') result.requests = [{ id: 'request', source: 'doctor_request', doctorName: 'Médico ficticio', doctorSpecialty: 'Clínica' }]
+    if (body.action === 'list-shares') result.shares = []
+    if (body.action === 'create-link-share') result = { ...result, url: 'https://www.drhappy.com.ar/carpeta/fixture-share-token', code: '123456', expiresAt: new Date(Date.now() + 86400000).toISOString() }
+    if (body.action === 'open-share') {
+      if (window.fixtureRevoke) { result = { success: false, message: 'El paciente dejó de compartir este acceso.' }; status = 404 }
+      else result = { ...result, patientName: 'Paciente Ficticio', birthDate: null, expiresAt: new Date(Date.now() + 86400000).toISOString(), urlTtlSeconds: 600, documents: [], pressure: [], glucose: record }
+    }
+    if (body.action === 'news-preference-save') news = body.enabled
+    if (body.action.startsWith('news-preference')) result.newsEnabled = news
+    if (body.action === 'glucose-add') {
+      record.readings.unshift({ id: crypto.randomUUID(), measuredAt: body.measuredAt, value: body.value, context: body.context, method: body.method, note: body.note })
+      record.totalReadings = record.readings.length; store()
+    }
+    if (body.action === 'diabetes-save') { record.treatment = body.treatment; record.updatedAt = new Date().toISOString(); store() }
+    if (body.action === 'glucose-delete') {
+      record.readings = record.readings.filter(r => r.id !== body.readingId); record.totalReadings = record.readings.length; store()
+    }
+    if (body.action.startsWith('glucose-') || body.action === 'diabetes-save') result.glucose = record
+  }
+  return new Response(JSON.stringify(result), { status, headers: { 'Content-Type': 'application/json' } })
+}
+localStorage.setItem('drhappy-patient-session', 'fixture-only-session')
+sessionStorage.setItem('drhappy-patient-install-offered', '1')
+const notify = value => { window.fixtureNotices.push(value) }
+createRoot(document.getElementById('root')).render(
+  params.has('email') ? React.createElement('main', { className: 'app', style: { padding: '12px' } }, React.createElement(AdminPatientCommunications))
+  : params.has('portal') || params.has('unsubscribe') ? React.createElement(PatientPortal)
+  : params.has('public') ? React.createElement(SharedFolderPage, { token: 'fixture-share-token' })
+  : params.has('summary') ? React.createElement('main', { className: 'pp-main' }, React.createElement(GlucoseSummary, { record, onCopy: notify }))
+  : React.createElement('main', { className: 'pp-main' }, React.createElement(PatientGlucoseView, { onToast: notify }))
+)
+</script></body></html>

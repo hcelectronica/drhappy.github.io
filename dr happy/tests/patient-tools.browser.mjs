@@ -1,0 +1,145 @@
+import assert from 'node:assert/strict'
+
+const origin = process.env.TEST_PATIENT_ORIGIN || 'http://127.0.0.1:5194'
+const cdp = process.env.TEST_PATIENT_CDP || 'http://127.0.0.1:9379'
+const target = await (await fetch(`${cdp}/json/new?about:blank`, { method: 'PUT' })).json()
+const socket = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise(resolve => socket.addEventListener('open', resolve))
+let sequence = 0
+const pending = new Map()
+socket.addEventListener('message', message => {
+  const event = JSON.parse(message.data), callback = pending.get(event.id)
+  if (!callback) return
+  pending.delete(event.id)
+  if (event.error) callback.reject(new Error(JSON.stringify(event.error)))
+  else callback.resolve(event.result)
+})
+const send = (method, params = {}) => new Promise((resolve, reject) => {
+  const id = ++sequence; pending.set(id, { resolve, reject }); socket.send(JSON.stringify({ id, method, params }))
+})
+const evaluate = async expression => {
+  const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })
+  if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails))
+  return result.result.value
+}
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+async function wait(expression) {
+  for (let i = 0; i < 150; i++) { if (await evaluate(`!!(${expression})`)) return; await sleep(100) }
+  throw new Error(`Timed out: ${expression}`)
+}
+const fixture = `${origin}/tests/patient-tools.ui.html`
+async function navigate(query = '') {
+  await send('Page.navigate', { url: `${fixture}${query}` })
+  await wait(`document.querySelector('#root')?.children.length > 0`)
+}
+const click = text => evaluate(`[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(text)}).click()`)
+async function fill(selector, value) {
+  await evaluate(`(() => {const e=document.querySelector(${JSON.stringify(selector)});
+    Object.getOwnPropertyDescriptor(e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});
+    e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`)
+}
+const overflow = () => evaluate(`document.documentElement.scrollWidth > innerWidth`)
+try {
+  await send('Page.enable')
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  await navigate()
+  await evaluate(`sessionStorage.removeItem('patient-tools-record')`)
+  await navigate()
+  await wait(`document.querySelector('input[type=number]')`)
+  await fill('form input[type=number]', '121')
+  await evaluate(`document.querySelector('input[type=checkbox]').click()`)
+  const previous = new Date(Date.now() - 86400000)
+  const localPrevious = new Date(previous.getTime() - previous.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+  await fill('input[type=datetime-local]', localPrevious)
+  await click('Guardar medición')
+  await wait(`document.querySelector('.glucose-reading-list').textContent.includes('121 mg/dL')`)
+  assert.equal(await evaluate(`window.fixtureCalls.find(c=>c.action==='glucose-add').measuredAt`), new Date(localPrevious).toISOString())
+  await evaluate(`document.querySelectorAll('input[type=checkbox]')[1].click()`)
+  await click('Agregar insulina / horario')
+  await fill('fieldset:nth-of-type(1) input', 'Basal')
+  await fill('fieldset:nth-of-type(1) input[type=number]', '16.5')
+  await fill('fieldset:nth-of-type(1) label:last-of-type input', '22 h')
+  await click('Agregar insulina / horario')
+  await fill('fieldset:nth-of-type(2) input', 'Rápida')
+  await fill('fieldset:nth-of-type(2) input[type=number]', '4')
+  await fill('fieldset:nth-of-type(2) label:last-of-type input', 'Antes del almuerzo')
+  await click('Agregar medicamento')
+  await fill('fieldset:nth-of-type(3) label:nth-of-type(1) input', 'Metformina')
+  await fill('fieldset:nth-of-type(3) label:nth-of-type(2) input', '500 mg')
+  await fill('fieldset:nth-of-type(3) label:nth-of-type(3) input', 'Cena')
+  await click('Guardar tratamiento')
+  await wait(`window.fixtureNotices.includes('Tratamiento guardado.')`)
+  for (const width of [320, 390, 1280]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: width < 600 })
+    assert.equal(await overflow(), false, `Glucose overflow at ${width}`)
+  }
+  await navigate()
+  await wait(`document.querySelectorAll('fieldset').length===3`)
+  assert.equal(await evaluate(`document.querySelector('fieldset input').value`), 'Basal')
+  await navigate('?summary')
+  await wait(`document.querySelector('.glucose-summary')`)
+  assert.match(await evaluate(`document.body.textContent`), /Basal: 16.5 unidades/)
+  await navigate('?portal')
+  await wait(`document.querySelector('.pp-link-request input')`)
+  assert.equal(await evaluate(`document.querySelector('.pp-link-request input').checked`), false)
+  await evaluate(`window.confirm=()=>true;document.querySelector('.pp-link-request input').click()`)
+  await click('Compartir')
+  await wait(`window.fixtureCalls.some(c=>c.action==='link-respond')`)
+  assert.equal(await evaluate(`window.fixtureCalls.find(c=>c.action==='link-respond').includeGlucose`), true)
+  await evaluate(`[...document.querySelectorAll('button')].find(e=>e.textContent.includes('Compartir con mi médico')).click()`)
+  await wait(`document.querySelector('.pp-share-options')`)
+  await evaluate(`document.querySelectorAll('.pp-share-options button')[1].click()`)
+  await wait(`document.querySelectorAll('.pp-scope input').length || [...document.querySelectorAll('label')].some(e=>e.textContent.includes('Incluir glucosa'))`)
+  assert.equal(await evaluate(`[...document.querySelectorAll('label')].filter(e=>e.textContent.includes('Incluir glucosa')).every(e=>!e.querySelector('input').checked)`), true)
+  await evaluate(`document.querySelectorAll('.pp-scope input[type=radio]')[1].click();document.querySelectorAll('.pp-scope input[type=checkbox]')[0].click();document.querySelectorAll('.pp-scope input[type=checkbox]')[1].click()`)
+  await evaluate(`[...document.querySelectorAll('button')].find(e=>e.textContent.includes('Crear link')).click()`)
+  await wait(`window.fixtureCalls.some(c=>c.action==='create-link-share')`)
+  assert.deepEqual(await evaluate(`(() => {const c=window.fixtureCalls.find(c=>c.action==='create-link-share');return [c.allDocuments,c.includePressure,c.includeGlucose]})()`), [false, false, true])
+  await navigate('?public')
+  await wait(`document.querySelector('.pp-code')`)
+  await fill('.pp-code', '123456')
+  await click('Abrir carpeta')
+  await wait(`document.querySelector('.glucose-summary')`)
+  await evaluate(`window.fixtureRevoke=true`)
+  await click('Actualizar')
+  await wait(`document.body.textContent.includes('Link no disponible')`)
+  assert.equal(await evaluate(`!!document.querySelector('.glucose-summary')`), false)
+  await navigate('?unsubscribe=99999999-2222-4333-8444-555555555555')
+  await wait(`document.querySelector('h1')?.textContent.includes('Novedades')`)
+  assert.equal(await evaluate(`window.fixtureCalls.some(c=>c.action==='unsubscribe')`), false)
+  await click('Confirmar baja de novedades')
+  await wait(`document.body.textContent.includes('Ya no recibirás')`)
+  await navigate('?email')
+  await wait(`document.querySelector('.patient-mail-recipients')`)
+  await evaluate(`document.querySelector('.patient-mail-recipients input').click();document.querySelector('input[required][type=checkbox]').click()`)
+  await click('Revisar envío a 1 personas')
+  await wait(`document.querySelector('.patient-mail-preview')`)
+  assert.equal(await evaluate(`window.fixtureCalls.some(c=>c.action==='send-batch')`), false)
+  await evaluate(`window.confirm=()=>true`)
+  await click('Confirmar y enviar')
+  await wait(`document.querySelector('[role=status]')`)
+  assert.match(await evaluate(`document.querySelector('.patient-mail-counts').textContent`), /Aceptados por correo: 1/)
+  await click('Consultar historial')
+  await wait(`document.querySelector('.patient-mail-history')`)
+  await click('Preparar otro envío')
+  await fill('.patient-mail select', 'folder')
+  await wait(`document.body.textContent.includes('No aceptó novedades')`)
+  assert.equal(await evaluate(`document.querySelectorAll('.patient-mail-recipients input:disabled').length`), 1)
+  await fill('.patient-mail form > label:nth-of-type(2) select', 'virtual')
+  await evaluate(`document.querySelector('.patient-mail-check input').click();document.querySelector('input[required][type=checkbox]').click()`)
+  await click('Revisar envío a 1 personas')
+  await wait(`document.querySelector('.patient-mail-preview a')?.href.includes('/consulta/fixture')`)
+  for (const width of [320, 390, 1280]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: width < 600 })
+    assert.equal(await overflow(), false, `Communications overflow at ${width}`)
+  }
+  await navigate()
+  await wait(`document.querySelector('.glucose-reading-list button')`)
+  await evaluate(`window.confirm=()=>true;document.querySelector('.glucose-reading-list button').click()`)
+  await wait(`!document.querySelector('.glucose-reading-list li')`)
+  console.log('PASS: glucose time, multiple insulin/medications, reload/delete, independent sharing, confirmed unsubscribe, email preview/send/history/consent, 320/390/1280 layouts.')
+} finally {
+  await new Promise(resolve => { socket.addEventListener('close', resolve, { once: true }); socket.close() })
+  await (await fetch(`${cdp}/json/close/${target.id}`)).text()
+  await sleep(100)
+}

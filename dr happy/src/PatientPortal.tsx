@@ -13,6 +13,9 @@ import {
 import type { PatientDocument, PatientDocumentCategory, PatientFolderResponse, PatientProfile, PatientShare } from './patientFolderService'
 import './PatientPortal.css'
 import PatientPressureView from './PatientPressureView'
+import PatientGlucoseView from './PatientGlucoseView'
+import { PatientNewsPreference } from './PatientNewsPreference'
+import { PatientEmailUnsubscribe } from './PatientEmailUnsubscribe'
 import PatientLinkRequests from './PatientLinkRequests'
 import { PATIENT_APP_WHATSAPP_URL } from './patientAppShare'
 import { trackPatientActivity } from './patientActivity'
@@ -21,7 +24,7 @@ const MemoryWorkshop = lazy(() => import('./memory/MemoryWorkshop'))
 import type { EncodeHintType as HintKey } from '@zxing/library'
 
 type AuthMode = 'login' | 'register' | 'verify' | 'forgot' | 'reset'
-type View = 'home' | 'folder' | 'upload' | 'pressure' | 'memory' | 'share' | 'account'
+type View = 'home' | 'folder' | 'upload' | 'pressure' | 'glucose' | 'memory' | 'share' | 'account'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
@@ -477,7 +480,7 @@ function FolderView({ documents, loading, onReload }: { documents: PatientDocume
   )
 }
 
-function ScopePicker({ documents, all, selected, onAll, onToggle, pressure, onPressure }: {
+function ScopePicker({ documents, all, selected, onAll, onToggle, pressure, onPressure, glucose, onGlucose }: {
   documents: PatientDocument[]
   all: boolean
   selected: string[]
@@ -485,12 +488,14 @@ function ScopePicker({ documents, all, selected, onAll, onToggle, pressure, onPr
   onToggle: (id: string) => void
   pressure: boolean
   onPressure: (value: boolean) => void
+  glucose: boolean
+  onGlucose: (value: boolean) => void
 }) {
   return (
     <fieldset className="pp-scope">
       <legend>¿Qué querés compartir?</legend>
       <label className="pp-radio"><input type="radio" checked={all} onChange={() => onAll(true)} /> Toda mi carpeta <small>(incluye lo que subas después)</small></label>
-      <label className="pp-radio"><input type="radio" checked={!all} onChange={() => onAll(false)} disabled={!documents.length} /> Elegir estudios</label>
+      <label className="pp-radio"><input type="radio" checked={!all} onChange={() => onAll(false)} /> {documents.length ? 'Elegir estudios' : 'Solo controles (sin estudios)'}</label>
       {!all && (
         <ul className="pp-pick-list">
           {documents.map((doc) => (
@@ -504,6 +509,7 @@ function ScopePicker({ documents, all, selected, onAll, onToggle, pressure, onPr
         </ul>
       )}
       <label className="pp-check"><input type="checkbox" checked={pressure} onChange={(e) => onPressure(e.target.checked)} /> ❤️ Incluir mi registro de presión</label>
+      <label className="pp-check"><input type="checkbox" checked={glucose} onChange={(e) => onGlucose(e.target.checked)} /> Incluir glucosa y tratamiento de diabetes (también futuras actualizaciones)</label>
     </fieldset>
   )
 }
@@ -517,6 +523,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
   const [all, setAll] = useState(true)
   const [selected, setSelected] = useState<string[]>([])
   const [pressure, setPressure] = useState(true)
+  const [glucose, setGlucose] = useState(false)
   const [query, setQuery] = useState('')
   const [doctor, setDoctor] = useState<{ id: string; name: string; specialty: string } | null>(null)
   const [days, setDays] = useState(7)
@@ -537,6 +544,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
     setAll(true)
     setSelected([])
     setPressure(true)
+    setGlucose(false)
     setQuery('')
     setDoctor(null)
     setCreated(null)
@@ -561,10 +569,10 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
 
   async function shareWithDoctor() {
     if (!doctor || busy) return
-    if (!all && !selected.length && !pressure) return setError('Elegí al menos un estudio o tu registro de presión.')
+    if (!all && !selected.length && !pressure && !glucose) return setError('Elegí al menos un estudio, presión o glucosa.')
     setBusy(true)
     setError('')
-    const result = await callPatientFolder({ action: 'share-with-doctor', professionalId: doctor.id, allDocuments: all, documentIds: selected, includePressure: pressure })
+    const result = await callPatientFolder({ action: 'share-with-doctor', professionalId: doctor.id, allDocuments: all, documentIds: selected, includePressure: pressure, includeGlucose: glucose })
     setBusy(false)
     if (!result.success) return setError(result.message || 'No se pudo compartir.')
     onToast(result.updated ? 'Actualizaste lo que compartís con tu médico ✔' : `Listo, ${doctor.name || 'tu médico'} ya puede ver tus estudios ✔`)
@@ -574,10 +582,10 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
 
   async function createLink() {
     if (busy) return
-    if (!all && !selected.length && !pressure) return setError('Elegí al menos un estudio o tu registro de presión.')
+    if (!all && !selected.length && !pressure && !glucose) return setError('Elegí al menos un estudio, presión o glucosa.')
     setBusy(true)
     setError('')
-    const result = await callPatientFolder({ action: 'create-link-share', days, allDocuments: all, documentIds: selected, includePressure: pressure }) as PatientFolderResponse & { code?: string }
+    const result = await callPatientFolder({ action: 'create-link-share', days, allDocuments: all, documentIds: selected, includePressure: pressure, includeGlucose: glucose }) as PatientFolderResponse & { code?: string }
     setBusy(false)
     if (!result.success || !result.url || !result.code || !result.expiresAt) return setError(result.message || 'No se pudo crear el link.')
     setCreated({ url: result.url, code: result.code, expiresAt: result.expiresAt })
@@ -658,7 +666,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
                 <span aria-hidden>🩺</span>
                 <div><strong>{doctor.name || 'Profesional de Dr Happy'}</strong>{doctor.specialty && <small>{doctor.specialty}</small>}</div>
               </div>
-              <ScopePicker documents={documents} all={all} selected={selected} onAll={setAll} onToggle={toggle} pressure={pressure} onPressure={setPressure} />
+              <ScopePicker documents={documents} all={all} selected={selected} onAll={setAll} onToggle={toggle} pressure={pressure} onPressure={setPressure} glucose={glucose} onGlucose={setGlucose} />
               <p className="pp-muted">Si todavía no sos paciente de este médico en Dr Happy, se crea tu ficha con tu nombre, DNI y contacto.</p>
             </>
           )}
@@ -679,7 +687,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
               <button type="button" key={value} className={days === value ? 'is-active' : ''} onClick={() => setDays(Number(value))}>{label}</button>
             ))}
           </fieldset>
-          <ScopePicker documents={documents} all={all} selected={selected} onAll={setAll} onToggle={toggle} pressure={pressure} onPressure={setPressure} />
+          <ScopePicker documents={documents} all={all} selected={selected} onAll={setAll} onToggle={toggle} pressure={pressure} onPressure={setPressure} glucose={glucose} onGlucose={setGlucose} />
           {error && <p className="pp-error" role="alert">{error}</p>}
           <div className="pp-row">
             <button type="button" className="pp-secondary" onClick={() => reset('menu')} disabled={busy}>Volver</button>
@@ -715,7 +723,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
                 <span aria-hidden>🩺</span>
                 <div>
                   <strong>{share.doctorName || 'Profesional de Dr Happy'}</strong>
-                  <small>{share.doctorSpecialty ? `${share.doctorSpecialty} · ` : ''}{share.allDocuments ? 'Toda la carpeta' : `${share.documentCount} estudio${share.documentCount === 1 ? '' : 's'}`}{share.includePressure ? ' + presión' : ''}{share.lastAccessedAt ? ` · Visto ${formatDate(share.lastAccessedAt)}` : ''}</small>
+                  <small>{share.doctorSpecialty ? `${share.doctorSpecialty} · ` : ''}{share.allDocuments ? 'Toda la carpeta' : `${share.documentCount} estudio${share.documentCount === 1 ? '' : 's'}`}{share.includePressure ? ' + presión' : ''}{share.includeGlucose ? ' + glucosa y tratamiento' : ''}{share.lastAccessedAt ? ` · Visto ${formatDate(share.lastAccessedAt)}` : ''}</small>
                 </div>
                 <button type="button" className="is-danger" onClick={() => revoke(share)}>Dejar de compartir</button>
               </li>
@@ -725,7 +733,7 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
                 <span aria-hidden>🔗</span>
                 <div>
                   <strong>Link temporal</strong>
-                  <small>Vence {share.expiresAt ? formatDate(share.expiresAt) : ''} · {share.allDocuments ? 'Toda la carpeta' : `${share.documentCount} estudio${share.documentCount === 1 ? '' : 's'}`}{share.includePressure ? ' + presión' : ''} · Abierto {share.accessCount} {share.accessCount === 1 ? 'vez' : 'veces'}</small>
+                  <small>Vence {share.expiresAt ? formatDate(share.expiresAt) : ''} · {share.allDocuments ? 'Toda la carpeta' : `${share.documentCount} estudio${share.documentCount === 1 ? '' : 's'}`}{share.includePressure ? ' + presión' : ''}{share.includeGlucose ? ' + glucosa y tratamiento' : ''} · Abierto {share.accessCount} {share.accessCount === 1 ? 'vez' : 'veces'}</small>
                 </div>
                 <button type="button" className="is-danger" onClick={() => revoke(share)}>Desactivar</button>
               </li>
@@ -796,6 +804,7 @@ function AccountView({ patient, onUpdated, onLogout }: { patient: PatientProfile
       {message && <p className="pp-info">{message}</p>}
       {error && <p className="pp-error" role="alert">{error}</p>}
       <button type="button" className="pp-logout" onClick={onLogout}>Cerrar sesión</button>
+      <PatientNewsPreference />
     </section>
   )
 }
@@ -879,6 +888,8 @@ export function PatientPortal() {
     setView('home')
   }
 
+  const unsubscribeToken = new URLSearchParams(window.location.search).get('unsubscribe')
+  if (unsubscribeToken) return <PatientEmailUnsubscribe token={unsubscribeToken} />
   if (checking) {
     return <main className="pp-auth"><Brand /><p className="pp-muted">Abriendo tu carpeta…</p></main>
   }
@@ -915,6 +926,7 @@ export function PatientPortal() {
               <button type="button" className="pp-tile is-folder" onClick={() => setView('folder')}><span aria-hidden>🗂️</span>Mi carpeta</button>
               <button type="button" className="pp-tile is-upload" onClick={() => setView('upload')}><span aria-hidden>📤</span>Subir estudio</button>
               <button type="button" className="pp-tile is-pressure" onClick={() => setView('pressure')}><span aria-hidden>❤️</span>Mi presión</button>
+              <button type="button" className="pp-tile is-pressure" onClick={() => setView('glucose')}><span aria-hidden>🩸</span>Mi glucosa</button>
               <button type="button" className="pp-tile is-memory" onClick={() => setView('memory')}><span aria-hidden>🧠</span>Taller de memoria</button>
               <button type="button" className="pp-tile is-share" onClick={() => setView('share')}><span aria-hidden>🤝</span>Compartir con mi médico</button>
               <a className="pp-tile is-friend" href={PATIENT_APP_WHATSAPP_URL} target="_blank" rel="noopener noreferrer" onClick={() => { void trackPatientActivity('invite_clicked') }}>
@@ -925,6 +937,7 @@ export function PatientPortal() {
               <button type="button" className="pp-tile is-account" onClick={() => setView('account')}><span aria-hidden>👤</span>Mi cuenta</button>
             </nav>
             {!askInstall && <InstallPatientApp />}
+            <PatientNewsPreference />
           </>
         )}
         {view === 'folder' && <FolderView documents={documents} loading={loadingDocs} onReload={loadDocuments} />}
@@ -936,6 +949,7 @@ export function PatientPortal() {
           />
         )}
         {view === 'pressure' && <PatientPressureView onToast={setToast} />}
+        {view === 'glucose' && <PatientGlucoseView onToast={setToast} />}
         {view === 'memory' && (
           <Suspense fallback={<p className="pp-muted">Cargando juegos…</p>}>
             <MemoryWorkshop />

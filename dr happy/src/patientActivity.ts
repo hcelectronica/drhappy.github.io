@@ -1,6 +1,6 @@
 import { callPatientFolder } from './patientFolderService'
 
-export type PatientFeature = 'home' | 'folder' | 'upload' | 'pressure' | 'memory' | 'share' | 'account'
+export type PatientFeature = 'home' | 'folder' | 'upload' | 'pressure' | 'glucose' | 'memory' | 'share' | 'account'
 export type PatientActivityEvent = 'heartbeat' | 'view' | 'game_completed' | 'invite_clicked'
 
 export async function trackPatientActivity(event: PatientActivityEvent, feature?: PatientFeature): Promise<void> {

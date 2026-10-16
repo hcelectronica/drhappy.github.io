@@ -1,0 +1,11 @@
+.glucose-patient fieldset { min-width: 0; display: grid; gap: 12px; border: 1px solid #a8c8c3; border-radius: 12px; padding: 14px; }
+.glucose-patient select, .glucose-patient textarea { max-width: 100%; min-width: 0; }
+.glucose-reading-list { padding: 0; list-style: none; }
+.glucose-reading-list li { display: flex; gap: 12px; justify-content: space-between; align-items: start; border-bottom: 1px solid #c8deda; padding: 12px 0; }
+.glucose-reading-list li > div { min-width: 0; display: grid; gap: 5px; overflow-wrap: anywhere; }
+.glucose-reading-list strong { font-size: 1.3rem; }
+.glucose-summary { padding: 12px 0; color: inherit; overflow-wrap: anywhere; }
+.glucose-table-wrap { max-width: 100%; overflow-x: auto; }
+.glucose-summary table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.glucose-summary th, .glucose-summary td { padding: 10px; text-align: left; border-bottom: 1px solid #9ca3af70; }
+.glucose-summary button { margin: 8px 8px 0 0; }

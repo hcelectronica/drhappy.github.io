@@ -3,6 +3,8 @@ import type { FormEvent } from 'react'
 import { formatBytes, formatDate, openPatientShare, patientCategoryMeta } from './patientFolderService'
 import type { BpReading, SharedDocument } from './patientFolderService'
 import { BpDoctorSummary } from './BloodPressure'
+import { GlucoseSummary } from './GlucoseSummary'
+import type { GlucoseRecord } from '../supabase/functions/_shared/patientGlucose'
 import './PatientPortal.css'
 
 // Página pública para el médico externo: link temporal + código de 6 números que le da el paciente.
@@ -10,7 +12,7 @@ export default function SharedFolderPage({ token }: { token: string }) {
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [data, setData] = useState<{ patientName: string; birthDate: string | null; expiresAt: string; documents: SharedDocument[]; pressure: BpReading[]; loadedAt: number; ttl: number } | null>(null)
+  const [data, setData] = useState<{ patientName: string; birthDate: string | null; expiresAt: string; documents: SharedDocument[]; pressure: BpReading[]; glucose: GlucoseRecord | null; loadedAt: number; ttl: number } | null>(null)
   const [gone, setGone] = useState(false)
 
   useEffect(() => {
@@ -30,6 +32,7 @@ export default function SharedFolderPage({ token }: { token: string }) {
     const result = await openPatientShare(token, code)
     setBusy(false)
     if (!result.success) {
+      setData(null)
       if (result.step !== 'code') setGone(true)
       return setError(result.message || 'No se pudo abrir.')
     }
@@ -39,6 +42,7 @@ export default function SharedFolderPage({ token }: { token: string }) {
       expiresAt: result.expiresAt ?? '',
       documents: result.documents ?? [],
       pressure: result.pressure ?? [],
+      glucose: result.glucose ?? null,
       loadedAt: Date.now(),
       ttl: (result.urlTtlSeconds ?? 600) * 1000,
     })
@@ -67,12 +71,12 @@ export default function SharedFolderPage({ token }: { token: string }) {
             ? <p className="pp-muted">{error}</p>
             : (
               <>
-                <p className="pp-muted">El paciente te compartió sus estudios. Pedile el código de 6 números que le aparece en su app.</p>
+                <p className="pp-muted">El paciente te compartió datos de su carpeta. Pedile el código de 6 números que le aparece en su app.</p>
                 <label>Código
                   <input className="pp-code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} autoFocus />
                 </label>
                 {error && <p className="pp-error" role="alert">{error}</p>}
-                <button className="pp-primary" type="submit" disabled={busy || code.length !== 6}>{busy ? 'Abriendo…' : 'Ver estudios'}</button>
+                <button className="pp-primary" type="submit" disabled={busy || code.length !== 6}>{busy ? 'Abriendo…' : 'Abrir carpeta'}</button>
               </>
             )}
         </form>
@@ -86,7 +90,7 @@ export default function SharedFolderPage({ token }: { token: string }) {
             Acceso válido hasta el {new Date(data.expiresAt).toLocaleDateString('es-AR')}
           </p>
           {error && <p className="pp-error" role="alert">{error}</p>}
-          {!data.documents.length && <p className="pp-empty">{data.pressure.length ? 'El paciente no compartió estudios.' : 'El paciente todavía no tiene estudios en lo que compartió.'}</p>}
+          {!data.documents.length && <p className="pp-empty">El paciente no compartió estudios en este acceso. Los controles autorizados se muestran a continuación.</p>}
           <ul className="pp-docs">
             {data.documents.map((doc) => {
               const info = patientCategoryMeta(doc.category)
@@ -117,6 +121,7 @@ export default function SharedFolderPage({ token }: { token: string }) {
         </section>
       )}
 
+      {data?.glucose && <section className="pp-card"><h2>Glucosa y tratamiento de diabetes</h2><GlucoseSummary record={data.glucose} /></section>}
       <aside className="pp-promo">
         <strong>¿Sos médico/a?</strong>
         <p>Con <b>Dr Happy</b> tus pacientes te comparten sus estudios directo en su ficha. Historia clínica, recetas, turnos y videoconsulta en un solo lugar.</p>

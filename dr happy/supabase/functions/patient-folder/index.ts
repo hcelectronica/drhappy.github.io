@@ -4,6 +4,7 @@ import bcrypt from 'npm:bcryptjs@2.4.3'
 import { corsHeaders as baseCorsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { sendPatientRegistrationNotice } from '../_shared/patientRegistrationEmail.ts'
+import { GlucoseInputError, parseGlucoseReading, parseDiabetesTreatment } from '../_shared/patientGlucose.ts'
 
 // Carpeta de Salud: cuentas de pacientes separadas de los profesionales.
 // Toda la lectura/escritura pasa por esta función con service_role; el bucket es privado.
@@ -244,9 +245,22 @@ serve(async (request) => {
     last_accessed_at: string | null
     access_count: number
     include_pressure: boolean
+    include_glucose: boolean
     created_at: string
   }
-  const SHARE_COLUMNS = 'id, patient_id, kind, professional_id, token, code_hash, failed_attempts, all_documents, document_ids, expires_at, revoked_at, last_accessed_at, access_count, include_pressure, created_at'
+  const SHARE_COLUMNS = 'id, patient_id, kind, professional_id, token, code_hash, failed_attempts, all_documents, document_ids, expires_at, revoked_at, last_accessed_at, access_count, include_pressure, include_glucose, created_at'
+
+  async function glucoseRecord(patientId: string) {
+    const { data: readings, count, error } = await admin.from('patient_glucose_readings')
+      .select('id, measured_at, value, context, method, note', { count: 'exact' }).eq('patient_id', patientId).is('deleted_at', null)
+      .order('measured_at', { ascending: false }).limit(1000)
+    if (error) throw error
+    const { data: profile, error: profileError } = await admin.from('patient_diabetes_profiles')
+      .select('treatment, updated_at').eq('patient_id', patientId).maybeSingle()
+    if (profileError) throw profileError
+    return { readings: (readings ?? []).map(row => ({ id: row.id, measuredAt: row.measured_at, value: row.value,
+      context: row.context, method: row.method, note: row.note })), totalReadings: count ?? 0, treatment: profile?.treatment ?? null, updatedAt: profile?.updated_at ?? null }
+  }
 
   async function pressureReadings(patientId: string, days = 365) {
     const { data, error } = await admin.from('patient_bp_readings')
@@ -506,6 +520,7 @@ serve(async (request) => {
         urlTtlSeconds: SHARE_URL_TTL_SECONDS,
         documents,
         pressure: share.include_pressure ? await pressureReadings(share.patient_id) : [],
+        glucose: share.include_glucose ? await glucoseRecord(share.patient_id) : null,
       })
     }
 
@@ -574,6 +589,7 @@ serve(async (request) => {
             mimeType: row.mime_type, sizeBytes: Number(row.size_bytes) || 0,
           })),
           pressure: share.include_pressure ? await pressureReadings(share.patient_id) : [],
+          glucose: share.include_glucose ? await glucoseRecord(share.patient_id) : null,
         })))
         let carpeta = noAccount
         if (!folders.length && await doctorHasDni(dni)) {
@@ -652,7 +668,7 @@ serve(async (request) => {
       const event = text(body.event, 30)
       const feature = text(body.feature, 30) || null
       if (!['heartbeat', 'view', 'game_completed', 'invite_clicked'].includes(event)
-        || (event === 'view' && !['home', 'folder', 'upload', 'pressure', 'memory', 'share', 'account'].includes(feature || ''))) {
+        || (event === 'view' && !['home', 'folder', 'upload', 'pressure', 'glucose', 'memory', 'share', 'account'].includes(feature || ''))) {
         return reply(400, { success: false, message: 'Evento de actividad inválido.' })
       }
       const { error } = await admin.rpc('record_patient_activity', { p_patient_id: patient.id, p_event: event, p_feature: feature })
@@ -820,6 +836,39 @@ serve(async (request) => {
       return reply(200, { success: true, readings: await pressureReadings(patient.id, 3650) })
     }
 
+    if (action === 'glucose-list') return reply(200, { success: true, glucose: await glucoseRecord(patient.id) })
+    if (action === 'news-preference' || action === 'news-preference-save') {
+      if (action === 'news-preference-save') {
+        if (typeof body.enabled !== 'boolean') return reply(400, { success: false, message: 'Elegí si querés recibir novedades.' })
+        const { error } = await admin.from('patient_email_preferences').upsert({
+          email: patient.email.trim().toLowerCase(), opted_in: body.enabled, opted_out: !body.enabled, updated_at: new Date().toISOString(),
+        }, { onConflict: 'email' })
+        if (error) throw error
+      }
+      const { data, error } = await admin.from('patient_email_preferences').select('opted_in,opted_out').eq('email', patient.email.trim().toLowerCase()).maybeSingle()
+      if (error) throw error
+      return reply(200, { success: true, newsEnabled: data?.opted_in === true && data?.opted_out !== true })
+    }
+    if (action === 'glucose-add') {
+      const values = parseGlucoseReading(body)
+      const { error } = await admin.from('patient_glucose_readings').insert({ ...values, patient_id: patient.id })
+      if (error) throw error
+      return reply(200, { success: true, glucose: await glucoseRecord(patient.id) })
+    }
+    if (action === 'glucose-delete') {
+      const { data, error } = await admin.from('patient_glucose_readings').update({ deleted_at: new Date().toISOString() })
+        .eq('id', text(body.readingId, 40)).eq('patient_id', patient.id).is('deleted_at', null).select('id')
+      if (error) throw error
+      if (!data?.length) return reply(404, { success: false, message: 'Esa medición ya no existe.' })
+      return reply(200, { success: true })
+    }
+    if (action === 'diabetes-save') {
+      const treatment = parseDiabetesTreatment(body.treatment)
+      const { error } = await admin.from('patient_diabetes_profiles').upsert({ patient_id: patient.id, treatment, updated_at: new Date().toISOString() })
+      if (error) throw error
+      return reply(200, { success: true, glucose: await glucoseRecord(patient.id) })
+    }
+
     if (action === 'bp-add') {
       const systolic = Math.round(Number(body.systolic))
       const diastolic = Math.round(Number(body.diastolic))
@@ -862,11 +911,12 @@ serve(async (request) => {
       allDocuments: boolean,
       documentIds: string[],
       includePressure: boolean,
+      includeGlucose: boolean,
     ): Promise<boolean> {
       const { data: existing } = await admin.from('patient_shares').select('id')
         .eq('patient_id', patient!.id).eq('kind', 'doctor').eq('professional_id', professional.id).is('revoked_at', null).maybeSingle()
       if (existing) {
-        const { error } = await admin.from('patient_shares').update({ all_documents: allDocuments, document_ids: documentIds, include_pressure: includePressure }).eq('id', existing.id)
+        const { error } = await admin.from('patient_shares').update({ all_documents: allDocuments, document_ids: documentIds, include_pressure: includePressure, include_glucose: includeGlucose }).eq('id', existing.id)
         if (error) throw error
         await log(patient!.id, 'share_doctor_updated')
         return true
@@ -874,6 +924,7 @@ serve(async (request) => {
       const { error } = await admin.from('patient_shares').insert({
         patient_id: patient!.id, kind: 'doctor', professional_id: professional.id, all_documents: allDocuments, document_ids: documentIds,
         include_pressure: includePressure,
+        include_glucose: includeGlucose,
       })
       if (error) throw error
       await log(patient!.id, 'share_doctor_created')
@@ -896,9 +947,10 @@ serve(async (request) => {
       if (!professional || professional.active === false) return reply(404, { success: false, message: 'No encontramos a ese médico.' })
       const allDocuments = body.allDocuments !== false
       const includePressure = body.includePressure !== false
+      const includeGlucose = body.includeGlucose === true
       const documentIds = allDocuments ? [] : await validDocumentIds(patient.id, body.documentIds)
-      if (!allDocuments && !documentIds.length && !includePressure) return reply(400, { success: false, message: 'Elegí al menos un estudio o tu registro de presión para compartir.' })
-      const updated = await shareWithProfessional(professional, allDocuments, documentIds, includePressure)
+      if (!allDocuments && !documentIds.length && !includePressure && !includeGlucose) return reply(400, { success: false, message: 'Elegí al menos un estudio o registro de salud para compartir.' })
+      const updated = await shareWithProfessional(professional, allDocuments, documentIds, includePressure, includeGlucose)
       return reply(200, { success: true, updated })
     }
 
@@ -951,7 +1003,7 @@ serve(async (request) => {
       }
       const { data: professional } = await admin.from('professionals').select('id, full_name, email, active').eq('id', requestRow.professional_id).maybeSingle()
       if (!professional || professional.active === false) return reply(404, { success: false, message: 'Ese médico ya no está disponible.' })
-      await shareWithProfessional(professional, true, [], body.includePressure !== false)
+      await shareWithProfessional(professional, true, [], body.includePressure !== false, body.includeGlucose === true)
       await admin.from('patient_link_requests').update({ status: 'accepted', responded_at: new Date().toISOString() }).eq('id', requestRow.id)
       return reply(200, { success: true })
     }
@@ -961,8 +1013,9 @@ serve(async (request) => {
       if (!SHARE_DAYS.has(days)) return reply(400, { success: false, message: 'Elegí por cuánto tiempo compartir.' })
       const allDocuments = body.allDocuments !== false
       const includePressure = body.includePressure !== false
+      const includeGlucose = body.includeGlucose === true
       const documentIds = allDocuments ? [] : await validDocumentIds(patient.id, body.documentIds)
-      if (!allDocuments && !documentIds.length && !includePressure) return reply(400, { success: false, message: 'Elegí al menos un estudio o tu registro de presión para compartir.' })
+      if (!allDocuments && !documentIds.length && !includePressure && !includeGlucose) return reply(400, { success: false, message: 'Elegí al menos un estudio o registro de salud para compartir.' })
       const { count } = await admin.from('patient_shares').select('id', { count: 'exact', head: true })
         .eq('patient_id', patient.id).eq('kind', 'link').is('revoked_at', null).gt('expires_at', new Date().toISOString())
       if ((count ?? 0) >= MAX_ACTIVE_LINKS) return reply(400, { success: false, message: 'Tenés demasiados links activos. Desactivá alguno antes de crear otro.' })
@@ -973,7 +1026,7 @@ serve(async (request) => {
       const expiresAt = new Date(Date.now() + days * 86400000).toISOString()
       const { error } = await admin.from('patient_shares').insert({
         id: shareId, patient_id: patient.id, kind: 'link', token, code_hash: await hashShareCode(shareId, code),
-        all_documents: allDocuments, document_ids: documentIds, expires_at: expiresAt, include_pressure: includePressure,
+        all_documents: allDocuments, document_ids: documentIds, expires_at: expiresAt, include_pressure: includePressure, include_glucose: includeGlucose,
       })
       if (error) throw error
       await log(patient.id, 'share_link_created')
@@ -994,7 +1047,7 @@ serve(async (request) => {
         shares: rows.map((row) => {
           const professional = professionals?.find((item) => item.id === row.professional_id)
           return {
-            id: row.id, kind: row.kind, allDocuments: row.all_documents, documentCount: (row.document_ids ?? []).length, includePressure: row.include_pressure,
+            id: row.id, kind: row.kind, allDocuments: row.all_documents, documentCount: (row.document_ids ?? []).length, includePressure: row.include_pressure, includeGlucose: row.include_glucose,
             expiresAt: row.expires_at, accessCount: row.access_count, lastAccessedAt: row.last_accessed_at, createdAt: row.created_at,
             doctorName: professional?.full_name ?? '', doctorSpecialty: professional?.specialty ?? '',
             url: row.kind === 'link' && row.token ? `${PUBLIC_SITE_URL}/compartido/${row.token}` : null,
@@ -1015,6 +1068,7 @@ serve(async (request) => {
 
     return reply(400, { success: false, message: 'Acción no válida.' })
   } catch (error) {
+    if (error instanceof GlucoseInputError) return reply(400, { success: false, message: error.message })
     console.error('patient-folder:', action, error instanceof Error ? error.message : error)
     return reply(500, { success: false, message: 'No se pudo completar la acción. Intentá nuevamente.' })
   }

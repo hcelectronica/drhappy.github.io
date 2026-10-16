@@ -10,6 +10,7 @@ import {
   type DoctorSharedFolder,
 } from './patientFolderService'
 import { BpDoctorSummary } from './BloodPressure'
+import { GlucoseSummary } from './GlucoseSummary'
 
 // Estudios que el paciente compartió desde su Carpeta de Salud. Se consultan en vivo: si revoca, desaparecen.
 export default function PatientSharedFolderPanel({ dni }: { dni: string }) {
@@ -51,7 +52,7 @@ export default function PatientSharedFolderPanel({ dni }: { dni: string }) {
       <section className="patient-form-block paper-record-block">
         <h4 className="block-title">📁 Este paciente tiene Carpeta de Salud</h4>
         {carpeta.status === 'pending' ? (
-          <p className="paper-record-meta">⏳ Le pediste acceso. Cuando lo acepte desde su app, vas a ver acá sus estudios y su registro de presión.</p>
+          <p className="paper-record-meta">⏳ Le pediste acceso. Cuando lo acepte desde su app, vas a ver acá los datos que autorice compartir. La glucosa y su tratamiento requieren una autorización adicional del paciente.</p>
         ) : carpeta.status === 'declined' ? (
           <p className="paper-record-meta">El paciente prefirió no compartir su carpeta por ahora. Vas a poder volver a pedirlo en unos días.</p>
         ) : (
@@ -99,7 +100,11 @@ export default function PatientSharedFolderPanel({ dni }: { dni: string }) {
               <BpDoctorSummary readings={folder.pressure} onCopy={setNotice} />
             </details>
           ) : null}
-          {folder.documents.length === 0 ? <p className="paper-record-meta">{folder.pressure?.length ? 'No compartió estudios, solo su registro de presión.' : 'La carpeta todavía no tiene estudios.'}</p> : (
+          {folder.glucose && <details className="patient-documents-folder" open>
+            <summary>Glucosa y tratamiento de diabetes</summary>
+            <GlucoseSummary record={folder.glucose} onCopy={setNotice} />
+          </details>}
+          {folder.documents.length === 0 ? <p className="paper-record-meta">{folder.pressure?.length || folder.glucose ? 'No compartió estudios. Sus controles autorizados se muestran a continuación.' : 'La carpeta todavía no tiene estudios compartidos.'}</p> : (
             <ul className="paper-record-list">
               {folder.documents.map((document) => {
                 const meta = patientCategoryMeta(document.category)

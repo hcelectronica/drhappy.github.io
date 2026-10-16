@@ -1,0 +1,13 @@
+.patient-mail { min-width: 0; }
+.patient-mail form, .patient-mail label:not(.patient-mail-check) { display: grid; gap: 10px; }
+.patient-mail form { gap: 18px; }
+.patient-mail input:not([type=checkbox]), .patient-mail select, .patient-mail textarea { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.patient-mail-check { display: flex; align-items: start; gap: 10px; }
+.patient-mail-check input { flex: 0 0 20px; width: 20px; height: 20px; }
+.patient-mail small { display: block; overflow-wrap: anywhere; }
+.patient-mail-recipients { max-height: 300px; overflow: auto; display: grid; gap: 12px; padding: 12px; border: 1px solid var(--border-color); }
+.patient-mail-preview, .patient-mail-history { padding: 18px; margin: 16px 0; border: 1px solid var(--border-color); border-radius: 12px; overflow-wrap: anywhere; }
+.patient-mail-preview { background: var(--surface-bg); color: var(--text-primary); }
+.patient-mail-message { white-space: pre-line; }
+.patient-mail-counts { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.patient-mail-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }

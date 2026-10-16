@@ -41,6 +41,7 @@ import { getHolidayName } from './argentineHolidays'
 import { SupportContactForm } from './SupportContactForm'
 import { AdminSupportInbox } from './AdminSupportInbox'
 import { AdminPatientStats } from './AdminPatientStats'
+import { AdminPatientCommunications } from './AdminPatientCommunications'
 import { SignaturePad } from './SignaturePad'
 import { blobToBase64, buildCertificatePdf, buildQrDataUrl, certificateFileName, certificateSignedContent, formatCertificateDate } from './medicalCertificate'
 import { acknowledgePatientInviteSubmissions, buildPatientInviteUrl, getPatientInviteLink, pullPatientInviteSubmissions } from './patientInviteService'
@@ -2795,7 +2796,7 @@ function App() {
   const [prescriptionSaving, setPrescriptionSaving] = useState(false)
 
   const [toolsActiveTab, setToolsActiveTab] = useState<'protocols' | 'vademecum' | 'consult' | 'community'>('protocols')
-  const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo' | 'mensajes' | 'pacientes'>('usuarios')
+  const [adminSection, setAdminSection] = useState<'usuarios' | 'actividad' | 'sofia' | 'comunicados' | 'correo' | 'mensajes' | 'pacientes' | 'patient-mail'>('usuarios')
   const [adminUserQuery, setAdminUserQuery] = useState('')
   const [adminExpandedUserId, setAdminExpandedUserId] = useState<string | null>(null)
   const [premiumPrompt, setPremiumPrompt] = useState<{ icon: string; title: string; pitch: string; bullets: string[] } | null>(null)
@@ -12315,6 +12316,9 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </div>
 
             <nav className="screen-action-bar" aria-label="Secciones de administración">
+              {activeUser?.email?.trim().toLowerCase() === 'mudimudialan@gmail.com' && <button type="button" className={`screen-action${adminSection === 'patient-mail' ? ' active' : ''}`} onClick={() => setAdminSection('patient-mail')}>
+                <span aria-hidden="true">✉️</span> Comunicación con pacientes
+              </button>}
               <button type="button" className={`screen-action${adminSection === 'pacientes' ? ' active' : ''}`} onClick={() => setAdminSection('pacientes')}>
                 <span aria-hidden="true">📁</span> Mi Carpeta de Salud
               </button>
@@ -12340,6 +12344,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
 
             {adminSection === 'mensajes' ? <AdminSupportInbox /> : null}
             {adminSection === 'pacientes' ? <AdminPatientStats /> : null}
+            {adminSection === 'patient-mail' && activeUser?.email?.trim().toLowerCase() === 'mudimudialan@gmail.com' ? <AdminPatientCommunications /> : null}
 
             {/* Métricas de uso por usuario — solo conteos y fechas, sin datos clínicos */}
             {adminSection === 'actividad' ? (

@@ -10,6 +10,30 @@ Web app base en React + TypeScript para:
 
 ## Ficha clínica y seguimiento
 
+### Comunicación con pacientes (cuenta administradora)
+
+Administración → **Comunicación con pacientes** está habilitado exclusivamente para `mudimudialan@gmail.com`. La autorización real se verifica en el servidor mediante sesión profesional, rol administrador, cuenta activa y la tabla `patient_communication_admins`; no depende del botón visible ni de un ID enviado por el navegador.
+
+Permite elegir **Mis pacientes del consultorio** (solo el espacio de trabajo propio) o **Registrados en Mi Carpeta de Salud** (cuentas activas, verificadas y con aceptación explícita de novedades). Instalar la mini app no autoriza comunicaciones promocionales. La aceptación o baja está disponible en Inicio y Mi cuenta del paciente; las cuentas anteriores no se suscriben automáticamente. En consultorio se exige confirmar que los destinatarios autorizaron las invitaciones. Una baja se respeta para ambas audiencias.
+
+Incluye plantillas editables de Carpeta de Salud gratuita y orientación virtual asincrónica paga/no obligatoria, con el enlace del profesional habilitado. Se seleccionan pacientes individuales o todos los habilitados, se revisa la vista previa y se confirma antes de enviar. Cada dirección recibe un correo separado, sin datos clínicos, con identificación del remitente y enlace personal de baja. Abrir ese enlace no da de baja automáticamente: muestra una confirmación pública en `/paciente?unsubscribe=…`, sin exigir login.
+
+El borrador conserva una instantánea inmutable de destinatarios y mensaje. Los lotes reclaman hasta cinco destinatarios atómicamente; se revalidan bajas, aceptación, estado de cuenta y enlace virtual antes del envío. Cerrar la pantalla o pausar detiene el procesamiento después del lote actual. El historial permite continuar únicamente pendientes. Los aceptados por SMTP no equivalen a correos entregados. Los fallidos y los sin confirmar (incluidos lotes interrumpidos) no se reintentan automáticamente para evitar duplicados; se debe revisar el estado antes de preparar otra campaña.
+
+Despliegue: migración `20261016020000_patient_communications.sql`, funciones `patient-communications` y `patient-folder`, ambas con `--no-verify-jwt` porque validan las sesiones propias. Tablas y RPC solo para `service_role`. Pruebas sin envío real: `node --test tests/patient-tools.test.mjs tests/patient-communications.endpoint.test.mjs` y `supabase db query --linked -f tests/patient-tools.database.sql` (transacción con rollback).
+
+### Mi glucosa y tratamiento de diabetes
+
+En `/paciente` → **Mi glucosa**, el paciente registra valor entero en **mg/dL**, fecha y hora actuales o de la toma (hasta un año atrás), momento (ayunas, antes/después de comer, antes de dormir u otro), método y notas/síntomas. El tratamiento admite tipo de diabetes, año de diagnóstico, varias insulinas con unidades y horarios/pautas, y otros medicamentos con dosis y frecuencia, incluso junto con insulina. No calcula ni recomienda dosis.
+
+Los datos son informados por el paciente y no tienen vigilancia médica en tiempo real. La pantalla incluye advertencias de consulta/urgencias y no convierte lecturas HI/LO en números inventados. Las mediciones pueden borrarse; el tratamiento se guarda por separado. Se muestran hasta las últimas 1.000 mediciones, indicando el total si hay más; las anteriores permanecen guardadas.
+
+**Incluir glucosa y tratamiento de diabetes** es un permiso independiente, desmarcado inicialmente en cada acceso nuevo o solicitud médica. Los accesos existentes mantienen `include_glucose=false`. El médico o el enlace temporal solo recibe estos datos cuando se autorizaron; la revocación impide nuevas consultas. En la ficha profesional se puede revisar y copiar un resumen para incorporarlo manualmente a una evolución, nunca automáticamente ni alterando el tratamiento informado. El resumen conserva horarios y contexto, sin mezclar las tomas en un promedio.
+
+Despliegue: migración `20261016010000_patient_glucose.sql` y función `patient-folder`. Las nuevas tablas clínicas tienen RLS y acceso exclusivo `service_role`; la función resuelve la propiedad desde la sesión del paciente. Pruebas de validación y backend: los comandos anteriores. La prueba `node tests/patient-tools.browser.mjs` usa Vite en 5194 y CDP en 9379, con todas las funciones interceptadas y datos `example.invalid`; no envía emails ni registra datos clínicos reales.
+
+La comprobación opcional desplegada `tests/patient-tools.live.mjs` exige `TEST_PATIENT_LIVE=1` y `TEST_PATIENT_DB_DIR` apuntando al proyecto vinculado con su configuración pública en `.env.local`. Verifica que el proyecto coincida, crea cuentas sintéticas temporales y comprueba aislamiento, guardado, permiso médico/link, revocación y preferencias; las elimina al terminar. No ejecuta campañas ni llama a SMTP.
+
 ### Guía de herramientas y contacto público
 
 Solo en la vista de PC (desde 900 px), el inicio profesional muestra un carrusel promocional compacto, de hasta 760 px de ancho, que avanza cada 7 segundos. Reutiliza los mismos flyers vectoriales de la portada mediante `PromotionalArtwork`, con un breve detalle adicional de cada función disponible en la cuenta. Incluye Sofía y la variante odontológica. No abre tutoriales, capturas ni herramientas. Tiene controles Anterior/Siguiente y Pausar/Reanudar; se detiene al pasar el mouse, usar el teclado o dejar la pestaña en segundo plano. Respeta la preferencia de movimiento reducido y el modo nocturno. Reserva espacio debajo de los controles para evitar que la barra inferior los tape.

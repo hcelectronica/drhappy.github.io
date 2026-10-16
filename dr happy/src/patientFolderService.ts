@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient'
+import type { GlucoseRecord } from '../supabase/functions/_shared/patientGlucose'
 
 export const PATIENT_SESSION_KEY = 'drhappy-patient-session'
 const SESSION_HEADER = 'x-drhappy-patient-session'
@@ -63,6 +64,8 @@ export interface PatientFolderResponse {
   updated?: boolean
   readings?: BpReading[]
   reading?: BpReading
+  glucose?: GlucoseRecord
+  newsEnabled?: boolean
   requests?: PatientLinkRequest[]
 }
 
@@ -94,6 +97,7 @@ export interface PatientShare {
   allDocuments: boolean
   documentCount: number
   includePressure: boolean
+  includeGlucose: boolean
   expiresAt: string | null
   accessCount: number
   lastAccessedAt: string | null
@@ -125,6 +129,7 @@ export interface OpenShareResponse {
   urlTtlSeconds?: number
   documents?: SharedDocument[]
   pressure?: BpReading[]
+  glucose?: GlucoseRecord | null
 }
 
 export interface DoctorSharedFolder {
@@ -133,6 +138,7 @@ export interface DoctorSharedFolder {
   sharedAt: string
   documents: SharedDocument[]
   pressure?: BpReading[]
+  glucose?: GlucoseRecord | null
 }
 
 export interface DoctorFolderLink {
