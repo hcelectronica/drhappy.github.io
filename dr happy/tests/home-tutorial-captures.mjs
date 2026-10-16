@@ -188,7 +188,8 @@ try {
       await sleep(350)
       const clip = await evaluate(`(() => {
         const e=${find}; const r=e.getBoundingClientRect();
-        const width=Math.min(900,Math.max(600,r.width+80));
+        // Keep 2x PNGs within the CDN's 1600px limit to avoid automatic downscaling.
+        const width=Math.min(800,Math.max(600,r.width+80));
         const height=360;
         const x=Math.max(0,Math.min(innerWidth-width,r.x+r.width/2-width/2));
         const y=Math.max(0,Math.min(innerHeight-height,r.y+r.height/2-height/2));

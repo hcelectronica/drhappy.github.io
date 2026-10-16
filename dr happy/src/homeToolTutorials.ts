@@ -158,5 +158,5 @@ export function getHomeToolTutorial(key: string, label: string): HomeToolTutoria
 }
 
 export function homeToolTutorialImage(image: string, step = 0): string {
-  return `${import.meta.env.BASE_URL}tool-tutorials/${image}-${step + 1}.png`
+  return `${import.meta.env.BASE_URL}tool-tutorials/${image}-${step + 1}.png?v=2`
 }

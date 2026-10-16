@@ -61,7 +61,7 @@ try {
       await wait(`document.querySelector('.home-tutorial-dialog')?.open`)
       assert.equal(await evaluate(`document.querySelector('[aria-label="Navegación de pasos"] button').disabled`), true)
       for (let step = 1; step <= 3; step++) {
-      await wait(`document.querySelector('.home-tutorial-dialog img')?.src.endsWith('-${step}.png') && document.querySelector('.home-tutorial-dialog img')?.naturalWidth >= 1200`)
+      await wait(`document.querySelector('.home-tutorial-dialog img')?.src.endsWith('-${step}.png?v=2') && document.querySelector('.home-tutorial-dialog img')?.naturalWidth >= 1200`)
       assert.equal(await evaluate(`document.querySelector('.home-tutorial-step-controls > span').textContent`), `Paso ${step} de 3`)
       const summary = await evaluate(`(() => {
         const p=document.querySelector('.home-tutorial-summary');
@@ -98,6 +98,18 @@ try {
   assert.equal(await evaluate('window.toolNavigationCount || 0'), 0)
   await evaluate(`document.querySelector('.home-tool-flyer').click()`)
   await wait(`document.querySelector('.home-tutorial-dialog')?.open`)
+  assert.equal(await evaluate(`document.querySelector('.home-tutorial-step-controls > span').textContent`), 'Paso 1 de 3')
+  await evaluate(`document.querySelector('.home-tutorial-step-controls button:last-child').click()`)
+  await evaluate(`document.querySelector('.home-tutorial-step-controls button:first-child').click()`)
+  assert.equal(await evaluate(`document.querySelector('.home-tutorial-step-controls > span').textContent`), 'Paso 1 de 3')
+  await evaluate(`document.querySelector('.home-tutorial-stepper li:last-child button').click()`)
+  assert.match(await evaluate(`document.querySelector('.home-tutorial-step-controls button:last-child').textContent`), /Entendido/)
+  await evaluate(`document.querySelector('.home-tutorial-step-controls button:last-child').click()`)
+  await wait(`!document.querySelector('.home-tutorial-dialog')`)
+  assert.equal(await evaluate(`document.activeElement === document.querySelector('.home-tool-flyer')`), true)
+  await evaluate(`document.querySelector('.home-tool-flyer').click()`)
+  await wait(`document.querySelector('.home-tutorial-dialog')?.open`)
+  assert.equal(await evaluate(`document.querySelector('.home-tutorial-step-controls > span').textContent`), 'Paso 1 de 3')
   await evaluate(`document.querySelector('[aria-label="Cerrar mini tutorial"]').click()`)
   await wait(`!document.querySelector('.home-tutorial-dialog')`)
   await send('Page.navigate', { url: `${origin}/tests/home-tool-guide.ui.html?dental` })
@@ -109,7 +121,7 @@ try {
       await wait(`document.querySelector('.home-tutorial-dialog')?.open`)
       const image = index === 3 ? 'attention-dental' : 'tools-dental'
       for (let step = 1; step <= 3; step++) {
-        await wait(`document.querySelector('.home-tutorial-dialog img').src.endsWith('/${image}-${step}.png') && document.querySelector('.home-tutorial-dialog img').naturalWidth >= 1200`)
+        await wait(`document.querySelector('.home-tutorial-dialog img').src.endsWith('/${image}-${step}.png?v=2') && document.querySelector('.home-tutorial-dialog img').naturalWidth >= 1200`)
         if (step < 3) await evaluate(`document.querySelector('.home-tutorial-step-controls button:last-child').click()`)
       }
       await evaluate(`document.querySelector('[aria-label="Cerrar mini tutorial"]').click()`)

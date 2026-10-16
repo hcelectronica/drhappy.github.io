@@ -63,8 +63,9 @@ test('every tutorial has benefit copy and three short illustrated steps in lossl
       const image = readFileSync(new URL(`../public/tool-tutorials/${tutorial.image}-${index + 1}.png`, import.meta.url))
       assert.equal(image.subarray(1, 4).toString(), 'PNG')
       assert.ok(image.readUInt32BE(16) >= 1200, 'Capture must be at least 1200 physical pixels wide')
+      assert.ok(image.readUInt32BE(16) <= 1600, 'Capture must avoid automatic CDN downscaling above 1600 pixels')
       assert.ok(image.readUInt32BE(20) >= 720, 'Capture must be at least 720 physical pixels tall')
-      assert.equal(model.homeToolTutorialImage(tutorial.image, index), `/tool-tutorials/${tutorial.image}-${index + 1}.png`)
+      assert.equal(model.homeToolTutorialImage(tutorial.image, index), `/tool-tutorials/${tutorial.image}-${index + 1}.png?v=2`)
     })
   }
 })
