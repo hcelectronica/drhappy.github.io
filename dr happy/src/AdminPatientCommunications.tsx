@@ -13,8 +13,8 @@ function CampaignCounts({ campaign }: { campaign: PatientCampaign }) {
     <span>Fallidos: {campaign.counts.failed}</span><span>Sin confirmar: {campaign.counts.uncertain + campaign.counts.sending}</span>
   </div>
 }
-export function AdminPatientCommunications() {
-  const [audience, setAudience] = useState<CommunicationAudience>('own')
+export function AdminPatientCommunications({ initialAudience = 'own' }: { initialAudience?: CommunicationAudience }) {
+  const [audience, setAudience] = useState<CommunicationAudience>(initialAudience)
   const [template, setTemplate] = useState<CommunicationTemplate>('folder')
   const [contacts, setContacts] = useState<CommunicationContact[]>([])
   const [virtualReady, setVirtualReady] = useState(false)

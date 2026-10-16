@@ -3,17 +3,19 @@ import { fetchAdminPatientStats, retryPatientNotices } from './adminStatsService
 import type { AdminPatientStatsData } from './adminStatsService'
 import { useErrorNotification } from './useErrorNotification'
 import './adminPatientStats.css'
+import { PatientAccountDeletion } from './PatientAccountDeletion'
 
 const dateTime = (value: string | null) => value
   ? new Date(value).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' }) : '—'
 const number = (value: number) => value.toLocaleString('es-AR')
 
-export function AdminPatientStats() {
+export function AdminPatientStats({ onCommunications }: { onCommunications?: () => void }) {
   const [stats, setStats] = useState<AdminPatientStatsData | null>(null)
   const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(true)
   const [retrying, setRetrying] = useState(false)
   const [notice, setNotice] = useState('')
+  const [deleting, setDeleting] = useState<AdminPatientStatsData['recent'][number] | null>(null)
   const [error, setError] = useErrorNotification()
 
   const load = useCallback(async () => {
@@ -52,6 +54,10 @@ export function AdminPatientStats() {
         <button type="button" className="ghost" disabled={loading} onClick={() => void load()}>Actualizar</button>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
+      {onCommunications && <button type="button" onClick={onCommunications}>Enviar novedades a pacientes de Mi Carpeta de Salud</button>}
+      {deleting && <PatientAccountDeletion key={deleting.id} patient={deleting} onClose={() => { setDeleting(null); void load() }} onDeleted={() => {
+        setDeleting(null); setNotice('Cuenta y datos de Mi Carpeta de Salud eliminados. La historia clínica del consultorio se conserva.'); void load()
+      }} />}
       {loading && <p role="status">Cargando estadísticas…</p>}
       {stats && !loading && (
         <>
@@ -105,6 +111,7 @@ export function AdminPatientStats() {
                   <div><dt>Registro</dt><dd>{dateTime(patient.created_at)}</dd></div>
                   <div><dt>Última actividad</dt><dd>{dateTime(patient.last_seen_at || patient.last_login_at)}</dd></div>
                 </dl>
+                <button type="button" className="ghost aps-delete-button" disabled={deleting !== null} onClick={() => { setNotice(''); setDeleting(patient) }}>Eliminar paciente</button>
               </li>
             ))}
           </ul>

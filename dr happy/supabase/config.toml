@@ -45,6 +45,9 @@ verify_jwt = false
 [functions.admin-stats]
 verify_jwt = true
 
+[functions.patient-account-admin]
+verify_jwt = false
+
 [functions.self-delete-account]
 verify_jwt = true
 

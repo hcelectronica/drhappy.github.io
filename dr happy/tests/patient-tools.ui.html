@@ -8,16 +8,21 @@ import PatientGlucoseView from '../src/PatientGlucoseView.tsx'
 import { PatientPortal } from '../src/PatientPortal.tsx'
 import { GlucoseSummary } from '../src/GlucoseSummary.tsx'
 import SharedFolderPage from '../src/SharedFolderPage.tsx'
+import { PatientAccountDeletion } from '../src/PatientAccountDeletion.tsx'
+import { AdminPatientStats } from '../src/AdminPatientStats.tsx'
+import { ErrorNotificationProvider } from '../src/ErrorNotifications.tsx'
 import { AdminPatientCommunications } from '../src/AdminPatientCommunications.tsx'
 import '../src/index.css'
 import '../src/App.css'
 import '../src/PatientPortal.css'
+import '../src/adminPatientStats.css'
 
 const params = new URLSearchParams(location.search)
 const patient = { id: 'fixture-patient', firstName: 'Paciente', lastName: 'Ficticio', fullName: 'Paciente Ficticio',
   email: 'fixture@example.invalid', dni: '00000000', birthDate: null, phone: null, storageUsedBytes: 0, storageQuotaBytes: 104857600, createdAt: new Date().toISOString() }
 let record = JSON.parse(sessionStorage.getItem('patient-tools-record') || '{"readings":[],"totalReadings":0,"treatment":null,"updatedAt":null}')
 let campaign = null, news = false
+let backup = null
 window.fixtureCalls = []
 window.fixtureNotices = []
 const realFetch = window.fetch.bind(window)
@@ -29,7 +34,21 @@ window.fetch = async (input, init) => {
   const body = JSON.parse(init?.body || '{}')
   window.fixtureCalls.push({ endpoint: url.split('/').at(-1), ...body })
   let result = { success: true }, status = 200
-  if (url.includes('patient-communications')) {
+  if (url.includes('admin-stats')) {
+    result.stats = { summary: { total: 1, verified: 1, pending: 0, registrations7d: 1, registrations30d: 1, active_today: 1, active7d: 1, active30d: 1, minutes30d: 1, games30d: 0, invites30d: 0 },
+      documents: { count: 0, bytes: 0, patients: 0 }, pressure: { count: 0, patients: 0 }, shares: { doctor: 0, link: 0 }, notices: { sent: 0, pending: 0 },
+      recent: [{ id: 'fixture-patient', full_name: patient.fullName, email: patient.email, active: true, created_at: patient.createdAt, email_verified_at: patient.createdAt, last_seen_at: null, last_login_at: null }],
+      daily: [], features: {}, trackingSince: '2026-10-16', generatedAt: new Date().toISOString() }
+  } else if (url.includes('patient-account-admin')) {
+    if (body.action === 'prepare') backup = { total: 2, counts: { pending: 2, sending: 0, sent: 0, failed: 0, uncertain: 0 } }
+    if (body.action === 'send-next') {
+      if (window.fixtureBackupFail) {
+        status = 409; result = { success: false, message: 'Error simulado de copia. No se eliminó la cuenta.', backup }
+      } else { backup.counts.pending--; backup.counts.sent++ }
+    }
+    if (body.action === 'delete') result.deleted = true
+    result.backup = backup
+  } else if (url.includes('patient-communications')) {
     if (body.action === 'contacts') result = { ...result, virtualReady: true, contacts: [
       { id: '1', name: 'Paciente Uno', email: 'uno@example.invalid', eligible: true, reason: '' },
       { id: '2', name: 'Paciente Dos', email: 'dos@example.invalid', eligible: body.audience === 'own', reason: body.audience === 'own' ? '' : 'No aceptó novedades' },
@@ -73,8 +92,17 @@ window.fetch = async (input, init) => {
 localStorage.setItem('drhappy-patient-session', 'fixture-only-session')
 sessionStorage.setItem('drhappy-patient-install-offered', '1')
 const notify = value => { window.fixtureNotices.push(value) }
+function Administration() {
+  const [mail, setMail] = React.useState(false)
+  return mail ? React.createElement(AdminPatientCommunications, { initialAudience: 'folder' })
+    : React.createElement(AdminPatientStats, { onCommunications: () => setMail(true) })
+}
 createRoot(document.getElementById('root')).render(
-  params.has('email') ? React.createElement('main', { className: 'app', style: { padding: '12px' } }, React.createElement(AdminPatientCommunications))
+  params.has('administration') ? React.createElement(ErrorNotificationProvider, null, React.createElement('main', { className: 'app' }, React.createElement(Administration)))
+  : params.has('deletion') ? React.createElement('main', { className: 'admin-patient-stats', style: { padding: '12px' } },
+    React.createElement(PatientAccountDeletion, { patient: { id: 'fixture-patient', full_name: 'Paciente Ficticio', email: 'fixture@example.invalid' },
+      onDeleted: () => { window.fixtureDeleted = true }, onClose: () => { window.fixtureClosed = true } }))
+  : params.has('email') ? React.createElement('main', { className: 'app', style: { padding: '12px' } }, React.createElement(AdminPatientCommunications))
   : params.has('portal') || params.has('unsubscribe') ? React.createElement(PatientPortal)
   : params.has('public') ? React.createElement(SharedFolderPage, { token: 'fixture-share-token' })
   : params.has('summary') ? React.createElement('main', { className: 'pp-main' }, React.createElement(GlucoseSummary, { record, onCopy: notify }))

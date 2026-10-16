@@ -12343,8 +12343,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </nav>
 
             {adminSection === 'mensajes' ? <AdminSupportInbox /> : null}
-            {adminSection === 'pacientes' ? <AdminPatientStats /> : null}
-            {adminSection === 'patient-mail' && activeUser?.email?.trim().toLowerCase() === 'mudimudialan@gmail.com' ? <AdminPatientCommunications /> : null}
+            {adminSection === 'pacientes' ? <AdminPatientStats onCommunications={activeUser?.email?.trim().toLowerCase() === 'mudimudialan@gmail.com' ? () => setAdminSection('patient-mail') : undefined} /> : null}
+            {adminSection === 'patient-mail' && activeUser?.email?.trim().toLowerCase() === 'mudimudialan@gmail.com' ? <AdminPatientCommunications initialAudience="folder" /> : null}
 
             {/* Métricas de uso por usuario — solo conteos y fechas, sin datos clínicos */}
             {adminSection === 'actividad' ? (

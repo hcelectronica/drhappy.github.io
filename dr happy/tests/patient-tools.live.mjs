@@ -82,6 +82,26 @@ try {
   assert.equal((await call({ action: 'contacts', audience: 'folder' }, null, false, 'patient-communications')).status, 401)
   success(await call({ action: 'glucose-delete', readingId: record.readings[0].id }))
   assert.equal(success(await call({ action: 'glucose-list' })).glucose.totalReadings, 0)
+  assert.equal((await call({ action: 'status', patientId: patient }, null, false, 'patient-account-admin')).status, 401)
+  assert.equal((await call({ action: 'status', patientId: patient }, doctorToken, true, 'patient-account-admin')).status, 403)
+  await sql(`BEGIN;
+    UPDATE professionals SET is_admin=true WHERE id='${doctor}' AND email='${doctor}@example.invalid';
+    INSERT INTO patient_documents(patient_id,title,category,mime_type,size_bytes,file_path,status)
+      VALUES('${patient}','Synthetic unavailable file','otros','application/pdf',100,'${patient}/missing-fixture.pdf','ready');
+    COMMIT;`)
+  const deletion = (action, overrides = {}) => call({ action, patientId: patient, confirmEmail: email, confirmPermanent: true, ...overrides }, doctorToken, true, 'patient-account-admin')
+  assert.equal(success(await deletion('prepare')).backup.total, 1)
+  assert.equal((await call({ action: 'glucose-list' })).status, 401, 'Preparing deletion revokes the patient session')
+  const missing = await deletion('send-next')
+  assert.equal(missing.status, 409)
+  assert.equal(missing.body.backup.counts.failed, 1)
+  assert.equal((await deletion('delete', { receiptConfirmed: true })).status, 409, 'Missing attachment must retain the account')
+  const empty = (action, overrides = {}) => deletion(action, { patientId: other, confirmEmail: otherEmail, ...overrides })
+  assert.equal(success(await empty('prepare')).backup.total, 0)
+  assert.equal((await empty('delete')).status, 409)
+  assert.equal(success(await empty('delete', { receiptConfirmed: true })).deleted, true)
+  assert.equal((await empty('status')).status, 404)
+  console.log('PASS deployed deletion: admin-only, frozen sessions, missing backup retains account, empty-account deletion requires final confirmation. No SMTP calls.')
   console.log('PASS deployed functions: patient isolation, glucose/treatment persistence, independent doctor/link consent, revocation, email preference and admin authorization. No SMTP calls.')
 } finally {
   await sql(`BEGIN;
