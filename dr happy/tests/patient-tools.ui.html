@@ -51,10 +51,11 @@ window.fetch = async (input, init) => {
   } else if (url.includes('patient-communications')) {
     if (body.action === 'contacts') result = { ...result, virtualReady: true, contacts: [
       { id: '1', name: 'Paciente Uno', email: 'uno@example.invalid', eligible: true, reason: '' },
-      { id: '2', name: 'Paciente Dos', email: 'dos@example.invalid', eligible: body.audience === 'own', reason: body.audience === 'own' ? '' : 'No aceptó novedades' },
+      { id: '2', name: 'Paciente Dos', email: 'dos@example.invalid', eligible: true, reason: '' },
+      ...(body.audience === 'folder' ? [{ id: '3', name: 'Paciente Baja', email: 'baja@example.invalid', eligible: false, reason: 'Solicitó la baja' }] : []),
     ] }
     if (body.action === 'preview') {
-      const total = body.all ? body.audience === 'folder' ? 1 : 2 : body.contactIds.length
+      const total = body.all ? 2 : body.contactIds.length
       campaign = { id: body.campaignId, audience: body.audience, template: body.template, subject: body.subject, message: body.message,
         link: body.template === 'folder' ? 'https://www.drhappy.com.ar/paciente' : 'https://www.drhappy.com.ar/consulta/fixture',
         created_at: new Date().toISOString(), status: 'draft', total, counts: { pending: total, sending: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 } }

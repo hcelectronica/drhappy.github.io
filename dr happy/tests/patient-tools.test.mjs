@@ -54,5 +54,7 @@ test('Email templates escape content and keep links and unsubscribe separate fro
   assert.ok(!html.includes('<script>') && !html.includes('<img'))
   assert.ok(html.includes('&lt;img') && html.includes('texto &amp; &quot;comillas&quot;'))
   assert.ok(html.includes('no comparte automáticamente') && html.includes('unsubscribe=fixture'))
+  assert.ok(html.includes('por tu registro en Mi Carpeta de Salud'))
+  assert.ok(!html.includes('por haber aceptado novedades'))
   assert.match(COMMUNICATION_TEMPLATES.virtual.message, /pago.*no obligatorio/)
 })

@@ -20,9 +20,16 @@ function fixture() {
     patient_accounts: [
       { id: 'opt', email: 'opt@example.invalid', active: true, email_verified_at: 'yes', full_name: 'Opt' },
       { id: 'no', email: 'no@example.invalid', active: true, email_verified_at: 'yes', full_name: 'No' },
+      { id: 'legacy', email: 'legacy@example.invalid', active: true, email_verified_at: 'yes', full_name: 'Legacy' },
+      { id: 'out', email: 'out@example.invalid', active: true, email_verified_at: 'yes', full_name: 'Out' },
+      { id: 'unverified', email: 'unverified@example.invalid', active: true, email_verified_at: null },
       { id: 'inactive', email: 'inactive@example.invalid', active: false, email_verified_at: 'yes' },
     ],
-    patient_email_preferences: [{ email: 'opt@example.invalid', token, opted_in: true, opted_out: false }],
+    patient_email_preferences: [
+      { email: 'opt@example.invalid', token, opted_in: true, opted_out: false },
+      { email: 'legacy@example.invalid', token: 'legacy-token', opted_in: false, opted_out: false },
+      { email: 'out@example.invalid', token: 'out-token', opted_in: false, opted_out: true },
+    ],
     virtual_consult_settings: [{ professional_id: 'owner', slug: 'fixture-doctor', enabled: true }],
     patient_email_campaigns: [], patient_email_recipients: [],
   }
@@ -90,7 +97,7 @@ function fixture() {
     permissionConfirmed: true, all: true, ...overrides })
   return { db, state, call, preview }
 }
-test('Server authorization ignores claimed requester; global contacts require verification and opt-in', async () => {
+test('Server authorization ignores claimed requester; registered audience includes verified active accounts without opt-in and respects opt-out', async () => {
   const f = fixture()
   f.state.identity = null
   assert.equal((await f.call({ action: 'contacts', audience: 'own', requesterId: 'owner' })).status, 401)
@@ -99,9 +106,12 @@ test('Server authorization ignores claimed requester; global contacts require ve
   f.state.identity = 'owner'
   assert.deepEqual((await f.call({ action: 'contacts', audience: 'own' })).body.contacts.map(r => r.id), ['own'])
   const contacts = (await f.call({ action: 'contacts', audience: 'folder' })).body.contacts
-  assert.equal(contacts.length, 2)
+  assert.equal(contacts.length, 4)
   assert.equal(contacts.find(r => r.id === 'opt').eligible, true)
-  assert.equal(contacts.find(r => r.id === 'no').eligible, false)
+  assert.equal(contacts.find(r => r.id === 'no').eligible, true)
+  assert.equal(contacts.find(r => r.id === 'legacy').eligible, true)
+  assert.equal(contacts.find(r => r.id === 'out').eligible, false)
+  assert.equal(contacts.find(r => r.id === 'out').reason, 'Solicitó la baja')
   assert.ok(!JSON.stringify(contacts).includes(token))
 })
 test('Preview fixes destination link and recipients on server, requires permission and explicit sending confirmation', async () => {
@@ -119,7 +129,7 @@ test('Preview fixes destination link and recipients on server, requires permissi
 })
 test('Unsubscribe is token-only, explicit, and honored even after preview', async () => {
   const f = fixture()
-  await f.preview({ audience: 'folder' })
+  await f.preview({ audience: 'folder', all: false, contactIds: ['opt'] })
   assert.equal((await f.call({ action: 'unsubscribe', token: 'bad' })).status, 400)
   f.state.identity = null
   assert.equal((await f.call({ action: 'unsubscribe', token })).status, 200)
@@ -130,7 +140,7 @@ test('Unsubscribe is token-only, explicit, and honored even after preview', asyn
 })
 test('A deactivated patient or changed virtual destination cannot receive a stale campaign', async () => {
   const f = fixture()
-  await f.preview({ audience: 'folder' })
+  await f.preview({ audience: 'folder', all: false, contactIds: ['opt'] })
   f.db.patient_accounts[0].active = false
   await f.call({ action: 'send-batch', campaignId, confirm: true })
   assert.equal(f.state.sent.length, 0)
@@ -148,4 +158,27 @@ test('SMTP timeouts remain uncertain and are never automatically resent', async 
   assert.equal(f.db.patient_email_recipients[0].status, 'uncertain')
   await f.call({ action: 'send-batch', campaignId, confirm: true })
   assert.equal(f.state.sent.length, 1)
+})
+test('All registered sends include no-preference and legacy opted_in=false accounts without inventing consent', async () => {
+  const f = fixture()
+  const preview = await f.preview({ audience: 'folder' })
+  assert.equal(preview.body.campaign.total, 3)
+  assert.equal(f.state.sent.length, 0)
+  const result = await f.call({ action: 'send-batch', campaignId, confirm: true })
+  assert.equal(result.body.campaign.counts.sent, 3)
+  assert.deepEqual(f.state.sent.map(r => r.to).sort(), ['legacy@example.invalid', 'no@example.invalid', 'opt@example.invalid'])
+  assert.equal(f.db.patient_email_preferences.find(p => p.email === 'no@example.invalid').opted_in, false)
+  assert.equal(f.db.patient_email_preferences.find(p => p.email === 'legacy@example.invalid').opted_in, false)
+  assert.equal(f.db.patient_email_preferences.find(p => p.email === 'out@example.invalid').opted_out, true)
+})
+test('A newly unsubscribed or unverified registered recipient is skipped before sending', async () => {
+  for (const change of ['unsubscribe', 'unverify']) {
+    const f = fixture()
+    await f.preview({ audience: 'folder', all: false, contactIds: ['legacy'] })
+    if (change === 'unsubscribe') f.db.patient_email_preferences.find(p => p.email === 'legacy@example.invalid').opted_out = true
+    else f.db.patient_accounts.find(p => p.id === 'legacy').email_verified_at = null
+    const result = await f.call({ action: 'send-batch', campaignId, confirm: true })
+    assert.equal(result.body.campaign.counts.skipped, 1)
+    assert.equal(f.state.sent.length, 0)
+  }
 })

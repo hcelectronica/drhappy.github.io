@@ -36,6 +36,6 @@ export function communicationHtml(input: { name: string; sender: string; subject
     <p>Hola ${e(input.name || '')},</p><p style="white-space:pre-line;line-height:1.6">${e(input.message)}</p>
     <p><a style="display:inline-block;padding:14px 20px;background:#0f766e;color:white;border-radius:10px;text-decoration:none" href="${e(input.link)}">${e(COMMUNICATION_TEMPLATES[input.template].button)}</a></p>
     ${input.template === 'virtual' ? '<p>Servicio pago, no obligatorio y sin atención de urgencias. Consultá condiciones y valor antes de solicitarlo.</p>' : '<p>Registrarte no comparte automáticamente tus datos de salud con ningún profesional.</p>'}
-    <p>Enviado por ${e(input.sender)} desde Dr Happy.</p><hr><p style="font-size:13px">Recibís esta invitación por tu vínculo con el consultorio o por haber aceptado novedades de Mi Carpeta de Salud.
+    <p>Enviado por ${e(input.sender)} desde Dr Happy.</p><hr><p style="font-size:13px">Recibís este correo por tu vínculo con el consultorio o por tu registro en Mi Carpeta de Salud.
     <a href="${e(input.unsubscribe)}">Dejar de recibir estas novedades</a>. La baja no afecta tu atención ni tu cuenta.</p></main></body></html>`
 }

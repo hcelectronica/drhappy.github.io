@@ -95,7 +95,7 @@ export function AdminPatientCommunications({ initialAudience = 'own' }: { initia
       <label>Destinatarios<select value={audience} disabled={busy} onChange={e => {
         setAudience(e.target.value as CommunicationAudience); setContacts([]); setSelected([]); setAll(false); setLoading(true); setPermission(false); setError('')
       }}><option value="own">Mis pacientes del consultorio</option><option value="folder">Registrados en Mi Carpeta de Salud</option></select></label>
-      <p>{audience === 'folder' ? 'Incluye cuentas activas con email verificado. Solo se envía a quienes aceptaron novedades. Instalar la app no equivale a autorizar correos.' : 'Se usan los emails guardados en tus fichas, sin incluir pacientes de otros profesionales. Confirmá que tenés permiso para estas comunicaciones.'}</p>
+      <p>{audience === 'folder' ? 'Incluye todas las cuentas activas con email verificado, sin una suscripción adicional a novedades. Se excluyen quienes solicitaron la baja. Registrarse no implica necesariamente consentimiento para publicidad: distinguí los avisos de la cuenta de las promociones y verificá la normativa aplicable.' : 'Se usan los emails guardados en tus fichas, sin incluir pacientes de otros profesionales. Confirmá que tenés permiso para estas comunicaciones.'}</p>
       <label>Herramienta a compartir<select value={template} disabled={busy} onChange={e => chooseTemplate(e.target.value as CommunicationTemplate)}>
         <option value="folder">Mi Carpeta de Salud (gratuita)</option><option value="virtual" disabled={!virtualReady}>Orientación virtual asincrónica{!virtualReady ? ' — activala primero' : ''}</option>
       </select></label>
@@ -103,7 +103,7 @@ export function AdminPatientCommunications({ initialAudience = 'own' }: { initia
       <label>Mensaje<textarea rows={6} value={message} onChange={e => setMessage(e.target.value)} maxLength={3000} required /></label>
       <p>El botón y enlace de la herramienta se agregan automáticamente. No escribas diagnósticos ni otra información de salud en este comunicado.</p>
       {loading ? <p>Cargando destinatarios…</p> : <>
-        <p>{eligible.length} emails habilitados · {contacts.length - eligible.length} excluidos por baja o falta de autorización. Los emails repetidos se unifican.</p>
+        <p>{eligible.length} emails habilitados · {contacts.length - eligible.length} excluidos por baja. Los emails repetidos se unifican.</p>
         <label className="patient-mail-check"><input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} /> Todos los habilitados ({eligible.length})</label>
         {!all && <>
           <label>Buscar paciente o email<input value={search} onChange={e => setSearch(e.target.value)} /></label>
@@ -113,7 +113,7 @@ export function AdminPatientCommunications({ initialAudience = 'own' }: { initia
           </label>)}</div>
         </>}
       </>}
-      <label className="patient-mail-check"><input type="checkbox" checked={permission} onChange={e => setPermission(e.target.checked)} required /> Confirmo que estos destinatarios autorizaron recibir estas invitaciones y que respetaré sus bajas.</label>
+      <label className="patient-mail-check"><input type="checkbox" checked={permission} onChange={e => setPermission(e.target.checked)} required /> {audience === 'folder' ? 'Confirmo que usaré estos correos para comunicaciones pertinentes, cumpliré la normativa aplicable y respetaré las bajas.' : 'Confirmo que estos destinatarios autorizaron recibir estas invitaciones y que respetaré sus bajas.'}</label>
       <button type="submit" disabled={busy || loading || !permission || !recipients.length}>{busy ? 'Preparando…' : `Revisar envío a ${recipients.length} personas`}</button>
     </form> : <section aria-label="Vista previa del correo">
       <h3>Vista previa · {campaign.audience === 'own' ? 'Mis pacientes' : 'Mi Carpeta de Salud'}</h3>

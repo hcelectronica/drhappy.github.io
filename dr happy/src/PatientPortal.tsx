@@ -14,7 +14,6 @@ import type { PatientDocument, PatientDocumentCategory, PatientFolderResponse, P
 import './PatientPortal.css'
 import PatientPressureView from './PatientPressureView'
 import PatientGlucoseView from './PatientGlucoseView'
-import { PatientNewsPreference } from './PatientNewsPreference'
 import { PatientEmailUnsubscribe } from './PatientEmailUnsubscribe'
 import PatientLinkRequests from './PatientLinkRequests'
 import { PATIENT_APP_WHATSAPP_URL } from './patientAppShare'
@@ -804,7 +803,6 @@ function AccountView({ patient, onUpdated, onLogout }: { patient: PatientProfile
       {message && <p className="pp-info">{message}</p>}
       {error && <p className="pp-error" role="alert">{error}</p>}
       <button type="button" className="pp-logout" onClick={onLogout}>Cerrar sesión</button>
-      <PatientNewsPreference />
     </section>
   )
 }
@@ -937,7 +935,6 @@ export function PatientPortal() {
               <button type="button" className="pp-tile is-account" onClick={() => setView('account')}><span aria-hidden>👤</span>Mi cuenta</button>
             </nav>
             {!askInstall && <InstallPatientApp />}
-            <PatientNewsPreference />
           </>
         )}
         {view === 'folder' && <FolderView documents={documents} loading={loadingDocs} onReload={loadDocuments} />}

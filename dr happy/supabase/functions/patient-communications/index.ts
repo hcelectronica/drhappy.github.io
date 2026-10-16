@@ -32,9 +32,9 @@ serve(async request => {
     if (professionalError || allowedError) throw professionalError || allowedError
     if (!allowed || !professional?.is_admin || professional.active === false) return reply(403, { success: false, message: 'Esta herramienta está habilitada solo para la cuenta administradora autorizada.' })
     async function allPreferences() {
-      const rows: Array<{ email: string; opted_in: boolean; opted_out: boolean }> = []
+      const rows: Array<{ email: string; opted_out: boolean }> = []
       for (let offset = 0; ; offset += 1000) {
-        const { data, error } = await admin.from('patient_email_preferences').select('email,opted_in,opted_out').order('email').range(offset, offset + 999)
+        const { data, error } = await admin.from('patient_email_preferences').select('email,opted_out').order('email').range(offset, offset + 999)
         if (error) throw error
         rows.push(...(data ?? []))
         if ((data?.length ?? 0) < 1000) return new Map(rows.map(row => [row.email, row]))
@@ -60,7 +60,7 @@ serve(async request => {
       }
       return uniqueContacts(contacts).map(row => {
         const preference = preferences.get(row.email)
-        const reason = preference?.opted_out ? 'Solicitó la baja' : audience === 'folder' && !preference?.opted_in ? 'No aceptó novedades' : ''
+        const reason = preference?.opted_out ? 'Solicitó la baja' : ''
         return { ...row, eligible: !reason, reason }
       })
     }
@@ -90,7 +90,7 @@ serve(async request => {
     }
     if (body.action === 'preview') {
       if ((body.audience !== 'own' && body.audience !== 'folder') || (body.template !== 'folder' && body.template !== 'virtual') || !uuid(body.campaignId)) return reply(400, { success: false, message: 'Revisá la audiencia y herramienta.' })
-      if (body.permissionConfirmed !== true) return reply(400, { success: false, message: 'Confirmá que tenés permiso para enviar estas invitaciones.' })
+      if (body.permissionConfirmed !== true) return reply(400, { success: false, message: body.audience === 'folder' ? 'Confirmá el uso responsable de los correos y el respeto de las bajas.' : 'Confirmá que tenés permiso para enviar estas invitaciones.' })
       const audience = body.audience, template = body.template
       const subject = typeof body.subject === 'string' ? body.subject.trim() : ''
       const message = typeof body.message === 'string' ? body.message.trim() : ''
@@ -135,7 +135,7 @@ serve(async request => {
         try {
           const { error: prefInsertError } = await admin.from('patient_email_preferences').upsert({ email: row.email }, { onConflict: 'email', ignoreDuplicates: true })
           if (prefInsertError) throw prefInsertError
-          const { data: preference, error: prefError } = await admin.from('patient_email_preferences').select('token,opted_in,opted_out').eq('email', row.email).single()
+          const { data: preference, error: prefError } = await admin.from('patient_email_preferences').select('token,opted_out').eq('email', row.email).single()
           if (prefError) throw prefError
           let activeAccount = true
           if (campaign.audience === 'folder') {
@@ -143,7 +143,7 @@ serve(async request => {
             if (error) throw error
             activeAccount = !!account
           }
-          if (preference.opted_out || (campaign.audience === 'folder' && (!preference.opted_in || !activeAccount))) status = 'skipped'
+          if (preference.opted_out || (campaign.audience === 'folder' && !activeAccount)) status = 'skipped'
           else {
             const unsubscribe = `https://www.drhappy.com.ar/paciente?unsubscribe=${preference.token}`
             const html = communicationHtml({ name: row.name, sender: professional.full_name || 'Dr Happy', subject: campaign.subject,
