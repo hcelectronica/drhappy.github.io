@@ -2,6 +2,8 @@
   min-width: 0;
   margin-top: 20px;
   color: var(--text-primary);
+  width: min(100%, 820px);
+  margin-inline: auto;
 }
 
 .home-tool-guide h2 {
@@ -15,38 +17,169 @@
   line-height: 1.55;
 }
 
-.home-tool-guide-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+.home-tool-carousel {
   margin-top: 18px;
 }
 
-.home-tool-guide-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+.home-tool-flyer {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  width: 100%;
   min-width: 0;
-  padding: 18px;
+  padding: 0;
+  text-align: left;
+  color: var(--text-primary);
   background: var(--surface-bg);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
+  border-radius: 22px;
+  overflow: hidden;
   overflow-wrap: anywhere;
+  cursor: pointer;
+  box-shadow: 0 12px 30px #0f172a12;
+}
+
+.home-tool-flyer:hover {
+  border-color: #0f9488;
+}
+
+.home-tool-flyer:focus-visible {
+  outline: 3px solid #0f9488;
+  outline-offset: 4px;
+}
+
+.home-tool-flyer-preview {
+  display: block;
+  height: 220px;
+  overflow: hidden;
+  background: #e9f1f8;
+  border-right: 1px solid var(--border-color);
+}
+
+.home-tool-flyer-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+}
+
+.home-tool-flyer-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 22px;
+}
+
+.home-tool-flyer-copy strong {
+  color: var(--text-primary);
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.home-tool-flyer-copy > span:not(.home-tool-guide-icon) {
+  font-size: .9rem;
+  line-height: 1.4;
+}
+
+.home-tool-flyer-copy .home-tool-flyer-hint {
+  color: var(--text-primary);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 .home-tool-guide-icon {
-  flex: 0 0 auto;
-  font-size: 1.5rem;
+  font-size: 1.8rem;
 }
 
-.home-tool-guide-card h3 {
-  margin: 0 0 6px;
-  font-size: 1rem;
+.home-tool-carousel-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.home-tool-carousel-controls button {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+.home-tool-carousel-controls > span {
+  font-size: .85rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.home-tutorial-dialog {
+  box-sizing: border-box;
+  width: min(960px, calc(100% - 24px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.home-tutorial-dialog::backdrop {
+  background: #081629b8;
+}
+
+.home-tutorial-content {
+  padding: 22px;
+}
+
+.home-tutorial-content header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.home-tutorial-content h2 {
+  margin: 6px 0 0;
+  font-size: 1.3rem;
   color: var(--text-primary);
 }
 
-.home-tool-guide-card p {
+.home-tutorial-content button {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+.home-tutorial-summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  margin: 16px 0;
+  color: var(--text-primary);
+  font-size: .95rem;
+  line-height: 1.5;
+}
+
+.home-tutorial-content figure {
+  margin: 0;
+}
+
+.home-tutorial-content figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+
+.home-tutorial-content figcaption {
+  margin-top: 8px;
   font-size: .9rem;
+  color: var(--text-secondary);
 }
 
 .auth-developer-contact {
@@ -79,13 +212,18 @@
   white-space: normal;
 }
 
-@media (max-width: 1100px) {
-  .home-tool-guide-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
 @media (max-width: 600px) {
-  .home-tool-guide-grid { grid-template-columns: minmax(0, 1fr); }
-  .home-tool-guide-card { padding: 16px; }
+  .home-tool-flyer { grid-template-columns: minmax(0, 1fr); }
+  .home-tool-flyer-preview { height: 140px; border-right: 0; border-bottom: 1px solid var(--border-color); }
+  .home-tool-flyer-copy { padding: 16px; gap: 6px; }
+  .home-tool-flyer-copy strong { font-size: 1.15rem; }
+  .home-tool-flyer-copy .home-tool-guide-icon { display: none; }
+  .home-tool-carousel-name { display: none; }
+  .home-tool-carousel-controls { gap: 6px; }
+  .home-tool-carousel-controls button { padding: 8px 10px; font-size: .85rem; }
+  .home-tutorial-content { padding: 16px; }
+  .home-tutorial-content h2 { font-size: 1.1rem; }
+  .home-tutorial-summary { font-size: .875rem; }
   .auth-developer-contact { padding: 18px; }
   .auth-developer-contact button { width: 100%; }
 }

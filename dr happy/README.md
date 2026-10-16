@@ -12,9 +12,13 @@ Web app base en React + TypeScript para:
 
 ### Guía de herramientas y contacto público
 
-El inicio profesional muestra tarjetas informativas breves, sin enlaces ni botones que dupliquen el menú. La guía respeta las herramientas habilitadas para la cuenta y usa sus mismos nombres; se adapta a móvil y modo nocturno. El contacto con desarrolladores está visible al pie de la página pública, fuera del formulario de acceso y de «Más opciones», y abre el formulario de soporte existente sin exigir inicio de sesión.
+El inicio profesional muestra un carrusel manual con un único flyer de herramienta a la vez, sin avance automático. Anterior/Siguiente recorren las herramientas habilitadas para la cuenta; tocar el flyer abre un diálogo con una captura real y un resumen de uso de hasta cuatro renglones, sin navegar a la herramienta. Incluye Sofía y adapta atención/vademécum a la especialidad. El diálogo admite Escape, mantiene el foco y vuelve al flyer al cerrarse; se adapta a móvil y modo nocturno.
 
-Pruebas: `node --test tests/home-tool-guide.test.mjs`. La prueba `node tests/home-tool-guide.browser.mjs` requiere un Vite aislado en 5194 y Edge/Chrome con CDP en 9379 (configurables mediante `TEST_GUIDE_ORIGIN` y `TEST_GUIDE_CDP`); valida 320/390/1280 px, tema nocturno y apertura del soporte sin login, sin enviar mensajes.
+Las capturas de `public/tool-tutorials/` se generan desde pantallas actuales con datos ficticios usando `node tests/home-tutorial-captures.mjs`, con el mismo Vite/CDP aislado de las pruebas. El script intercepta la API profesional y sirve localmente la interfaz real de videoconsulta con pacientes ficticios; no accede a cuentas ni pacientes reales. Regenerarlas cuando cambien esas pantallas. Puede limitarse a ciertas herramientas con `TEST_CAPTURE_ONLY` (claves separadas por comas; Sofía y video se regeneran siempre).
+
+El contacto con desarrolladores sigue visible al pie de la página pública, fuera del formulario de acceso y de «Más opciones», y abre el formulario de soporte existente sin exigir inicio de sesión.
+
+Pruebas: `node --test tests/home-tool-guide.test.mjs`. La prueba `node tests/home-tool-guide.browser.mjs` requiere un Vite aislado en 5194 y Edge/Chrome con CDP en 9379 (configurables mediante `TEST_GUIDE_ORIGIN` y `TEST_GUIDE_CDP`); valida navegación manual, apertura/cierre y foco del tutorial, carga de capturas, resumen de hasta cuatro líneas sin truncar, 320/390/1280 px, tema nocturno y apertura del soporte sin login, sin enviar mensajes.
 
 ### Monitoreo administrativo de Mi Carpeta de Salud
 

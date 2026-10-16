@@ -13769,7 +13769,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           ) : null}
 
           {activeUserId ? <MobileHomeMenu key={activeUserId} userId={activeUserId} actions={homeQuickActions} onError={setAppError} /> : null}
-          <HomeToolGuide actions={homeQuickActions} />
+          <HomeToolGuide actions={[{ key: 'sofia', icon: '✨', label: 'Sofía, tu asistente' }, ...homeQuickActions]} />
         </div>
       ) : null}
 

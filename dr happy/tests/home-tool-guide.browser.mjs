@@ -41,16 +41,72 @@ try {
   await send('Page.enable')
   await viewport(390)
   await send('Page.navigate', { url: `${origin}/tests/home-tool-guide.ui.html` })
-  await wait(`document.querySelectorAll('.home-tool-guide-card').length === 6`)
+  await wait(`document.querySelector('.home-tool-flyer')`)
+  const next = () => evaluate(`document.querySelector('[aria-label="Tutorial siguiente"]').click()`)
+  const previous = () => evaluate(`document.querySelector('[aria-label="Tutorial anterior"]').click()`)
+  const position = index => wait(`document.querySelector('.home-tool-carousel-controls > span').textContent.startsWith('${index} / 13')`)
+  await previous()
+  await position(13)
+  await next()
+  await position(1)
   for (const width of [320, 390, 1280]) {
     await viewport(width)
     assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `Guide overflow: ${width}`)
-    assert.equal(await evaluate(`document.querySelectorAll('.home-tool-guide button, .home-tool-guide a').length`), 0)
-    assert.equal(await evaluate(`getComputedStyle(document.querySelector('.home-tool-guide-grid')).gridTemplateColumns.split(' ').length`), width < 600 ? 1 : 3)
-    await evaluate(`document.body.classList.add('theme-night')`)
-    assert.equal(await evaluate(`getComputedStyle(document.querySelector('.home-tool-guide-card h3')).color.match(/\\d+/g).every(value => Number(value) > 180)`), true)
-    assert.equal(await evaluate(`getComputedStyle(document.querySelector('.home-tool-guide-card')).backgroundColor.match(/\\d+/g).every(value => Number(value) < 70)`), true)
-    await evaluate(`document.body.classList.remove('theme-night')`)
+    assert.equal(await evaluate(`document.querySelectorAll('.home-tool-flyer').length`), 1)
+    assert.equal(await evaluate(`document.querySelectorAll('.home-tool-guide a').length`), 0)
+    assert.equal(await evaluate(`document.querySelector('.home-tool-carousel').getBoundingClientRect().height < 410`), true)
+    for (let index = 1; index <= 13; index++) {
+      await position(index)
+      await evaluate(`document.querySelector('.home-tool-flyer').focus(); document.querySelector('.home-tool-flyer').click()`)
+      await wait(`document.querySelector('.home-tutorial-dialog')?.open`)
+      await wait(`document.querySelector('.home-tutorial-dialog img')?.naturalWidth > 0`)
+      const summary = await evaluate(`(() => {
+        const p=document.querySelector('.home-tutorial-summary');
+        return {lines:p.getBoundingClientRect().height/parseFloat(getComputedStyle(p).lineHeight),
+          truncated:p.scrollHeight>p.clientHeight+1,text:p.textContent};
+      })()`)
+      assert.ok(summary.lines <= 4.01 && !summary.truncated, `${width}px tutorial ${index}: ${JSON.stringify(summary)}`)
+      assert.equal(await evaluate(`document.querySelector('.home-tutorial-dialog').scrollWidth <= document.querySelector('.home-tutorial-dialog').clientWidth`), true)
+      await evaluate(`document.body.classList.add('theme-night')`)
+      const contrast = await evaluate(`(() => {
+        const luminance=color=>{
+          const rgb=color.match(/\\d+/g).slice(0,3).map(value=>Number(value)/255)
+            .map(value=>value<=.04045?value/12.92:((value+.055)/1.055)**2.4);
+          return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;
+        };
+        const text=luminance(getComputedStyle(document.querySelector('.home-tutorial-summary')).color);
+        const surface=luminance(getComputedStyle(document.querySelector('.home-tutorial-dialog')).backgroundColor);
+        return (Math.max(text,surface)+.05)/(Math.min(text,surface)+.05);
+      })()`)
+      assert.ok(contrast >= 4.5, `Night summary contrast: ${contrast}`)
+      await evaluate(`document.body.classList.remove('theme-night')`)
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+      await wait(`!document.querySelector('.home-tutorial-dialog')`)
+      assert.equal(await evaluate(`document.activeElement === document.querySelector('.home-tool-flyer')`), true)
+      await next()
+    }
+    await position(1)
+  }
+  assert.equal(await evaluate('window.toolNavigationCount || 0'), 0)
+  await evaluate(`document.querySelector('.home-tool-flyer').click()`)
+  await wait(`document.querySelector('.home-tutorial-dialog')?.open`)
+  await evaluate(`document.querySelector('[aria-label="Cerrar mini tutorial"]').click()`)
+  await wait(`!document.querySelector('.home-tutorial-dialog')`)
+  await send('Page.navigate', { url: `${origin}/tests/home-tool-guide.ui.html?dental` })
+  await wait(`document.querySelector('.home-tool-flyer')`)
+  for (let index = 1; index <= 13; index++) {
+    await position(index)
+    if (index === 3 || index === 10) {
+      await evaluate(`document.querySelector('.home-tool-flyer').click()`)
+      await wait(`document.querySelector('.home-tutorial-dialog')?.open`)
+      const image = index === 3 ? 'attention-dental' : 'tools-dental'
+      assert.equal(await evaluate(`document.querySelector('.home-tutorial-dialog img').src.endsWith('/${image}.jpg')`), true)
+      await wait(`document.querySelector('.home-tutorial-dialog img').naturalWidth > 0`)
+      await evaluate(`document.querySelector('[aria-label="Cerrar mini tutorial"]').click()`)
+      await wait(`!document.querySelector('.home-tutorial-dialog')`)
+    }
+    await next()
   }
   await send('Page.navigate', { url: origin })
   await wait(`document.querySelector('.auth-developer-contact button')`)
@@ -66,7 +122,7 @@ try {
   assert.equal(await evaluate(`!!document.querySelector('[aria-labelledby="contact-modal-title-login"] form')`), true)
   await evaluate(`document.querySelector('[aria-labelledby="contact-modal-title-login"] [aria-label="Cerrar ventana"]').click()`)
   assert.equal(await evaluate(`!!document.querySelector('[aria-labelledby="contact-modal-title-login"]')`), false)
-  console.log('PASS: guide and public footer at 320/390/1280 px, night theme, no duplicate navigation, support opens before login.')
+  console.log('PASS: 13 tutorials at 320/390/1280 px, one flyer, manual wraparound, loaded screenshots, four-line summaries without truncation, dental variants, Escape/focus, night theme and public support.')
 } finally {
   const closed = new Promise(resolve => socket.addEventListener('close', resolve, { once: true }))
   socket.close()

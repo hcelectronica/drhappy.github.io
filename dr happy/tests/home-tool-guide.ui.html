@@ -14,10 +14,19 @@
       import '../src/index.css'
       import '../src/App.css'
       const actions = [
+        ['sofia', '✨', 'Sofía, tu asistente'], ['ambulance', '🚑', 'Modo Ambulancia'],
         ['attention', '🩺', 'Atención médica'], ['appointments', '📅', 'Turnera'],
         ['patients', '👥', 'Mis pacientes'], ['invite', '📨', 'Invitar paciente'],
+        ['video', '📹', 'Videoconsulta'], ['virtual-consult', '💬', 'Consultas virtuales'],
+        ['paid-documents', '📄', 'Certificados y órdenes'],
         ['tools', '💊', 'Herramientas'], ['ledger', '💰', 'Balance'],
-      ].map(([key, icon, label]) => ({ key, icon, label }))
+        ['profile', '👤', 'Perfil'], ['subscription', '📅', 'Mi suscripción'],
+      ].map(([key, icon, label]) => ({
+        key, icon,
+        label: location.search.includes('dental') && key === 'attention' ? 'Atención odontológica'
+          : location.search.includes('dental') && key === 'tools' ? 'Vademécum' : label,
+        onClick: () => { window.toolNavigationCount = (window.toolNavigationCount || 0) + 1 },
+      }))
       createRoot(document.getElementById('root')).render(
         React.createElement('main', { className: 'app' }, React.createElement(HomeToolGuide, { actions }))
       )
