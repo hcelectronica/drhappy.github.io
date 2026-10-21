@@ -86,3 +86,5 @@ verify_jwt = false
 
 [functions.consultation-instructions]
 verify_jwt = false
+[functions.patient-reception]
+verify_jwt = false

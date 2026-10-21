@@ -10,7 +10,7 @@ type RegistrationEvent = {
   patientPhone?: string
 } & (
   | { source: 'invite' }
-  | { source: 'booking'; date: string; time: string; location: string; status: 'confirmed' | 'pending_payment' | 'pending' }
+  | { source: 'booking'; date: string; time: string; location: string; status: 'confirmed' | 'pending_payment' | 'pending'; consultationMode?: 'presential' | 'video' }
 )
 
 function escapeHtml(value: string): string {
@@ -19,8 +19,9 @@ function escapeHtml(value: string): string {
 }
 
 export function registrationEmail(event: RegistrationEvent, professionalName: string) {
-  const origin = event.source === 'invite' ? 'Link de invitar paciente' : 'Link de turnera'
-  const title = event.source === 'invite' ? 'Nuevo registro por invitación' : 'Nueva solicitud de turno por turnera'
+  const isVideo = event.source === 'booking' && event.consultationMode === 'video'
+  const origin = event.source === 'invite' ? 'Link de invitar paciente' : isVideo ? 'Recepción digital - consulta virtual (videoconsulta)' : 'Link de turnera'
+  const title = event.source === 'invite' ? 'Nuevo registro por invitación' : isVideo ? 'Videoconsulta solicitada' : 'Nueva solicitud de turno por turnera'
   const lines = [
     `Hola ${professionalName || 'profesional'},`,
     '',
@@ -40,6 +41,7 @@ export function registrationEmail(event: RegistrationEvent, professionalName: st
       `Lugar: ${event.location}`,
       `Estado: ${event.status === 'confirmed' ? 'Turno confirmado' : event.status === 'pending_payment' ? 'Pendiente de pago. El turno todavía no está confirmado.' : 'Solicitud pendiente de atención por el profesional.'}`,
     )
+    if (isVideo) lines.push(event.status === 'confirmed' ? 'Pago aprobado. Ingresá a Dr Happy y enviá al paciente el enlace de la videoconsulta.' : 'El paciente solicitó atención virtual. Verificá el pago antes de enviarle el enlace de la videoconsulta.')
   } else {
     lines.push('Este registro no reserva un turno. La ficha queda disponible para incorporarla a tu base de pacientes.')
   }

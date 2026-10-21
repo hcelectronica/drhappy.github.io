@@ -117,3 +117,21 @@ test('legacy link sends turnera origin; mail failures do not invalidate saved bo
   assert.ok(failed.writes.some((write) => write.table === 'user_workspaces' && write.value.appointments_json?.length === 1))
   assert.ok(failed.errors.length > 0)
 })
+
+test('video booking retains origin before payment and identifies it in both emails; free slots reject video', async () => {
+  for (const paid of [true, false]) {
+    const h = await handler('public-booking', { paid })
+    const result = await h.request({ action: 'book-public-slot', slug: 'test', consultationMode: 'video',
+      slotDate: h.date, slotTime: '15:00', blockId: 'block', patientName: 'Prueba', patientDni: '12345678', patientEmail: 'patient@example.invalid' })
+    if (!paid) { assert.equal(result.status, 400); assert.equal(h.mails.length, 0); continue }
+    assert.equal(result.status, 200)
+    assert.equal(result.body.paymentRequired, true)
+    assert.equal(h.writes.find(write => write.table === 'public_booking_reservations' && write.value.appointment_id).value.consultation_mode, 'video')
+    assert.equal(h.writes.some(write => write.table === 'user_workspaces'), false, 'no appointment before payment')
+    assert.match(h.mails[0].text, /recepción digital|Recepción digital/)
+    assert.match(h.mails[0].text, /consulta virtual/)
+    assert.match(h.mails[0].text, /todavía no está confirmado/)
+    assert.match(h.mails[1].templateData.notes, /videoconsulta/)
+    assert.match(h.mails[1].templateData.location, /Videoconsulta/)
+  }
+})

@@ -68,6 +68,7 @@ interface RequestBody {
   days?: number
   blockId?: string
   modality?: 'coverage' | 'private'
+  consultationMode?: 'presential' | 'video'
 }
 
 interface PublicBookingBlock {
@@ -705,6 +706,10 @@ serve(async (request) => {
       }
 
       case 'book-public-slot': {
+        if (body.consultationMode !== undefined && body.consultationMode !== 'presential' && body.consultationMode !== 'video') {
+          return jsonResponse(400, { success: false, message: 'La modalidad de consulta no es válida.' })
+        }
+        const isVideo = body.consultationMode === 'video'
         const slug = normalizeSlug(body.slug ?? '')
         const slotDate = body.slotDate?.trim() ?? ''
         const slotTime = body.slotTime?.trim() ?? ''
@@ -743,6 +748,7 @@ serve(async (request) => {
         if (!block || !block.days.includes(dateDay(slotDate)) || !buildBlockSlotTimes(block).includes(slotTime)) {
           return jsonResponse(409, { success: false, message: 'Ese horario ya no está habilitado.' })
         }
+        if (isVideo && block.modality !== 'private') return jsonResponse(400, { success: false, message: 'La videoconsulta requiere un turno particular pago.' })
         if (block.modality === 'private' && (!block.amountToCharge || block.amountToCharge <= 0)) {
           return jsonResponse(409, { success: false, message: 'Este turno particular todavía no tiene un monto configurado para pagar por Mercado Pago.' })
         }
@@ -778,6 +784,7 @@ serve(async (request) => {
           slot_time: slotTime,
           block_id: block.id,
           modality: block.modality,
+          consultation_mode: isVideo ? 'video' : 'presential',
           patient_name: patientName,
           patient_dni: patientDni,
           patient_email: patientEmail || null,
@@ -808,7 +815,7 @@ serve(async (request) => {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': crypto.randomUUID() },
                 body: JSON.stringify({
-                  items: [{ id: appointmentId, title: block.reason || settings.reason || 'Consulta médica', quantity: 1, currency_id: 'ARS', unit_price: amount }],
+                  items: [{ id: appointmentId, title: isVideo ? 'Videoconsulta médica' : block.reason || settings.reason || 'Consulta médica', quantity: 1, currency_id: 'ARS', unit_price: amount }],
                   payer: { email: patientEmail, name: patientName },
                   external_reference: appointmentId,
                   back_urls: {
@@ -849,17 +856,19 @@ serve(async (request) => {
           scheduledTime: slotTime,
           scheduledAt: `${slotDate}T${slotTime}:00`,
           durationMinutes: block.durationMinutes,
-          reason: block.reason || settings.reason || block.label || 'Turno reservado por turnera pública',
+          reason: isVideo ? 'Videoconsulta solicitada desde recepción digital' : block.reason || settings.reason || block.label || 'Turno reservado por turnera pública',
           notes: [
             `Reservado desde turnera pública (${block.modality === 'private' ? 'particular' : 'gratuita'}).`,
+            isVideo ? 'Origen: recepción digital - consulta virtual. El profesional enviará el enlace después del pago.' : '',
             patientPhone ? `Teléfono de contacto: ${patientPhone}` : '',
             amount ? 'Pago informado al paciente.' : '',
           ].filter(Boolean).join(' '),
-          location: block.location || settings.location || 'Consultorio médico',
+          location: isVideo ? 'Videoconsulta: el profesional enviará el enlace' : block.location || settings.location || 'Consultorio médico',
           status: amount ? 'pending' : 'confirmed',
           createdAt: new Date().toISOString(),
           createdByUserId: settings.professional_id,
           publicBookingModality: block.modality,
+          consultationMode: isVideo ? 'video' : 'presential',
           ...(amount ? { amountToCharge: amount, amountConcept: block.amountConcept || 'consulta' } : {}),
         }
 
@@ -880,6 +889,7 @@ serve(async (request) => {
             source: 'booking', patientName, patientEmail, patientPhone,
             date: slotDate, time: slotTime, location: newAppointment.location,
             status: amount ? 'pending_payment' : 'confirmed',
+            consultationMode: isVideo ? 'video' : 'presential',
           },
         })
         let emailSent = false
@@ -905,7 +915,7 @@ serve(async (request) => {
                   date: slotDate,
                   time: slotTime,
                   location: newAppointment.location,
-                  notes: amount ? 'Tu turno quedará confirmado cuando Mercado Pago apruebe el pago.' : newAppointment.notes,
+                  notes: amount ? `Tu turno quedará confirmado cuando Mercado Pago apruebe el pago.${isVideo ? ' Solicitaste una videoconsulta desde la recepción digital. El profesional te enviará el enlace para conectarte; no debés acudir al consultorio.' : ''}` : newAppointment.notes,
                   amountToCharge: amount,
                   amountConcept: amount ? block.amountConcept || 'consulta' : undefined,
                   paymentLink: amount ? paymentInitPoint || block.paymentLink || undefined : undefined,

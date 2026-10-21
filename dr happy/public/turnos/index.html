@@ -155,6 +155,8 @@
     var slug = params.get('p') || (window.location.hash || '').replace(/^#\/?/, '') || '';
     var modalityParam = (params.get('m') || '').toLowerCase();
     var fixedModality = modalityParam === 'gratis' || modalityParam === 'coverage' ? 'coverage' : modalityParam === 'private' ? 'private' : null;
+    var consultationMode = params.get('consultation') === 'video' ? 'video' : 'presential';
+    if (consultationMode === 'video') fixedModality = 'private';
     var cursor = todayISO().slice(0, 7) + '-01';
     var filter = 'all';
     var agenda = null;
@@ -180,6 +182,10 @@
         agenda = result.data;
         el('title').textContent = 'Turnos de ' + agenda.profile.professionalName;
         el('subtitle').textContent = [agenda.profile.location, agenda.profile.reason].filter(Boolean).join(' · ') || 'Elegí un horario disponible.';
+        if (consultationMode === 'video') {
+          el('title').textContent = 'Videoconsulta con ' + agenda.profile.professionalName;
+          el('subtitle').textContent = 'Elegí y pagá tu turno para atención virtual. El profesional te enviará el enlace de conexión; no debés acudir al consultorio.';
+        }
         el('loading').style.display = 'none';
         el('error').style.display = 'none';
         el('content').style.display = 'block';
@@ -226,6 +232,9 @@
       el('selectedText').textContent = 'Horario seleccionado';
       el('selectedBox').style.display = 'block';
       el('selectedBox').innerHTML = '<strong>' + formatDate(selected.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' · ' + selected.time + ' hs</strong><br><span>' + selected.label + '</span>' + (selected.location ? '<br><small>' + selected.location + '</small>' : '');
+      if (consultationMode === 'video') {
+        el('selectedBox').textContent = formatDate(selected.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' · ' + selected.time + ' hs · Videoconsulta. El profesional te enviará el enlace después del pago.';
+      }
       var choiceBox = el('slotChoices'); choiceBox.innerHTML = '';
       var day = (agenda.days || []).find(function (entry) { return entry.date === selected.date; });
       (day ? day.slots : []).filter(function (slot) { return slot.available && (filter === 'all' || slot.modality === filter); }).forEach(function (slot) {
@@ -259,7 +268,7 @@
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) { msg.className = 'msg err'; msg.textContent = 'Ingresá un email válido para continuar.'; return; }
       el('confirmBtn').disabled = true;
       el('confirmBtn').textContent = 'Confirmando...';
-      callFunction({ action: 'book-public-slot', slug: slug, modality: fixedModality, slotDate: selected.date, slotTime: selected.time, blockId: selected.blockId, patientName: patientName, patientDni: patientDni, patientPhone: el('patientPhone').value.trim(), patientEmail: patientEmail }).then(function (result) {
+      callFunction({ action: 'book-public-slot', slug: slug, modality: fixedModality, consultationMode: consultationMode, slotDate: selected.date, slotTime: selected.time, blockId: selected.blockId, patientName: patientName, patientDni: patientDni, patientPhone: el('patientPhone').value.trim(), patientEmail: patientEmail }).then(function (result) {
         if (!result.data.success) {
           msg.className = 'msg err'; msg.textContent = result.data.message || 'No pudimos reservar el turno.'; el('confirmBtn').disabled = false; el('confirmBtn').textContent = 'Confirmar turno'; loadAgenda(); return;
         }

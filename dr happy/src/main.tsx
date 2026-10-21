@@ -34,6 +34,9 @@ const sharedFolderToken = window.location.pathname.match(/^\/compartido\/([A-Za-
 const SharedFolderPage = sharedFolderToken && !PaidDocumentsPublicPage && !PatientPortal
   ? lazy(() => import('./SharedFolderPage'))
   : null
+const receptionSlug = window.location.pathname.match(/^\/r\/([a-z0-9-]{1,24})\/?$/)?.[1]
+  || new URLSearchParams(window.location.search).get('reception')
+const PatientReception = receptionSlug ? lazy(() => import('./PatientReception')) : null
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -47,7 +50,9 @@ createRoot(document.getElementById('root')!).render(
               ? <Suspense fallback={<p style={{ textAlign: 'center', marginTop: '30vh' }}>Abriendo tu carpeta…</p>}><PatientPortal /></Suspense>
               : SharedFolderPage
                 ? <Suspense fallback={<p style={{ textAlign: 'center', marginTop: '30vh' }}>Abriendo estudios…</p>}><SharedFolderPage token={sharedFolderToken} /></Suspense>
-                : <App />}
+                : PatientReception
+                  ? <Suspense fallback={<p role="status">Abriendo recepción…</p>}><PatientReception slug={receptionSlug!} /></Suspense>
+                  : <App />}
       </ErrorNotificationProvider>
     </AppErrorBoundary>
   </StrictMode>,

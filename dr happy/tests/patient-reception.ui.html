@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body><div id="root"></div>
+<script>
+window.fixtureCalls = [];
+window.receptionFixture = { slug:'fixture',display_name:'Consultorio de prueba',enabled:true,documents:true,studies:true,booking:true,registration:true,video:true };
+const originalFetch = window.fetch;
+window.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : input.url;
+  if (!url.includes('.supabase.co')) return originalFetch(input,init);
+  const body = JSON.parse(init.body); window.fixtureCalls.push(body);
+  let result;
+  if(url.includes('/patient-invite')) result = {success:true,token:'doctor-invite'};
+  else if(body.action==='public') result = {success:true,reception:{displayName:window.receptionFixture.display_name,links: Object.fromEntries(
+    Object.entries({documents:'/documentos/fixture',studies:'/consulta/fixture',booking:'/turnos/?p=fixture&m=private',video:'/turnos/?p=fixture&m=private&consultation=video',registration:'/registro/fixture'}).filter(([key])=>window.receptionFixture[key]))}};
+  else if(body.action==='get-settings') result = {success:true,settings:window.receptionFixture,available:{documents:true,studies:true,booking:true,registration:true,video:true}};
+  else if(body.action==='save-settings') { window.receptionFixture=body.settings; result={success:true,settings:body.settings}; }
+  else throw Error('Unexpected request '+url);
+  return new Response(JSON.stringify(result),{headers:{'Content-Type':'application/json'}});
+};
+</script>
+<script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import PatientReception from '/src/PatientReception.tsx';
+import Settings from '/src/PatientReceptionSettings.tsx';
+import '/src/index.css';
+import '/src/App.css';
+import '/src/clinicalCompact.css';
+createRoot(document.getElementById('root')).render(new URLSearchParams(location.search).has('settings') ? React.createElement(Settings,{onClose:()=>{window.fixtureClosed=true}}) : React.createElement(PatientReception,{slug:'fixture'}));
+</script></body></html>

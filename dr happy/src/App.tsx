@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom'
 import './App.css'
 import './clinicalCompact.css'
 import { BrandMark } from './BrandMark'
+import PatientReceptionSettings from './PatientReceptionSettings'
 import { useDisplayMode } from './useDisplayMode'
 import { ClinicalMedicationField } from './ClinicalMedicationField'
 import { ClinicalDiagnosisField } from './ClinicalDiagnosisField'
@@ -553,6 +554,7 @@ interface AppointmentRecord {
   amountToCharge?: number
   amountConcept?: 'sena' | 'consulta'
   publicBookingModality?: 'coverage' | 'private'
+  consultationMode?: 'presential' | 'video'
 }
 
 interface PublicTurneraDraft {
@@ -2785,6 +2787,7 @@ function App() {
   const [certificateSending, setCertificateSending] = useState(false)
   const [certificateError, setCertificateError] = useErrorNotification()
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
+  const [receptionSettingsOpen, setReceptionSettingsOpen] = useState(false)
   const [inviteToken, setInviteToken] = useState<string | null>(null)
   const [inviteBusy, setInviteBusy] = useState(false)
   const [inviteError, setInviteError] = useErrorNotification()
@@ -11718,6 +11721,10 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       key: 'invite', icon: '📨', label: 'Invitar paciente', hint: 'Link de registro', tone: '#0f766e',
       onClick: handleOpenInvitePatient,
     },
+    {
+      key: 'reception', icon: '🔗', label: 'Mi recepción', hint: 'Un solo link para pacientes', tone: '#17324d',
+      onClick: () => setReceptionSettingsOpen(true),
+    },
     canUseVirtualConsult ? {
       key: 'virtual-consult', icon: '💬', label: 'Consultas virtuales', hint: virtualConsultPending ? `${virtualConsultPending} para revisar` : 'Asistidas por Sofía', tone: '#0d9488',
       badge: virtualConsultPending || undefined,
@@ -12002,6 +12009,9 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           </button>
           <button type="button" title="Mis pacientes" className={workspaceLayer === 'my-patients' ? 'active' : ''} onClick={() => { setWorkspaceLayer('my-patients'); setSidebarOpen(false) }}>
             <span>👥</span> Mis pacientes <small>{patients.length}</small>
+          </button>
+          <button type="button" title="Mi recepción: enlace único para pacientes" className={receptionSettingsOpen ? 'active' : ''} onClick={() => { setReceptionSettingsOpen(true); setSidebarOpen(false) }}>
+            <span>🔗</span> Mi recepción
           </button>
           <button type="button" title="Invitar paciente" className={inviteModalOpen ? 'active' : ''} onClick={handleOpenInvitePatient}>
             <span>📨</span> Invitar paciente
@@ -14358,7 +14368,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                           <strong>{appointment.scheduledTime} hs</strong>
                           <span>{appointment.patientName}</span>
                           <em className={`source-badge source-${appointment.publicBookingModality ?? 'manual'}`}>
-                            {appointment.publicBookingModality === 'private'
+                            {appointment.consultationMode === 'video' ? '📹 Videoconsulta · recepción'
+                              : appointment.publicBookingModality === 'private'
                               ? '💳 Turnera particular'
                               : appointment.publicBookingModality === 'coverage'
                                 ? '🎟️ Turnera gratuita'
@@ -14581,6 +14592,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                         </div>
 
                         <div className="turnera-reason-box">
+                          {record.consultationMode === 'video' && <p><strong>📹 Videoconsulta · origen: recepción digital</strong></p>}
                           <strong>Motivo:</strong> {record.reason || 'Consulta médica'}
                         </div>
 
@@ -17478,6 +17490,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           </div>
         </div>
       ) : null}
+      {receptionSettingsOpen && <PatientReceptionSettings onClose={() => setReceptionSettingsOpen(false)} />}
       {inviteModalOpen ? (() => {
         const inviteUrl = inviteToken ? buildPatientInviteUrl(inviteToken) : ''
         const inviteQr = inviteUrl ? buildQrDataUrl(inviteUrl, 360) : ''

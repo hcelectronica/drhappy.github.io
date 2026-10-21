@@ -10,6 +10,16 @@ Web app base en React + TypeScript para:
 
 ## Ficha clínica y seguimiento
 
+### Recepción digital para pacientes
+
+**Mi recepción**, en el menú profesional (PC y móvil), permite guardar un nombre visible, un enlace corto único `https://www.drhappy.com.ar/r/alias`, habilitar/pausar la recepción y elegir cinco opciones: certificados y recetas (enlace existente de documentos), evaluación de estudios (orientación virtual asistida por IA), turno presencial (turnera paga), videoconsulta y registro de pacientes (invitación del consultorio, no Mi Carpeta de Salud). No modifica los enlaces individuales ni promete un diagnóstico automático o un plazo de respuesta. La pantalla pública utiliza el logo y los colores de Dr Happy, sin registro previo y con diseño compacto adaptativo; en pantallas muy pequeñas o con texto ampliado se permite desplazamiento para no ocultar contenido.
+
+Solo se pueden activar destinos disponibles del profesional autenticado. Si se desactiva una herramienta o su medio de pago, el enlace desaparece de la recepción sin exponer datos clínicos o de otros profesionales. El enlace de registro se prepara con el servicio existente al abrir la configuración. Cambiar el alias deja de servir el anterior; volver a habilitar la recepción conserva su alias.
+
+Videoconsulta reutiliza el precio y los horarios de la turnera particular (`m=private&consultation=video`), no genera una sala ni envía automáticamente un enlace de videollamada. El paciente ve que es atención virtual, paga por el circuito existente y espera el enlace del profesional. La reserva conserva `consultation_mode=video`; la confirmación por webhook conserva `consultationMode=video` en agenda, motivo, notas y lugar. El profesional recibe un aviso inicial identificado como virtual/pendiente de pago y otro tras confirmarse el pago, para enviar el enlace. El correo de confirmación al paciente también aclara la modalidad. Los turnos presenciales anteriores y la turnera gratuita mantienen su funcionamiento.
+
+Despliegue: migración `20261021010000_patient_reception.sql`, función `patient-reception --no-verify-jwt` (autorización propia), y actualización de `public-booking` y `mercadopago-patient-webhook`. La nueva tabla tiene RLS y acceso exclusivo de `service_role`; el servidor determina el profesional desde la sesión y construye únicamente destinos internos conocidos. Pruebas: `node --test tests/patient-reception.test.mjs tests/registration-handlers.test.mjs tests/professional-registration-email.test.mjs tests/reception-payment.test.mjs`; navegador: `node tests/patient-reception.browser.mjs` con Vite de fixtures en 5194 y CDP 9379.
+
 ### Comunicación con pacientes (cuenta administradora)
 
 Administración → **Comunicación con pacientes** está habilitado exclusivamente para `mudimudialan@gmail.com`. La autorización real se verifica en el servidor mediante sesión profesional, rol administrador, cuenta activa y la tabla `patient_communication_admins`; no depende del botón visible ni de un ID enviado por el navegador.

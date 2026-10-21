@@ -11,6 +11,7 @@
   RewriteRule ^ https://www.drhappy.com.ar%{REQUEST_URI} [R=301,L,NE]
 
   # Link fijo de la turnera: /turnera/nombre-profesional -> página pública de turnos.
+  RewriteRule ^r/([a-z0-9-]{1,24})/?$ /index.html?reception=$1 [QSA,L]
   RewriteRule ^turnera/([a-z0-9-]+)/gratis/?$ /turnos/?p=$1&m=gratis [R=302,L,QSA]
   RewriteRule ^turnera/([a-z0-9-]+)/?$ /turnos/?p=$1 [R=302,L,QSA]
   # Invitación para que el paciente se registre: /registro/token -> formulario público.

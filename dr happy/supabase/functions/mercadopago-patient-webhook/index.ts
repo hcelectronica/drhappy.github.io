@@ -1,11 +1,12 @@
 import { corsHeaders } from '../_shared/cors.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { notifyProfessionalRegistration } from '../_shared/professionalRegistrationEmail.ts'
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 }
 
-function decodeBase64(value: string): Uint8Array {
+function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (value.length % 4)) % 4)
   return Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0))
 }
@@ -174,7 +175,7 @@ Deno.serve(async (request) => {
     }
     return jsonResponse(200, { success: true, paymentStatus })
   }
-  const { data: reservation } = await admin.from('public_booking_reservations').select('id, appointment_id, professional_id, patient_name, patient_dni, patient_email, patient_phone, slot_date, slot_time, amount_to_charge, amount_concept, modality, payment_status, status').eq('professional_id', account.professional_id).eq('appointment_id', externalReference).maybeSingle()
+  const { data: reservation } = await admin.from('public_booking_reservations').select('id, appointment_id, professional_id, patient_name, patient_dni, patient_email, patient_phone, slot_date, slot_time, amount_to_charge, amount_concept, modality, payment_status, status, consultation_mode').eq('professional_id', account.professional_id).eq('appointment_id', externalReference).maybeSingle()
   if (!reservation) return jsonResponse(200, { success: true, ignored: true })
   if (reservation.status === 'cancelled') return jsonResponse(200, { success: true, ignored: true })
 
@@ -187,6 +188,7 @@ Deno.serve(async (request) => {
     if (error) return jsonResponse(500, { success: false, message: 'No se pudo actualizar el estado del pago.' })
   }
   if (approved && reservation.appointment_id) {
+    const isVideo = reservation.consultation_mode === 'video'
     const normalizedDni = String(reservation.patient_dni || '').replace(/\D/g, '')
     if (!normalizedDni) return jsonResponse(400, { success: false, message: 'La reserva no tiene DNI válido.' })
     const patientId = crypto.randomUUID()
@@ -210,12 +212,13 @@ Deno.serve(async (request) => {
       scheduledTime: reservation.slot_time,
       scheduledAt: `${reservation.slot_date}T${reservation.slot_time}:00`,
       durationMinutes: 30,
-      reason: 'Turno reservado por turnera pública',
-      notes: 'Pago aprobado por Mercado Pago.',
-      location: 'Consultorio médico',
+      reason: isVideo ? 'Videoconsulta solicitada desde recepción digital' : 'Turno reservado por turnera pública',
+      notes: isVideo ? 'Origen: recepción digital - consulta virtual. Pago aprobado por Mercado Pago. El profesional enviará el enlace de la videoconsulta; el paciente no debe acudir al consultorio.' : 'Pago aprobado por Mercado Pago.',
+      location: isVideo ? 'Videoconsulta: el profesional enviará el enlace' : 'Consultorio médico',
       createdAt: new Date().toISOString(),
       createdByUserId: reservation.professional_id,
       publicBookingModality: reservation.modality,
+      consultationMode: isVideo ? 'video' : 'presential',
       amountToCharge: Number(reservation.amount_to_charge || payment.transaction_amount || 0),
       amountConcept: reservation.amount_concept || 'consulta',
       status: 'confirmed',
@@ -244,6 +247,19 @@ Deno.serve(async (request) => {
     })
     if (confirmError) return jsonResponse(500, { success: false, message: `No se pudo confirmar el turno pagado: ${confirmError.message}` })
     if (!confirmed) return jsonResponse(200, { success: true, ignored: true, paymentStatus })
+    if (isVideo) {
+      // A webhook can be repeated or concurrent. Claim before SMTP to avoid duplicate notices.
+      const { data: claimed, error: claimError } = await admin.from('public_booking_reservations')
+        .update({ video_notice_claimed_at: new Date().toISOString() }).eq('id', reservation.id)
+        .is('video_notice_claimed_at', null).select('id')
+      if (claimError) return jsonResponse(500, { success: false, message: 'No se pudo preparar el aviso de videoconsulta.' })
+      if (claimed?.length) await notifyProfessionalRegistration({
+        admin, url: supabaseUrl, key: serviceRoleKey, professionalId: reservation.professional_id, eventId: reservation.appointment_id,
+        event: { source: 'booking', patientName: reservation.patient_name, patientEmail: reservation.patient_email || '',
+          patientPhone: reservation.patient_phone || '', date: reservation.slot_date, time: reservation.slot_time,
+          location: confirmedAppointment.location, status: 'confirmed', consultationMode: 'video' },
+      })
+    }
     let emailConfirmationSentAt: string | undefined
     if (reservation.patient_email && reservation.payment_status !== 'approved') {
       const { data: professional } = await admin.from('professionals').select('full_name, specialty').eq('id', reservation.professional_id).maybeSingle()

@@ -21,6 +21,16 @@ test('paid and legacy reservations never appear confirmed before they are', () =
   assert.match(registrationEmail({ ...booking, status: 'pending' }, '').text, /Solicitud pendiente/)
 })
 
+test('video notifications distinguish requested and paid appointments with instructions to send the link', () => {
+  const pending = registrationEmail({ ...booking, consultationMode: 'video', status: 'pending_payment' }, 'Doctor')
+  assert.match(pending.subject, /Videoconsulta/)
+  assert.match(pending.text, /Recepción digital - consulta virtual/)
+  assert.match(pending.text, /Verificá el pago/)
+  const confirmed = registrationEmail({ ...booking, consultationMode: 'video' }, 'Doctor')
+  assert.match(confirmed.text, /Pago aprobado/)
+  assert.match(confirmed.text, /enviá al paciente el enlace/)
+})
+
 test('patient and professional text is escaped and clinical identifiers are absent', () => {
   const mail = registrationEmail({ ...invite, patientName: '<img src=x onerror=alert(1)> & "test"' }, '<script>')
   assert.ok(!mail.templateData.message.includes('<img'))
