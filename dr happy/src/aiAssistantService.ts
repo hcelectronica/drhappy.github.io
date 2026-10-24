@@ -20,6 +20,7 @@ interface AssistantResult {
   message?: string
   reply?: string
   truncated?: boolean
+  readOnly?: boolean
   pendingConfirmation?: AssistantPendingConfirmation
   sharedStudy?: { documentId: string; title: string; studyDate: string | null }
 }

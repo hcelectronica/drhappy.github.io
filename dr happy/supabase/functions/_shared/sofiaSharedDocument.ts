@@ -14,25 +14,30 @@ export class SharedStudyError extends Error {
   constructor(public status: number, message: string) { super(message) }
 }
 
-export async function authorizedSharedStudy(admin: SupabaseClient, professionalId: string, selection: SharedStudySelection) {
-  if (!selection || typeof selection.patientId !== 'string' || !selection.patientId.trim()
-    || !UUID.test(selection.shareId) || !UUID.test(selection.documentId)) {
-    throw new SharedStudyError(400, 'Seleccioná un estudio compartido válido.')
-  }
+export async function ownedSharedPatient(admin: SupabaseClient, professionalId: string, patientId: string) {
   const { data: workspace, error: workspaceError } = await admin.from('user_workspaces')
     .select('patients_json').eq('user_id', professionalId).maybeSingle()
   if (workspaceError) throw workspaceError
   const patients: unknown[] = Array.isArray(workspace?.patients_json) ? workspace.patients_json : []
   const patient = patients.find((entry): entry is Record<string, unknown> =>
-    Boolean(entry && typeof entry === 'object' && 'id' in entry && entry.id === selection.patientId))
+    Boolean(entry && typeof entry === 'object' && 'id' in entry && entry.id === patientId))
   const dni = String(patient?.dni ?? '').replace(/\D/g, '')
   if (!patient || dni.length < 6 || patient.ownerUserId !== professionalId) {
     throw new SharedStudyError(403, 'La ficha no pertenece a tu consultorio.')
   }
   const { data: archives, error: archiveError } = await admin.from('dental_patient_archives')
-    .select('patient_id').eq('professional_id', professionalId).eq('patient_id', selection.patientId).neq('state', 'active')
+    .select('patient_id').eq('professional_id', professionalId).eq('patient_id', patientId).neq('state', 'active')
   if (archiveError) throw archiveError
   if (archives?.length) throw new SharedStudyError(409, 'La ficha está archivada.')
+  return { patient, dni }
+}
+
+export async function authorizedSharedStudy(admin: SupabaseClient, professionalId: string, selection: SharedStudySelection) {
+  if (!selection || typeof selection.patientId !== 'string' || !selection.patientId.trim()
+    || !UUID.test(selection.shareId) || !UUID.test(selection.documentId)) {
+    throw new SharedStudyError(400, 'Seleccioná un estudio compartido válido.')
+  }
+  const { dni } = await ownedSharedPatient(admin, professionalId, selection.patientId)
   const { data: share, error: shareError } = await admin.from('patient_shares')
     .select('id, patient_id, all_documents, document_ids, expires_at')
     .eq('id', selection.shareId).eq('kind', 'doctor').eq('professional_id', professionalId).is('revoked_at', null).maybeSingle()

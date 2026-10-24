@@ -2940,7 +2940,7 @@ function App() {
   const sofiaRecognitionRef = useRef<BrowserSpeechRecognition | null>(null)
   const [sofiaPendingConfirmation, setSofiaPendingConfirmation] = useState<AssistantPendingConfirmation | null>(null)
   const [sofiaMessages, setSofiaMessages] = useState<AssistantMessage[]>([
-    { role: 'assistant', content: 'Hola. Soy Sofía, tu secretaria clínica. Puedo ayudarte a ordenar ideas, preparar una consulta o trabajar con la información que me compartas.' },
+    { role: 'assistant', content: 'Hola. Soy Sofía, tu secretaria clínica. Puedo consultar tus pacientes, su historia y los estudios, la presión o la glucosa que te hayan compartido. Indicame nombre o DNI y qué necesitás revisar. Los borradores clínicos los revisás y guardás vos.' },
   ])
 
   function stopSofiaDictation(): void {
@@ -3007,14 +3007,18 @@ function App() {
     const result = await askSofia({
       messages: nextMessages,
       professionalName: profile?.fullName || activeUser?.fullName,
-      context: 'El profesional está dentro de Dr Happy. Sofía puede consultar agenda y pacientes, preparar borradores y ejecutar agendamientos directamente. Si el profesional pide un turno, no pidas confirmación ni campos opcionales: usa nombre, apellido y fecha, asigna la primera hora libre si no la indica y detente solo por cupo, día no habilitado o superposición.',
+      context: [
+        'El profesional está dentro de Dr Happy. Sofía puede consultar agenda y pacientes, preparar borradores y ejecutar agendamientos directamente. Si el profesional pide un turno, no pidas confirmación ni campos opcionales: usa nombre, apellido y fecha, asigna la primera hora libre si no la indica y detente solo por cupo, día no habilitado o superposición.',
+        'Podés listar y leer estudios de Mi Carpeta de Salud y consultar presión/glucosa autorizadas usando las herramientas. No se guardan automáticamente en la historia.',
+        selectedPatient ? `Ficha seleccionada en esta pregunta (si se refiere a "este paciente"): ${JSON.stringify({ patientId: selectedPatient.id, nombre: selectedPatient.nombre, apellido: selectedPatient.apellido })}. Si nombra a otro paciente, buscá ese paciente; no uses esta ficha.` : 'No hay ficha seleccionada: pedí nombre o DNI si falta.',
+      ].join('\n'),
     })
     setSofiaMessages((current) => [...current, {
       role: 'assistant',
       content: result.success ? result.reply || 'No recibí una respuesta.' : (result.message || 'No pude responder en este momento.'),
     }])
     setSofiaPendingConfirmation(result.success ? result.pendingConfirmation || null : null)
-    if (result.success && activeUser) {
+    if (result.success && activeUser && !result.readOnly) {
       void loadWorkspaceForUser(activeUser)
     }
     setSofiaBusy(false)
@@ -17917,7 +17921,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
               </div>
               <button type="button" className="drhappy-modal-close-btn" onClick={() => setSofiaOpen(false)} aria-label="Cerrar Sofía">✕</button>
             </div>
-            <p className="sofia-intro">Tu secretaria clínica para consultar la agenda, preparar información y ejecutar acciones con tu confirmación.</p>
+            <p className="sofia-intro">Consultá agenda, historias y estudios compartidos. Para leer un archivo se envía al servicio de IA: PDF o imágenes hasta 8 MB, hasta 3 por pregunta. Cada pregunta usa una consulta de Sofía.</p>
+            {selectedPatient ? <small>Ficha seleccionada: {selectedPatient.apellido}, {selectedPatient.nombre}. Podés consultar por este paciente o indicar otro nombre o DNI.</small> : null}
             <div className="sofia-messages" aria-live="polite">
               {sofiaMessages.map((message, index) => {
                 const messageText = typeof message.content === 'string'
@@ -17954,7 +17959,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
               ) : null}
             </div>
             <form className="sofia-compose" onSubmit={(event) => { event.preventDefault(); void handleAskSofia() }}>
-              <textarea value={sofiaDraft} onChange={(event) => setSofiaDraft(event.target.value)} placeholder="Ej: agendá a María López para el jueves..." rows={3} disabled={sofiaBusy} />
+              <textarea value={sofiaDraft} onChange={(event) => setSofiaDraft(event.target.value)} placeholder="Ej: leé el último laboratorio compartido de María López y comparalo con su historia..." rows={3} disabled={sofiaBusy} />
               <div className="sofia-compose-actions">
                 <label htmlFor="sofia-document-upload" className="ghost sofia-file-button">📎 Mostrar archivo a Sofía</label>
                 <input
