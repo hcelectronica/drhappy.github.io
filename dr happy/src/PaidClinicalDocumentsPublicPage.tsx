@@ -174,7 +174,7 @@ export function PaidClinicalDocumentsPublicPage() {
               </label>
               <label className="paid-document-public-honeypot" aria-hidden="true">Sitio web<input tabIndex={-1} autoComplete="off" value={website} onChange={(event) => setWebsite(event.target.value)} /></label>
               <button className="paid-document-public-submit" type="submit" disabled={submitting || !settings.service.enabled || !settings.paymentReady}>
-                {submitting ? 'Abriendo Mercado Pago…' : 'Continuar a Mercado Pago'}
+                {submitting ? 'Abriendo Mercado Pago…' : 'Continuar y pagar'}
               </button>
               <p className="paid-document-public-terms">Al continuar, se abrirá Mercado Pago para completar el pago. El profesional solo recibirá y gestionará tu solicitud cuando el pago se confirme. Si no pagás, no se realizará ninguna gestión. No cargues información de urgencia por este medio.</p>
             </form>
