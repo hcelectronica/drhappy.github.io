@@ -47,3 +47,17 @@ test('invalid confirmed amounts and dates are reported, not silently added as ze
   for (const amount of [0, -1, NaN, Infinity]) assert.throws(() => paidDocumentLedgerEntries([{ ...request, amount }], []))
   assert.throws(() => paidDocumentLedgerEntries([{ ...request, paid_at: 'invalid' }], []))
 })
+
+test('recovering the patient chart keeps the original payment ID and amount exactly once', () => {
+  const original = paidDocumentLedgerEntries([request], [])
+  const recovered = paidDocumentLedgerEntries([{ ...request, patient_id: 'recovered-chart' }, request],
+    [{ id: 'recovered-chart', dni: '12345678', nombre: 'Ana', apellido: 'Prueba' }])
+  assert.equal(recovered.length, 1)
+  assert.equal(recovered[0].id, original[0].id)
+  assert.equal(recovered[0].paidAmount, original[0].paidAmount)
+  assert.equal(recovered[0].patientId, 'recovered-chart')
+  const correctedDni = paidDocumentLedgerEntries([{ ...request, patient_id: 'recovered-chart' }],
+    [{ id: 'recovered-chart', dni: '12345679', nombre: 'Ana', apellido: 'Prueba' }])
+  assert.equal(correctedDni[0].patientId, 'recovered-chart')
+  assert.equal(paidDocumentLedgerEntries([{ ...request, patient_id: 'archived-chart' }], [])[0].patientId, 'archived-chart')
+})

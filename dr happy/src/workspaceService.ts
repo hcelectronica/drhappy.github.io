@@ -31,7 +31,7 @@ export function loadWorkspaceData(): Promise<WorkspaceResponse> {
   return invokeWorkspace({ action: 'load' })
 }
 
-export function saveWorkspaceData(params: { profile: unknown; patients: unknown[]; appointments: unknown[]; treatmentLedger?: unknown[] }): Promise<WorkspaceResponse> {
+export function saveWorkspaceData(params: { profile: unknown; patients: unknown[]; appointments: unknown[]; treatmentLedger?: unknown[]; knownPatientIds?: string[] }): Promise<WorkspaceResponse> {
   return invokeWorkspace({ action: 'save', ...params })
 }
 
@@ -53,4 +53,3 @@ export function sendHeartbeat(params: {
 }): Promise<WorkspaceResponse> {
   return invokeWorkspace({ action: 'heartbeat', ...params })
 }
-

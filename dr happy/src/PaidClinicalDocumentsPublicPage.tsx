@@ -34,6 +34,8 @@ export function PaidClinicalDocumentsPublicPage() {
   const [patientEmail, setPatientEmail] = useState('')
   const [patientPhone, setPatientPhone] = useState('')
   const [birthDate, setBirthDate] = useState('')
+  const [healthInsurance, setHealthInsurance] = useState('')
+  const [insuranceMemberNumber, setInsuranceMemberNumber] = useState('')
   const [reason, setReason] = useState('')
   const [consent, setConsent] = useState(false)
   const [website, setWebsite] = useState('')
@@ -99,6 +101,8 @@ export function PaidClinicalDocumentsPublicPage() {
         patientEmail,
         patientPhone,
         birthDate,
+        healthInsurance,
+        insuranceMemberNumber,
         reason,
         consent,
         website,
@@ -158,6 +162,8 @@ export function PaidClinicalDocumentsPublicPage() {
                 <label>Fecha de nacimiento (opcional)<input type="date" max={new Date().toISOString().slice(0, 10)} value={birthDate} onChange={(event) => setBirthDate(event.target.value)} /></label>
                 <label>Email<input type="email" autoComplete="email" maxLength={160} value={patientEmail} onChange={(event) => setPatientEmail(event.target.value)} required /></label>
                 <label>Teléfono<input type="tel" autoComplete="tel" maxLength={30} value={patientPhone} onChange={(event) => setPatientPhone(event.target.value)} required /></label>
+                <label>Obra social o prepaga (opcional)<input maxLength={120} value={healthInsurance} onChange={(event) => setHealthInsurance(event.target.value)} /></label>
+                <label>Número de afiliado (opcional)<input type="text" maxLength={80} value={insuranceMemberNumber} onChange={(event) => setInsuranceMemberNumber(event.target.value)} /></label>
               </div>
               <label>Motivo de solicitud
                 <textarea rows={4} maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} required />

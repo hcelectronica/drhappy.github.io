@@ -13,7 +13,7 @@ import type {
 
 interface PaidClinicalDocumentsPanelProps {
   onClose: () => void
-  onStartIssue: (request: PaidClinicalDocumentRequest) => void
+  onStartIssue: (request: PaidClinicalDocumentRequest) => Promise<void> | void
 }
 
 function formatPrice(value: number): string {
@@ -42,6 +42,18 @@ export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinic
     const result = await listPaidClinicalDocumentRequests()
     if (!result.success) throw new Error(result.message || 'No se pudieron cargar las solicitudes.')
     setRequests(result.requests ?? [])
+  }
+
+  async function startIssue(request: PaidClinicalDocumentRequest): Promise<void> {
+    setBusyRequestId(request.id)
+    setError(null)
+    try {
+      await onStartIssue(request)
+    } catch (issueError) {
+      setError(issueError instanceof Error ? issueError.message : 'No se pudo abrir la ficha de la solicitud.')
+    } finally {
+      setBusyRequestId(null)
+    }
   }
 
   useEffect(() => {
@@ -211,13 +223,14 @@ export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinic
                 <p>{request.reason}</p>
                 <div className="paid-documents-request-meta">
                   <span>{request.patient_email} · {request.patient_phone}</span>
+                  <span>Obra social: {request.patient_health_insurance || 'No informada'} · Afiliado: {request.patient_insurance_member_number || 'No informado'}</span>
                   <strong>{formatPrice(request.amount)}</strong>
                   <span>Pago confirmado: {formatDate(request.paid_at || request.created_at)}</span>
                 </div>
                 {request.status === 'pending_review' ? (
                   <div className="paid-documents-request-actions">
-                    <button type="button" onClick={() => onStartIssue(request)}>Resolver solicitud</button>
-                    <button type="button" className="ghost" disabled={busyRequestId === request.id} onClick={() => void markIssued(request)}>
+                    <button type="button" disabled={busyRequestId !== null} onClick={() => void startIssue(request)}>Resolver solicitud</button>
+                    <button type="button" className="ghost" disabled={busyRequestId !== null} onClick={() => void markIssued(request)}>
                       {busyRequestId === request.id ? 'Guardando…' : 'Marcar como respondida'}
                     </button>
                   </div>

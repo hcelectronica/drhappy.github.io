@@ -50,7 +50,7 @@ import { acknowledgeDoctorFolderLinks, pullDoctorFolderLinks } from './patientFo
 import PatientSharedFolderPanel from './PatientSharedFolderPanel'
 import { VirtualConsultInbox } from './VirtualConsultInbox'
 import { PaidClinicalDocumentsPanel } from './PaidClinicalDocumentsPanel'
-import { completePaidClinicalDocumentRequest, listPaidClinicalDocumentLedgerRequests } from './paidClinicalDocumentsService'
+import { completePaidClinicalDocumentRequest, getPaidClinicalDocumentPatient, listPaidClinicalDocumentLedgerRequests } from './paidClinicalDocumentsService'
 import { paidDocumentLedgerEntries } from './paidClinicalDocumentLedger'
 import type { PaidClinicalDocumentRequest } from './paidClinicalDocumentsService'
 import { listVirtualConsults } from './virtualConsultService'
@@ -3775,6 +3775,7 @@ function App() {
         profile: nextProfile,
         patients: nextPatients,
         appointments: nextAppointments,
+        knownPatientIds: patients.map((patient) => patient.id),
       })
       if (!result.success) throw new Error(result.message || 'No se pudo guardar la base personal en la nube.')
     })
@@ -5879,9 +5880,9 @@ function App() {
     )
   }
 
-  function persistPatientsBatch(nextPatients: PatientRecord[]): void {
+  function persistPatientsBatch(nextPatients: PatientRecord[]): Promise<boolean> {
     if (!activeUserId) {
-      return
+      return Promise.resolve(false)
     }
 
     const ownerIndex = readJsonStorage<string[]>(patientIndexStorageKey(activeUserId), [])
@@ -5918,12 +5919,13 @@ function App() {
     setAvailablePatients(persistedAvailable)
     const workspaceProfile = profile ?? (activeUser ? profileFromSeed(activeUser) : null)
     if (workspaceProfile) {
-      void persistWorkspaceRemote(activeUserId, workspaceProfile, persistedPatients, appointments)
+      return persistWorkspaceRemote(activeUserId, workspaceProfile, persistedPatients, appointments)
     }
+    return Promise.resolve(!isSupabaseConfigured)
   }
 
-  function persistPatient(nextPatient: PatientRecord): void {
-    persistPatientsBatch([nextPatient])
+  function persistPatient(nextPatient: PatientRecord): Promise<boolean> {
+    return persistPatientsBatch([nextPatient])
   }
 
   async function handleDeletePatient(patientId: string): Promise<void> {
@@ -10018,13 +10020,22 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     setCertificateError(null)
   }
 
-  function handleStartPaidClinicalDocumentIssue(request: PaidClinicalDocumentRequest): void {
+  async function handleStartPaidClinicalDocumentIssue(request: PaidClinicalDocumentRequest): Promise<void> {
     if (!activeUserId || !profile) {
-      setAppError('Iniciá sesión para emitir el documento.')
-      return
+      throw new Error('Iniciá sesión para emitir el documento.')
     }
+    const userId = activeUserId
+    const generation = sessionGenerationRef.current
+    await workspaceSaveQueueRef.current
     const requestDni = request.patient_dni.replace(/\D/g, '')
     let patient = patients.find((item) => item.dni.replace(/\D/g, '') === requestDni)
+    if (isSupabaseConfigured) {
+      const result = await getPaidClinicalDocumentPatient(request.id)
+      if (generation !== sessionGenerationRef.current) return
+      if (!result.success) throw new Error(result.message || 'No se pudo recuperar la ficha de esta solicitud.')
+      patient = normalizeRemotePatient(result.patient, userId) ?? undefined
+      if (!patient) throw new Error('No se recibió una ficha válida. Volvé a intentar.')
+    }
     if (!patient) {
       const now = new Date().toISOString()
       const birthDate = request.patient_birth_date || ''
@@ -10036,8 +10047,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         dni: requestDni,
         email: request.patient_email,
         telefono: request.patient_phone,
-        obraSocial: '',
-        numeroAfiliado: '',
+        obraSocial: request.patient_health_insurance || '',
+        numeroAfiliado: request.patient_insurance_member_number || '',
         plan: '',
         birthDate,
         edad: calculateAge(birthDate),
@@ -10052,15 +10063,17 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         createdAt: now,
         updatedAt: now,
       }
-      persistPatient(patient)
     } else {
       patient = {
         ...patient,
         email: patient.email || request.patient_email,
         telefono: patient.telefono || request.patient_phone,
+        obraSocial: patient.obraSocial || request.patient_health_insurance || '',
+        numeroAfiliado: patient.numeroAfiliado || request.patient_insurance_member_number || '',
       }
-      persistPatient(patient)
     }
+    if (!await persistPatient(patient)) throw new Error('No se pudo guardar la ficha. No se abrió la emisión del documento.')
+    if (generation !== sessionGenerationRef.current) return
     handleOpenCertificateModal(patient)
     setPaidClinicalDocumentRequestId(request.id)
     setPaidClinicalDocumentRequestReason(request.reason)
@@ -10196,12 +10209,15 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         signatureSeal,
         certificateId: entry.id,
       }
-      persistPatient({
+      const saved = persistPatient({
         ...certificatePatient,
         certificates: [entry, ...(certificatePatient.certificates ?? [])],
         consultations: [historyEntry, ...certificatePatient.consultations],
         updatedAt: issuedAt,
       })
+      if (paidClinicalDocumentRequestId && !await saved) {
+        throw new Error('No se pudo guardar el documento en la ficha. Reintentá antes de enviarlo al paciente.')
+      }
       trackClinicalAction('certificate')
       trackClinicalAction('consultation')
       if (!diagnosisCatalog.some((item) => normalizeSearchText(item) === normalizeSearchText(diagnostico))) {

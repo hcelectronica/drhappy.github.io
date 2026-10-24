@@ -22,6 +22,9 @@ export interface PaidClinicalDocumentRequest {
   patient_email: string
   patient_phone: string
   patient_birth_date: string | null
+  patient_health_insurance?: string | null
+  patient_insurance_member_number?: string | null
+  patient_id?: string | null
   reason: string
   amount: number
   status: PaidClinicalDocumentStatus
@@ -36,6 +39,7 @@ interface FunctionResponse {
   message?: string
   settings?: PaidClinicalDocumentSettings
   requests?: PaidClinicalDocumentRequest[]
+  patient?: unknown
   professionalName?: string
   service?: PaidClinicalDocumentSettings['service']
   paymentReady?: boolean
@@ -103,6 +107,10 @@ export function completePaidClinicalDocumentRequest(id: string): Promise<Functio
   return invokePaidClinicalDocuments({ action: 'complete-request', id })
 }
 
+export function getPaidClinicalDocumentPatient(id: string): Promise<FunctionResponse> {
+  return invokePaidClinicalDocuments({ action: 'get-patient', id })
+}
+
 export function buildPaidClinicalDocumentsUrl(slug: string): string {
   return `https://drhappy.com.ar/documentos/${encodeURIComponent(slug)}`
 }
@@ -119,6 +127,8 @@ export function submitPaidClinicalDocumentRequest(input: {
   patientEmail: string
   patientPhone: string
   birthDate: string
+  healthInsurance?: string
+  insuranceMemberNumber?: string
   reason: string
   consent: boolean
   website: string

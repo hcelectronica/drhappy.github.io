@@ -129,7 +129,11 @@ Deno.serve(async (request) => {
       workspaceUpdate.treatment_ledger_json = body.treatmentLedger
       workspaceUpdate.treatment_ledger_initialized = true
     }
-    const { error } = await admin.from('user_workspaces').upsert(workspaceUpdate, { onConflict: 'user_id' })
+    const { error } = await admin.rpc('save_workspace_with_paid_patients', {
+      p_professional_id: professionalId,
+      p_workspace: workspaceUpdate,
+      p_known_patient_ids: Array.isArray(body.knownPatientIds) ? body.knownPatientIds : [],
+    })
     if (error) return jsonResponse(['40001', '23505'].includes(error.code) ? 409 : 500, { success: false, message: error.message })
     void admin.from('professionals').update({ last_seen_at: new Date().toISOString() }).eq('id', professionalId)
     return jsonResponse(200, { success: true })

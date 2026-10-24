@@ -29,7 +29,7 @@ function slugify(value: string): string {
   return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50)
 }
 
-function decodeBase64(value: string): Uint8Array {
+function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (value.length % 4)) % 4)
   return Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0))
 }
@@ -202,6 +202,14 @@ Deno.serve(async (request) => {
       const patientEmail = plainText(body.patientEmail, 160).toLowerCase()
       const patientPhone = String(body.patientPhone ?? '').replace(/[^\d+]/g, '').slice(0, 30)
       const birthDate = plainText(body.birthDate, 10)
+      for (const [field, limit] of [['healthInsurance', 120], ['insuranceMemberNumber', 80]] as const) {
+        const value = body[field]
+        if (value != null && (typeof value !== 'string' || value.trim().length > limit || /\p{Cc}/u.test(value))) {
+          return reply(400, { success: false, message: 'Revisá la obra social y el número de afiliado: texto válido de hasta 120 y 80 caracteres, respectivamente.' })
+        }
+      }
+      const healthInsurance = String(body.healthInsurance ?? '').trim()
+      const insuranceMemberNumber = String(body.insuranceMemberNumber ?? '').trim()
       const reason = multilineText(body.reason, 2000)
       if (!patientFirstName || !patientLastName) return reply(400, { success: false, message: 'Completá tu nombre y apellido.' })
       if (!/^\d{6,9}$/.test(patientDni)) return reply(400, { success: false, message: 'Ingresá un DNI válido (solo números).' })
@@ -232,6 +240,8 @@ Deno.serve(async (request) => {
         patient_email: patientEmail,
         patient_phone: patientPhone,
         patient_birth_date: birthDate || null,
+        patient_health_insurance: healthInsurance || null,
+        patient_insurance_member_number: insuranceMemberNumber || null,
         reason,
         amount,
       })
@@ -335,7 +345,7 @@ Deno.serve(async (request) => {
       const offset = body.action === 'list-ledger-requests' ? Number(body.offset ?? 0) : 0
       if (!Number.isSafeInteger(offset) || offset < 0) return reply(400, { success: false, message: 'La página de pagos no es válida.' })
       const { data, error } = await admin.from('paid_clinical_document_requests')
-        .select('id, patient_first_name, patient_last_name, patient_dni, patient_email, patient_phone, patient_birth_date, reason, amount, status, payment_status, paid_at, completed_at, created_at')
+        .select('id, patient_first_name, patient_last_name, patient_dni, patient_email, patient_phone, patient_birth_date, patient_health_insurance, patient_insurance_member_number, patient_id, reason, amount, status, payment_status, paid_at, completed_at, created_at')
         .eq('professional_id', professionalId)
         .in('status', ['pending_review', 'completed'])
         .eq('payment_status', 'approved')
@@ -344,6 +354,18 @@ Deno.serve(async (request) => {
         .range(offset, offset + 99)
       if (error) throw error
       return reply(200, { success: true, requests: data ?? [] })
+    }
+
+    if (body.action === 'get-patient') {
+      const id = String(body.id ?? '').toLowerCase()
+      if (!UUID.test(id)) return reply(400, { success: false, message: 'Solicitud no válida.' })
+      const { data, error } = await admin.rpc('ensure_paid_document_patient', {
+        p_professional_id: professionalId, p_request_id: id,
+      })
+      if (error) throw error
+      if (!data) return reply(404, { success: false, message: 'No se encontró una solicitud pagada de este perfil.' })
+      if (data.archived) return reply(409, { success: false, message: 'La ficha está archivada. Revisá Pacientes eliminados antes de emitir un documento.' })
+      return reply(200, { success: true, patient: data.patient })
     }
 
     if (body.action === 'complete-request') {

@@ -26,11 +26,12 @@ export function paidDocumentLedgerEntries(
     const paidDate = new Date(timestamp)
     if (Number.isNaN(paidDate.getTime())) throw new Error('Una solicitud paga tiene una fecha inválida.')
     const dni = request.patient_dni.replace(/\D/g, '')
-    const patient = dni ? patients.find((item) => item.dni.replace(/\D/g, '') === dni) : undefined
+    const patient = patients.find((item) => item.id === request.patient_id)
+      ?? (dni ? patients.find((item) => item.dni.replace(/\D/g, '') === dni) : undefined)
     const id = `paid-document-${request.id}`
     entries.set(id, {
       id,
-      patientId: patient?.id || (dni ? `paid-document-dni-${dni}` : id),
+      patientId: patient?.id || request.patient_id || (dni ? `paid-document-dni-${dni}` : id),
       patientName: patient ? `${patient.apellido}, ${patient.nombre}` : `${request.patient_last_name}, ${request.patient_first_name}`,
       date: paidDate.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }),
       intervention: 'Solicitud de certificados y órdenes',
