@@ -21,6 +21,7 @@ interface AssistantResult {
   reply?: string
   truncated?: boolean
   pendingConfirmation?: AssistantPendingConfirmation
+  sharedStudy?: { documentId: string; title: string; studyDate: string | null }
 }
 
 export interface PaperRecordTranscription {
@@ -77,7 +78,9 @@ export async function askSofia(params: {
   messages: AssistantMessage[]
   professionalName?: string
   context?: string
-  mode?: 'paper-record-transcription' | 'dictation-polish' | 'clinical-evolution-review'
+  mode?: 'paper-record-transcription' | 'dictation-polish' | 'clinical-evolution-review' | 'shared-study-review'
+  sharedStudy?: { patientId: string; shareId: string; documentId: string }
+  checkOnly?: boolean
   confirmation?: { action: string; input: Record<string, unknown> }
 }): Promise<AssistantResult> {
   if (!isSupabaseConfigured || !supabase) {
@@ -94,6 +97,8 @@ export async function askSofia(params: {
     body: {
       action: 'chat',
       mode: params.mode,
+      sharedStudy: params.sharedStudy,
+      checkOnly: params.checkOnly,
       messages: params.messages,
       professionalName: params.professionalName,
       context: params.context,

@@ -7320,6 +7320,22 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     }
   }
 
+  function incorporateSharedStudyDraft(text: string): void {
+    if (!selectedPatient || selectedPatient.ownerUserId !== activeUserId || !canUseMedicalTools
+      || consultationEditing || consultationCorrectionSaving || clinicalSummaryBusy || clinicalDocumentBusy) {
+      throw new Error('Terminá la edición o revisión actual antes de incorporar el estudio a una nueva evolución.')
+    }
+    setConsultationDraft(current => ({
+      ...current,
+      motivoConsulta: current.motivoConsulta.trim() || 'Revisión de estudios compartidos por el paciente',
+      enfermedadActual: [current.enfermedadActual.trim(), text].filter(Boolean).join('\n\n'),
+      incluirResumenSofia: false,
+    }))
+    setWorkspaceLayer('clinical')
+    setAppNotice('Estudio incorporado al borrador, sin guardar. Revisá Enfermedad actual y elegí Guardar evolución para registrarlo.')
+    requestAnimationFrame(() => document.querySelector('.evolution-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+
   function stopDictation(): void {
     const recognition = recognitionRef.current
     if (!recognition) {
@@ -15158,7 +15174,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                   </div>
                 </section>)}
                 {renderPaperRecords(canManagePaperRecords)}
-                {selectedPatient?.dni ? <PatientSharedFolderPanel key={selectedPatient.id} dni={selectedPatient.dni} /> : null}
+                {selectedPatient?.dni ? <PatientSharedFolderPanel key={selectedPatient.id} dni={selectedPatient.dni} patientId={selectedPatient.id}
+                  onStudyDraft={canUseMedicalTools && selectedPatient.ownerUserId === activeUserId && !consultationEditing ? incorporateSharedStudyDraft : undefined} /> : null}
                 <div className="record-document-actions">
                   {canUseMedicalTools && selectedPatient?.ownerUserId === activeUserId ? (
                     <button type="button" className="ghost" disabled={videoAccessBusy} onClick={() => { void handleOpenVideoConsultation({ patientId: selectedPatient.id }) }}>📹 Videoconsulta</button>
@@ -15424,7 +15441,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 </fieldset>
               </form>
               {selectedPatient ? renderPaperRecords(false) : null}
-              {selectedPatient?.dni ? <PatientSharedFolderPanel key={selectedPatient.id} dni={selectedPatient.dni} /> : null}
+              {selectedPatient?.dni ? <PatientSharedFolderPanel key={selectedPatient.id} dni={selectedPatient.dni} patientId={selectedPatient.id}
+                onStudyDraft={canUseMedicalTools && selectedPatient.ownerUserId === activeUserId && !consultationEditing ? incorporateSharedStudyDraft : undefined} /> : null}
               <ul className="consultation-list">
                 {selectedPatient?.consultations.map((entry) => (
                   <li key={entry.id}>

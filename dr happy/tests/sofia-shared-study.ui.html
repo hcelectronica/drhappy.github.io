@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sofia shared study fixture</title></head>
+<body><div id="root"></div><script type="module">
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import PatientSharedFolderPanel from '../src/PatientSharedFolderPanel.tsx'
+import '../src/index.css'
+import '../src/App.css'
+const shareId='11111111-1111-4111-8111-111111111111', documentId='22222222-2222-4222-8222-222222222222'
+window.fixtureCalls=[]
+window.fixtureState={revoked:false,truncated:false,delay:0,fail:false}
+const realFetch=window.fetch.bind(window)
+window.fetch=async(input,init)=>{
+  const url=typeof input==='string'?input:input.url||String(input)
+  if(!url.includes('.supabase.co'))return realFetch(input,init)
+  const body=JSON.parse(init?.body||'{}')
+  window.fixtureCalls.push(body)
+  let data={success:true}
+  if(body.action==='doctor-folder')data.folders=[{shareId,patientName:'Paciente ficticio',sharedAt:'2026-10-24',
+    documents:[{id:documentId,title:'Estudio ficticio',studyDate:'2026-10-01',category:'laboratory',mimeType:'application/pdf',sizeBytes:1024}],pressure:[]}]
+  else if(body.mode==='shared-study-review'){
+    await new Promise(resolve=>setTimeout(resolve,window.fixtureState.delay))
+    data=window.fixtureState.fail?{success:false,message:'Falla técnica de prueba'}:window.fixtureState.revoked?{success:false,message:'El estudio ya no está compartido con vos.'}
+      :body.checkOnly?{success:true}:{success:true,reply:'HALLAZGOS DOCUMENTADOS\nValores ficticios para prueba de interfaz.',truncated:window.fixtureState.truncated,sharedStudy:{documentId,title:'Estudio ficticio',studyDate:'2026-10-01'}}
+  }else throw Error('Unexpected fixture request')
+  return new Response(JSON.stringify(data),{headers:{'content-type':'application/json'}})
+}
+function Fixture(){
+  const[patient,setPatient]=React.useState('chart-one')
+  const[draft,setDraft]=React.useState('Texto clínico previo.')
+  const[saved,setSaved]=React.useState('')
+  return React.createElement('main',{style:{padding:12,maxWidth:900,margin:'auto'}},
+    React.createElement('button',{onClick:()=>setPatient(patient==='chart-one'?'chart-two':'chart-one')},'Cambiar paciente'),
+    React.createElement(PatientSharedFolderPanel,{key:patient,dni:patient==='chart-one'?'12345678':'99999999',patientId:patient,
+      onStudyDraft:text=>setDraft(previous=>previous+'\n\n'+text)}),
+    React.createElement('label',null,'Evolución sin guardar',React.createElement('textarea',{'aria-label':'Evolución sin guardar',value:draft,onChange:event=>setDraft(event.target.value)})),
+    React.createElement('button',{onClick:()=>setSaved(draft)},'Guardar evolución de prueba'),
+    React.createElement('output',{'aria-label':'Registro guardado'},saved))
+}
+createRoot(document.getElementById('root')).render(React.createElement(Fixture))
+</script></body>
+</html>
