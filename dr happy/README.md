@@ -10,6 +10,14 @@ Web app base en React + TypeScript para:
 
 ## Ficha clínica y seguimiento
 
+### Mi Carpeta de Salud: búsqueda de profesionales y cobertura
+
+En **Compartir con mi médico → Mi médico usa Dr Happy**, la búsqueda muestra sugerencias desde dos letras, con una espera breve al escribir. Admite fragmentos de nombre/apellido en cualquier orden, mayúsculas y tildes; conserva también la búsqueda por email o enlace de registro. Devuelve hasta diez profesionales activos con nombre y especialidad, sin exponer emails u otros datos del directorio. Si hay más coincidencias, pide precisar el texto. Requiere sesión de paciente; el RPC SQL solo admite `service_role`. Buscar y seleccionar **no concede acceso**: el paciente elige el profesional y confirma **Compartir** con los mismos permisos de estudios, presión y glucosa existentes.
+
+En **Mi cuenta → Mis datos** se guardan opcionalmente **obra social o prepaga** (hasta 120 caracteres) y **número de afiliado** (hasta 80). El número es texto para conservar ceros iniciales, letras y separadores. Se pueden dejar vacíos o borrar; clientes anteriores que omitan los campos no eliminan estos datos. El servidor usa la identidad de la sesión, no un ID enviado por el paciente. Esta incorporación no cambia automáticamente fichas médicas ni amplía la información expuesta en links compartidos.
+
+Despliegue: migración `20261024010000_patient_profile_and_doctor_search.sql` y función `patient-folder`. Validación: `node --test tests/patient-profile-search.test.mjs`, `supabase db query --linked -f tests/patient-profile-search.database.sql` (rollback), pruebas de navegador y fixtures live existentes de `patient-tools`.
+
 ### Recepción digital para pacientes
 
 **Mi recepción**, en el menú profesional (PC y móvil), permite guardar un nombre visible, un enlace corto único `https://www.drhappy.com.ar/r/alias`, habilitar/pausar la recepción y elegir cinco opciones: certificados y recetas (enlace existente de documentos), evaluación de estudios (orientación virtual asistida por IA), turno presencial (turnera paga), videoconsulta y registro de pacientes (invitación del consultorio, no Mi Carpeta de Salud). No modifica los enlaces individuales ni promete un diagnóstico automático o un plazo de respuesta. La pantalla pública utiliza el logo y los colores de Dr Happy, sin registro previo y con diseño compacto adaptativo; en pantallas muy pequeñas o con texto ampliado se permite desplazamiento para no ocultar contenido.

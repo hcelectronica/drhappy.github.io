@@ -525,6 +525,11 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
   const [glucose, setGlucose] = useState(false)
   const [query, setQuery] = useState('')
   const [doctor, setDoctor] = useState<{ id: string; name: string; specialty: string } | null>(null)
+  const [doctors, setDoctors] = useState<NonNullable<PatientFolderResponse['doctors']>>([])
+  const [searching, setSearching] = useState(false)
+  const [searched, setSearched] = useState(false)
+  const [moreDoctors, setMoreDoctors] = useState(false)
+  const [searchAttempt, setSearchAttempt] = useState(0)
   const [days, setDays] = useState(7)
   const [created, setCreated] = useState<{ url: string; code: string; expiresAt: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -538,6 +543,31 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
 
   useEffect(() => { void loadShares() }, [loadShares])
 
+  useEffect(() => {
+    if (mode !== 'doctor' || doctor || query.trim().length < 2) return
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      setSearching(true)
+      setError('')
+      try {
+        const result = await callPatientFolder({ action: 'search-doctors', query: query.trim() })
+        if (cancelled) return
+        if (!result.success) {
+          setError(result.message || 'No se pudieron buscar profesionales. Intentá nuevamente.')
+          return
+        }
+        setDoctors(result.doctors ?? [])
+        setMoreDoctors(result.hasMoreDoctors === true)
+        setSearched(true)
+      } catch {
+        if (!cancelled) setError('No se pudo conectar para buscar profesionales. Intentá nuevamente.')
+      } finally {
+        if (!cancelled) setSearching(false)
+      }
+    }, 350)
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [mode, doctor, query, searchAttempt])
+
   function reset(next: ShareMode) {
     setMode(next)
     setAll(true)
@@ -546,6 +576,10 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
     setGlucose(false)
     setQuery('')
     setDoctor(null)
+    setDoctors([])
+    setSearched(false)
+    setSearching(false)
+    setMoreDoctors(false)
     setCreated(null)
     setError('')
   }
@@ -554,16 +588,9 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
   }
 
-  async function findDoctor(event: FormEvent) {
+  function findDoctor(event: FormEvent) {
     event.preventDefault()
-    if (busy) return
-    setBusy(true)
-    setError('')
-    setDoctor(null)
-    const result = await callPatientFolder({ action: 'find-doctor', query })
-    setBusy(false)
-    if (!result.success || !result.doctor) return setError(result.message || 'No encontramos a ese médico.')
-    setDoctor(result.doctor)
+    if (!busy && !searching) setSearchAttempt(value => value + 1)
   }
 
   async function shareWithDoctor() {
@@ -654,11 +681,23 @@ function ShareView({ documents, patientName, onToast }: { documents: PatientDocu
         <div className="pp-card pp-form">
           <h2>Mi médico usa Dr Happy</h2>
           <form className="pp-form" onSubmit={findDoctor}>
-            <label>Email de tu médico o su link de registro de Dr Happy
-              <input value={query} onChange={(e) => { setQuery(e.target.value); setDoctor(null) }} placeholder="Ej: dra.gomez@gmail.com" required maxLength={300} />
+            <label>Apellido y nombre de tu médico
+              <input type="search" autoComplete="off" value={query} disabled={busy} onChange={(e) => {
+                setQuery(e.target.value); setDoctor(null); setDoctors([]); setSearched(false); setSearching(false); setMoreDoctors(false); setError('')
+              }} placeholder="Ej: Góme, María o Gómez María" required minLength={2} maxLength={300} aria-describedby="pp-doctor-search-help" />
             </label>
-            {!doctor && <button type="submit" className="pp-secondary" disabled={busy || !query.trim()}>{busy ? 'Buscando…' : 'Buscar médico'}</button>}
+            <small id="pp-doctor-search-help">Escribí al menos 2 letras. Podés buscar por parte del apellido o nombre, en cualquier orden y sin tildes. También podés pegar su email o link de registro.</small>
+            {!doctor && <button type="submit" className="pp-secondary" disabled={busy || searching || query.trim().length < 2}>{searching ? 'Buscando…' : 'Buscar médico'}</button>}
           </form>
+          {!doctor && searching && <p className="pp-muted" role="status">Buscando profesionales…</p>}
+          {!doctor && searched && !searching && !doctors.length && <p className="pp-muted" role="status">No encontramos coincidencias. Probá con más letras o con el email de tu médico.</p>}
+          {!doctor && doctors.length > 0 && <div className="pp-doctor-results" aria-label="Profesionales encontrados">
+            <p className="pp-muted">Elegí a tu médico. Buscar o seleccionarlo todavía no comparte tus estudios.</p>
+            <ul>{doctors.map(candidate => <li key={candidate.id}><button type="button" className="pp-secondary pp-doctor-result" onClick={() => {
+              setDoctor(candidate); setDoctors([]); setSearching(false); setError('')
+            }}><strong>{candidate.name || 'Profesional de Dr Happy'}</strong><small>{candidate.specialty || 'Profesional de salud'} · Seleccionar</small></button></li>)}</ul>
+            {moreDoctors && <p className="pp-muted">Hay más coincidencias. Agregá letras del nombre o apellido para precisar la búsqueda.</p>}
+          </div>}
           {doctor && (
             <>
               <div className="pp-doctor">
@@ -749,6 +788,8 @@ function AccountView({ patient, onUpdated, onLogout }: { patient: PatientProfile
   const [firstName, setFirstName] = useState(patient.firstName || fallbackParts.slice(0, -1).join(' ') || fallbackParts[0] || '')
   const [lastName, setLastName] = useState(patient.lastName || (fallbackParts.length > 1 ? fallbackParts[fallbackParts.length - 1] : ''))
   const [phone, setPhone] = useState(patient.phone || '')
+  const [healthInsurance, setHealthInsurance] = useState(patient.healthInsurance || '')
+  const [insuranceMemberNumber, setInsuranceMemberNumber] = useState(patient.insuranceMemberNumber || '')
   const [birthDate, setBirthDate] = useState(patient.birthDate || '')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -760,7 +801,7 @@ function AccountView({ patient, onUpdated, onLogout }: { patient: PatientProfile
     event.preventDefault()
     setMessage('')
     setError('')
-    const result = await callPatientFolder({ action: 'update-profile', firstName, lastName, phone, birthDate })
+    const result = await callPatientFolder({ action: 'update-profile', firstName, lastName, phone, birthDate, healthInsurance, insuranceMemberNumber })
     if (!result.success || !result.patient) return setError(result.message || 'No se pudieron guardar los datos.')
     onUpdated(result.patient)
     setMessage('Datos guardados.')
@@ -792,6 +833,9 @@ function AccountView({ patient, onUpdated, onLogout }: { patient: PatientProfile
         <label>Email<input value={patient.email} disabled /></label>
         <label>Fecha de nacimiento<input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} max={todayIso()} /></label>
         <label>Celular<input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" maxLength={40} /></label>
+        <label>Obra social o prepaga<input value={healthInsurance} onChange={(e) => setHealthInsurance(e.target.value)} maxLength={120} placeholder="Ej: OSDE, PAMI, IOMA…" /></label>
+        <label>Número de afiliado<input value={insuranceMemberNumber} onChange={(e) => setInsuranceMemberNumber(e.target.value)} maxLength={80} placeholder="Como figura en tu credencial" /></label>
+        <small className="pp-muted">Datos opcionales. Si no tenés cobertura, podés dejarlos vacíos.</small>
         <button className="pp-primary" type="submit">Guardar datos</button>
       </form>
       <form className="pp-card pp-form" onSubmit={savePassword}>

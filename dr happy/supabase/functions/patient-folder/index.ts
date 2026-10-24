@@ -50,6 +50,8 @@ type PatientRow = {
   dni: string
   birth_date: string | null
   phone: string | null
+  health_insurance: string | null
+  insurance_member_number: string | null
   email_verified_at: string | null
   storage_used_bytes: number
   storage_quota_bytes: number
@@ -59,7 +61,7 @@ type PatientRow = {
   created_at: string
 }
 
-const PATIENT_COLUMNS = 'id, email, password_hash, full_name, first_name, last_name, dni, birth_date, phone, email_verified_at, storage_used_bytes, storage_quota_bytes, failed_login_count, locked_until, active, created_at'
+const PATIENT_COLUMNS = 'id, email, password_hash, full_name, first_name, last_name, dni, birth_date, phone, health_insurance, insurance_member_number, email_verified_at, storage_used_bytes, storage_quota_bytes, failed_login_count, locked_until, active, created_at'
 
 function reply(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
@@ -113,6 +115,8 @@ function publicPatient(row: PatientRow) {
     dni: row.dni,
     birthDate: row.birth_date,
     phone: row.phone,
+    healthInsurance: row.health_insurance ?? null,
+    insuranceMemberNumber: row.insurance_member_number ?? null,
     storageUsedBytes: Number(row.storage_used_bytes) || 0,
     storageQuotaBytes: Number(row.storage_quota_bytes) || 0,
     createdAt: row.created_at,
@@ -320,17 +324,20 @@ serve(async (request) => {
     if (!raw) return null
     let professionalId: string | null = null
     if (raw.includes('@') && !raw.includes('/')) {
-      const { data } = await admin.from('professionals').select('id').ilike('email', raw.toLowerCase()).limit(1).maybeSingle()
+      const { data, error } = await admin.from('professionals').select('id').ilike('email', raw.toLowerCase().replace(/[\\%_]/g, '\\$&')).limit(1).maybeSingle()
+      if (error) throw error
       professionalId = data?.id ?? null
     } else {
       const token = (raw.match(/registro\/([a-z0-9-]+)/i)?.[1] ?? raw).toLowerCase()
       if (/^[a-z0-9-]{6,80}$/.test(token)) {
-        const { data } = await admin.from('patient_invite_links').select('professional_id').eq('token', token).maybeSingle()
+        const { data, error } = await admin.from('patient_invite_links').select('professional_id').eq('token', token).maybeSingle()
+        if (error) throw error
         professionalId = data?.professional_id ?? null
       }
     }
     if (!professionalId) return null
-    const { data: professional } = await admin.from('professionals').select('id, full_name, specialty, email, active').eq('id', professionalId).maybeSingle()
+    const { data: professional, error } = await admin.from('professionals').select('id, full_name, specialty, email, active').eq('id', professionalId).maybeSingle()
+    if (error) throw error
     return professional && professional.active !== false ? professional : null
   }
 
@@ -687,6 +694,12 @@ serve(async (request) => {
     }
 
     if (action === 'update-profile') {
+      for (const [field, limit] of [['healthInsurance', 120], ['insuranceMemberNumber', 80]] as const) {
+        const value = body[field]
+        if (value !== undefined && value !== null && (typeof value !== 'string' || value.trim().length > limit || /\p{Cc}/u.test(value))) {
+          return reply(400, { success: false, message: 'Revisá la obra social (hasta 120 caracteres) y el número de afiliado (hasta 80 caracteres).' })
+        }
+      }
       const firstName = text(body.firstName, 80)
       const lastName = text(body.lastName, 80)
       const fullName = firstName && lastName ? `${firstName} ${lastName}` : text(body.fullName, 160)
@@ -697,6 +710,8 @@ serve(async (request) => {
         .update({
           full_name: fullName, first_name: firstName || patient.first_name, last_name: lastName || patient.last_name,
           phone, birth_date: birthDate, updated_at: new Date().toISOString(),
+          ...(body.healthInsurance !== undefined ? { health_insurance: text(body.healthInsurance, 120) || null } : {}),
+          ...(body.insuranceMemberNumber !== undefined ? { insurance_member_number: text(body.insuranceMemberNumber, 80) || null } : {}),
         })
         .eq('id', patient.id).select(PATIENT_COLUMNS).single()
       if (error) throw error
@@ -898,6 +913,24 @@ serve(async (request) => {
       if (error) throw error
       if (!data?.length) return reply(404, { success: false, message: 'Esa toma ya no existe.' })
       return reply(200, { success: true })
+    }
+
+    if (action === 'search-doctors') {
+      const query = text(body.query, 300)
+      if (query.length < 2) return reply(400, { success: false, message: 'Escribí al menos 2 letras del apellido o nombre.' })
+      if (query.includes('@') || query.includes('/')) {
+        const professional = await findProfessional(query)
+        return reply(200, { success: true, doctors: professional
+          ? [{ id: professional.id, name: professional.full_name ?? '', specialty: professional.specialty ?? '' }] : [], hasMoreDoctors: false })
+      }
+      if (query.length > 120 || query.replace(/[^\p{L}\p{N}]/gu, '').length < 2) {
+        return reply(400, { success: false, message: 'Ingresá de 2 a 120 letras del apellido o nombre.' })
+      }
+      const { data, error } = await admin.rpc('search_patient_professionals', { p_query: query })
+      if (error) throw error
+      return reply(200, { success: true, doctors: (data ?? []).slice(0, 10).map((row: { id: string; full_name: string | null; specialty: string | null }) => ({
+        id: row.id, name: row.full_name ?? '', specialty: row.specialty ?? '',
+      })), hasMoreDoctors: (data?.length ?? 0) > 10 })
     }
 
     if (action === 'find-doctor') {

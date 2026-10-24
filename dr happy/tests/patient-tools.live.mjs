@@ -50,6 +50,18 @@ try {
     COMMIT;`)
   const unauthenticated = await call({ action: 'glucose-list' }, null)
   assert.equal(unauthenticated.status, 401, JSON.stringify(unauthenticated.body))
+  assert.equal((await call({ action: 'search-doctors', query: 'Fic' }, null)).status, 401)
+  const foundDoctors = success(await call({ action: 'search-doctors', query: 'pru fict' })).doctors
+  assert.ok(foundDoctors.some(row => row.id === doctor))
+  assert.ok(foundDoctors.every(row => !('email' in row)))
+  const profile = success(await call({ action: 'update-profile', firstName: 'Ficticio', lastName: 'Uno',
+    healthInsurance: 'Cobertura ficticia', insuranceMemberNumber: '000123/45-A' })).patient
+  assert.equal(profile.healthInsurance, 'Cobertura ficticia')
+  assert.equal(profile.insuranceMemberNumber, '000123/45-A')
+  assert.equal(success(await call({ action: 'me' })).patient.insuranceMemberNumber, '000123/45-A')
+  assert.equal(success(await call({ action: 'me' }, otherToken)).patient.healthInsurance, null)
+  assert.equal(success(await call({ action: 'update-profile', firstName: 'Ficticio', lastName: 'Uno' })).patient.healthInsurance, 'Cobertura ficticia')
+  assert.equal((await call({ action: 'update-profile', firstName: 'Ficticio', lastName: 'Uno', healthInsurance: 'x'.repeat(121) })).status, 400)
   const measuredAt = new Date(Date.now() - 3600000).toISOString()
   assert.equal((await call({ action: 'glucose-add', measuredAt, value: 0, context: 'fasting', method: 'capillary' })).status, 400)
   const record = success(await call({ action: 'glucose-add', measuredAt, value: 119, context: 'fasting', method: 'capillary', note: 'Fixture' })).glucose

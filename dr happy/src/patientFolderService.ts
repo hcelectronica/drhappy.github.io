@@ -27,6 +27,8 @@ export interface PatientProfile {
   dni: string
   birthDate: string | null
   phone: string | null
+  healthInsurance?: string | null
+  insuranceMemberNumber?: string | null
   storageUsedBytes: number
   storageQuotaBytes: number
   createdAt: string
@@ -58,6 +60,8 @@ export interface PatientFolderResponse {
   url?: string
   mimeType?: string
   doctor?: { id: string; name: string; specialty: string }
+  doctors?: Array<{ id: string; name: string; specialty: string }>
+  hasMoreDoctors?: boolean
   shares?: PatientShare[]
   shareId?: string
   expiresAt?: string

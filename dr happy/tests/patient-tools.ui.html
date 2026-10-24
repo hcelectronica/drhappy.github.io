@@ -20,6 +20,7 @@ import '../src/adminPatientStats.css'
 const params = new URLSearchParams(location.search)
 const patient = { id: 'fixture-patient', firstName: 'Paciente', lastName: 'Ficticio', fullName: 'Paciente Ficticio',
   email: 'fixture@example.invalid', dni: '00000000', birthDate: null, phone: null, storageUsedBytes: 0, storageQuotaBytes: 104857600, createdAt: new Date().toISOString() }
+Object.assign(patient, JSON.parse(sessionStorage.getItem('patient-tools-profile') || '{}'))
 let record = JSON.parse(sessionStorage.getItem('patient-tools-record') || '{"readings":[],"totalReadings":0,"treatment":null,"updatedAt":null}')
 let campaign = null, news = false
 let backup = null
@@ -68,6 +69,19 @@ window.fetch = async (input, init) => {
     if (body.action === 'history') result.campaigns = campaign ? [campaign] : []
   } else {
     if (body.action === 'me') result.patient = patient
+    if (body.action === 'update-profile') {
+      Object.assign(patient, { firstName: body.firstName, lastName: body.lastName, phone: body.phone, birthDate: body.birthDate,
+        healthInsurance: body.healthInsurance, insuranceMemberNumber: body.insuranceMemberNumber })
+      sessionStorage.setItem('patient-tools-profile', JSON.stringify(patient)); result.patient = patient
+    }
+    if (body.action === 'search-doctors') {
+      if (window.fixtureSearchDelay) await new Promise(resolve => setTimeout(resolve, window.fixtureSearchDelay))
+      if (window.fixtureSearchError) { status = 503; result = { success: false, message: 'No se pudo buscar. Intentá nuevamente.' } }
+      else result = { success: true, doctors: body.query.toLowerCase().includes('nadie') ? [] : [
+        { id: 'doctor-1', name: 'María Gómez', specialty: 'Clínica médica' },
+        { id: 'doctor-2', name: 'Mariano Gómez', specialty: 'Cardiología' },
+      ], hasMoreDoctors: false }
+    }
     if (body.action === 'list-documents') result = { ...result, patient, documents: [] }
     if (body.action === 'link-requests') result.requests = [{ id: 'request', source: 'doctor_request', doctorName: 'Médico ficticio', doctorSpecialty: 'Clínica' }]
     if (body.action === 'list-shares') result.shares = []

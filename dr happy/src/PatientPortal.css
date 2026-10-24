@@ -492,3 +492,6 @@ a.pp-primary { display: inline-block; text-decoration: none; text-align: center;
 .pp-link-request .pp-muted { font-size: 0.85rem; }
 
 .pp-tile.is-memory { background: linear-gradient(140deg, #c2410c, #f59e0b); }
+.pp-doctor-results ul { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 8px; }
+.pp-doctor-result { width: 100%; text-align: left; display: grid; gap: 4px; white-space: normal; overflow-wrap: anywhere; }
+.pp-doctor-result small { font-weight: 400; }
