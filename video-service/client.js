@@ -47,6 +47,21 @@ let preparingTranscript = false
 const transcriber = createTranscriber({ onUpdate: () => { transcriptPending = transcriber.segments.length > 0; update() } })
 const report = error => { $('error').textContent = error instanceof Error ? error.message : String(error) }
 const status = text => { $('status').textContent = text }
+// Reassigning srcObject restarts the element and aborts any pending play(), so only attach a new stream.
+function attachMedia(element, media) {
+  if (element.srcObject !== media) element.srcObject = media
+}
+async function playMedia(element) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!element.srcObject) return false
+    try { await element.play(); return true }
+    catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) throw error
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+  }
+  return !element.paused
+}
 function update() {
   $('create').hidden = !admin || role === 'patient' || Boolean(socket)
   $('duration-panel').hidden = !admin || role === 'patient' || Boolean(socket)
@@ -422,12 +437,12 @@ function makePeer() {
     if (peer !== next) return
     const remote = $('remote').srcObject ?? new MediaStream()
     if (!remote.getTracks().some(track => track.id === event.track.id)) remote.addTrack(event.track)
-    $('remote').srcObject = remote
+    attachMedia($('remote'), remote)
     event.track.onmute = update
     event.track.onunmute = update
     event.track.onended = update
     update()
-    $('remote').play().catch(() => {
+    playMedia($('remote')).then(playing => { if (playing && peer === next) $('play-audio').hidden = true }).catch(() => {
       if (peer !== next || current !== generation) return
       $('play-audio').hidden = false
       status('Pulsá Activar audio recibido para reproducir el medio remoto.')
@@ -565,7 +580,7 @@ async function toggleDevice(kind) {
       if (before !== mediaGeneration) return
       existing.stop()
       stream.removeTrack(existing)
-      $('local').srcObject = stream
+      attachMedia($('local'), stream)
       return
     }
     acquired = await navigator.mediaDevices.getUserMedia({
@@ -580,7 +595,8 @@ async function toggleDevice(kind) {
     if (before !== mediaGeneration) { acquired.getTracks().forEach(track => track.stop()); return }
     stream ??= new MediaStream()
     stream.addTrack(track)
-    $('local').srcObject = stream
+    if (kind === 'video') $('local').srcObject = stream
+    else attachMedia($('local'), stream)
     track.onended = () => {
       if (stream?.getTracks().includes(track)) {
         stream.removeTrack(track)
@@ -589,7 +605,8 @@ async function toggleDevice(kind) {
         update()
       }
     }
-    if (kind === 'video') await $('local').play()
+    // The muted preview is cosmetic: a playback hiccup must never turn the camera off.
+    if (kind === 'video') await playMedia($('local')).catch(() => {})
     if (before !== mediaGeneration) return
     if (!peer) status('Vista previa preparada. Los medios no se comparten hasta la admisión.')
   } catch (error) {
@@ -769,7 +786,7 @@ $('join').onclick = async () => {
   update()
 }
 $('play-audio').onclick = async () => {
-  try { await $('remote').play(); $('play-audio').hidden = true }
+  try { if (await playMedia($('remote'))) $('play-audio').hidden = true }
   catch (error) { report(error) }
 }
 $('admit').onclick = () => request('admit').catch(report)
