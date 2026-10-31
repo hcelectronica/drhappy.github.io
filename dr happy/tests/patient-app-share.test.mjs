@@ -26,3 +26,16 @@ test('home menu has a clearly labeled WhatsApp link separate from medical sharin
   assert.match(portal, /<a className="pp-tile is-friend" href=\{PATIENT_APP_WHATSAPP_URL\} target="_blank" rel="noopener noreferrer"[^>]*>[\s\S]*?Compartir con un amigo[\s\S]*?Por WhatsApp[\s\S]*?<\/a>/)
   assert.match(portal, /setView\('share'\).*Compartir con mi médico/)
 })
+
+test('home offers the existing paid virtual orientation without sharing folder data', () => {
+  const portal = readFileSync(new URL('../src/PatientPortal.tsx', import.meta.url), 'utf8')
+  const tile = portal.match(/<a className="pp-tile is-evaluation"[\s\S]*?<\/a>/)?.[0]
+  assert.ok(tile)
+  assert.match(tile, /href="https:\/\/www\.drhappy\.com\.ar\/consulta\/alan-moodie-dc876a"/)
+  assert.match(tile, /target="_blank" rel="noopener noreferrer"/)
+  assert.match(tile, /EVALUAR ESTUDIOS CON INTELIGENCIA ARTIFICIAL/)
+  assert.match(tile, /paga, revisada por un médico\. No atiende urgencias/)
+  assert.doesNotMatch(tile, /sessionToken|patient\.|documents|onClick/)
+  const css = readFileSync(new URL('../src/PatientPortal.css', import.meta.url), 'utf8')
+  assert.match(css, /\.pp-tile\.is-evaluation \{ grid-column: 1 \/ -1;/)
+})

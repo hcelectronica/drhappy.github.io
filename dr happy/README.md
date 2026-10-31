@@ -108,6 +108,8 @@ El inicio del portal de pacientes incluye **Compartir con un amigo · Por WhatsA
 
 Prueba: `node --test tests/patient-app-share.test.mjs`.
 
+El inicio también incluye **EVALUAR ESTUDIOS CON INTELIGENCIA ARTIFICIAL**, que abre en otra pestaña la orientación virtual existente en `https://www.drhappy.com.ar/consulta/alan-moodie-dc876a`. Aclara que es paga, revisada por un médico y no atiende urgencias. No transfiere automáticamente estudios ni datos de la carpeta; el paciente completa la consulta por el circuito habitual. El enlace ocupa todo el ancho para mantener legible el texto en móviles.
+
 ### Barra inferior y zona segura de Android
 
 `index.html` debe conservar el viewport estándar, sin `viewport-fit=cover`: la barra inferior fija ya considera las zonas seguras, y extender la página hasta el borde puede hacer que el menú quede desplazado sobre la navegación del sistema. Tras publicar cambios del viewport, comprobar el HTML servido por Hostinger y abrir la app Android instalada; no alcanza con validar el navegador de escritorio.

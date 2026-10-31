@@ -233,6 +233,9 @@
 .pp-tile:hover { box-shadow: 0 14px 28px rgba(15, 23, 42, 0.18); }
 .pp-tile.is-folder { background: linear-gradient(140deg, #0f766e, #14b8a6); }
 .pp-tile.is-upload { background: linear-gradient(140deg, #1d4ed8, #3b82f6); }
+.pp-tile.is-evaluation { grid-column: 1 / -1; background: linear-gradient(140deg, #0f766e, #17324d); text-decoration: none; }
+.pp-tile.is-evaluation small { font-size: 0.85rem; font-weight: 600; line-height: 1.4; }
+.pp-tile.is-evaluation:focus-visible { outline: 3px solid var(--pp-brand-dark); outline-offset: 4px; }
 .pp-tile.is-share { background: linear-gradient(140deg, #7c3aed, #a78bfa); }
 .pp-tile.is-account { background: linear-gradient(140deg, #334155, #64748b); }
 .pp-tile.is-friend { background: linear-gradient(140deg, #166534, #15803d); color: #fff; text-decoration: none; }

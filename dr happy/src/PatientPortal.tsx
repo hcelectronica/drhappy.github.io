@@ -967,6 +967,11 @@ export function PatientPortal() {
             <nav className="pp-grid" aria-label="Menú principal">
               <button type="button" className="pp-tile is-folder" onClick={() => setView('folder')}><span aria-hidden>🗂️</span>Mi carpeta</button>
               <button type="button" className="pp-tile is-upload" onClick={() => setView('upload')}><span aria-hidden>📤</span>Subir estudio</button>
+              <a className="pp-tile is-evaluation" href="https://www.drhappy.com.ar/consulta/alan-moodie-dc876a" target="_blank" rel="noopener noreferrer">
+                <span aria-hidden>🔬</span>
+                EVALUAR ESTUDIOS CON INTELIGENCIA ARTIFICIAL
+                <small>Orientación virtual paga, revisada por un médico. No atiende urgencias.</small>
+              </a>
               <button type="button" className="pp-tile is-pressure" onClick={() => setView('pressure')}><span aria-hidden>❤️</span>Mi presión</button>
               <button type="button" className="pp-tile is-pressure" onClick={() => setView('glucose')}><span aria-hidden>🩸</span>Mi glucosa</button>
               <button type="button" className="pp-tile is-memory" onClick={() => setView('memory')}><span aria-hidden>🧠</span>Taller de memoria</button>
