@@ -16,8 +16,8 @@ function fixture() {
     two: { id: 'two', active: true, email_verified_at: '2026-10-31', referring_professional_id: null },
   }
   const doctors = {
-    a: { id: 'a', full_name: 'Médico A', active: true, is_admin: true },
-    b: { id: 'b', full_name: 'Médico B', active: true, is_admin: true },
+    a: { id: 'a', full_name: 'Médico A', active: true, is_admin: true, patient_folder_code: 'aaaaaaaaaa' },
+    b: { id: 'b', full_name: 'Médico B', active: true, is_admin: true, patient_folder_code: 'bbbbbbbbbb' },
   }
   const settings = { a: { slug: 'doctor-a', enabled: true }, b: { slug: 'doctor-b', enabled: true } }
   const payments = { a: { status: 'connected' }, b: { status: 'connected' } }
@@ -32,6 +32,7 @@ function fixture() {
         update(value) { patch = value; return q }, maybeSingle() { return q }, single() { return q },
         then(resolve, reject) {
           const id = filters.get('id') || filters.get('professional_id')
+            || Object.keys(doctors).find(id => doctors[id].patient_folder_code === filters.get('patient_folder_code'))
           let data = table === 'patient_sessions' ? { patient_id: state.account }
             : table === 'patient_accounts' ? accounts[id]
             : table === 'professionals' ? doctors[id]
@@ -52,10 +53,10 @@ function fixture() {
     baseCorsHeaders: {}, Deno: { env: { get: () => 'fixture' } },
     Response, crypto, TextEncoder, console: { error() {} },
   })
-  const call = async (professionalId, token = true) => {
+  const call = async (professionalId, token = true, folderCode) => {
     const response = await handler(new Request('https://fixture.invalid', { method: 'POST',
       headers: token ? { 'x-drhappy-patient-session': 'fixture' } : {},
-      body: JSON.stringify({ action: 'orientation', ...(professionalId !== undefined ? { professionalId } : {}) }) }))
+      body: JSON.stringify({ action: 'orientation', ...(professionalId !== undefined ? { professionalId } : {}), ...(folderCode !== undefined ? { folderCode } : {}) }) }))
     return { status: response.status, body: await response.json() }
   }
   return { call, accounts, doctors, settings, payments, state }
@@ -69,10 +70,21 @@ test('personalized links route to their owner; latest opened link persists acros
   assert.equal((await h.call()).body.orientation.professionalId, 'a')
   assert.equal((await h.call('b')).body.orientation.url, 'https://www.drhappy.com.ar/consulta/doctor-b')
   assert.equal((await h.call()).body.orientation.professionalId, 'b')
-  assert.equal((await h.call()).body.orientation.shareUrl, 'https://www.drhappy.com.ar/paciente?prof=b')
+  assert.equal((await h.call()).body.orientation.shareUrl, 'https://www.drhappy.com.ar/s/bbbbbbbbbb')
   h.state.account = 'two'
   assert.equal((await h.call()).body.orientation, null, 'No cross-account attribution')
   assert.ok(h.state.patches.every(p => p.table === 'patient_accounts' && Object.keys(p.patch).join() === 'referring_professional_id'), 'No document access or payment mutation')
+})
+
+test('short codes resolve the right doctor and retain compatibility with old links', async () => {
+  const h = fixture()
+  assert.equal((await h.call(undefined, true, 'aaaaaaaaaa')).body.orientation.professionalId, 'a')
+  assert.equal((await h.call(undefined, true, 'bbbbbbbbbb')).body.orientation.professionalId, 'b')
+  assert.equal((await h.call(undefined, true, 'cccccccccc')).status, 404)
+  for (const code of ['', '../a', '123', null]) assert.equal((await h.call(undefined, true, code)).status, 400)
+  assert.equal((await h.call('a', true, 'bbbbbbbbbb')).status, 400)
+  assert.equal(h.accounts.one.referring_professional_id, 'b')
+  assert.equal((await h.call('a')).body.orientation.shareUrl, 'https://www.drhappy.com.ar/s/aaaaaaaaaa')
 })
 
 test('invalid links, unauthenticated requests and database errors never switch to another doctor', async () => {

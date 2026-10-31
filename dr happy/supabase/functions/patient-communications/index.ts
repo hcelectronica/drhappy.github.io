@@ -101,7 +101,7 @@ serve(async request => {
       const ids = new Set(Array.isArray(body.contactIds) ? body.contactIds : [])
       const recipients = contacts.filter(row => row.eligible && (body.all === true || ids.has(row.id))).map(row => ({ email: row.email, name: row.name }))
       if (!recipients.length) return reply(400, { success: false, message: 'No hay destinatarios habilitados en esta selección.' })
-      let link = patientFolderUrl(professionalId)
+      let link = await patientFolderUrl(admin, professionalId)
       if (template === 'virtual') {
         const { data: settings, error } = await admin.from('virtual_consult_settings').select('slug,enabled').eq('professional_id', professionalId).maybeSingle()
         if (error) throw error

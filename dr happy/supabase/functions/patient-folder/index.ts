@@ -689,6 +689,16 @@ serve(async (request) => {
     }
 
     if (action === 'orientation') {
+      if (body.folderCode !== undefined) {
+        if (typeof body.folderCode !== 'string' || !/^[a-f0-9]{10}$/.test(body.folderCode) || body.professionalId !== undefined) {
+          return reply(400, { success: false, message: 'El enlace corto del profesional no es válido.' })
+        }
+        const { data: owner, error: ownerError } = await admin.from('professionals')
+          .select('id').eq('patient_folder_code', body.folderCode).maybeSingle()
+        if (ownerError) throw ownerError
+        if (!owner) return reply(404, { success: false, message: 'El enlace del profesional no está disponible.' })
+        body.professionalId = owner.id
+      }
       if (body.professionalId !== undefined && !validReferringProfessional(body.professionalId)) {
         return reply(400, { success: false, message: 'El enlace del profesional no es válido.' })
       }

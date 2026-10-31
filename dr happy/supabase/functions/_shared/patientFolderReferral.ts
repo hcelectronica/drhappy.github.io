@@ -1,8 +1,16 @@
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from './medicalToolAccess.ts'
 
-export const patientFolderUrl = (professionalId: string) =>
-  `https://www.drhappy.com.ar/paciente?prof=${encodeURIComponent(professionalId)}`
+export function shortPatientFolderUrl(code: string): string {
+  if (!/^[a-f0-9]{10}$/.test(code)) throw new Error('Invalid patient folder short-link code')
+  return `https://www.drhappy.com.ar/s/${code}`
+}
+
+export async function patientFolderUrl(admin: SupabaseClient, professionalId: string) {
+  const { data, error } = await admin.from('professionals').select('patient_folder_code').eq('id', professionalId).single()
+  if (error) throw error
+  return shortPatientFolderUrl(data.patient_folder_code)
+}
 
 export function validReferringProfessional(value: unknown): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{1,120}$/.test(value)
@@ -10,7 +18,7 @@ export function validReferringProfessional(value: unknown): value is string {
 
 export async function patientFolderOrientation(admin: SupabaseClient, professionalId: string) {
   const { data: professional, error } = await admin.from('professionals')
-    .select(`full_name,${MEDICAL_TOOL_ACCESS_COLUMNS}`).eq('id', professionalId).maybeSingle()
+    .select(`full_name,patient_folder_code,${MEDICAL_TOOL_ACCESS_COLUMNS}`).eq('id', professionalId).maybeSingle()
   if (error) throw error
   if (!professional || professional.active === false) return null
   const [settings, payment] = await Promise.all([
@@ -26,6 +34,6 @@ export async function patientFolderOrientation(admin: SupabaseClient, profession
     professionalId,
     professionalName: professional.full_name,
     url: available ? `https://www.drhappy.com.ar/consulta/${encodeURIComponent(settings.data!.slug)}` : null,
-    shareUrl: patientFolderUrl(professionalId),
+    shareUrl: shortPatientFolderUrl(professional.patient_folder_code),
   }
 }

@@ -866,7 +866,7 @@ export function PatientPortal() {
   const [orientationChecked, setOrientationChecked] = useState(false)
   const [referral] = useState(() => {
     const params = new URLSearchParams(window.location.search)
-    const value = params.get('prof')
+    const value = params.has('ref') ? `code:${params.get('ref')}` : params.get('prof')
     try {
       if (value !== null) localStorage.setItem('drhappy-pending-referral', value)
       return { value: value ?? localStorage.getItem('drhappy-pending-referral'), error: '' }
@@ -883,7 +883,9 @@ export function PatientPortal() {
     setOrientationError(referral.error)
     if (!patient?.id) return
     let cancelled = false
-    callPatientFolder({ action: 'orientation', ...(referringProfessional !== null ? { professionalId: referringProfessional } : {}) })
+    callPatientFolder({ action: 'orientation', ...(referringProfessional !== null
+      ? referringProfessional.startsWith('code:') ? { folderCode: referringProfessional.slice(5) } : { professionalId: referringProfessional }
+      : {}) })
       .then(result => {
         if (cancelled) return
         if (!result.success) {
@@ -984,7 +986,9 @@ export function PatientPortal() {
   const firstName = patient.firstName || patient.fullName.split(' ')[0]
   const lastDoc = documents[0]
   const appShareUrl = orientation?.shareUrl
-    ?? (referringProfessional !== null ? `${PATIENT_APP_URL}?prof=${encodeURIComponent(referringProfessional)}` : null)
+    ?? (referringProfessional !== null
+      ? referringProfessional.startsWith('code:') ? `https://www.drhappy.com.ar/s/${encodeURIComponent(referringProfessional.slice(5))}` : `${PATIENT_APP_URL}?prof=${encodeURIComponent(referringProfessional)}`
+      : null)
 
   return (
     <div className="pp-app">

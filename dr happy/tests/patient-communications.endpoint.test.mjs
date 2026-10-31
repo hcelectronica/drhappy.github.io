@@ -79,7 +79,9 @@ function fixture() {
     require: name => name.includes('server.ts') ? { serve: h => { handler = h } } : name.includes('supabase-js') ? { createClient: () => admin }
       : name.includes('professionalSession') ? { resolveProfessionalId: async () => state.identity }
         : name.includes('cors') ? { corsHeaders: {} }
-        : name.includes('patientFolderReferral') ? { patientFolderUrl: id => `https://www.drhappy.com.ar/paciente?prof=${encodeURIComponent(id)}` } : helpers,
+        : name.includes('patientFolderReferral') ? { patientFolderUrl: async (_admin, id) => {
+          assert.equal(id, 'owner'); return 'https://www.drhappy.com.ar/s/aaaaaaaaaa'
+        } } : helpers,
     fetch: async (url, init) => {
       assert.equal(url, 'https://fixture.invalid/functions/v1/send-email')
       const message = JSON.parse(init.body)
@@ -119,7 +121,7 @@ test('Preview fixes destination link and recipients on server, requires permissi
   const f = fixture()
   assert.equal((await f.preview({ permissionConfirmed: false })).status, 400)
   assert.equal((await f.preview({ all: false, contactIds: ['foreign'], to: 'outside@example.invalid' })).status, 400)
-  assert.equal((await f.preview({ link: 'https://malicious.invalid' })).body.campaign.link, 'https://www.drhappy.com.ar/paciente?prof=owner')
+  assert.equal((await f.preview({ link: 'https://malicious.invalid' })).body.campaign.link, 'https://www.drhappy.com.ar/s/aaaaaaaaaa')
   assert.equal(f.state.sent.length, 0)
   assert.equal((await f.call({ action: 'send-batch', campaignId })).status, 400)
   await f.call({ action: 'send-batch', campaignId, confirm: true })

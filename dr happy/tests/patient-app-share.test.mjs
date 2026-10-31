@@ -48,3 +48,13 @@ test('forwarded invitations preserve the sharing professional without patient in
   assert.ok(text.endsWith(link))
   assert.equal(text.split('https://').length, 2)
 })
+
+test('short invitations forward the same code and redirect inside the patient app scope', () => {
+  const link = 'https://www.drhappy.com.ar/s/aaaaaaaaaa'
+  assert.ok(new URL(patientAppWhatsAppUrl(link)).searchParams.get('text').endsWith(link))
+  const rules = readFileSync(new URL('../public/.htaccess', import.meta.url), 'utf8')
+  assert.ok(rules.includes('RewriteRule ^s/([a-f0-9]{10})/?$ /paciente?ref=$1 [R=302,L]'))
+  const portal = readFileSync(new URL('../src/PatientPortal.tsx', import.meta.url), 'utf8')
+  assert.match(portal, /params\.has\('ref'\)/)
+  assert.match(portal, /folderCode: referringProfessional\.slice\(5\)/)
+})

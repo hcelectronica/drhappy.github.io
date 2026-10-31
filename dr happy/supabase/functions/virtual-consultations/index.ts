@@ -446,7 +446,7 @@ Deno.serve(async (request) => {
           slug: settings.slug, enabled: settings.enabled, price: Number(settings.price),
           letterhead: settings.letterhead ?? '', logoDataUrl: settings.logo_data_url ?? '',
           paymentReady: paymentAccount?.status === 'connected', url: `${PUBLIC_SITE}/consulta/${settings.slug}`,
-          patientFolderUrl: patientFolderUrl(professionalId),
+          patientFolderUrl: await patientFolderUrl(admin, professionalId),
         },
       })
     }

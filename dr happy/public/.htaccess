@@ -21,6 +21,7 @@
   # Certificados y órdenes pagas: enlace fijo público independiente.
   RewriteRule ^documentos/([a-z0-9-]+)/?$ /index.html?paid_documents_slug=$1 [QSA,L]
   # Carpeta de Salud del paciente: acceso independiente de la app profesional.
+  RewriteRule ^s/([a-f0-9]{10})/?$ /paciente?ref=$1 [R=302,L]
   RewriteRule ^paciente/?$ /paciente.html?patient_portal=1 [QSA,L]
   RewriteRule ^compartido/([A-Za-z0-9_-]+)/?$ /index.html?patient_share=$1 [QSA,L]
 </IfModule>

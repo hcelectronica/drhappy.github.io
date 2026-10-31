@@ -52,16 +52,20 @@ try {
   const unauthenticated = await call({ action: 'orientation', professionalId: a }, null)
   assert.equal(unauthenticated.status, 401, JSON.stringify(unauthenticated.body))
   assert.equal(ok(await call({ action: 'orientation' })).orientation, null)
+  const shortLinks = new Map()
   for (const professionalId of [a, b]) {
     const response = ok(await call({ action: 'orientation', professionalId }))
     assert.equal(response.orientation.url, `https://www.drhappy.com.ar/consulta/${professionalId}`)
-    assert.equal(response.orientation.shareUrl, `https://www.drhappy.com.ar/paciente?prof=${professionalId}`)
+    assert.match(response.orientation.shareUrl, /^https:\/\/www\.drhappy\.com\.ar\/s\/[a-f0-9]{10}$/)
+    shortLinks.set(professionalId, response.orientation.shareUrl)
+    const code = new URL(response.orientation.shareUrl).pathname.split('/').pop()
+    assert.equal(ok(await call({ action: 'orientation', folderCode: code })).orientation.professionalId, professionalId)
   }
   assert.equal(ok(await call({ action: 'orientation' })).orientation.professionalId, b)
   assert.equal(ok(await call({ action: 'orientation' }, otherToken)).orientation, null)
   assert.equal((await call({ action: 'orientation', professionalId: '../bad' })).status, 400)
   const settings = ok(await call({ action: 'get-settings' }, doctorToken, 'virtual-consultations')).settings
-  assert.equal(settings.patientFolderUrl, `https://www.drhappy.com.ar/paciente?prof=${a}`)
+  assert.equal(settings.patientFolderUrl, shortLinks.get(a))
   await sql(`UPDATE virtual_consult_settings SET enabled=false WHERE professional_id='${b}';`)
   assert.equal(ok(await call({ action: 'orientation' })).orientation.url, null)
   console.log('PASS: live A/B destinations, persistent patient-only attribution, professional sharing link, paused service, no payments/emails/AI calls.')
