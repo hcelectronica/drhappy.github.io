@@ -16,7 +16,7 @@ const isPaidDocumentsPublicRoute = Boolean(
 const PaidDocumentsPublicPage = isPaidDocumentsPublicRoute
   ? lazy(() => import('./PaidClinicalDocumentsPublicPage').then((module) => ({ default: module.PaidClinicalDocumentsPublicPage })))
   : null
-const isPatientPortalRoute = /^\/paciente\/?$/i.test(window.location.pathname)
+const isPatientPortalRoute = /^\/paciente(?:\.html|\/)?$/i.test(window.location.pathname)
   || new URLSearchParams(window.location.search).has('patient_portal')
 const PatientPortal = isPatientPortalRoute && !PaidDocumentsPublicPage
   ? lazy(() => import('./PatientPortal'))

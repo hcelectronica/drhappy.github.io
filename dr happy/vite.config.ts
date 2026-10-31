@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { resolve } from 'node:path'
 
 function resolveBuildId(): string {
   const commit =
@@ -31,5 +32,13 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId),
     },
     plugins: [react()],
+    build: {
+      rolldownOptions: {
+        input: {
+          main: resolve(process.cwd(), 'index.html'),
+          patient: resolve(process.cwd(), 'paciente.html'),
+        },
+      },
+    },
   }
 })

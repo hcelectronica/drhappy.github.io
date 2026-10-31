@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#0f766e"/><stop offset="1" stop-color="#17324d"/></linearGradient>
+    <linearGradient id="card" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#edf7f5"/></linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1170" cy="20" r="360" fill="#14b8a6" opacity=".14"/>
+  <circle cx="920" cy="660" r="260" fill="#5eead4" opacity=".09"/>
+  <g font-family="Arial, sans-serif">
+    <rect x="64" y="52" width="58" height="58" rx="17" fill="#ffffff"/>
+    <path d="M80 75h12v-12h6v12h12v6H98v12h-6V81H80z" fill="#0f766e"/>
+    <text x="138" y="76" fill="#ffffff" font-size="24" font-weight="700">Mi Carpeta de Salud</text>
+    <text x="138" y="103" fill="#b9e4df" font-size="18">by Dr Happy</text>
+    <text x="64" y="214" fill="#ffffff" font-size="62" font-weight="700">Tu salud,</text>
+    <text x="64" y="286" fill="#ffffff" font-size="62" font-weight="700">siempre a mano.</text>
+    <text x="68" y="348" fill="#d2eeea" font-size="27">Tus estudios ordenados.</text>
+    <text x="68" y="388" fill="#d2eeea" font-size="27">Listos para compartir con tu médico.</text>
+    <rect x="64" y="444" width="421" height="70" rx="24" fill="#ffffff"/>
+    <text x="94" y="489" fill="#0f766e" font-size="29" font-weight="700">Creá tu carpeta GRATIS</text>
+    <text x="68" y="573" fill="#b9e4df" font-size="22">drhappy.com.ar/paciente</text>
+    <g transform="translate(754 94) rotate(5 174 214)">
+      <rect x="8" y="12" width="348" height="434" rx="34" fill="#072b34" opacity=".3"/>
+      <rect width="348" height="434" rx="34" fill="url(#card)"/>
+      <rect x="26" y="28" width="296" height="68" rx="18" fill="#d9f1eb"/>
+      <path d="M47 47h22l7 7h26v26H47z" fill="#0f766e"/>
+      <text x="119" y="70" fill="#17324d" font-size="21" font-weight="700">Mi carpeta</text>
+      <g fill="#ffffff" stroke="#cde5e0" stroke-width="2">
+        <rect x="26" y="118" width="296" height="78" rx="18"/>
+        <rect x="26" y="213" width="296" height="78" rx="18"/>
+        <rect x="26" y="308" width="296" height="78" rx="18"/>
+      </g>
+      <g stroke="#0f766e" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M52 138h24v34H52zm6 9h12m-12 8h12m-12 8h7"/>
+        <path d="M47 251h9l6-12 8 24 6-12h9"/>
+        <path d="M66 326c-5 9-14 18-14 26a14 14 0 0 0 28 0c0-8-9-17-14-26z"/>
+      </g>
+      <g fill="#17324d" font-size="23" font-weight="700">
+        <text x="102" y="166">Mis estudios</text>
+        <text x="102" y="261">Mi presión</text>
+        <text x="102" y="356">Mi glucosa</text>
+      </g>
+      <text x="174" y="414" text-anchor="middle" fill="#0f766e" font-size="17">Tu información, en un solo lugar</text>
+    </g>
+  </g>
+</svg>
