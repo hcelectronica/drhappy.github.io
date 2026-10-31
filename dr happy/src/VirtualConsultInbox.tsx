@@ -12,6 +12,7 @@ import {
   saveVirtualConsultSettings,
 } from './virtualConsultService'
 import type { VirtualConsult, VirtualConsultAttachment, VirtualConsultSettings } from './virtualConsultService'
+import { patientAppWhatsAppUrl } from './patientAppShare'
 
 type Filter = 'pending' | 'answered' | 'other'
 
@@ -294,6 +295,18 @@ export function VirtualConsultInbox({ onClose, onRecordInChart, onPendingCountCh
               </div>
             ) : null}
             <p className="vc-hint">El paciente ve que es un servicio <strong>pago y no obligatorio</strong>, paga con Mercado Pago y su consulta te llega acá. Sofía prepara un borrador; vos lo revisás y lo visás.</p>
+            {settings.patientFolderUrl && <div>
+              <strong>Compartir Mi Carpeta de Salud con tu enlace</strong>
+              <p className="vc-hint">La carpeta es gratis. Su botón de evaluación abre tu orientación virtual, con tus honorarios y tu cuenta de cobro. Usá este enlace, no el general.</p>
+              <div className="vc-settings-row">
+                <code className="vc-link">{settings.patientFolderUrl}</code>
+                <button type="button" onClick={() => {
+                  void navigator.clipboard.writeText(settings.patientFolderUrl!).then(() => setNotice('Tu enlace de Mi Carpeta de Salud fue copiado.'))
+                    .catch(() => setError(`No se pudo copiar. Copiá este enlace: ${settings.patientFolderUrl}`))
+                }}>Copiar link de mi carpeta</button>
+                <a className="ghost" href={patientAppWhatsAppUrl(settings.patientFolderUrl)} target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a>
+              </div>
+            </div>}
           </section>
         ) : null}
 

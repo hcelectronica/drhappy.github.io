@@ -16,7 +16,7 @@ import PatientPressureView from './PatientPressureView'
 import PatientGlucoseView from './PatientGlucoseView'
 import { PatientEmailUnsubscribe } from './PatientEmailUnsubscribe'
 import PatientLinkRequests from './PatientLinkRequests'
-import { PATIENT_APP_WHATSAPP_URL } from './patientAppShare'
+import { PATIENT_APP_URL, PATIENT_APP_WHATSAPP_URL, patientAppWhatsAppUrl } from './patientAppShare'
 import { trackPatientActivity } from './patientActivity'
 
 const MemoryWorkshop = lazy(() => import('./memory/MemoryWorkshop'))
@@ -860,6 +860,43 @@ export function PatientPortal() {
   const [toast, setToast] = useState('')
   const [askInstall, setAskInstall] = useState(false)
   const closeInstall = useCallback(() => setAskInstall(false), [])
+  const [orientation, setOrientation] = useState<PatientFolderResponse['orientation']>(null)
+  const [orientationError, setOrientationError] = useState('')
+  const [orientationAttempt, setOrientationAttempt] = useState(0)
+  const [orientationChecked, setOrientationChecked] = useState(false)
+  const [referral] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    const value = params.get('prof')
+    try {
+      if (value !== null) localStorage.setItem('drhappy-pending-referral', value)
+      return { value: value ?? localStorage.getItem('drhappy-pending-referral'), error: '' }
+    } catch (error) {
+      console.error('No se pudo conservar el enlace del profesional.', error)
+      return { value, error: 'El navegador no permite conservar el enlace. Volvé a abrir el enlace de tu profesional si instalás la app antes de ingresar.' }
+    }
+  })
+  const referringProfessional = referral.value
+
+  useEffect(() => {
+    setOrientation(null)
+    setOrientationChecked(false)
+    setOrientationError(referral.error)
+    if (!patient?.id) return
+    let cancelled = false
+    callPatientFolder({ action: 'orientation', ...(referringProfessional !== null ? { professionalId: referringProfessional } : {}) })
+      .then(result => {
+        if (cancelled) return
+        if (!result.success) {
+          setOrientationError(result.message || 'No se pudo cargar la orientación de tu profesional.')
+          return
+        }
+        setOrientation(result.orientation ?? null)
+        setOrientationChecked(true)
+        try { localStorage.removeItem('drhappy-pending-referral') }
+        catch (error) { console.error('No se pudo limpiar el enlace pendiente.', error); setOrientationError('No se pudo limpiar el enlace guardado en este navegador. Revisá su configuración de almacenamiento.') }
+      })
+    return () => { cancelled = true }
+  }, [patient?.id, referringProfessional, referral.error, orientationAttempt])
 
   useEffect(() => {
     if (!patient?.id) return
@@ -946,6 +983,8 @@ export function PatientPortal() {
 
   const firstName = patient.firstName || patient.fullName.split(' ')[0]
   const lastDoc = documents[0]
+  const appShareUrl = orientation?.shareUrl
+    ?? (referringProfessional !== null ? `${PATIENT_APP_URL}?prof=${encodeURIComponent(referringProfessional)}` : null)
 
   return (
     <div className="pp-app">
@@ -967,22 +1006,25 @@ export function PatientPortal() {
             <nav className="pp-grid" aria-label="Menú principal">
               <button type="button" className="pp-tile is-folder" onClick={() => setView('folder')}><span aria-hidden>🗂️</span>Mi carpeta</button>
               <button type="button" className="pp-tile is-upload" onClick={() => setView('upload')}><span aria-hidden>📤</span>Subir estudio</button>
-              <a className="pp-tile is-evaluation" href="https://www.drhappy.com.ar/consulta/alan-moodie-dc876a" target="_blank" rel="noopener noreferrer">
+              {orientation?.url && <a className="pp-tile is-evaluation" href={orientation.url} target="_blank" rel="noopener noreferrer">
                 <span aria-hidden>🔬</span>
                 EVALUAR ESTUDIOS CON INTELIGENCIA ARTIFICIAL
+                <small>{orientation.professionalName}</small>
                 <small>Orientación virtual paga, revisada por un médico. No atiende urgencias.</small>
-              </a>
+              </a>}
               <button type="button" className="pp-tile is-pressure" onClick={() => setView('pressure')}><span aria-hidden>❤️</span>Mi presión</button>
               <button type="button" className="pp-tile is-pressure" onClick={() => setView('glucose')}><span aria-hidden>🩸</span>Mi glucosa</button>
               <button type="button" className="pp-tile is-memory" onClick={() => setView('memory')}><span aria-hidden>🧠</span>Taller de memoria</button>
               <button type="button" className="pp-tile is-share" onClick={() => setView('share')}><span aria-hidden>🤝</span>Compartir con mi médico</button>
-              <a className="pp-tile is-friend" href={PATIENT_APP_WHATSAPP_URL} target="_blank" rel="noopener noreferrer" onClick={() => { void trackPatientActivity('invite_clicked') }}>
+              {orientationChecked && <a className="pp-tile is-friend" href={appShareUrl ? patientAppWhatsAppUrl(appShareUrl) : PATIENT_APP_WHATSAPP_URL} target="_blank" rel="noopener noreferrer" onClick={() => { void trackPatientActivity('invite_clicked') }}>
                 <span aria-hidden>💬</span>
                 Compartir con un amigo
                 <small>Por WhatsApp</small>
-              </a>
+              </a>}
               <button type="button" className="pp-tile is-account" onClick={() => setView('account')}><span aria-hidden>👤</span>Mi cuenta</button>
             </nav>
+            {orientation && !orientation.url && <p className="pp-info">{orientation.professionalName} no está recibiendo evaluaciones virtuales en este momento.</p>}
+            {orientationError && <div className="pp-error" role="alert">{orientationError} <button type="button" className="pp-secondary" onClick={() => setOrientationAttempt(value => value + 1)}>Volver a intentar</button></div>}
             {!askInstall && <InstallPatientApp />}
           </>
         )}

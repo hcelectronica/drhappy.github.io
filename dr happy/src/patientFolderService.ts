@@ -71,6 +71,7 @@ export interface PatientFolderResponse {
   glucose?: GlucoseRecord
   newsEnabled?: boolean
   requests?: PatientLinkRequest[]
+  orientation?: { professionalId: string; professionalName: string; url: string | null; shareUrl: string } | null
 }
 
 export interface PatientLinkRequest {

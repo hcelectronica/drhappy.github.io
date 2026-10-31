@@ -5,6 +5,7 @@ import { corsHeaders as baseCorsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { sendPatientRegistrationNotice } from '../_shared/patientRegistrationEmail.ts'
 import { GlucoseInputError, parseGlucoseReading, parseDiabetesTreatment } from '../_shared/patientGlucose.ts'
+import { patientFolderOrientation, validReferringProfessional } from '../_shared/patientFolderReferral.ts'
 
 // Carpeta de Salud: cuentas de pacientes separadas de los profesionales.
 // Toda la lectura/escritura pasa por esta función con service_role; el bucket es privado.
@@ -685,6 +686,25 @@ serve(async (request) => {
 
     if (action === 'me') {
       return reply(200, { success: true, patient: publicPatient(patient) })
+    }
+
+    if (action === 'orientation') {
+      if (body.professionalId !== undefined && !validReferringProfessional(body.professionalId)) {
+        return reply(400, { success: false, message: 'El enlace del profesional no es válido.' })
+      }
+      const { data: account, error } = await admin.from('patient_accounts')
+        .select('referring_professional_id').eq('id', patient.id).single()
+      if (error) throw error
+      const professionalId = typeof body.professionalId === 'string' ? body.professionalId : account.referring_professional_id
+      if (!professionalId) return reply(200, { success: true, orientation: null })
+      const orientation = await patientFolderOrientation(admin, professionalId)
+      if (body.professionalId !== undefined) {
+        if (!orientation) return reply(404, { success: false, message: 'El profesional de este enlace no está disponible.' })
+        const { error: saveError } = await admin.from('patient_accounts')
+          .update({ referring_professional_id: professionalId }).eq('id', patient.id)
+        if (saveError) throw saveError
+      }
+      return reply(200, { success: true, orientation })
     }
 
     if (action === 'logout') {

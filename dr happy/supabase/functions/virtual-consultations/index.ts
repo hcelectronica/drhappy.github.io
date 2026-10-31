@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from '../_shared/medicalToolAccess.ts'
+import { patientFolderUrl } from '../_shared/patientFolderReferral.ts'
 import { findRedFlag } from '../_shared/virtualConsultRedFlags.ts'
 import { buildVirtualConsultPdf } from './pdf.ts'
 
@@ -445,6 +446,7 @@ Deno.serve(async (request) => {
           slug: settings.slug, enabled: settings.enabled, price: Number(settings.price),
           letterhead: settings.letterhead ?? '', logoDataUrl: settings.logo_data_url ?? '',
           paymentReady: paymentAccount?.status === 'connected', url: `${PUBLIC_SITE}/consulta/${settings.slug}`,
+          patientFolderUrl: patientFolderUrl(professionalId),
         },
       })
     }

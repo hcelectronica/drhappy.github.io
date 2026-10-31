@@ -8,3 +8,7 @@ export const PATIENT_APP_SHARE_TEXT = [
 ].join('\n\n')
 
 export const PATIENT_APP_WHATSAPP_URL = `https://wa.me/?text=${encodeURIComponent(PATIENT_APP_SHARE_TEXT)}`
+
+export function patientAppWhatsAppUrl(shareUrl: string): string {
+  return `https://wa.me/?text=${encodeURIComponent(PATIENT_APP_SHARE_TEXT.replace(PATIENT_APP_URL, shareUrl))}`
+}

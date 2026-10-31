@@ -43,6 +43,7 @@ export interface VirtualConsult {
 }
 
 export interface VirtualConsultSettings {
+  patientFolderUrl?: string
   slug: string
   enabled: boolean
   price: number
