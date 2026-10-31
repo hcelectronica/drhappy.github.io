@@ -105,11 +105,11 @@
 
     <section class="card" id="formCard" hidden>
       <header class="hero">
-        <div class="avatar" id="avatar" aria-hidden="true">DH</div>
+        <div class="avatar" id="avatar" aria-hidden="true"><img src="/brand-mark.svg" alt="" width="48" height="48" /></div>
         <span class="eyebrow">Consulta virtual asistida</span>
-        <h1 id="title">Enviá tu consulta</h1>
-        <p>Contanos qué te pasa y, si querés, adjuntá fotos o estudios. Sofía (IA) ordena tu consulta y tu profesional <strong>revisa y firma</strong> la devolución, que recibís en PDF.</p>
-        <span class="pro-chip">🩺 <span id="proName"></span></span>
+        <h1 id="title">Orientación virtual asistida</h1>
+        <p>Contanos qué te pasa y, si querés, adjuntá fotos o estudios. Sofía (IA) ordena tu consulta y <strong>un profesional la lee y revisa</strong>. Recibís la devolución visada en PDF.</p>
+        <span class="pro-chip">🩺 Será leída por un profesional</span>
       </header>
       <div class="notice" role="note">
         <strong>⚠️ Este es un servicio PAGO y NO obligatorio.</strong> Podés seguir consultando por los medios habituales sin costo adicional.
@@ -220,7 +220,6 @@
         .then(function (res) { return res.json().catch(function () { return { success: false }; }); });
     }
     function fail(text) { el('errorText').textContent = text; show('error'); }
-    function initials(name) { return name.replace(/^(dr|dra)\.?\s+/i, '').split(/\s+/).filter(Boolean).slice(0, 2).map(function (part) { return part[0].toUpperCase(); }).join('') || 'DH'; }
     function normalize(value) { return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' '); }
     function hasRedFlag(value) { var text = normalize(value); return RED_FLAGS.some(function (flag) { return text.indexOf(flag) >= 0; }); }
     function money(value) { return '$ ' + Number(value || 0).toLocaleString('es-AR'); }
@@ -393,13 +392,8 @@
       call({ action: 'get-page', slug: slug }).then(function (result) {
         if (!result.success || !result.page) { fail(result.message || 'Este link de consulta virtual no está disponible.'); return; }
         var page = result.page;
-        var heading = page.letterhead || page.professionalName;
-        el('title').textContent = heading;
-        el('avatar').textContent = initials(heading);
-        el('proName').textContent = page.professionalName + (page.specialty ? ' · ' + page.specialty : '');
         el('priceText').textContent = money(page.price);
         el('submitBtn').textContent = 'Continuar al pago (' + money(page.price) + ')';
-        document.title = 'Consulta virtual — ' + heading;
         if (!page.paymentReady) { fail('El profesional todavía no habilitó el cobro en línea para la consulta virtual.'); return; }
         show('formCard');
         checkPendingConsult();

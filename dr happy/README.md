@@ -104,6 +104,8 @@ La prueba opcional de navegador `tests/patient-monitoring.browser.mjs` usa el fi
 
 ### Invitar amigos a Mi Carpeta de Salud
 
+La cabecera pública de orientación virtual (`public/consulta/index.html`) es genérica: logo Dr Happy, título de la herramienta y aviso de lectura por un profesional, sin nombre, especialidad, membrete ni iniciales del médico. Se conserva el profesional del enlace para precio, pago, seguimiento y PDF de devolución identificado y visado. Prueba: `node --test tests/virtual-consult-header.test.mjs`.
+
 El enlace `/paciente` y `/paciente/` sirve `paciente.html`, una entrada Vite independiente con Open Graph y Twitter estáticos: los rastreadores no necesitan ejecutar JavaScript. Su tarjeta propia es `public/social-preview-patient-01.png` (1200 × 630), exportada desde `public/social-preview-patient-01.svg` mediante canvas del navegador. La portada profesional conserva su tarjeta original. Mantener sincronizadas las URL de imagen de ambas redes y versionar el nombre al cambiar la imagen; las redes pueden conservar en caché vistas previas de enlaces ya compartidos. Prueba: `node --test tests/patient-social-preview.test.mjs`.
 
 El inicio del portal de pacientes incluye **Compartir con un amigo · Por WhatsApp**. Abre WhatsApp con una invitación a crear una carpeta propia en `https://www.drhappy.com.ar/paciente`; el paciente elige el contacto y confirma el envío allí. El mensaje es público y fijo: no incluye identidad, sesión, estudios ni enlaces de acceso a la carpeta de quien invita. Esta acción es independiente de **Compartir con mi médico**, que mantiene su circuito de autorización.
