@@ -150,6 +150,7 @@
     var SUPABASE_ANON_KEY = 'sb_publishable_jZQuKg9OtpDPTVHbccWpGQ_2BD66W6I';
     var FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/public-booking';
     var params = new URLSearchParams(window.location.search);
+    var blockId = params.get('b') || undefined;
     var slug = params.get('p') || (window.location.hash || '').replace(/^#\/?/, '') || '';
     var fixedModality = null;
     var cursor = todayISO().slice(0, 7) + '-01';
@@ -172,10 +173,10 @@
     function loadAgenda() {
       if (!slug) { showError('Falta el link público del profesional.'); return; }
       el('loading').style.display = 'block';
-      callFunction({ action: 'get-public-agenda', slug: slug, modality: fixedModality, startDate: cursor, days: 35 }).then(function (result) {
+      callFunction({ action: 'get-public-agenda', slug: slug, blockId: blockId, modality: fixedModality, startDate: cursor, days: 35 }).then(function (result) {
         if (!result.data.success) { showError(result.data.message); return; }
         agenda = result.data;
-        el('title').textContent = 'Turnos de ' + agenda.profile.professionalName;
+        el('title').textContent = (agenda.profile.label ? agenda.profile.label + ' · ' : 'Turnos de ') + agenda.profile.professionalName;
         el('subtitle').textContent = [agenda.profile.location, agenda.profile.reason].filter(Boolean).join(' · ') || 'Elegí un horario disponible.';
         el('loading').style.display = 'none';
         el('error').style.display = 'none';
@@ -220,7 +221,7 @@
       el('confirmBtn').disabled = false;
       el('selectedText').textContent = 'Horario seleccionado';
       el('selectedBox').style.display = 'block';
-      el('selectedBox').innerHTML = '<strong>' + formatDate(selected.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' · ' + selected.time + ' hs</strong><br><span>' + selected.label + '</span>' + (selected.location ? '<br><small>' + selected.location + '</small>' : '');
+      el('selectedBox').textContent = formatDate(selected.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' · ' + selected.time + ' hs · ' + selected.label + (selected.location ? ' · ' + selected.location : '') + (selected.amountToCharge ? ' · $ ' + money(selected.amountToCharge) : '');
       var choiceBox = el('slotChoices'); choiceBox.innerHTML = '';
       var day = (agenda.days || []).find(function (entry) { return entry.date === selected.date; });
       (day ? day.slots : []).filter(function (slot) { return slot.available && (filter === 'all' || slot.modality === filter); }).forEach(function (slot) {

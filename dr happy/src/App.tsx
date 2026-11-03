@@ -1,3 +1,4 @@
+import PublicTurnerasEditor from './PublicTurnerasEditor'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChangeEvent,
@@ -85,10 +86,9 @@ import {
   getPublicBookingSettings,
   savePublicBookingSettings,
   buildPublicBookingUrl,
-  buildFixedPublicBookingUrl,
   buildWhatsAppShareUrl,
 } from './publicBookingService'
-import type { PublicBookingAvailabilityBlock, PublicBookingLinkSummary, PublicBookingSettings } from './publicBookingService'
+import type { PublicBookingLinkSummary, PublicBookingSettings } from './publicBookingService'
 import { fetchAdminAIUsage, fetchAdminUserStats } from './adminStatsService'
 import type { AdminAIUsageStats, AdminUserStats, AdminStatsSummary } from './adminStatsService'
 import { startTelemetry, stopTelemetry, trackClinicalAction } from './telemetryService'
@@ -554,15 +554,9 @@ interface AppointmentRecord {
   amountToCharge?: number
   amountConcept?: 'sena' | 'consulta'
   publicBookingModality?: 'coverage' | 'private'
+  publicBookingBlockId?: string
+  publicBookingLabel?: string
   consultationMode?: 'presential' | 'video'
-}
-
-interface PublicTurneraDraft {
-  days: number[]
-  startTime: string
-  endTime: string
-  durationMinutes: number
-  location: string
 }
 
 interface AppointmentDraft {
@@ -2693,11 +2687,10 @@ function App() {
   const [freeSlotLinks, setFreeSlotLinks] = useState<PublicBookingLinkSummary[]>([])
   const [freeSlotLinksLoading, setFreeSlotLinksLoading] = useState(false)
   const [freeSlotGeneratedUrl, setFreeSlotGeneratedUrl] = useState<string | null>(null)
+  const publicBookingRequestRef = useRef(0)
   const [publicBookingSettings, setPublicBookingSettings] = useState<PublicBookingSettings | null>(null)
   const [publicBookingLoading, setPublicBookingLoading] = useState(false)
   const [publicBookingSaving, setPublicBookingSaving] = useState(false)
-  const [publicBookingQuotas, setPublicBookingQuotas] = useState<Record<'private' | 'coverage', string>>({ private: '', coverage: '' })
-  const [publicTurneraDrafts, setPublicTurneraDrafts] = useState<Partial<Record<'private' | 'coverage', PublicTurneraDraft>>>({})
   const [publicBookingError, setPublicBookingError] = useErrorNotification()
   const [publicBookingNotice, setPublicBookingNotice] = useState<string | null>(null)
   const [mercadoPagoConnected, setMercadoPagoConnected] = useState(false)
@@ -7683,28 +7676,6 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     setAppNotice(`Configuración guardada: ${normalizedLimit} turnos posibles por día.`)
   }
 
-  function saveAppointmentAmount(): void {
-    if (!activeUserId || !profile) return
-    const nextProfile = {
-      ...profile,
-      appointmentAmountToCharge: Number(appointmentAmountToCharge) > 0 ? Number(appointmentAmountToCharge) : undefined,
-      appointmentAmountConcept,
-    }
-    setProfile(nextProfile)
-    localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
-    void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments)
-  }
-
-  function handleAppointmentAmountChange(value: string): void {
-    setAppointmentAmountToCharge(value)
-    if (!activeUserId || !profile) return
-    const nextProfile = {
-      ...profile,
-      appointmentAmountToCharge: Number(value) > 0 ? Number(value) : undefined,
-    }
-    setProfile(nextProfile)
-    localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
-  }
 
   function handleNewAppointmentModal(prefillPatient?: PatientRecord | null, prefillDate?: string): void {
     if (prefillPatient) {
@@ -8187,93 +8158,6 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     showSavedFloatingNotice('Turno cancelado')
   }
 
-  function getTurneraDraft(modality: 'private' | 'coverage'): PublicTurneraDraft {
-    return publicTurneraDrafts[modality] ?? {
-      days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
-      startTime: appointmentStartTime,
-      endTime: appointmentEndTime,
-      durationMinutes: appointmentDurationMinutes,
-      location: publicBookingSettings?.location || '',
-    }
-  }
-
-  function updateTurneraDraft(modality: 'private' | 'coverage', patch: Partial<PublicTurneraDraft>): void {
-    setPublicTurneraDrafts((current) => ({ ...current, [modality]: { ...getTurneraDraft(modality), ...patch } }))
-  }
-
-  async function handleGenerateFixedBookingLink(modality: 'private' | 'coverage'): Promise<void> {
-    if (!activeUserId) return
-    const current = publicBookingSettings || buildDefaultPublicBookingSettings()
-    if (!current) return
-    if (modality === 'private' && !mercadoPagoConnected) {
-      setAppError('Conectá y verificá tu cuenta de Mercado Pago antes de publicar la turnera particular.')
-      return
-    }
-    if (modality === 'private' && Number(appointmentAmountToCharge) <= 0) {
-      setAppError('Cargá el monto de la consulta antes de publicar la turnera particular.')
-      return
-    }
-    const draft = getTurneraDraft(modality)
-    if (!draft.days.length) {
-      setAppError('Elegí al menos un día de atención para esta turnera.')
-      return
-    }
-    const capacity = calculateDailyCapacity(draft.startTime, draft.endTime, draft.durationMinutes)
-    if (capacity < 1) {
-      setAppError('Con ese horario y esa duración no entra ningún turno. Revisá el rango.')
-      return
-    }
-    const requestedQuota = Math.round(Number(publicBookingQuotas[modality]) || capacity)
-    if (requestedQuota < 1 || requestedQuota > capacity) {
-      setAppError(`El cupo diario debe ser entre 1 y ${capacity} turnos.`)
-      return
-    }
-    const existing = current.blocks.find((entry) => entry.modality === modality)
-    const block: PublicBookingAvailabilityBlock = {
-      ...(existing || {}),
-      id: existing?.id || crypto.randomUUID(),
-      label: modality === 'private' ? 'Turno particular' : 'Turno sin cargo',
-      modality,
-      days: draft.days,
-      startTime: draft.startTime,
-      endTime: draft.endTime,
-      durationMinutes: draft.durationMinutes,
-      slotCount: capacity,
-      dailyQuota: requestedQuota,
-      location: draft.location.trim(),
-      reason: existing?.reason || 'Consulta médica',
-      amountToCharge: modality === 'private' && Number(appointmentAmountToCharge) > 0 ? Number(appointmentAmountToCharge) : undefined,
-      amountConcept: modality === 'private' ? appointmentAmountConcept : undefined,
-    }
-    const other = current.blocks.find((entry) => entry.modality !== modality)
-    const blocks = [block, ...(other ? [other] : [])]
-      .sort((left, right) => (left.modality === 'private' ? 0 : 1) - (right.modality === 'private' ? 0 : 1))
-    const professionalName = profile?.fullName || activeUser?.fullName || current.professionalName || 'profesional'
-    const baseSlug = buildDefaultPublicBookingSlug(professionalName, activeUserId)
-    const settings = { ...current, professionalId: activeUserId, professionalName, slug: current.slug || baseSlug, enabled: true, blocks }
-    setPublicBookingSaving(true)
-    const result = await savePublicBookingSettings(settings)
-    setPublicBookingSaving(false)
-    if (!result.success || !result.settings) {
-      setAppError(result.message || 'No se pudo generar el link fijo.')
-      return
-    }
-    setPublicBookingSettings(result.settings)
-    const url = buildFixedPublicBookingUrl(result.settings.slug, modality)
-    setAppNotice(modality === 'private' ? 'Turnera particular publicada. Link fijo generado.' : 'Turnera gratuita publicada. Link fijo generado.')
-    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-      try {
-        await navigator.share({ title: `Turnera de ${profile?.fullName || activeUser?.fullName || 'Dr Happy'}`, text: 'Elegí tu turno disponible:', url })
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          setAppError(`No se pudo compartir el link: ${error instanceof Error ? error.message : String(error)}. Podés copiarlo desde esta pantalla.`)
-        }
-      }
-    } else {
-      setAppNotice('Turnera publicada. Copiá el link desde esta pantalla para compartirlo.')
-    }
-  }
-
   async function handleConnectMercadoPago(): Promise<void> {
     setMercadoPagoConnectionBusy(true)
     setAppError(null)
@@ -8344,83 +8228,41 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       location: '',
       reason: 'Consulta médica',
       horizonDays: 60,
-      blocks: [
-        {
-          id: crypto.randomUUID(),
-          label: 'Turno disponible',
-          modality: 'private',
-          days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS,
-          startTime: appointmentStartTime,
-          endTime: appointmentEndTime,
-          durationMinutes: appointmentDurationMinutes,
-          slotCount: calculateDailyCapacity(appointmentStartTime, appointmentEndTime, appointmentDurationMinutes),
-          location: '',
-          reason: 'Consulta médica',
-        },
-      ],
+      blocks: [],
     }
   }
 
   async function refreshPublicBookingSettings(): Promise<void> {
-    if (!activeUserId) return
+    const requestId = ++publicBookingRequestRef.current
+    setPublicBookingSettings(null)
+    setPublicBookingError(null)
+    setPublicBookingNotice(null)
+    if (!activeUserId) {
+      setPublicBookingLoading(false)
+      return
+    }
+    const userId = activeUserId
     setPublicBookingLoading(true)
     try {
-      const result = await getPublicBookingSettings(activeUserId)
+      const result = await getPublicBookingSettings(userId)
+      if (requestId !== publicBookingRequestRef.current || localStorage.getItem(SESSION_USER_KEY) !== userId) return
       if (result.success && result.settings) {
         const savedBlocks = result.settings.blocks.map((block) => ({
           ...block,
+          enabled: block.enabled ?? result.settings!.enabled,
           modality: block.modality === 'coverage' ? 'coverage' as const : 'private' as const,
         }))
         setPublicBookingSettings({ ...result.settings, blocks: savedBlocks })
-        const privateBlock = savedBlocks.find((block) => block.modality === 'private')
-        const freeBlock = savedBlocks.find((block) => block.modality === 'coverage')
-        setPublicBookingQuotas({
-          private: privateBlock ? String(privateBlock.dailyQuota ?? privateBlock.slotCount) : '',
-          coverage: freeBlock ? String(freeBlock.dailyQuota ?? freeBlock.slotCount) : '',
-        })
-        const toDraft = (block: PublicBookingAvailabilityBlock): PublicTurneraDraft => ({
-          days: block.days,
-          startTime: block.startTime,
-          endTime: block.endTime,
-          durationMinutes: block.durationMinutes,
-          location: block.location || result.settings!.location || '',
-        })
-        setPublicTurneraDrafts({
-          ...(privateBlock ? { private: toDraft(privateBlock) } : {}),
-          ...(freeBlock ? { coverage: toDraft(freeBlock) } : {}),
-        })
-        setAppointmentAmountToCharge(privateBlock?.amountToCharge ? String(privateBlock.amountToCharge) : '')
-        setAppointmentAmountConcept(privateBlock?.amountConcept === 'consulta' ? 'consulta' : 'sena')
-      } else {
+      } else if (result.success) {
         setPublicBookingSettings(buildDefaultPublicBookingSettings())
+      } else {
+        setPublicBookingError(result.message || 'No se pudieron cargar las turneras.')
       }
+    } catch (error) {
+      if (requestId === publicBookingRequestRef.current) setPublicBookingError(`No se pudieron cargar las turneras: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
-      setPublicBookingLoading(false)
+      if (requestId === publicBookingRequestRef.current) setPublicBookingLoading(false)
     }
-  }
-
-  async function handlePausePublicTurnera(modality: 'private' | 'coverage'): Promise<void> {
-    if (!activeUserId || !publicBookingSettings) return
-    const label = modality === 'private' ? 'particular' : 'gratuita'
-    if (!window.confirm(`¿Pausar la turnera ${label}? Su link dejará de mostrar turnos hasta que la vuelvas a publicar.`)) return
-    setPublicBookingSaving(true)
-    const result = await savePublicBookingSettings({
-      ...publicBookingSettings,
-      blocks: publicBookingSettings.blocks.filter((block) => block.modality !== modality),
-    })
-    setPublicBookingSaving(false)
-    if (!result.success || !result.settings) {
-      setAppError(result.message || 'No se pudo pausar la turnera.')
-      return
-    }
-    setPublicBookingSettings(result.settings)
-    setAppNotice(`Turnera ${label} pausada.`)
-  }
-
-  function updatePublicBookingBlock(blockId: string, patch: Partial<PublicBookingAvailabilityBlock>): void {
-    setPublicBookingSettings((current) => current
-      ? { ...current, blocks: current.blocks.map((block) => (block.id === blockId ? { ...block, ...patch } : block)) }
-      : current)
   }
 
   /* Pacientes registrados con el link de invitación: se incorporan al entrar y al navegar. */
@@ -8433,68 +8275,64 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
 
   /* El checklist de Inicio necesita saber si la turnera pública ya está publicada. */
   useEffect(() => {
-    if (!activeUserId) return
     void refreshPublicBookingSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeUserId])
 
-  function togglePublicBookingBlockDay(blockId: string, dayValue: number): void {
-    setPublicBookingSettings((current) => current
-      ? {
-          ...current,
-          blocks: current.blocks.map((block) => {
-            if (block.id !== blockId) return block
-            const days = block.days.includes(dayValue)
-              ? block.days.filter((value) => value !== dayValue)
-              : [...block.days, dayValue].sort((left, right) => left - right)
-            return { ...block, days }
-          }),
-        }
-      : current)
-  }
-
-  function removePublicBookingBlock(blockId: string): void {
-    setPublicBookingSettings((current) => current
-      ? { ...current, blocks: current.blocks.filter((block) => block.id !== blockId) }
-      : current)
-  }
-
   function validatePublicBookingSettings(settings: PublicBookingSettings): string | null {
     if (!settings.slug.trim()) return 'Definí el link corto de la turnera pública.'
     if (!settings.professionalName.trim()) return 'Falta el nombre visible del profesional.'
-    if (settings.blocks.length === 0) return 'Agregá al menos un bloque de disponibilidad.'
+    if (new Set(settings.blocks.map(block => block.id)).size !== settings.blocks.length) return 'Hay turneras con identificadores repetidos.'
     for (const block of settings.blocks) {
-      if (!block.label.trim()) return 'Cada bloque necesita una etiqueta visible para el paciente.'
+      if (!block.label.trim()) return 'Cada turnera necesita un nombre visible para el paciente.'
       if (!block.days.length) return `El bloque "${block.label}" necesita al menos un día habilitado.`
       if (block.startTime >= block.endTime) return `En "${block.label}", el horario Desde debe ser anterior a Hasta.`
       const capacity = Math.floor((parseTimeMinutes(block.endTime) - parseTimeMinutes(block.startTime)) / block.durationMinutes)
-      if (block.slotCount > capacity) return `En "${block.label}" no entran ${block.slotCount} turnos de ${block.durationMinutes} min.`
-      if (block.modality === 'private' && (!block.amountToCharge || block.amountToCharge <= 0)) return `En "${block.label}" cargá el monto para pacientes particulares.`
+      if (!Number.isFinite(capacity) || capacity < 1 || block.slotCount < 1 || block.slotCount > capacity) return `En "${block.label}" no entran ${block.slotCount} turnos de ${block.durationMinutes} min.`
+      if (!Number.isInteger(block.dailyQuota ?? block.slotCount) || (block.dailyQuota ?? block.slotCount) < 1 || (block.dailyQuota ?? block.slotCount) > block.slotCount) return `Revisá el cupo diario de ${block.label}.`
+      if (settings.enabled && block.enabled !== false && block.modality === 'private' && !mercadoPagoConnected) return 'Conectá Mercado Pago antes de habilitar una turnera con cobro.'
+      if (settings.enabled && block.enabled !== false && block.modality === 'private' && (!block.amountToCharge || block.amountToCharge <= 0)) return `En "${block.label}" cargá el monto para pacientes particulares.`
     }
     return null
   }
 
-  async function handleSavePublicBookingSettings(): Promise<void> {
-    if (!publicBookingSettings) return
-    const validation = validatePublicBookingSettings(publicBookingSettings)
+  async function copyPublicTurneraLink(url: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(url)
+      showSavedFloatingNotice('Link copiado')
+    } catch (error) {
+      setPublicBookingError(`No se pudo copiar el enlace: ${error instanceof Error ? error.message : String(error)}. Copialo desde la pantalla.`)
+    }
+  }
+
+  async function handleSavePublicBookingSettings(settings: PublicBookingSettings): Promise<boolean> {
+    const userId = activeUserId
+    if (!userId || settings.professionalId !== userId) {
+      setPublicBookingError('La configuración no corresponde a la cuenta actual. Volvé a abrir Turneras.')
+      return false
+    }
+    const validation = validatePublicBookingSettings(settings)
     if (validation) {
       setPublicBookingError(validation)
-      return
+      return false
     }
     setPublicBookingSaving(true)
     setPublicBookingError(null)
     setPublicBookingNotice(null)
     try {
-      const result = await savePublicBookingSettings(publicBookingSettings)
+      const result = await savePublicBookingSettings(settings)
+      if (localStorage.getItem(SESSION_USER_KEY) !== userId) return false
       if (!result.success || !result.settings) {
         setPublicBookingError(result.message || 'No se pudo guardar la turnera pública fija.')
-        return
+        return false
       }
       setPublicBookingSettings(result.settings)
       setPublicBookingNotice('Turnera pública fija guardada correctamente.')
-      showSavedFloatingNotice('Turnera pública guardada')
+      showSavedFloatingNotice('Turneras guardadas')
+      return true
     } catch (error) {
       setPublicBookingError(`Error al guardar: ${error instanceof Error ? error.message : String(error)}`)
+      return false
     } finally {
       setPublicBookingSaving(false)
     }
@@ -14047,136 +13885,13 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             <div className="capacity-status">{appointmentDaysLabel || 'Elegí al menos un día'} · Configuración guardada automáticamente al cambiar los campos.</div>
               </div>
             </details>
-            {(['private', 'coverage'] as const).map((modality) => {
-              const isPrivate = modality === 'private'
-              const draft = getTurneraDraft(modality)
-              const capacity = calculateDailyCapacity(draft.startTime, draft.endTime, draft.durationMinutes)
-              const published = Boolean(publicBookingSettings?.enabled && publicBookingSettings.blocks.some((block) => block.modality === modality))
-              const link = published && publicBookingSettings ? buildFixedPublicBookingUrl(publicBookingSettings.slug, modality) : null
-              return (
-                <details key={modality} className={`public-turnera-section ${isPrivate ? 'is-private' : 'is-free'}`}>
-                  <summary>
-                    <span>{isPrivate ? '💳 Turnera particular' : '🎟️ Turnera gratuita'}</span>
-                    <small>{published ? `Publicada · hasta ${publicBookingQuotas[modality] || capacity} turnos por día` : 'Sin publicar'}</small>
-                  </summary>
-                  <div className="public-turnera-body">
-                    <p className="turnera-description">
-                      {isPrivate
-                        ? 'El paciente reserva y paga por Mercado Pago. El turno se confirma al aprobarse el pago.'
-                        : 'El paciente reserva sin pagar. El turno queda confirmado al instante.'}
-                    </p>
-                    <div className="capacity-controls">
-                      <label>
-                        Desde
-                        <span className="time-select-pair">
-                          <select value={splitAppointmentTime(draft.startTime).hour} onChange={(event) => updateTurneraDraft(modality, { startTime: joinAppointmentTime(event.target.value, splitAppointmentTime(draft.startTime).period) })}>
-                            {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}:00</option>)}
-                          </select>
-                          <select value={splitAppointmentTime(draft.startTime).period} onChange={(event) => updateTurneraDraft(modality, { startTime: joinAppointmentTime(splitAppointmentTime(draft.startTime).hour, event.target.value as 'AM' | 'PM') })}>
-                            {APPOINTMENT_PERIOD_OPTIONS.map((period) => <option key={period} value={period}>{period}</option>)}
-                          </select>
-                        </span>
-                      </label>
-                      <label>
-                        Hasta
-                        <span className="time-select-pair">
-                          <select value={splitAppointmentTime(draft.endTime).hour} onChange={(event) => updateTurneraDraft(modality, { endTime: joinAppointmentTime(event.target.value, splitAppointmentTime(draft.endTime).period) })}>
-                            {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}:00</option>)}
-                          </select>
-                          <select value={splitAppointmentTime(draft.endTime).period} onChange={(event) => updateTurneraDraft(modality, { endTime: joinAppointmentTime(splitAppointmentTime(draft.endTime).hour, event.target.value as 'AM' | 'PM') })}>
-                            {APPOINTMENT_PERIOD_OPTIONS.map((period) => <option key={period} value={period}>{period}</option>)}
-                          </select>
-                        </span>
-                      </label>
-                      <label>
-                        Duración del turno
-                        <select value={draft.durationMinutes} onChange={(event) => updateTurneraDraft(modality, { durationMinutes: Number(event.target.value) })}>
-                          {[15, 20, 30, 45, 60, 90].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutos</option>)}
-                        </select>
-                      </label>
-                      <div className="capacity-calculated">
-                        <strong>{capacity}</strong>
-                        <span>turnos posibles por día</span>
-                      </div>
-                      <div className="capacity-days">
-                        <span>Días de atención</span>
-                        <div>
-                          {WEEK_DAYS.map((day) => (
-                            <label key={day.value} className="capacity-day-option">
-                              <input
-                                type="checkbox"
-                                checked={draft.days.includes(day.value)}
-                                onChange={() => updateTurneraDraft(modality, {
-                                  days: draft.days.includes(day.value)
-                                    ? draft.days.filter((value) => value !== day.value)
-                                    : [...draft.days, day.value].sort((left, right) => left - right),
-                                })}
-                              />
-                              <span>{day.label.slice(0, 3)}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="public-turnera-fields">
-                      <label className="public-turnera-location">
-                        Lugar de atención
-                        <input
-                          type="text"
-                          maxLength={160}
-                          placeholder="Ej: Consultorio médico, Av. Siempre Viva 742"
-                          value={draft.location}
-                          onChange={(event) => updateTurneraDraft(modality, { location: event.target.value })}
-                        />
-                      </label>
-                      <label>
-                        Cupo diario (máx. {capacity})
-                        <input
-                          type="number"
-                          min="1"
-                          max={capacity}
-                          step="1"
-                          value={publicBookingQuotas[modality]}
-                          placeholder={String(capacity)}
-                          onChange={(event) => setPublicBookingQuotas((current) => ({ ...current, [modality]: event.target.value }))}
-                        />
-                      </label>
-                      {isPrivate ? (
-                        <>
-                          <label>
-                            Monto a cobrar
-                            <input type="number" min="0" step="1" value={appointmentAmountToCharge} onChange={(event) => handleAppointmentAmountChange(event.target.value)} onBlur={saveAppointmentAmount} placeholder="Ej: 15000" />
-                          </label>
-                          <label>
-                            Concepto
-                            <select value={appointmentAmountConcept} onChange={(event) => setAppointmentAmountConcept(event.target.value as 'sena' | 'consulta')}>
-                              <option value="sena">Reserva / seña</option>
-                              <option value="consulta">Turno completo</option>
-                            </select>
-                          </label>
-                        </>
-                      ) : null}
-                    </div>
-                    <small className="turnera-description">Si los horarios de las dos turneras se superponen, un horario reservado en una ya no aparece en la otra.</small>
-                    <div className="public-turnera-actions">
-                      <button type="button" className="screen-action primary" disabled={publicBookingSaving} onClick={() => void handleGenerateFixedBookingLink(modality)}>
-                        <span aria-hidden="true">💾</span> {publicBookingSaving ? 'Guardando...' : published ? 'Guardar cambios y compartir link' : 'Publicar y generar link'}
-                      </button>
-                      {published ? (
-                        <button type="button" className="ghost compact" disabled={publicBookingSaving} onClick={() => void handlePausePublicTurnera(modality)}>Pausar</button>
-                      ) : null}
-                    </div>
-                    {link ? (
-                      <div className="capacity-generated-link">
-                        <strong>Link fijo</strong>
-                        <span>{link}</span>
-                        <button type="button" className="ghost compact" onClick={() => void navigator.clipboard.writeText(link)}>Copiar link</button>
-                      </div>
-                    ) : null}
-                  </div>
-                </details>
-              )
-            })}
+            {publicBookingSettings && publicBookingSettings.professionalId === activeUserId ? <PublicTurnerasEditor
+              settings={publicBookingSettings}
+              defaultSchedule={{ days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS, startTime: appointmentStartTime, endTime: appointmentEndTime, durationMinutes: appointmentDurationMinutes }}
+              saving={publicBookingSaving || publicBookingLoading} mercadoPagoConnected={mercadoPagoConnected}
+              error={publicBookingError} notice={publicBookingNotice}
+              onChange={setPublicBookingSettings} onSave={handleSavePublicBookingSettings} onCopy={copyPublicTurneraLink}
+            /> : <p role="status">{publicBookingError || 'Cargando turneras...'}</p>}
           </section> : null}
 
           {turneraViewMode === 'ledger' && canUseTreatmentLedger ? (
@@ -17056,188 +16771,14 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
               cargará automáticamente en tu Turnera.
             </p>
 
-            <section className="panel public-booking-config" style={{ margin: '14px 0', padding: 16, background: '#f8fbff' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                <div>
-                  <span className="section-kicker">Link fijo profesional</span>
-                  <h4 style={{ margin: '4px 0 6px', fontSize: '1.05rem' }}>Liberar turnos para pacientes</h4>
-                  <p className="flow-hint" style={{ margin: 0 }}>
-                    El paciente verá los turnos que liberes durante los próximos 60 días y podrá elegir PAMI o
-                    particular según el bloque que configures.
-                  </p>
-                </div>
-                {publicBookingSettings ? (
-                  <label className="toggle-option" style={{ margin: 0 }}>
-                    <input
-                      type="checkbox"
-                      checked={publicBookingSettings.enabled}
-                      onChange={(event) => setPublicBookingSettings((current) => current ? { ...current, enabled: event.target.checked } : current)}
-                    />
-                    <span className="toggle-switch" />
-                    <span>{publicBookingSettings.enabled ? 'Activa' : 'Pausada'}</span>
-                  </label>
-                ) : null}
-              </div>
-
-              {publicBookingLoading ? <p className="flow-hint">Cargando configuración pública...</p> : null}
-
-              {publicBookingSettings ? (
-                <>
-                  <div className="turnera-form-row" style={{ marginTop: 12 }}>
-                    <label style={{ flex: 1.2 }}>
-                      Link corto
-                      <div className="public-booking-url-row">
-                        <span>drhappy.com.ar/turnera/</span>
-                        <input
-                          type="text"
-                          value={publicBookingSettings.slug}
-                          onChange={(event) => setPublicBookingSettings((current) => current ? { ...current, slug: buildDefaultPublicBookingSlug(event.target.value, activeUserId || 'user') } : current)}
-                        />
-                      </div>
-                    </label>
-                    <div className="public-booking-horizon-note">Disponibilidad visible: próximos 60 días</div>
-                  </div>
-
-                  <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
-                    {publicBookingSettings.blocks.map((block) => {
-                      const blockCapacity = Math.floor((parseTimeMinutes(block.endTime) - parseTimeMinutes(block.startTime)) / block.durationMinutes)
-                      return (
-                        <article key={block.id} style={{ border: '1px solid #d8e2ee', borderRadius: 12, padding: 12, background: '#fff' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                            <strong>{block.modality === 'private' ? 'Paciente particular' : 'Paciente con obra social'}</strong>
-                            <button type="button" className="ghost compact" onClick={() => removePublicBookingBlock(block.id)} disabled={publicBookingSettings.blocks.length <= 1}>
-                              Eliminar
-                            </button>
-                          </div>
-                          <div className="turnera-form-row">
-                            <label style={{ flex: 1 }}>
-                              Tipo de turno
-                              <select
-                                value={block.modality}
-                                onChange={(event) => updatePublicBookingBlock(block.id, {
-                                  modality: event.target.value as 'coverage' | 'private',
-                                  amountToCharge: event.target.value === 'private' ? block.amountToCharge || 25000 : undefined,
-                                  amountConcept: event.target.value === 'private' ? block.amountConcept || 'consulta' : undefined,
-                                  paymentLink: event.target.value === 'private' ? block.paymentLink || profile?.paymentLink?.trim() || '' : undefined,
-                                })}
-                              >
-                                <option value="coverage">Obra social / sin pago online</option>
-                                <option value="private">Particular / con pago</option>
-                              </select>
-                            </label>
-                          </div>
-                          <div className="capacity-days" style={{ marginTop: 8 }}>
-                            <span>Días</span>
-                            <div>
-                              {WEEK_DAYS.map((day) => (
-                                <label key={`${block.id}-${day.value}`} className="capacity-day-option">
-                                  <input
-                                    type="checkbox"
-                                    checked={block.days.includes(day.value)}
-                                    onChange={() => togglePublicBookingBlockDay(block.id, day.value)}
-                                  />
-                                  <span>{day.label.slice(0, 3)}</span>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="turnera-form-row">
-                            <label style={{ flex: 1 }}>
-                              Desde
-                              <input type="time" value={block.startTime} onChange={(event) => updatePublicBookingBlock(block.id, { startTime: event.target.value })} />
-                            </label>
-                            <label style={{ flex: 1 }}>
-                              Hasta
-                              <input type="time" value={block.endTime} onChange={(event) => updatePublicBookingBlock(block.id, { endTime: event.target.value })} />
-                            </label>
-                            <label style={{ flex: 1 }}>
-                              Duración
-                              <select value={block.durationMinutes} onChange={(event) => updatePublicBookingBlock(block.id, { durationMinutes: Number(event.target.value) })}>
-                                <option value={15}>15 min</option>
-                                <option value={20}>20 min</option>
-                                <option value={30}>30 min</option>
-                                <option value={45}>45 min</option>
-                                <option value={60}>60 min</option>
-                              </select>
-                            </label>
-                            <label style={{ flex: 1 }}>
-                              Cupos
-                              <input type="number" min={1} max={50} value={block.slotCount} onChange={(event) => updatePublicBookingBlock(block.id, { slotCount: Number(event.target.value) })} />
-                            </label>
-                          </div>
-                          <small className={block.slotCount <= blockCapacity ? 'flow-hint' : 'freeslot-capacity-note error'}>
-                            Capacidad del rango: {Math.max(0, blockCapacity)} turno(s). Configurado: {block.slotCount}.
-                          </small>
-                          <div className="turnera-form-row">
-                            <label style={{ flex: 1 }}>
-                              Lugar / consultorio
-                              <input type="text" placeholder="Opcional" value={block.location || ''} onChange={(event) => updatePublicBookingBlock(block.id, { location: event.target.value })} />
-                            </label>
-                            <label style={{ flex: 1 }}>
-                              Motivo del turno
-                              <input type="text" placeholder="Ej: Control PAMI / Consulta particular" value={block.reason || ''} onChange={(event) => updatePublicBookingBlock(block.id, { reason: event.target.value })} />
-                            </label>
-                          </div>
-                          {block.modality === 'private' ? (
-                            <div className="turnera-form-row">
-                              <label style={{ flex: 1 }}>
-                                Monto
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={block.amountToCharge ? String(block.amountToCharge) : ''}
-                                  onChange={(event) => updatePublicBookingBlock(block.id, { amountToCharge: Number(event.target.value.replace(',', '.')) || undefined })}
-                                />
-                              </label>
-                              <label style={{ flex: 1 }}>
-                                Concepto
-                                <select value={block.amountConcept || 'consulta'} onChange={(event) => updatePublicBookingBlock(block.id, { amountConcept: event.target.value as 'sena' | 'consulta' })}>
-                                  <option value="consulta">Consulta</option>
-                                  <option value="sena">Seña</option>
-                                </select>
-                              </label>
-                              <label style={{ flex: 2 }}>
-                                Link o alias de pago
-                                <input type="text" value={block.paymentLink || ''} onChange={(event) => updatePublicBookingBlock(block.id, { paymentLink: event.target.value })} />
-                              </label>
-                            </div>
-                          ) : null}
-                        </article>
-                      )
-                    })}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-                  </div>
-
-                  {publicBookingError ? <p style={{ color: '#c62828', fontSize: '0.9rem' }}>{publicBookingError}</p> : null}
-                  {publicBookingNotice ? <p className="payment-info-note ok">✅ {publicBookingNotice}</p> : null}
-
-                  <div className="public-booking-links-grid">
-                    {(['coverage', 'private'] as const).map((modality) => {
-                      const url = buildFixedPublicBookingUrl(publicBookingSettings.slug, modality)
-                      const label = modality === 'coverage' ? 'Turnera libre para obra social' : 'Turnera libre para particular'
-                      return (
-                        <div className="public-booking-link-card" key={modality}>
-                          <strong>{label}</strong>
-                          <span>{url}</span>
-                          <div>
-                            <button type="button" onClick={() => void handleSavePublicBookingSettings()} disabled={publicBookingSaving}>
-                              {publicBookingSaving ? 'Guardando...' : 'Guardar turnera'}
-                            </button>
-                            <button type="button" className="ghost" onClick={() => window.open(buildWhatsAppShareUrl(url, publicBookingSettings.professionalName), '_blank', 'noopener,noreferrer')}>
-                              WhatsApp
-                            </button>
-                            <button type="button" className="ghost" onClick={() => { void navigator.clipboard.writeText(url); showSavedFloatingNotice('Link copiado') }}>
-                              Copiar link
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </>
-              ) : null}
+            <section className="panel public-booking-config">
+            {publicBookingSettings && publicBookingSettings.professionalId === activeUserId ? <PublicTurnerasEditor
+              settings={publicBookingSettings}
+              defaultSchedule={{ days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS, startTime: appointmentStartTime, endTime: appointmentEndTime, durationMinutes: appointmentDurationMinutes }}
+              saving={publicBookingSaving || publicBookingLoading} mercadoPagoConnected={mercadoPagoConnected}
+              error={publicBookingError} notice={publicBookingNotice}
+              onChange={setPublicBookingSettings} onSave={handleSavePublicBookingSettings} onCopy={copyPublicTurneraLink}
+            /> : <p role="status">{publicBookingError || 'Cargando turneras...'}</p>}
             </section>
 
             {freeSlotCapacity ? (<div style={{ display: 'none' }}><>

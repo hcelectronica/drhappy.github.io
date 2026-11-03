@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Turneras - fixture</title></head>
+<body style="margin:0"><div id="root"></div>
+<script type="module">
+import React, {useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import Editor from '/src/PublicTurnerasEditor.tsx';
+import Reception from '/src/PatientReception.tsx';
+import '/src/index.css';
+import '/src/App.css';
+window.fixtureSaved = [];
+const initial = {professionalId:'fixture',slug:'fixture',professionalName:'Profesional de prueba',enabled:true,horizonDays:60,blocks:[
+  {id:'ioma',label:'IOMA',enabled:true,modality:'coverage',days:[1,2,3,4,5],startTime:'09:00',endTime:'12:00',durationMinutes:30,slotCount:6,dailyQuota:6,location:'Sede Centro'},
+  {id:'pami',label:'PAMI',enabled:true,modality:'private',amountToCharge:2500,days:[1,2,3,4,5],startTime:'09:00',endTime:'12:00',durationMinutes:30,slotCount:6,dailyQuota:4},
+  {id:'particular',label:'Particular',enabled:true,modality:'private',amountToCharge:15000,days:[1,2,3,4,5],startTime:'14:00',endTime:'18:00',durationMinutes:45,slotCount:5,dailyQuota:5},
+]};
+const originalFetch=window.fetch;
+window.fetch=async(input,init)=>{
+ const url=typeof input==='string'?input:input.url;
+ if(!url.includes('/functions/v1/patient-reception')) return originalFetch(input,init);
+ return Response.json({success:true,reception:{displayName:'Profesional de prueba',links:{},turneras:initial.blocks.filter(b=>b.enabled).map(b=>({id:b.id,label:b.label,url:'/turnos/?p=fixture&b='+b.id,amountToCharge:b.amountToCharge||null,location:b.location||''}))}});
+};
+function Fixture(){
+ const [settings,setSettings]=useState(initial);
+ return React.createElement('main',{className:'panel',style:{maxWidth:1000,margin:'12px auto',padding:16}},React.createElement(Editor,{
+ settings,onChange:setSettings,onCopy:async()=>{},defaultSchedule:{days:[1,2,3,4,5],startTime:'09:00',endTime:'12:00',durationMinutes:30},saving:false,mercadoPagoConnected:true,error:null,notice:null,
+ onSave:async value=>{window.fixtureSaved.push(structuredClone(value));setSettings(value);return true},
+ }));
+}
+createRoot(document.getElementById('root')).render(new URLSearchParams(location.search).has('reception')?React.createElement(Reception,{slug:'fixture'}):React.createElement(Fixture));
+</script></body></html>

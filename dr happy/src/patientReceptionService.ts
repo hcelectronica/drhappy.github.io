@@ -3,7 +3,7 @@ import { isSupabaseConfigured, supabase } from './supabaseClient'
 export const receptionTools = [
   { key: 'documents', title: 'Certificados y recetas', description: 'Solicitalos para evaluación profesional.', icon: 'document', destination: 'Tu enlace de certificados y recetas.' },
   { key: 'studies', title: 'Evaluación de estudios', description: 'No esperes un turno para consultar por tu laboratorio.', icon: 'studies', destination: 'Orientación virtual asistida por IA y revisada por vos.' },
-  { key: 'booking', title: 'Turno presencial', description: 'Elegí día y horario en el consultorio.', icon: 'calendar', destination: 'Tu turnera paga, no la gratuita.' },
+  { key: 'booking', title: 'Turneras', description: 'Elegí la atención que necesitás.', icon: 'calendar', destination: 'Todas tus turneras habilitadas, cada una con su nombre, enlace e importe.' },
   { key: 'video', title: 'Videoconsulta', description: 'Reservá y pagá tu turno. Tu profesional te enviará el enlace.', icon: 'video', destination: 'Tu turnera paga. Origen virtual identificado en agenda y correos.' },
   { key: 'registration', title: 'Registrarse como paciente', description: 'Completá tus datos para el consultorio.', icon: 'user', destination: 'Tu enlace de registro, no Mi Carpeta de Salud.' },
 ] as const
@@ -14,7 +14,7 @@ export interface ReceptionResponse {
   message?: string
   settings?: ReceptionSettings
   available?: Record<ReceptionTool, boolean>
-  reception?: { displayName: string; links: Partial<Record<ReceptionTool, string>> }
+  reception?: { displayName: string; links: Partial<Record<ReceptionTool, string>>; turneras?: Array<{ id: string; label: string; url: string; location: string; amountToCharge: number | null }> }
 }
 export const receptionUrl = (slug: string) => `https://www.drhappy.com.ar/r/${encodeURIComponent(slug)}`
 export async function callReception(body: Record<string, unknown>): Promise<ReceptionResponse> {

@@ -3,6 +3,7 @@ import test from 'node:test'
 import vm from 'node:vm'
 import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
+import { normalizeBlocks } from '../supabase/functions/_shared/publicBookingBlocks.ts'
 
 const source = await readFile(new URL('../supabase/functions/patient-reception/index.ts', import.meta.url), 'utf8')
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
@@ -12,7 +13,7 @@ function fixture() {
   const db = {
     professionals: [{ id: 'owner', active: true, full_name: 'Doctor' }],
     patient_receptions: [settings],
-    public_booking_profiles: [{ professional_id: 'owner', slug: 'doctor-booking', enabled: true, availability_blocks: [{ modality: 'private', amountToCharge: 100 }] }],
+    public_booking_profiles: [{ professional_id: 'owner', slug: 'doctor-booking', enabled: true, availability_blocks: [{ id: 'private', label: 'Particular', modality: 'private', amountToCharge: 100, days: [1,2,3,4,5], startTime: '09:00', endTime: '12:00', durationMinutes: 30, slotCount: 6 }] }],
     virtual_consult_settings: [{ professional_id: 'owner', enabled: true, slug: 'doctor-virtual' }],
     paid_clinical_document_settings: [{ professional_id: 'owner', certificate_enabled: true, slug: 'doctor-documents' }],
     patient_invite_links: [{ professional_id: 'owner', token: 'doctor-invite' }],
@@ -36,9 +37,10 @@ function fixture() {
   }
   let handler
   vm.runInNewContext(js, { exports: {}, Request, Response, console: { error() {} },
+    normalizeBlocks,
     Deno: { env: { get: () => 'fixture' } },
     require: name => name.includes('server.ts') ? { serve: fn => { handler = fn } }
-      : name.includes('supabase-js') ? { createClient: () => ({ from }) }
+      : name.includes('publicBookingBlocks') ? { normalizeBlocks } : name.includes('supabase-js') ? { createClient: () => ({ from }) }
         : name.includes('professionalSession') ? { resolveProfessionalId: async () => state.identity } : { corsHeaders: {} },
   })
   async function call(body, method = 'POST') {
@@ -51,8 +53,8 @@ test('public reception exposes only selected internal destinations; paid video i
   const h = fixture(); const result = await h.call({ action: 'public', slug: 'fixture', professionalId: 'attacker' })
   assert.equal(result.status, 200)
   assert.equal(Object.keys(result.body.reception.links).length, 5)
-  assert.match(result.body.reception.links.video, /\?m=private&consultation=video$/)
-  assert.match(result.body.reception.links.booking, /\?m=private$/)
+  assert.match(result.body.reception.links.video, /\?b=private&consultation=video$/)
+  assert.match(result.body.reception.links.booking, /\?b=private$/)
   assert.match(result.body.reception.links.registration, /\/registro\/doctor-invite$/)
   assert.equal(JSON.stringify(result.body).includes('professional_id'), false)
   h.settings.documents = false
@@ -87,4 +89,25 @@ test('professional settings cannot impersonate another owner; availability, type
   assert.equal((await h.call({ action: 'save-settings', settings: h.settings })).status, 409)
   h.state.fail = true
   assert.equal((await h.call({ action: 'public', slug: 'fixture' })).status, 500)
+})
+
+test('reception lists each enabled turnera by identity, including free turneras without Mercado Pago', async () => {
+  const h = fixture()
+  const template = h.db.public_booking_profiles[0].availability_blocks[0]
+  h.db.public_booking_profiles[0].availability_blocks = [
+    { ...template, id: 'ioma', label: 'IOMA', modality: 'coverage', amountToCharge: undefined },
+    { ...template, id: 'pami', label: 'PAMI', amountToCharge: 250 },
+    { ...template, id: 'particular', label: 'Particular', amountToCharge: 500 },
+    { ...template, id: 'paused', label: 'Pausada', enabled: false },
+  ]
+  let result = (await h.call({ action: 'public', slug: 'fixture' })).body.reception
+  assert.deepEqual(result.turneras.map(block => block.label), ['IOMA', 'PAMI', 'Particular'])
+  assert.equal(new Set(result.turneras.map(block => block.url)).size, 3)
+  assert.deepEqual(result.turneras.map(block => block.amountToCharge), [null, 250, 500])
+  h.db.professional_payment_accounts[0].status = 'disconnected'
+  result = (await h.call({ action: 'public', slug: 'fixture' })).body.reception
+  assert.deepEqual(result.turneras.map(block => block.label), ['IOMA'])
+  assert.match(result.links.booking, /b=ioma$/)
+  h.settings.booking = false
+  assert.deepEqual((await h.call({ action: 'public', slug: 'fixture' })).body.reception.turneras, [])
 })

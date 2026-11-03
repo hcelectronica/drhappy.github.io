@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
+import { normalizeBlocks } from '../_shared/publicBookingBlocks.ts'
 
 const tools = ['documents', 'studies', 'booking', 'registration', 'video'] as const
 const slugPattern = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/
@@ -45,20 +46,25 @@ serve(async request => {
     ])
     for (const result of [booking, virtual, documents, invite, payment]) if (result.error) throw result.error
     const base = 'https://www.drhappy.com.ar'
-    const paidBooking = booking.data?.enabled && payment.data?.status === 'connected'
-      && Array.isArray(booking.data.availability_blocks) && booking.data.availability_blocks.some(
-        (block: Record<string, unknown>) => block.modality === 'private' && Number(block.amountToCharge) > 0,
-      )
+    const bookingUrl = (id: string) => `${base}/turnera/${encodeURIComponent(booking.data!.slug)}?b=${encodeURIComponent(id)}`
+    const activeBlocks = booking.data?.enabled ? normalizeBlocks(booking.data.availability_blocks)
+      .filter(block => block.enabled !== false && (block.modality !== 'private' || (Number(block.amountToCharge) > 0 && payment.data?.status === 'connected'))) : []
+    const paidBooking = activeBlocks.find(block => block.modality === 'private')
+    const turneras = activeBlocks.map(block => ({
+      id: block.id, label: block.label, url: bookingUrl(block.id),
+      location: block.location || '', amountToCharge: block.amountToCharge || null,
+    }))
     const destinations: Record<string, string | null> = {
       documents: documents.data?.certificate_enabled ? `${base}/documentos/${encodeURIComponent(documents.data.slug)}` : null,
       studies: virtual.data?.enabled && payment.data?.status === 'connected' ? `${base}/consulta/${encodeURIComponent(virtual.data.slug)}` : null,
-      booking: paidBooking ? `${base}/turnera/${encodeURIComponent(booking.data!.slug)}?m=private` : null,
+      booking: turneras[0]?.url || null,
       registration: invite.data ? `${base}/registro/${encodeURIComponent(invite.data.token)}` : null,
-      video: paidBooking ? `${base}/turnera/${encodeURIComponent(booking.data!.slug)}?m=private&consultation=video` : null,
+      video: paidBooking ? `${bookingUrl(paidBooking.id)}&consultation=video` : null,
     }
     if (isPublic) {
       return reply(200, { success: true, reception: {
         displayName: settings!.display_name,
+        turneras: settings!.booking === true ? turneras : [],
         links: Object.fromEntries(tools.filter(tool => settings![tool] === true && destinations[tool]).map(tool => [tool, destinations[tool]])),
       } })
     }

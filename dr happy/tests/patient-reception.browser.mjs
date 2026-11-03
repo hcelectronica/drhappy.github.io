@@ -36,7 +36,7 @@ try {
   await navigate()
   await wait(`document.querySelectorAll('.reception-choice').length===5`)
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('.reception-choice strong')].map(e=>e.textContent)`),
-    ['Certificados y recetas', 'Evaluación de estudios', 'Turno presencial', 'Videoconsulta', 'Registrarse como paciente'])
+    ['Certificados y recetas', 'Evaluación de estudios', 'Turneras', 'Videoconsulta', 'Registrarse como paciente'])
   assert.equal(await evaluate(`document.querySelector('.reception-video').getAttribute('href')`), '/turnos/?p=fixture&m=private&consultation=video')
   assert.equal(await evaluate(`document.querySelector('.reception-registration').getAttribute('href')`), '/registro/fixture')
   assert.equal(await evaluate(`document.querySelector('.reception-brand image').getAttribute('href').includes('favicon.svg')`), true)
@@ -70,7 +70,7 @@ try {
     } catch (error) { console.error(error); await send('Fetch.failRequest', { requestId: event.params.requestId, errorReason: 'Aborted' }) }
   })
   await send('Fetch.enable', { patterns: [{ urlPattern: '*supabase.co/functions/v1/public-booking*', requestStage: 'Request' }] })
-  await send('Page.navigate', { url: `${origin}/turnos/index.html?p=fixture&m=private&consultation=video` })
+  await send('Page.navigate', { url: `${origin}/turnos/index.html?p=fixture&b=fixture&consultation=video` })
   await wait(`document.querySelector('.first-available:not(:disabled)')`)
   assert.match(await evaluate(`document.querySelector('#title').textContent`), /Videoconsulta/)
   await evaluate(`document.querySelector('.first-available').click()`)
@@ -78,6 +78,7 @@ try {
   await evaluate(`document.querySelector('#patientLastName').value='Prueba';document.querySelector('#patientFirstName').value='Fixture';document.querySelector('#patientDni').value='12345678';document.querySelector('#patientEmail').value='fixture@example.invalid';document.querySelector('#confirmBtn').click()`)
   await wait(`document.querySelector('#message').textContent.includes('Fixture:')`)
   assert.equal(bookingCalls[0].modality, 'private')
+  assert.equal(bookingCalls[0].blockId, 'fixture')
   const request = bookingCalls.find(call => call.action === 'book-public-slot')
   assert.equal(request.consultationMode, 'video'); assert.equal(request.modality, 'private')
   await send('Fetch.disable')

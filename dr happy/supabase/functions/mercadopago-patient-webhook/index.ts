@@ -175,7 +175,7 @@ Deno.serve(async (request) => {
     }
     return jsonResponse(200, { success: true, paymentStatus })
   }
-  const { data: reservation } = await admin.from('public_booking_reservations').select('id, appointment_id, professional_id, patient_name, patient_dni, patient_email, patient_phone, slot_date, slot_time, amount_to_charge, amount_concept, modality, payment_status, status, consultation_mode').eq('professional_id', account.professional_id).eq('appointment_id', externalReference).maybeSingle()
+  const { data: reservation } = await admin.from('public_booking_reservations').select('id, appointment_id, professional_id, patient_name, patient_dni, patient_email, patient_phone, slot_date, slot_time, amount_to_charge, amount_concept, modality, payment_status, status, consultation_mode, block_id, duration_minutes, block_label, location, reason').eq('professional_id', account.professional_id).eq('appointment_id', externalReference).maybeSingle()
   if (!reservation) return jsonResponse(200, { success: true, ignored: true })
   if (reservation.status === 'cancelled') return jsonResponse(200, { success: true, ignored: true })
 
@@ -197,7 +197,7 @@ Deno.serve(async (request) => {
       id: patientId, ownerUserId: reservation.professional_id,
       nombre: nameParts.slice(1).join(',').trim(), apellido: nameParts[0]?.trim() || String(reservation.patient_name || '').trim(),
       dni: normalizedDni, email: String(reservation.patient_email || '').trim(), obraSocial: '', numeroAfiliado: '', plan: '',
-      birthDate: '', edad: 0, diagnosticoPrincipal: 'Turno reservado por turnera pública', patologiasConocidas: '', patologiasCronicas: '',
+      birthDate: '', edad: 0, diagnosticoPrincipal: reservation.reason || reservation.block_label || 'Turno reservado por turnera pública', patologiasConocidas: '', patologiasCronicas: '',
       ultimaInternacion: '', cirugiasPrevias: '', direccion: '', documents: [], consultations: [],
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     }
@@ -211,13 +211,15 @@ Deno.serve(async (request) => {
       scheduledDate: reservation.slot_date,
       scheduledTime: reservation.slot_time,
       scheduledAt: `${reservation.slot_date}T${reservation.slot_time}:00`,
-      durationMinutes: 30,
-      reason: isVideo ? 'Videoconsulta solicitada desde recepción digital' : 'Turno reservado por turnera pública',
-      notes: isVideo ? 'Origen: recepción digital - consulta virtual. Pago aprobado por Mercado Pago. El profesional enviará el enlace de la videoconsulta; el paciente no debe acudir al consultorio.' : 'Pago aprobado por Mercado Pago.',
-      location: isVideo ? 'Videoconsulta: el profesional enviará el enlace' : 'Consultorio médico',
+      durationMinutes: reservation.duration_minutes || 30,
+      reason: isVideo ? 'Videoconsulta solicitada desde recepción digital' : reservation.reason || reservation.block_label || 'Turno reservado por turnera pública',
+      notes: isVideo ? 'Origen: recepción digital - consulta virtual. Pago aprobado por Mercado Pago. El profesional enviará el enlace de la videoconsulta; el paciente no debe acudir al consultorio.' : `Pago aprobado por Mercado Pago.${reservation.block_label ? ` Turnera: ${reservation.block_label}.` : ''}`,
+      location: isVideo ? 'Videoconsulta: el profesional enviará el enlace' : reservation.location || 'Consultorio médico',
       createdAt: new Date().toISOString(),
       createdByUserId: reservation.professional_id,
       publicBookingModality: reservation.modality,
+      publicBookingBlockId: reservation.block_id,
+      publicBookingLabel: reservation.block_label,
       consultationMode: isVideo ? 'video' : 'presential',
       amountToCharge: Number(reservation.amount_to_charge || payment.transaction_amount || 0),
       amountConcept: reservation.amount_concept || 'consulta',

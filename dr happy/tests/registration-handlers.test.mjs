@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import ts from 'typescript'
+import { normalizeBlocks, pickBlock } from '../supabase/functions/_shared/publicBookingBlocks.ts'
 import { notifyProfessionalRegistration } from '../supabase/functions/_shared/professionalRegistrationEmail.ts'
 
 async function handler(name, options = {}) {
@@ -16,6 +17,13 @@ async function handler(name, options = {}) {
   const encode = (value) => Buffer.from(value).toString('base64')
   const block = { id: 'block', modality: options.paid ? 'private' : 'coverage', days: [0, 1, 2, 3, 4, 5, 6], startTime: '15:00', endTime: '16:00', durationMinutes: 30, slotCount: 2, amountToCharge: options.paid ? 1000 : undefined }
   const admin = {
+    async rpc(name, params) {
+      assert.equal(name, 'reserve_public_booking')
+      if (options.saveError) return { error: { message: 'Save failed' } }
+      writes.push({ table: 'public_booking_reservations', value: params.p_reservation })
+      if (params.p_appointment) writes.push({ table: 'user_workspaces', value: { appointments_json: [params.p_appointment] } })
+      return { data: { success: true }, error: null }
+    },
     from(table) {
       let operation = 'select'
       const query = {
@@ -60,7 +68,7 @@ async function handler(name, options = {}) {
     getHolidayName: () => null,
     notifyProfessionalRegistration: (params) => notifyProfessionalRegistration({ ...params, send: fetchMock }),
     Deno: { env: { get: (name) => name === 'MP_TOKEN_ENCRYPTION_KEY' ? encode(keyBytes) : name === 'SUPABASE_URL' ? 'https://example.invalid' : 'test-key' } },
-    crypto, Request, Response, fetch: fetchMock, console: { error: (...args) => errors.push(args) },
+    normalizeBlocks, pickBlock, crypto, Request, Response, fetch: fetchMock, console: { error: (...args) => errors.push(args) },
     TextEncoder, TextDecoder, atob, Date,
   })
   return { request: async (body) => {

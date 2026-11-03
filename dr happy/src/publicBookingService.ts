@@ -21,6 +21,7 @@ export interface PublicBookingLinkSummary {
 export interface PublicBookingAvailabilityBlock {
   id: string
   label: string
+  enabled?: boolean
   modality: 'coverage' | 'private'
   days: number[]
   startTime: string
@@ -59,6 +60,16 @@ async function invokePublicBooking(body: Record<string, unknown>): Promise<any> 
   const sessionToken = sessionStorage.getItem('drhappy-professional-session') || ''
   const { data, error } = await supabase.functions.invoke('public-booking', { body, headers: sessionToken ? { 'x-drhappy-session': sessionToken } : undefined })
   if (error) {
+    if (error.context instanceof Response) {
+      try {
+        const payload: unknown = await error.context.json()
+        if (payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string') {
+          return { success: false, message: payload.message }
+        }
+      } catch (parseError) {
+        console.warn('No se pudo leer el detalle del error de turneras:', parseError)
+      }
+    }
     return { success: false, message: error.message || 'Error invocando el servicio de turnos libres.' }
   }
   return data
@@ -117,10 +128,10 @@ export function buildPublicBookingUrl(token: string): string {
   return `${base}turno-libre.html?t=${token}`
 }
 
-export function buildFixedPublicBookingUrl(slug: string, modality?: 'coverage' | 'private'): string {
+export function buildFixedPublicBookingUrl(slug: string, modality?: 'coverage' | 'private', blockId?: string): string {
   const base = `${window.location.origin}${window.location.pathname.replace(/index\.html$/, '')}`
   const freeSuffix = modality === 'coverage' ? '/gratis' : ''
-  return `${base}turnera/${encodeURIComponent(slug)}${freeSuffix}`
+  return `${base}turnera/${encodeURIComponent(slug)}${freeSuffix}${blockId ? `?b=${encodeURIComponent(blockId)}` : ''}`
 }
 
 export function buildWhatsAppShareUrl(link: string, professionalName?: string): string {

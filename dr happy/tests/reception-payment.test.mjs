@@ -13,6 +13,7 @@ async function fixture(mode, paymentStatus = 'approved') {
   const reservation = { id: 'fixture', appointment_id: 'appointment', professional_id: 'owner', patient_name: 'Fixture',
     patient_dni: '12345678', patient_email: 'fixture@example.invalid', patient_phone: '', slot_date: '2026-11-02',
     slot_time: '15:00', amount_to_charge: 1000, amount_concept: 'consulta', modality: 'private',
+    block_id: 'pami', block_label: 'PAMI', duration_minutes: 45, location: 'Sede Centro', reason: 'Control PAMI',
     payment_status: 'pending', status: 'pending_payment', consultation_mode: mode }
   const records = {
     professional_payment_accounts: { professional_id: 'owner', status: 'connected', access_token_encrypted: `${encode(iv)}.${encode(encrypted)}` },
@@ -80,6 +81,10 @@ test('pending video payment creates no appointment or paid-confirmation email; p
   const presential = await fixture('presential')
   await presential.call()
   assert.equal(presential.appointments[0].consultationMode, 'presential')
-  assert.equal(presential.appointments[0].location, 'Consultorio médico')
+  assert.equal(presential.appointments[0].location, 'Sede Centro')
+  assert.equal(presential.appointments[0].durationMinutes, 45)
+  assert.equal(presential.appointments[0].publicBookingBlockId, 'pami')
+  assert.equal(presential.appointments[0].publicBookingLabel, 'PAMI')
+  assert.equal(presential.appointments[0].reason, 'Control PAMI')
   assert.equal(presential.mails.length, 1)
 })

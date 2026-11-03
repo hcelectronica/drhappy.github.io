@@ -453,7 +453,7 @@ async function runTool(name: string, input: Record<string, unknown>, admin: Retu
     const requestedModality = input.modality === 'private' || input.modality === 'coverage' ? input.modality : ''
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
     const blocks = Array.isArray(publicProfile.availability_blocks) ? publicProfile.availability_blocks as Array<Record<string, unknown>> : []
-    const normalizedBlocks = blocks.filter((block) => (!requestedModality || block.modality === requestedModality) && Array.isArray(block.days) && typeof block.startTime === 'string' && typeof block.endTime === 'string')
+    const normalizedBlocks = blocks.filter((block) => block.enabled !== false && (!requestedModality || block.modality === requestedModality) && Array.isArray(block.days) && typeof block.startTime === 'string' && typeof block.endTime === 'string')
     const { data: workspace } = await admin.from('user_workspaces').select('appointments_json').eq('user_id', professionalId).maybeSingle()
     const appointments = Array.isArray(workspace?.appointments_json) ? workspace.appointments_json as Array<Record<string, unknown>> : []
     const { data: reservations } = await admin.from('public_booking_reservations').select('slot_date, slot_time, status').eq('professional_id', professionalId).gte('slot_date', today)
