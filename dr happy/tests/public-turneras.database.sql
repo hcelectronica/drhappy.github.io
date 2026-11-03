@@ -58,6 +58,19 @@ BEGIN
   v_request := v_base || jsonb_build_object('slot_time','11:30','block_id','pami','modality','coverage','duration_minutes',30,'appointment_id','pending-overlap');
   v_result := public.reserve_public_booking(v_request,jsonb_build_object('id','pending-overlap'));
   IF v_result->>'success' <> 'false' THEN RAISE EXCEPTION 'Pending payment interval did not block other turneras'; END IF;
+  UPDATE public.public_booking_profiles SET availability_blocks=(
+    SELECT jsonb_agg(block) FROM jsonb_array_elements(v_blocks) AS block WHERE block->>'id' NOT IN ('ioma','paid')
+  ) WHERE professional_id=v_id;
+  IF NOT EXISTS(SELECT 1 FROM public.user_workspaces WHERE user_id=v_id AND appointments_json @> jsonb_build_array(v_appointment))
+    OR NOT EXISTS(SELECT 1 FROM public.public_booking_reservations WHERE professional_id=v_id AND block_id='paid' AND status='pending_payment' AND duration_minutes=60 AND amount_to_charge=5000) THEN
+    RAISE EXCEPTION 'Deleting turneras removed appointments or payment snapshots';
+  END IF;
+  v_result := public.reserve_public_booking(v_request,jsonb_build_object('id','pending-overlap'));
+  IF v_result->>'success' <> 'false' THEN RAISE EXCEPTION 'Deleting a turnera released its pending payment interval'; END IF;
+  v_result := public.reserve_public_booking(v_base || jsonb_build_object('slot_time','11:00','block_id','ioma','modality','coverage','duration_minutes',45,'appointment_id','deleted'),jsonb_build_object('id','deleted'));
+  IF v_result->>'success' <> 'false' THEN RAISE EXCEPTION 'Deleted turnera accepted a booking'; END IF;
+  v_result := public.reserve_public_booking(v_base || jsonb_build_object('slot_time','09:30','block_id','pami','modality','coverage','duration_minutes',30,'appointment_id','deleted-overlap'),jsonb_build_object('id','deleted-overlap'));
+  IF v_result->>'success' <> 'false' THEN RAISE EXCEPTION 'Deleting a turnera released its confirmed interval'; END IF;
   UPDATE public.public_booking_reservations SET created_at=NOW()-INTERVAL '16 minutes' WHERE professional_id=v_id AND block_id='paid';
   v_result := public.reserve_public_booking(v_request,jsonb_build_object('id','pending-overlap'));
   IF v_result->>'success' <> 'true' THEN RAISE EXCEPTION 'Expired payment did not release its interval: %',v_result; END IF;

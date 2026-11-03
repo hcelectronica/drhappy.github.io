@@ -106,6 +106,65 @@ test('paused turneras reject direct bookings without modifying existing reservat
   assert.equal(h.records.public_booking_reservations.length,0)
 })
 
+test('deleting turneras persists without deleting bookings or releasing occupied intervals', async()=>{
+  const h=fixture()
+  h.records.public_booking_reservations.push(
+    {professional_id:'owner',slot_date:h.date,slot_time:'09:00',block_id:'ioma',status:'confirmed',duration_minutes:45},
+    {professional_id:'owner',slot_date:h.date,slot_time:'10:00',block_id:'private-a',status:'pending_payment',duration_minutes:60,created_at:new Date().toISOString()},
+  )
+  const reservations=structuredClone(h.records.public_booking_reservations)
+  const settings={professionalId:'owner',professionalName:'Fixture',slug:'fixture',enabled:true,blocks:blocks.filter(b=>!['ioma','private-a'].includes(b.id))}
+  assert.equal((await h.call({action:'save-public-settings',settings})).status,200)
+  assert.deepEqual(h.records.public_booking_reservations,reservations)
+  const query={action:'get-public-agenda',slug:'fixture',startDate:h.date,days:1}
+  assert.equal((await h.call({...query,blockId:'ioma'})).status,404)
+  assert.equal((await h.call({...query,blockId:'private-a'})).status,404)
+  const agenda=await h.call({...query,blockId:'pami'})
+  assert.deepEqual(agenda.body.days[0].slots.filter(s=>s.available).map(s=>s.time),['11:00','11:30'])
+  const booking=await h.call({action:'book-public-slot',slug:'fixture',blockId:'ioma',slotDate:h.date,slotTime:'11:00',patientName:'Fixture',patientDni:'12345678',patientEmail:'fixture@example.invalid'})
+  assert.equal(booking.status,409)
+  assert.equal((await h.call({action:'save-public-settings',settings:{...settings,blocks:[],enabled:false}})).status,200)
+  assert.equal(h.profile.enabled,false)
+  assert.deepEqual(h.profile.availability_blocks,[])
+  assert.deepEqual(h.records.public_booking_reservations,reservations)
+})
+
+test('editor confirms deletion, saves once, preserves other IDs and waits for successful persistence', async()=>{
+  const source=await readFile(new URL('../src/PublicTurnerasEditor.tsx',import.meta.url),'utf8')
+  const exports={}
+  let confirmed=true, message=''
+  vm.runInNewContext(ts.transpile(source,{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}),{
+    exports,require:name=>name==='react/jsx-runtime' ? {jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})} : {buildFixedPublicBookingUrl:()=>'',buildWhatsAppShareUrl:()=>''},
+    window:{confirm:text=>{message=text;return confirmed}},crypto,
+  })
+  const find=(node,predicate)=>Array.isArray(node) ? node.flatMap(n=>find(n,predicate)) : node && typeof node==='object' && node.props ? [...(predicate(node)?[node]:[]),...find(node.props.children,predicate)] : []
+  const settings={professionalId:'owner',professionalName:'Fixture',slug:'fixture',enabled:true,blocks:structuredClone(blocks)}
+  const writes=[]
+  const render=(value=settings,saving=false)=>exports.default({
+    settings:value,defaultSchedule:template,saving,mercadoPagoConnected:true,error:null,notice:null,onChange:()=>assert.fail('Deletion must not optimistically remove a turnera'),
+    onSave:async value=>{writes.push(value);return false},onCopy:async()=>{},
+  })
+  const remove=find(render(),n=>n.type==='button' && n.props.children==='Eliminar turnera')
+  assert.equal(remove.length,4)
+  confirmed=false;remove[0].props.onClick()
+  assert.equal(writes.length,0)
+  confirmed=true;remove[0].props.onClick()
+  assert.equal(writes.length,1)
+  assert.match(message,/IOMA/)
+  assert.match(message,/pagos pendientes se conservarán/)
+  assert.deepEqual(Array.from(writes[0].blocks,b=>b.id),['pami','private-a','private-b'])
+  assert.equal(writes[0].enabled,true)
+  assert.equal(settings.blocks.length,4)
+  assert.equal(find(render(),n=>n.type==='button' && n.props.children==='Eliminar turnera').length,4)
+  find(render({...settings,blocks:[blocks[0]]}),n=>n.type==='button' && n.props.children==='Eliminar turnera')[0].props.onClick()
+  assert.equal(writes[1].blocks.length,0)
+  assert.equal(writes[1].enabled,false)
+  find(render({...settings,enabled:false}),n=>n.type==='button' && n.props.children==='Eliminar turnera')[0].props.onClick()
+  assert.equal(writes[2].enabled,false)
+  find(render(settings,true),n=>n.type==='button' && n.props.children==='Eliminar turnera')[0].props.onClick()
+  assert.equal(writes.length,3)
+})
+
 test('individual links use stable block IDs while legacy routes remain unchanged', async()=>{
   const source=await readFile(new URL('../src/publicBookingService.ts',import.meta.url),'utf8')
   const exports={}

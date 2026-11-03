@@ -40,6 +40,11 @@ export default function PublicTurnerasEditor({ settings, defaultSchedule, saving
     const blocks = settings.blocks.map(block => block.id === id ? { ...block, enabled } : block)
     void onSave({ ...settings, enabled: blocks.some(block => block.enabled !== false), blocks })
   }
+  function remove(block: PublicBookingAvailabilityBlock): void {
+    if (saving || !window.confirm(`¿Eliminar la turnera "${block.label || 'Nueva turnera'}"? Su enlace dejará de aceptar reservas y ya no aparecerá en recepción. Los turnos ya reservados y los pagos pendientes se conservarán.`)) return
+    const blocks = settings.blocks.filter(item => item.id !== block.id)
+    void onSave({ ...settings, enabled: settings.enabled && blocks.some(item => item.enabled !== false), blocks })
+  }
   return <section aria-label="Mis turneras">
     <h3>Mis turneras</h3>
     <p className="flow-hint">Creá las turneras que necesites: IOMA, PAMI, particular u otras. Todas comparten la ocupación de tu agenda. Las habilitadas aparecen en tu recepción si tenés activada la opción Turneras.</p>
@@ -85,6 +90,7 @@ export default function PublicTurnerasEditor({ settings, defaultSchedule, saving
             <div className="public-turnera-actions">
               <button type="button" className="screen-action primary" onClick={() => save(block.id, true)}>{saving ? 'Guardando...' : active ? 'Guardar cambios' : 'Guardar y habilitar'}</button>
               {active ? <button type="button" className="ghost compact" onClick={() => save(block.id, false)}>Pausar</button> : null}
+              <button type="button" className="ghost compact" onClick={() => remove(block)}>Eliminar turnera</button>
             </div>
             <div className="capacity-generated-link"><strong>Enlace propio</strong><span>{url}</span>
               <button type="button" className="ghost compact" onClick={() => { void onCopy(url) }}>Copiar link</button>
