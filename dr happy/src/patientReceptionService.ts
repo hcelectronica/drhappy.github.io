@@ -25,14 +25,14 @@ export function buildReceptionChoices(reception: NonNullable<ReceptionResponse['
   const turneras = (reception.turneras ?? []).map(turnera => ({
     key: `turnera-${turnera.id}`, kind: 'booking', icon: 'calendar', url: turnera.url,
     title: /^\s*turnos?\b/i.test(turnera.label) ? turnera.label : `Turno ${turnera.label}`,
-    description: [turnera.location, turnera.amountToCharge ? `$ ${turnera.amountToCharge.toLocaleString('es-AR')}` : 'Sin pago online'].filter(Boolean).join(' · '),
+    description: [turnera.location, turnera.amountToCharge ? '' : 'Sin pago online'].filter(Boolean).join(' · '),
   }))
   const isIoma = (label: string) => /\bioma\b/i.test(label.replace(/\./g, ''))
   return [
     ...tools.filter(tool => tool.kind === 'registration'),
     ...turneras.filter(turnera => isIoma(turnera.title)),
     ...tools.filter(tool => tool.kind === 'studies'),
-    ...(reception.documents ?? []).map(document => ({ key: `document-${document.type}`, kind: 'documents', title: document.label, description: `$ ${document.amount.toLocaleString('es-AR')} · Evaluación profesional`, icon: 'document', url: document.url })),
+    ...(reception.documents ?? []).map(document => ({ key: `document-${document.type}`, kind: 'documents', title: document.label, description: 'Evaluación profesional', icon: 'document', url: document.url })),
     ...tools.filter(tool => tool.kind !== 'registration' && tool.kind !== 'studies'),
     ...turneras.filter(turnera => !isIoma(turnera.title)),
   ]

@@ -19,19 +19,22 @@ test('registration, IOMA and IA lead the reception without changing links or amo
     'Documentos médicos', 'Videoconsulta', 'Turno Particular', 'Turno PAMI',
   ])
   assert.equal(choices[1].url, turneras[1].url)
-  assert.match(choices[1].description, /15\.000/)
+  assert.equal(choices[1].description, 'Consultorio')
+  assert.equal(turneras[1].amountToCharge, 15000)
   assert.equal(choices[2].url, links.studies)
   assert.match(choices[2].description, /revisada por tu profesional/)
   assert.equal(new Set(choices.map(choice => choice.url)).size, choices.length)
 })
 
-test('each enabled document appears once after registration, IOMA and IA with its own price and link', () => {
+test('each enabled document appears once with its own link but no price in the menu', () => {
   const documents = [['certificate', 'Certificados', 1000], ['fitness', 'Aptos físicos', 2000], ['prescription', 'Recetas', 3000]].map(([type, label, amount]) => ({ type, label, amount, url: `/documentos/doctor?type=${type}` }))
   const choices = buildReceptionChoices({ displayName: 'Doctor', links, turneras: [block('ioma', 'IOMA')], documents })
   assert.deepEqual(Array.from(choices.slice(0, 6), choice => choice.title), ['Registrarse como paciente', 'Turno IOMA', 'Chequea tus estudios con IA, Ahora', 'Certificados', 'Aptos físicos', 'Recetas'])
   assert.equal(choices.filter(choice => choice.kind === 'documents').length, 3)
   assert.equal(choices[4].url, '/documentos/doctor?type=fitness')
-  assert.match(choices[4].description, /2\.000/)
+  assert.equal(choices[4].description, 'Evaluación profesional')
+  assert.equal(documents[1].amount, 2000)
+  for (const choice of choices) assert.doesNotMatch(choice.description, /\$|1\.000|2\.000|3\.000/)
 })
 
 test('missing options stay hidden, multiple IOMA turneras retain their identities and remaining order', () => {
@@ -48,7 +51,7 @@ test('turnera names starting with Turno or Turnos are preserved without a duplic
     const choices = buildReceptionChoices({ displayName: 'Doctor', links: {}, turneras: [block('named', label, 15000)] })
     assert.equal(choices[0].title, label)
     assert.equal(choices[0].url, '/turnera/doctor?b=named')
-    assert.match(choices[0].description, /15\.000/)
+    assert.equal(choices[0].description, 'Consultorio')
   }
   const choices = buildReceptionChoices({ displayName: 'Doctor', links: {}, turneras: [block('other', 'Turnoterapia')] })
   assert.equal(choices[0].title, 'Turno Turnoterapia')
@@ -58,4 +61,14 @@ test('legacy booking remains available when no individual turneras are returned'
   const choices = buildReceptionChoices({ displayName: 'Doctor', links })
   assert.deepEqual(Array.from(choices, choice => choice.kind), ['registration', 'studies', 'documents', 'booking', 'video'])
   assert.equal(choices.find(choice => choice.kind === 'booking').url, links.booking)
+})
+
+test('paid and free turnera buttons hide amounts without modifying payment configuration', () => {
+  const turneras = [block('paid', 'Particular', 35000), block('free', 'PAMI')]
+  const before = JSON.stringify(turneras)
+  const choices = buildReceptionChoices({ displayName: 'Doctor', links: {}, turneras })
+  assert.equal(choices[0].description, 'Consultorio')
+  assert.equal(choices[1].description, 'Consultorio · Sin pago online')
+  assert.equal(JSON.stringify(turneras), before)
+  for (const choice of choices) assert.doesNotMatch(choice.description, /\$|35\.000/)
 })
