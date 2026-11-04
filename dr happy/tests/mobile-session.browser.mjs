@@ -146,7 +146,7 @@ try {
         if(!event.fixture){event.preventDefault();event.stopImmediatePropagation()}
       });
       const account=id=>({id,username:id,full_name:id==='account-a'?'Profesional A':'Profesional B',
-        specialty:${process.env.TEST_MENU_GUIDE === '1'}?'Medicina general':localStorage.getItem('fixture-medical')?'Clinica':'Odontologia',license_number:'TEST',email:id+'@example.invalid',active:true,is_admin:id==='account-b',
+        specialty:${process.env.TEST_MENU_GUIDE === '1'}?'Medicina general':localStorage.getItem('fixture-medical')?'Clinica':'Odontologia',license_number:'TEST',email:id+'@example.invalid',active:true,is_admin:id==='account-b'||${process.env.TEST_PRESCRIPTION_ADMIN === '1'},
         subscription_status:'active',subscription_expires_at:'2027-12-31T00:00:00Z'});
       if(!localStorage.getItem('fixture-initialized')){
         localStorage.setItem('fixture-initialized','true');
@@ -290,6 +290,7 @@ try {
     await wait(`!!document.querySelector('#certificate-title')&&!document.querySelector('#certificate-patient-picker-title')`)
     assert(await evaluate(`document.querySelector('.certificate-patient-card').textContent.includes('11111111')`), 'Selected patient data opens in existing issuer')
     assert(await evaluate(`document.querySelector('.certificate-patient-card').textContent.includes('Paciente account-a')`), 'Correct patient name in document')
+    assert.equal(await evaluate(`[...document.querySelectorAll('.certificate-document-type button')].some(button=>button.textContent==='Receta')`), process.env.TEST_PRESCRIPTION_ADMIN === '1', 'Prescription tab is administrator-only')
     await evaluate(`Array.from(document.querySelectorAll('.certificate-document-type button')).find(b=>b.textContent==='Orden de estudios').click()`)
     await wait(`document.querySelector('.certificate-document-type button.selected').textContent==='Orden de estudios'`)
     await evaluate(`document.querySelector('[aria-labelledby="certificate-title"] .drhappy-modal-close-btn').click()`)
@@ -316,6 +317,12 @@ try {
       await wait(`document.querySelectorAll('.paid-documents-request').length===3`);
       for(const [label,expected] of [['Apto físico','fitness'],['Receta','prescription']]){
         if(!await evaluate(`!!document.querySelector('.paid-documents-modal')`)){await openPanel();await evaluate(`document.querySelectorAll('.paid-documents-tabs button')[1].click()`);}
+        if(expected==='prescription'&&process.env.TEST_PRESCRIPTION_ADMIN!=='1'){
+          assert.equal(await evaluate(`[...document.querySelectorAll('.paid-documents-request')].find(article=>article.textContent.includes('Receta')).querySelectorAll('button').length`),1,'Non-admin retains response action but cannot open prescription issuer');
+          assert(await evaluate(`[...document.querySelectorAll('.paid-documents-request')].find(article=>article.textContent.includes('Receta')).textContent.includes('solo para administradores')`),'Prescription request remains visible with explicit restriction');
+          assert(!await evaluate(`!!document.querySelector('#prescription-title')`),'No prescription modal for non-admin');
+          continue;
+        }
         await evaluate(`[...document.querySelectorAll('.paid-documents-request')].find(article=>article.textContent.includes(${JSON.stringify(label)})).querySelector('button').click()`);
         await wait(`!!document.querySelector(${JSON.stringify(expected==='fitness'?'#certificate-body':'#prescription-title')})`);
         if(expected==='fitness'){
@@ -327,7 +334,7 @@ try {
           await evaluate(`document.querySelector('[aria-labelledby="prescription-title"] .drhappy-modal-close-btn').click()`);
         }
       }
-      console.log('Document services UI passed: three independent tariffs, unified inbox, fitness template without automatic clearance, paid prescription opens existing medication issuer.');
+      console.log('Document services UI passed: three independent tariffs, unified inbox, fitness template without automatic clearance, administrator-only prescription issuer.');
     }
     console.log('Menu guide documents passed: desktop and mobile entry, name/DNI search, empty result, existing issuer, study order, cancellation, no writes and mobile layout.')
   } else {

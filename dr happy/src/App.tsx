@@ -3146,6 +3146,7 @@ function App() {
   const isAdminSession = isAdminUser(activeUser)
   const medicalToolUser = activeUser ? { ...activeUser, isAdmin: isAdminSession, specialty: activeUser.specialty || profile?.specialty } : null
   const canUseMedicalTools = hasMedicalToolAccess(medicalToolUser)
+  const canIssuePrescriptions = isAdminSession && canUseMedicalTools
   const canUseVirtualConsult = hasMedicalToolAccess(medicalToolUser, ['attention', 'ledger'])
   const canUsePaidClinicalDocuments = canUseVirtualConsult
   useEffect(() => {
@@ -9911,6 +9912,9 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   }
 
   async function handleStartPaidClinicalDocumentIssue(request: PaidClinicalDocumentRequest): Promise<void> {
+    if (request.service_type === 'prescription' && !canIssuePrescriptions) {
+      throw new Error('La emisión de recetas está en configuración y disponible solo para administradores. La solicitud recibida se conserva.')
+    }
     if (!activeUserId || !profile) {
       throw new Error('Iniciá sesión para emitir el documento.')
     }
@@ -10538,8 +10542,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   }
 
   function handleOpenPrescriptionModal(): void {
-    if (!canUseMedicalTools) {
-      setAppError('La emisión de recetas requiere acceso médico vigente y el módulo de atención habilitado.')
+    if (!canIssuePrescriptions) {
+      setAppError('La emisión de recetas está disponible solo para administradores mientras se termina de configurar.')
       return
     }
     if (!selectedPatient) {
@@ -10604,8 +10608,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   }
 
   async function handleSavePrescription(): Promise<void> {
-    if (!canUseMedicalTools) {
-      setAppError('Tu acceso a la emisión de recetas ya no está disponible.')
+    if (!canIssuePrescriptions) {
+      setAppError('La emisión de recetas está disponible solo para administradores mientras se termina de configurar.')
       return
     }
     if (!selectedPatient || !profile || !activeUserId) return
@@ -14985,7 +14989,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                   >
                     {patientPrintBusy ? 'Preparando resumen...' : 'Imprimir resumen (PDF)'}
                   </button>
-                  {canUseMedicalTools ? (
+                  {canIssuePrescriptions ? (
                     <button
                       type="button"
                       className="ghost"
@@ -17268,7 +17272,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                     <button type="button" className={certificateDocumentType === 'certificate' ? 'selected' : ''} onClick={() => { setCertificateDocumentType('certificate'); setCertificateError(null) }}>Certificado médico</button>
                     <button type="button" className={certificateDocumentType === 'fitness' ? 'selected' : ''} onClick={() => { setCertificateDocumentType('fitness'); setCertificateDraft(current => ({ ...current, body: '' })); setCertificateError(null) }}>Apto físico</button>
                     <button type="button" className={certificateDocumentType === 'study-order' ? 'selected' : ''} onClick={() => { setCertificateDocumentType('study-order'); setCertificateError(null) }}>Orden de estudios</button>
-                    <button type="button" onClick={() => {
+                    {canIssuePrescriptions ? <button type="button" onClick={() => {
+                      if (!canIssuePrescriptions) { setCertificateError('La emisión de recetas está disponible solo para administradores.'); return }
                       if (!profile.licenseNumber?.trim() || !profile.address?.trim()) { setCertificateError('Completá matrícula y domicilio profesional en Perfil antes de emitir recetas.'); return }
                       setSelectedPatientId(certificatePatient.id)
                       setPrescriptionDiagnostico(certificatePatient.diagnosticoPrincipal || '')
@@ -17277,7 +17282,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       setPrescriptionPaidRequest(null)
                       setCertificatePatientId(null)
                       setPrescriptionModalOpen(true)
-                    }}>Receta</button>
+                    }}>Receta</button> : null}
                   </div>
                   {certificateDocumentType === 'fitness' ? <p className="flow-hint">Emití el apto únicamente después de la evaluación clínica que corresponda. Redactá la actividad, aptitud y restricciones según tu criterio; el pago no acredita aptitud.</p> : null}
                   <div className="certificate-sheet-letterhead">
@@ -17460,7 +17465,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           </div>
         </div>
       ) : null}
-      {prescriptionModalOpen && selectedPatient && canUseMedicalTools ? (
+      {prescriptionModalOpen && selectedPatient && canIssuePrescriptions ? (
         <div className="drhappy-modal-overlay" onClick={() => setPrescriptionModalOpen(false)}>
           <div className="drhappy-modal-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="prescription-title">
             <div className="drhappy-modal-header">
@@ -17555,6 +17560,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       ) : null}
       {paidDocumentsPanelOpen && canUsePaidClinicalDocuments ? (
         <PaidClinicalDocumentsPanel
+          canIssuePrescriptions={canIssuePrescriptions}
           onClose={() => setPaidDocumentsPanelOpen(false)}
           onStartIssue={handleStartPaidClinicalDocumentIssue}
         />

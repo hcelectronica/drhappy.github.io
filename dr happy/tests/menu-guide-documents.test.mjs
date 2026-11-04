@@ -59,3 +59,27 @@ test('menu guide and mobile entry reuse existing issuer without replacing paid r
   assert.match(issuer, /setCertificateEmail\(patient.email \|\| ''\)/)
   assert.match(issuer, /setPaidClinicalDocumentRequestId\(null\)/)
 })
+
+test('only administrators with medical access can open or save prescriptions, including paid requests', async () => {
+  const permission = declaration('canIssuePrescriptions').initializer.getText(ast)
+  for (const [isAdminSession, canUseMedicalTools, expected] of [[false, true, false], [true, true, true], [true, false, false], [false, false, false]]) {
+    const context = { isAdminSession, canUseMedicalTools, result: null }
+    vm.runInNewContext(`result = ${permission}`, context)
+    assert.equal(context.result, expected)
+  }
+  for (const name of ['handleOpenPrescriptionModal', 'handleSavePrescription']) {
+    const errors = []
+    const context = { canIssuePrescriptions: false, setAppError: message => errors.push(message) }
+    vm.runInNewContext(ts.transpile(declaration(name).getText(ast)), context)
+    await context[name]()
+    assert.equal(errors.length, 1)
+    assert.match(errors[0], /solo para administradores/)
+  }
+  const context = { canIssuePrescriptions: false, Error }
+  vm.runInNewContext(ts.transpile(declaration('handleStartPaidClinicalDocumentIssue').getText(ast)), context)
+  await assert.rejects(context.handleStartPaidClinicalDocumentIssue({ service_type: 'prescription' }), /solo para administradores/)
+  assert.match(source, /\{canIssuePrescriptions \? \([\s\S]*?onClick=\{handleOpenPrescriptionModal\}/)
+  assert.match(source, /\{canIssuePrescriptions \? <button[\s\S]*?>Receta<\/button> : null\}/)
+  assert.match(source, /prescriptionModalOpen && selectedPatient && canIssuePrescriptions/)
+  assert.match(source, /<PaidClinicalDocumentsPanel\s+canIssuePrescriptions=\{canIssuePrescriptions\}/)
+})

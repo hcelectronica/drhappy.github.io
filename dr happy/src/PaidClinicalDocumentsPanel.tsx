@@ -16,6 +16,7 @@ import type {
 } from './paidClinicalDocumentsService'
 
 interface PaidClinicalDocumentsPanelProps {
+  canIssuePrescriptions: boolean
   onClose: () => void
   onStartIssue: (request: PaidClinicalDocumentRequest) => Promise<void> | void
 }
@@ -29,7 +30,7 @@ function formatDate(value: string | null): string {
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
 }
 
-export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinicalDocumentsPanelProps) {
+export function PaidClinicalDocumentsPanel({ canIssuePrescriptions, onClose, onStartIssue }: PaidClinicalDocumentsPanelProps) {
   const [settings, setSettings] = useState<PaidClinicalDocumentSettings | null>(null)
   const [requests, setRequests] = useState<PaidClinicalDocumentRequest[]>([])
   const [services, setServices] = useState<DocumentServiceOptions>({ certificate: { enabled: false, price: 0 }, fitness: { enabled: false, price: 0 }, prescription: { enabled: false, price: 0 } })
@@ -234,7 +235,7 @@ export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinic
                 </div>
                 {request.status === 'pending_review' ? (
                   <div className="paid-documents-request-actions">
-                    <button type="button" disabled={busyRequestId !== null} onClick={() => void startIssue(request)}>Resolver solicitud</button>
+                    {request.service_type !== 'prescription' || canIssuePrescriptions ? <button type="button" disabled={busyRequestId !== null} onClick={() => void startIssue(request)}>Resolver solicitud</button> : <p>La emisión de recetas está en configuración y disponible solo para administradores. Podés revisar y responder esta solicitud.</p>}
                     <button type="button" className="ghost" disabled={busyRequestId !== null} onClick={() => void markIssued(request)}>
                       {busyRequestId === request.id ? 'Guardando…' : 'Marcar como respondida'}
                     </button>
