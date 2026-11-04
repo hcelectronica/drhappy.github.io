@@ -4,6 +4,7 @@ DECLARE
   v_owner text := 'paid-chart-test-' || gen_random_uuid()::text;
   v_request uuid := gen_random_uuid();
   v_second uuid := gen_random_uuid();
+  v_recipe uuid := gen_random_uuid();
   v_patient jsonb;
   v_result jsonb;
   v_count integer;
@@ -41,7 +42,7 @@ BEGIN
   INSERT INTO public.paid_clinical_document_requests(id,professional_id,tracking_token,service_type,requested_purpose,
     patient_first_name,patient_last_name,patient_dni,patient_email,patient_phone,patient_health_insurance,patient_insurance_member_number,
     reason,amount,status,payment_status)
-    VALUES(v_second,v_owner,encode(gen_random_bytes(32),'hex'),'certificate','Evaluacion','Otro nombre','Otro apellido',
+    VALUES(v_second,v_owner,encode(gen_random_bytes(32),'hex'),'fitness','Apto fisico','Otro nombre','Otro apellido',
       '12345678','other@example.invalid','22222222','Otra cobertura','999','Otra solicitud',30000,'pending_review','approved');
   SELECT patients_json->0, jsonb_array_length(patients_json) INTO v_patient,v_count FROM public.user_workspaces WHERE user_id=v_owner;
   IF v_count <> 1 OR v_patient->>'nombre' <> 'Ana' OR v_patient->>'obraSocial' <> 'Cobertura'
@@ -52,6 +53,21 @@ BEGIN
   IF (SELECT patient_id FROM public.paid_clinical_document_requests WHERE id=v_second)
     <> (SELECT patient_id FROM public.paid_clinical_document_requests WHERE id=v_request) THEN
     RAISE EXCEPTION 'Both requests must point to the same chart';
+  END IF;
+  INSERT INTO public.paid_clinical_document_settings(professional_id,slug,certificate_enabled,certificate_price,fitness_enabled,fitness_price,prescription_enabled,prescription_price)
+    VALUES(v_owner,'fixture-' || gen_random_uuid()::text,true,30000,true,50000,true,10000);
+  INSERT INTO public.paid_clinical_document_requests(id,professional_id,tracking_token,service_type,requested_purpose,
+    patient_first_name,patient_last_name,patient_dni,patient_email,patient_phone,patient_birth_date,reason,amount,status,payment_status)
+    VALUES(v_recipe,v_owner,encode(gen_random_bytes(32),'hex'),'prescription','Receta','Ana','Prueba','12345678',
+      'patient@example.invalid','11111111','1990-01-02','Renovacion de receta',10000,'pending_review','approved');
+  IF (SELECT jsonb_array_length(patients_json) FROM public.user_workspaces WHERE user_id=v_owner) <> 1
+    OR (SELECT patient_id FROM public.paid_clinical_document_requests WHERE id=v_recipe) <> v_patient->>'id' THEN
+    RAISE EXCEPTION 'Prescription request must reuse the same chart across all document services';
+  END IF;
+  UPDATE public.paid_clinical_document_settings SET prescription_price=20000,fitness_price=60000 WHERE professional_id=v_owner;
+  IF (SELECT amount FROM public.paid_clinical_document_requests WHERE id=v_recipe) <> 10000
+    OR (SELECT amount FROM public.paid_clinical_document_requests WHERE id=v_second) <> 30000 THEN
+    RAISE EXCEPTION 'Changing service prices modified a prior request snapshot';
   END IF;
   PERFORM public.save_workspace_with_paid_patients(v_owner,'{"profile_json":{},"patients_json":[],"appointments_json":[]}', '[]');
   IF (SELECT jsonb_array_length(patients_json) FROM public.user_workspaces WHERE user_id=v_owner) <> 1 THEN
@@ -68,7 +84,7 @@ BEGIN
   v_result := public.ensure_paid_document_patient(v_owner,v_request);
   PERFORM public.ensure_paid_document_patient(v_owner,v_request);
   IF (SELECT jsonb_array_length(patients_json) FROM public.user_workspaces WHERE user_id=v_owner) <> 1
-    OR (SELECT count(*) FROM public.paid_clinical_document_requests WHERE professional_id=v_owner AND payment_status='approved') <> 2
+    OR (SELECT count(*) FROM public.paid_clinical_document_requests WHERE professional_id=v_owner AND payment_status='approved') <> 3
     OR (SELECT payment_id FROM public.paid_clinical_document_requests WHERE id=v_request) <> v_request::text THEN
     RAISE EXCEPTION 'Recovery and repeated callbacks must not duplicate charts or payments';
   END IF;

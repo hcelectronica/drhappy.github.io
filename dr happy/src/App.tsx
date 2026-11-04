@@ -45,7 +45,7 @@ import { AdminSupportInbox } from './AdminSupportInbox'
 import { AdminPatientStats } from './AdminPatientStats'
 import { AdminPatientCommunications } from './AdminPatientCommunications'
 import { SignaturePad } from './SignaturePad'
-import { blobToBase64, buildCertificatePdf, buildQrDataUrl, certificateFileName, certificateSignedContent, formatCertificateDate } from './medicalCertificate'
+import { blobToBase64, buildCertificatePdf, buildQrDataUrl, certificateFileName, certificateSignedContent, formatCertificateDate, certificateDocumentLabel } from './medicalCertificate'
 import { acknowledgePatientInviteSubmissions, buildPatientInviteUrl, getPatientInviteLink, pullPatientInviteSubmissions } from './patientInviteService'
 import { acknowledgeDoctorFolderLinks, pullDoctorFolderLinks } from './patientFolderService'
 import PatientSharedFolderPanel from './PatientSharedFolderPanel'
@@ -2771,7 +2771,9 @@ function App() {
   const [paidClinicalDocumentRequestId, setPaidClinicalDocumentRequestId] = useState<string | null>(null)
   const [paidClinicalDocumentRequestReason, setPaidClinicalDocumentRequestReason] = useState('')
   const [certificateDraft, setCertificateDraft] = useState({ date: '', diagnostico: '', body: '' })
-  const [certificateDocumentType, setCertificateDocumentType] = useState<'certificate' | 'study-order'>('certificate')
+  const [certificateDocumentType, setCertificateDocumentType] = useState<'certificate' | 'study-order' | 'fitness'>('certificate')
+  const [prescriptionPaidRequest, setPrescriptionPaidRequest] = useState<PaidClinicalDocumentRequest | null>(null)
+  const [documentPatientDifferences, setDocumentPatientDifferences] = useState<string[]>([])
   const [orderedStudies, setOrderedStudies] = useState<OrderedStudy[]>([])
   const [studyQuery, setStudyQuery] = useState('')
   const [studyNotes, setStudyNotes] = useState('')
@@ -5500,7 +5502,11 @@ function App() {
 
   useEffect(() => {
     setCertificatePatientPickerOpen(false)
+    setDocumentPatientDifferences([])
     setCertificatePatientQuery('')
+    setCertificatePatientId(null)
+    setPrescriptionPaidRequest(null)
+    setPrescriptionModalOpen(false)
   }, [activeUserId])
 
   const certificateDiagnosisSuggestions = useMemo(() => {
@@ -9879,6 +9885,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
 
   function handleOpenCertificateModal(patient: PatientRecord): void {
     setCertificatePatientPickerOpen(false)
+    setDocumentPatientDifferences([])
     setPaidClinicalDocumentRequestId(null)
     setPaidClinicalDocumentRequestReason('')
     setCertificatePatientId(patient.id)
@@ -9957,13 +9964,37 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     }
     if (!await persistPatient(patient)) throw new Error('No se pudo guardar la ficha. No se abrió la emisión del documento.')
     if (generation !== sessionGenerationRef.current) return
+    const differences = [
+      ['Nombre', `${patient.nombre} ${patient.apellido}`, `${request.patient_first_name} ${request.patient_last_name}`],
+      ['Email', patient.email, request.patient_email],
+      ['Teléfono', patient.telefono, request.patient_phone],
+      ['Fecha de nacimiento', patient.birthDate, request.patient_birth_date],
+      ['Cobertura', patient.obraSocial, request.patient_health_insurance],
+      ['Afiliado', patient.numeroAfiliado, request.patient_insurance_member_number],
+    ].filter(([, saved, submitted]) => saved && submitted && saved !== submitted)
+      .map(([label, saved, submitted]) => `${label}: ficha «${saved}»; solicitud «${submitted}».`)
+    if (request.service_type === 'prescription') {
+      if (!profile.licenseNumber?.trim() || !profile.address?.trim()) throw new Error('Completá matrícula y domicilio profesional en Perfil antes de emitir recetas.')
+      setSelectedPatientId(patient.id)
+      setPrescriptionDiagnostico(patient.diagnosticoPrincipal || '')
+      setPrescriptionItems([])
+      setPrescriptionMedQuery('')
+      setPrescriptionPaidRequest(request)
+      setDocumentPatientDifferences(differences)
+      setPrescriptionModalOpen(true)
+      setPaidDocumentsPanelOpen(false)
+      setWorkspaceLayer('my-patients')
+      return
+    }
     handleOpenCertificateModal(patient)
+    setDocumentPatientDifferences(differences)
+    setCertificateDocumentType(request.service_type === 'fitness' ? 'fitness' : request.service_type === 'study-order' ? 'study-order' : 'certificate')
     setPaidClinicalDocumentRequestId(request.id)
     setPaidClinicalDocumentRequestReason(request.reason)
     setCertificateDraft({
       date: todayLocalISO(),
       diagnostico: '',
-      body: buildCertificateTemplate(patient, ''),
+      body: request.service_type === 'fitness' ? '' : buildCertificateTemplate(patient, ''),
     })
     setPaidDocumentsPanelOpen(false)
     setWorkspaceLayer('my-patients')
@@ -10041,7 +10072,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     try {
       const issuedAt = new Date().toISOString()
       const base = {
-        ...(isStudyOrder ? { documentType: 'study-order' as const, studies: orderedStudies } : {}),
+        ...(isStudyOrder ? { documentType: 'study-order' as const, studies: orderedStudies } : certificateDocumentType === 'fitness' ? { documentType: 'fitness' as const } : {}),
         certificateDate: certificateDraft.date || todayLocalISO(),
         letterhead: profile.certificateLetterhead?.trim() || 'Consultorio médico',
         diagnostico,
@@ -10078,7 +10109,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       const historyEntry: ConsultationEntry = {
         id: crypto.randomUUID(),
         date: issuedAt,
-        motivoConsulta: isStudyOrder ? 'Orden de estudios emitida' : 'Certificado emitido',
+        motivoConsulta: isStudyOrder ? 'Orden de estudios emitida' : certificateDocumentType === 'fitness' ? 'Apto físico emitido' : 'Certificado emitido',
         diagnostico,
         detalleAtencion: body,
         pensamientoMedico: '',
@@ -10107,7 +10138,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         persistCustomDiagnosis(diagnostico)
       }
       setCertificateIssued({ entry, pdf, reopened: false })
-      showSavedFloatingNotice(isStudyOrder ? 'Orden de estudios emitida' : 'Certificado emitido')
+      showSavedFloatingNotice(isStudyOrder ? 'Orden de estudios emitida' : certificateDocumentType === 'fitness' ? 'Apto físico emitido' : 'Certificado emitido')
     } catch (error) {
       setAppError(`No se pudo emitir el documento: ${error instanceof Error ? error.message : String(error)}`)
       setCertificateError(`No se pudo emitir el documento: ${error instanceof Error ? error.message : String(error)}`)
@@ -10146,7 +10177,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
 
   async function handleShareCertificate(entry: CertificateEntry, pdf: Blob): Promise<void> {
     const file = new File([pdf], certificateFileName(entry), { type: 'application/pdf' })
-    const label = entry.documentType === 'study-order' ? 'Orden de estudios' : 'Certificado médico'
+    const label = certificateDocumentLabel(entry)
     const text = `${label} de ${entry.patient.fullName} · ${formatCertificateDate(entry.certificateDate)}`
     if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
       try {
@@ -10163,7 +10194,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   }
 
   async function handleEmailCertificate(entry: CertificateEntry, pdf: Blob): Promise<void> {
-    const label = entry.documentType === 'study-order' ? 'orden de estudios' : 'certificado médico'
+    const label = certificateDocumentLabel(entry).toLocaleLowerCase('es-AR')
     const to = certificateEmail.trim()
     if (!isValidEmail(to)) {
       setCertificateError(`Ingresá un email válido para enviar el documento (${label}).`)
@@ -10176,7 +10207,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       const firstName = escapeHtml(entry.patient.fullName.split(' ')[0] || '')
       const result = await sendEmail({
         to,
-        subject: `${entry.documentType === 'study-order' ? 'Orden de estudios' : 'Certificado médico'} · ${entry.letterhead}`,
+        subject: `${certificateDocumentLabel(entry)} · ${entry.letterhead}`,
         type: 'custom',
         text: `Te enviamos adjunto el documento (${label}) emitido el ${formatCertificateDate(entry.certificateDate)} por ${entry.professional.fullName} (Matrícula ${entry.professional.licenseNumber}).`,
         templateData: {
@@ -10520,6 +10551,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       return
     }
     setPrescriptionDiagnostico(selectedPatient.diagnosticoPrincipal || '')
+    setPrescriptionPaidRequest(null)
+    setDocumentPatientDifferences([])
     setPrescriptionItems([])
     setPrescriptionMedQuery('')
     setPrescriptionModalOpen(true)
@@ -10614,12 +10647,14 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         prescriptions: [entry, ...(selectedPatient.prescriptions ?? [])],
         updatedAt: now,
       }
-      persistPatient(updatedPatient)
+      if (!await persistPatient(updatedPatient)) throw new Error('No se pudo guardar la receta en la ficha. Reintentá antes de entregarla.')
       trackClinicalAction('prescription')
       setPrescriptionModalOpen(false)
-      setAppNotice('Receta emitida y guardada en la historia clínica.')
+      setAppNotice(prescriptionPaidRequest ? 'Receta guardada. Entregala al paciente y marcá la solicitud como respondida en Documentos médicos.' : 'Receta emitida y guardada en la historia clínica.')
       showSavedFloatingNotice()
       printPrescriptionDocument(entry, updatedPatient)
+    } catch (error) {
+      setAppError(`No se pudo emitir la receta: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setPrescriptionSaving(false)
     }
@@ -11630,7 +11665,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       onClick: () => setVirtualConsultOpen(true),
     } : null,
     canUsePaidClinicalDocuments ? {
-      key: 'paid-documents', icon: '📄', label: 'Certificados y órdenes', hint: 'Enlace y solicitudes pagas', tone: '#0f766e',
+      key: 'paid-documents', icon: '📄', label: 'Documentos médicos', hint: 'Aranceles y solicitudes pagas', tone: '#0f766e',
       onClick: () => setPaidDocumentsPanelOpen(true),
     } : null,
     canUseMedicalTools ? {
@@ -11925,9 +11960,9 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </button>
           ) : null}
           {canUsePaidClinicalDocuments ? (
-            <button type="button" title="Enlace de pago para certificados y órdenes" className={paidDocumentsPanelOpen ? 'active' : ''}
+            <button type="button" title="Documentos médicos: aranceles y solicitudes pagas" className={paidDocumentsPanelOpen ? 'active' : ''}
               onClick={() => { setPaidDocumentsPanelOpen(true); setSidebarOpen(false) }}>
-              <span>📄</span> Certificados y órdenes
+              <span>📄</span> Documentos médicos
             </button>
           ) : null}
           {canUseMedicalTools ? (
@@ -14667,7 +14702,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </details> : null}
             {selectedPatient.certificates?.length ? <details><summary>Certificados y órdenes emitidas</summary><ul className="certificate-history-list">
               {selectedPatient.certificates.map((entry) => <li key={entry.id}><div>
-                <strong>{entry.documentType === 'study-order' ? 'Orden de estudios' : 'Certificado'} · {formatCertificateDate(entry.certificateDate)}</strong>
+                <strong>{certificateDocumentLabel(entry)} · {formatCertificateDate(entry.certificateDate)}</strong>
                 <span>{entry.documentType === 'study-order' ? entry.studies?.map((study) => study.term).join(', ') : entry.diagnostico}</span>
               </div><button type="button" className="ghost compact" onClick={() => void handleViewIssuedCertificate(selectedPatient, entry)}>Ver copia</button></li>)}
             </ul></details> : null}
@@ -14968,7 +15003,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       {selectedPatient.certificates.map((entry) => (
                         <li key={entry.id}>
                           <div>
-                            <strong>{entry.documentType === 'study-order' ? 'Orden de estudios' : 'Certificado'} · {formatCertificateDate(entry.certificateDate)}</strong>
+                            <strong>{certificateDocumentLabel(entry)} · {formatCertificateDate(entry.certificateDate)}</strong>
                             <span>{entry.documentType === 'study-order' ? entry.studies?.map((study) => study.term).join(', ') : entry.diagnostico}</span>
                           </div>
                           <button type="button" className="ghost compact" onClick={() => void handleViewIssuedCertificate(selectedPatient, entry)}>
@@ -15286,7 +15321,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                         const certificate = selectedPatient.certificates?.find((item) => item.id === entry.certificateId)
                         return certificate ? (
                           <button type="button" className="ghost consultation-print-button" onClick={() => void handleViewIssuedCertificate(selectedPatient, certificate)}>
-                            📄 Ver {certificate.documentType === 'study-order' ? 'orden' : 'certificado'}
+                            📄 Ver {certificateDocumentLabel(certificate)}
                           </button>
                         ) : null
                       })() : null}
@@ -17213,6 +17248,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 📄 {certificateIssued
                   ? (certificateIssued.entry.documentType === 'study-order'
                     ? certificateIssued.reopened ? 'Orden de estudios' : 'Orden de estudios lista'
+                    : certificateIssued.entry.documentType === 'fitness' ? certificateIssued.reopened ? 'Apto físico' : 'Apto físico listo'
                     : certificateIssued.reopened ? 'Certificado médico' : 'Certificado listo')
                   : 'Emitir documento médico'}
               </h3>
@@ -17225,12 +17261,25 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                   {paidClinicalDocumentRequestReason}
                 </div>
               ) : null}
+              {documentPatientDifferences.length ? <div className="paid-document-request-reason-note" role="status"><strong>Datos diferentes: revisá la ficha antes de emitir. No se sobrescribieron.</strong>{documentPatientDifferences.map(item => <p key={item}>{item}</p>)}</div> : null}
               {!certificateIssued ? (
                 <div className="certificate-sheet">
                   <div className="certificate-document-type" role="group" aria-label="Tipo de documento">
                     <button type="button" className={certificateDocumentType === 'certificate' ? 'selected' : ''} onClick={() => { setCertificateDocumentType('certificate'); setCertificateError(null) }}>Certificado médico</button>
+                    <button type="button" className={certificateDocumentType === 'fitness' ? 'selected' : ''} onClick={() => { setCertificateDocumentType('fitness'); setCertificateDraft(current => ({ ...current, body: '' })); setCertificateError(null) }}>Apto físico</button>
                     <button type="button" className={certificateDocumentType === 'study-order' ? 'selected' : ''} onClick={() => { setCertificateDocumentType('study-order'); setCertificateError(null) }}>Orden de estudios</button>
+                    <button type="button" onClick={() => {
+                      if (!profile.licenseNumber?.trim() || !profile.address?.trim()) { setCertificateError('Completá matrícula y domicilio profesional en Perfil antes de emitir recetas.'); return }
+                      setSelectedPatientId(certificatePatient.id)
+                      setPrescriptionDiagnostico(certificatePatient.diagnosticoPrincipal || '')
+                      setPrescriptionItems([])
+                      setPrescriptionMedQuery('')
+                      setPrescriptionPaidRequest(null)
+                      setCertificatePatientId(null)
+                      setPrescriptionModalOpen(true)
+                    }}>Receta</button>
                   </div>
+                  {certificateDocumentType === 'fitness' ? <p className="flow-hint">Emití el apto únicamente después de la evaluación clínica que corresponda. Redactá la actividad, aptitud y restricciones según tu criterio; el pago no acredita aptitud.</p> : null}
                   <div className="certificate-sheet-letterhead">
                     <div>
                       <strong>{profile.certificateLetterhead?.trim() || 'Consultorio médico'}</strong>
@@ -17360,15 +17409,15 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                       <small>Matrícula N° {profile.licenseNumber || '—'}</small>
                     </div>
                   </div>
-                  <p className="certificate-seal-note">🔏 Se firma electrónicamente (SHA-256) e incluye un código QR de validación. Quedará guardado en la historia clínica como {certificateDocumentType === 'study-order' ? 'orden de estudios' : 'certificado'}.</p>
+                  <p className="certificate-seal-note">🔏 Se firma electrónicamente (SHA-256) e incluye un código QR de validación. Quedará guardado en la historia clínica como {certificateDocumentType === 'study-order' ? 'orden de estudios' : certificateDocumentType === 'fitness' ? 'apto físico' : 'certificado'}.</p>
                 </div>
               ) : (
                 <div className="certificate-success">
                   <div className="certificate-success-icon" aria-hidden="true">✓</div>
-                  <h4>{certificateIssued.reopened ? `${certificateIssued.entry.documentType === 'study-order' ? 'Orden' : 'Certificado'} del ${formatCertificateDate(certificateIssued.entry.certificateDate)}` : `${certificateIssued.entry.documentType === 'study-order' ? 'Orden de estudios emitida y guardada' : 'Certificado emitido y guardado'}`}</h4>
+                  <h4>{certificateDocumentLabel(certificateIssued.entry)} · {formatCertificateDate(certificateIssued.entry.certificateDate)}</h4>
                   <p className="certificate-success-patient">{certificateIssued.entry.patient.fullName} · {certificateIssued.entry.diagnostico}</p>
                   <p className="certificate-success-hint">
-                    {certificateIssued.reopened ? 'Copia fiel del documento guardado en la historia clínica.' : `Quedó adjunto a la historia clínica del paciente como "${certificateIssued.entry.documentType === 'study-order' ? 'Orden de estudios emitida' : 'Certificado emitido'}".`}
+                    {certificateIssued.reopened ? 'Copia fiel del documento guardado en la historia clínica.' : `Quedó adjunto a la historia clínica del paciente como "${certificateDocumentLabel(certificateIssued.entry)}".`}
                   </p>
                   <button type="button" className="ghost certificate-preview-button" onClick={() => handleOpenCertificatePdf(certificateIssued.pdf)}>👁 Ver PDF</button>
                   <div className="certificate-share-grid">
@@ -17401,7 +17450,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 <>
                   <button type="button" className="ghost" onClick={closeCertificateModal} disabled={certificateSaving}>Cancelar</button>
                   <button type="button" onClick={() => void handleIssueCertificate()} disabled={certificateSaving}>
-                    {certificateSaving ? 'Emitiendo...' : certificateDocumentType === 'study-order' ? '✓ Emitir orden' : '✓ Emitir certificado'}
+                    {certificateSaving ? 'Emitiendo...' : certificateDocumentType === 'study-order' ? '✓ Emitir orden' : certificateDocumentType === 'fitness' ? '✓ Emitir apto físico' : '✓ Emitir certificado'}
                   </button>
                 </>
               ) : (
@@ -17423,6 +17472,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             <div className="drhappy-modal-body">
               <label>
                 Diagnóstico
+                {prescriptionPaidRequest ? <p className="paid-document-request-reason-note"><strong>Solicitud paga de receta</strong>{prescriptionPaidRequest.reason} · ${prescriptionPaidRequest.amount.toLocaleString('es-AR')}. Después de entregar la receta, marcá la solicitud como respondida en Documentos médicos.</p> : null}
+                {documentPatientDifferences.length ? <div className="paid-document-request-reason-note" role="status"><strong>Datos diferentes: revisá la ficha antes de emitir. No se sobrescribieron.</strong>{documentPatientDifferences.map(item => <p key={item}>{item}</p>)}</div> : null}
                 <input value={prescriptionDiagnostico} onChange={(event) => setPrescriptionDiagnostico(event.target.value)} placeholder="Motivo de la prescripción" />
               </label>
               <label>

@@ -1,6 +1,7 @@
 import { corsHeaders } from '../_shared/cors.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { notifyProfessionalRegistration } from '../_shared/professionalRegistrationEmail.ts'
+import { documentServiceLabel } from '../_shared/clinicalDocumentServices.ts'
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
@@ -56,7 +57,7 @@ Deno.serve(async (request) => {
     }
     const { data: clinicalDocument, error: requestError } = await admin
       .from('paid_clinical_document_requests')
-      .select('id, professional_id, amount, patient_first_name, patient_last_name, patient_dni, patient_email, patient_phone, reason, status, payment_status, payment_id')
+      .select('id, professional_id, service_type, amount, patient_first_name, patient_last_name, patient_dni, patient_email, patient_phone, reason, status, payment_status, payment_id')
       .eq('id', requestId)
       .eq('professional_id', account.professional_id)
       .maybeSingle()
@@ -114,6 +115,7 @@ Deno.serve(async (request) => {
         `Hola ${professional?.full_name || 'profesional'},`, '',
         'Recibiste una nueva solicitud de atención profesional. El paciente ya abonó el arancel del enlace.', '',
         `Paciente: ${clinicalDocument.patient_last_name}, ${clinicalDocument.patient_first_name}`,
+        `Documento solicitado: ${documentServiceLabel(clinicalDocument.service_type)}`,
         `DNI: ${clinicalDocument.patient_dni}`,
         `Email: ${clinicalDocument.patient_email}`,
         `Teléfono: ${clinicalDocument.patient_phone}`,
@@ -122,7 +124,7 @@ Deno.serve(async (request) => {
         'Motivo de solicitud:',
         String(clinicalDocument.reason || ''),
         '',
-        'Ingresá a Dr Happy > Certificados y órdenes para revisar el motivo y resolver qué respuesta o documento corresponde.',
+        'Ingresá a Dr Happy > Documentos médicos para revisar el motivo y resolver qué respuesta o documento corresponde.',
         'https://www.drhappy.com.ar/',
       ].join('\n')
       const escaped = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')

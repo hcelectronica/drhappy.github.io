@@ -202,7 +202,7 @@ try {
           if(body.action==='save'&&window.__failInstructionsSync)return Response.json({success:false,message:'Sincronización simulada fallida'});
           if(window.__delayWorkspace)await new Promise(resolve=>{window.__finishWorkspace=resolve});
           data={success:true,professional:prof,archivedPatients:[],workspace:{user_id:id,
-            profile_json:{fullName:prof.full_name,specialty:prof.specialty,email:prof.email},
+            profile_json:{fullName:prof.full_name,specialty:prof.specialty,email:prof.email,licenseNumber:'TEST',address:'Consultorio de prueba',phone:'11111111',signatureText:'Firma de prueba'},
             patients_json:[{id:'patient-'+id,ownerUserId:id,nombre:'Paciente',apellido:id,dni:id==='account-a'?'11111111':'22222222',
               email:'patient@example.invalid',consultations:[],documents:[],dentalStatus:'provisional',
               createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}],
@@ -233,6 +233,17 @@ try {
           patient.consultations=patient.consultations.map(e=>e.id===original.id?saved:e);
           localStorage.setItem('fixture-document-patients',JSON.stringify(patients));
           data={success:true,consultation:saved};
+        }
+        if(url.endsWith('/paid-clinical-documents')){
+          const services={certificate:{enabled:true,price:1000},fitness:{enabled:true,price:2000},prescription:{enabled:true,price:3000}};
+          const fixtureRequest=type=>({id:type,service_type:type,patient_first_name:'Paciente',patient_last_name:id,
+            patient_dni:'11111111',patient_email:'patient@example.invalid',patient_phone:'11111111',patient_birth_date:'1990-01-02',
+            patient_health_insurance:'Particular',reason:'Solicitud de prueba '+type,amount:services[type].price,status:'pending_review',payment_status:'approved',created_at:new Date().toISOString()});
+          if(body.action==='get-settings'||body.action==='save-settings')data={success:true,settings:{slug:'doctor-test',professionalName:prof.full_name,service:services.certificate,services:body.services||services,paymentReady:true}};
+          if(body.action==='list-requests')data={success:true,requests:['certificate','fitness','prescription'].map(fixtureRequest)};
+          if(body.action==='get-patient')data={success:true,patient:{id:'patient-'+id,ownerUserId:id,nombre:'Paciente',apellido:id,dni:'11111111',
+            email:'patient@example.invalid',telefono:'11111111',birthDate:'1990-01-02',obraSocial:'Particular',consultations:[],documents:[],certificates:[],prescriptions:[],
+            createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}};
         }
         if(url.endsWith('/patient-invite'))data={success:true,submissions:[]};
         if(url.endsWith('/consultation-instructions')){
@@ -294,6 +305,30 @@ try {
     await evaluate(`document.querySelector('[aria-labelledby="certificate-patient-picker-title"] input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`)
     await wait(`!document.querySelector('#certificate-patient-picker-title')`)
     assert(!await evaluate(`window.__calls.some(call=>call.action==='save')`), 'Searching and opening documents do not create or modify patients')
+    if(process.env.TEST_DOCUMENT_SERVICES==='1'){
+      const openPanel=async()=>{
+        await evaluate(`document.querySelector('.sidebar-nav button[title="Documentos médicos: aranceles y solicitudes pagas"]').click()`);
+        await wait(`document.querySelectorAll('.paid-documents-service').length===3`);
+      };
+      await openPanel();
+      assert.deepEqual(await evaluate(`[...document.querySelectorAll('.paid-documents-service input[type=number]')].map(input=>input.value)`),['1000','2000','3000'],'Three independent tariffs');
+      await evaluate(`[...document.querySelectorAll('.paid-documents-tabs button')].find(button=>button.textContent.includes('Solicitudes')).click()`);
+      await wait(`document.querySelectorAll('.paid-documents-request').length===3`);
+      for(const [label,expected] of [['Apto físico','fitness'],['Receta','prescription']]){
+        if(!await evaluate(`!!document.querySelector('.paid-documents-modal')`)){await openPanel();await evaluate(`document.querySelectorAll('.paid-documents-tabs button')[1].click()`);}
+        await evaluate(`[...document.querySelectorAll('.paid-documents-request')].find(article=>article.textContent.includes(${JSON.stringify(label)})).querySelector('button').click()`);
+        await wait(`!!document.querySelector(${JSON.stringify(expected==='fitness'?'#certificate-body':'#prescription-title')})`);
+        if(expected==='fitness'){
+          assert.equal(await evaluate(`document.querySelector('.certificate-document-type button.selected').textContent`),'Apto físico');
+          assert.equal(await evaluate(`document.querySelector('#certificate-body').value`),'','No automatic fitness assertion');
+          await evaluate(`document.querySelector('[aria-labelledby="certificate-title"] .drhappy-modal-close-btn').click()`);
+        }else{
+          assert(await evaluate(`document.querySelector('[aria-labelledby="prescription-title"]').textContent.includes('Solicitud paga de receta')`),'Prescription uses existing medication issuer and carries paid request');
+          await evaluate(`document.querySelector('[aria-labelledby="prescription-title"] .drhappy-modal-close-btn').click()`);
+        }
+      }
+      console.log('Document services UI passed: three independent tariffs, unified inbox, fitness template without automatic clearance, paid prescription opens existing medication issuer.');
+    }
     console.log('Menu guide documents passed: desktop and mobile entry, name/DNI search, empty result, existing issuer, study order, cancellation, no writes and mobile layout.')
   } else {
   assert(await evaluate(`!document.querySelector('.fullscreen-toggle')`), 'Authenticated app has no fullscreen button')

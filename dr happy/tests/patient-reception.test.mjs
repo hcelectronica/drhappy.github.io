@@ -4,6 +4,7 @@ import vm from 'node:vm'
 import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
 import { normalizeBlocks } from '../supabase/functions/_shared/publicBookingBlocks.ts'
+import { documentServices, documentServiceOptions } from '../supabase/functions/_shared/clinicalDocumentServices.ts'
 
 const source = await readFile(new URL('../supabase/functions/patient-reception/index.ts', import.meta.url), 'utf8')
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
@@ -37,9 +38,10 @@ function fixture() {
   }
   let handler
   vm.runInNewContext(js, { exports: {}, Request, Response, console: { error() {} },
-    normalizeBlocks,
+    normalizeBlocks, documentServices, documentServiceOptions,
     Deno: { env: { get: () => 'fixture' } },
     require: name => name.includes('server.ts') ? { serve: fn => { handler = fn } }
+      : name.includes('clinicalDocumentServices') ? { documentServices, documentServiceOptions }
       : name.includes('publicBookingBlocks') ? { normalizeBlocks } : name.includes('supabase-js') ? { createClient: () => ({ from }) }
         : name.includes('professionalSession') ? { resolveProfessionalId: async () => state.identity } : { corsHeaders: {} },
   })
@@ -71,6 +73,19 @@ test('disabled, inactive and unknown receptions cannot be opened, nor can invali
   for (const slug of ['unknown', '../path', '', 'https://example.invalid']) assert.equal((await h.call({ action: 'public', slug })).status, 404)
   assert.equal((await h.call(null)).status, 400)
   assert.equal((await h.call({}, 'GET')).status, 405)
+})
+
+test('reception lists independent document prices and hides disabled types or disconnected payments', async () => {
+  const h = fixture()
+  Object.assign(h.db.paid_clinical_document_settings[0], { certificate_price: 1000, fitness_enabled: true, fitness_price: 2000, prescription_enabled: true, prescription_price: 3000 })
+  let reception = (await h.call({ action: 'public', slug: 'fixture' })).body.reception
+  assert.deepEqual(reception.documents.map(item => [item.type, item.label, item.amount]), [['certificate', 'Certificados', 1000], ['fitness', 'Aptos físicos', 2000], ['prescription', 'Recetas', 3000]])
+  assert.match(reception.documents[1].url, /\?type=fitness$/)
+  h.db.paid_clinical_document_settings[0].certificate_enabled = false
+  reception = (await h.call({ action: 'public', slug: 'fixture' })).body.reception
+  assert.deepEqual(reception.documents.map(item => item.type), ['fitness', 'prescription'])
+  h.db.professional_payment_accounts[0].status = 'disconnected'
+  assert.deepEqual((await h.call({ action: 'public', slug: 'fixture' })).body.reception.documents, [])
 })
 test('professional settings cannot impersonate another owner; availability, types and slug collisions are validated', async () => {
   const h = fixture(); h.state.identity = null

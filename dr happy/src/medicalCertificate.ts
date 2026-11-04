@@ -3,7 +3,7 @@ import type { SignatureSeal } from './signatureSeal'
 import type { OrderedStudy } from './studyCatalog'
 
 export interface CertificateEntry {
-  documentType?: 'study-order'
+  documentType?: 'study-order' | 'fitness'
   studies?: OrderedStudy[]
   id: string
   issuedAt: string
@@ -26,6 +26,10 @@ export interface CertificateEntry {
     signatureImageDataUrl: string
   }
   signatureSeal: SignatureSeal
+}
+
+export function certificateDocumentLabel(entry: Pick<CertificateEntry, 'documentType'>): string {
+  return entry.documentType === 'study-order' ? 'Orden de estudios' : entry.documentType === 'fitness' ? 'Apto físico' : 'Certificado médico'
 }
 
 // A4 a ~194 ppp: nítido en pantalla e impresión sin generar archivos pesados.
@@ -53,12 +57,12 @@ export function formatCertificateDate(isoDate: string): string {
 
 export function certificateFileName(entry: CertificateEntry): string {
   const name = stripAccents(entry.patient.fullName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-  return `${entry.documentType === 'study-order' ? 'orden-estudios' : 'certificado'}-${name || 'paciente'}-${entry.certificateDate}.pdf`
+  return `${entry.documentType === 'study-order' ? 'orden-estudios' : entry.documentType === 'fitness' ? 'apto-fisico' : 'certificado'}-${name || 'paciente'}-${entry.certificateDate}.pdf`
 }
 
 export function certificateSignedContent(entry: Pick<CertificateEntry, 'documentType' | 'studies' | 'certificateDate' | 'letterhead' | 'diagnostico' | 'body' | 'patient'>): Record<string, unknown> {
   const content: Record<string, unknown> = {
-    type: entry.documentType === 'study-order' ? 'orden-estudios' : 'certificado-medico',
+    type: entry.documentType === 'study-order' ? 'orden-estudios' : entry.documentType === 'fitness' ? 'apto-fisico' : 'certificado-medico',
     certificateDate: entry.certificateDate,
     letterhead: entry.letterhead,
     diagnostico: entry.diagnostico,
@@ -72,7 +76,7 @@ export function certificateSignedContent(entry: Pick<CertificateEntry, 'document
 
 function buildValidationText(entry: CertificateEntry): string {
   return stripAccents([
-    entry.documentType === 'study-order' ? 'DR HAPPY - ORDEN DE ESTUDIOS' : 'DR HAPPY - CERTIFICADO MEDICO',
+    entry.documentType === 'study-order' ? 'DR HAPPY - ORDEN DE ESTUDIOS' : entry.documentType === 'fitness' ? 'DR HAPPY - APTO FISICO' : 'DR HAPPY - CERTIFICADO MEDICO',
     `ID: ${entry.id}`,
     `Fecha: ${entry.certificateDate}`,
     `Paciente: ${entry.patient.fullName} - DNI ${entry.patient.dni || 'S/D'}`,
@@ -217,6 +221,7 @@ export async function renderCertificateCanvas(entry: CertificateEntry): Promise<
   ctx.fillStyle = '#e2e8f0'
   ctx.fillRect(MARGIN, 258, CONTENT_WIDTH, 3)
   if (entry.documentType === 'study-order') drawLabel(ctx, 'Orden de estudios complementarios', MARGIN, 300, ACCENT)
+  if (entry.documentType === 'fitness') drawLabel(ctx, 'Apto físico', MARGIN, 300, ACCENT)
 
   // Ficha del paciente.
   const cardY = 320
@@ -418,7 +423,7 @@ function buildPdfFromJpeg(jpeg: Uint8Array, width: number, height: number, title
 export async function buildCertificatePdf(entry: CertificateEntry): Promise<Blob> {
   const canvas = await renderCertificateCanvas(entry)
   const jpegBase64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1] ?? ''
-  return buildPdfFromJpeg(base64ToBytes(jpegBase64), canvas.width, canvas.height, `${entry.documentType === 'study-order' ? 'Orden de estudios' : 'Certificado medico'} - ${entry.patient.fullName}`)
+  return buildPdfFromJpeg(base64ToBytes(jpegBase64), canvas.width, canvas.height, `${entry.documentType === 'study-order' ? 'Orden de estudios' : entry.documentType === 'fitness' ? 'Apto fisico' : 'Certificado medico'} - ${entry.patient.fullName}`)
 }
 
 export function blobToBase64(blob: Blob): Promise<string> {

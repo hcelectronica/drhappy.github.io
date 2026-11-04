@@ -16,13 +16,22 @@ test('registration, IOMA and IA lead the reception without changing links or amo
   const choices = buildReceptionChoices({ displayName: 'Doctor', links, turneras })
   assert.deepEqual(Array.from(choices, choice => choice.title), [
     'Registrarse como paciente', 'Turno I.O.M.A', 'Chequea tus estudios con IA, Ahora',
-    'Certificados y recetas', 'Videoconsulta', 'Turno Particular', 'Turno PAMI',
+    'Documentos médicos', 'Videoconsulta', 'Turno Particular', 'Turno PAMI',
   ])
   assert.equal(choices[1].url, turneras[1].url)
   assert.match(choices[1].description, /15\.000/)
   assert.equal(choices[2].url, links.studies)
   assert.match(choices[2].description, /revisada por tu profesional/)
   assert.equal(new Set(choices.map(choice => choice.url)).size, choices.length)
+})
+
+test('each enabled document appears once after registration, IOMA and IA with its own price and link', () => {
+  const documents = [['certificate', 'Certificados', 1000], ['fitness', 'Aptos físicos', 2000], ['prescription', 'Recetas', 3000]].map(([type, label, amount]) => ({ type, label, amount, url: `/documentos/doctor?type=${type}` }))
+  const choices = buildReceptionChoices({ displayName: 'Doctor', links, turneras: [block('ioma', 'IOMA')], documents })
+  assert.deepEqual(Array.from(choices.slice(0, 6), choice => choice.title), ['Registrarse como paciente', 'Turno IOMA', 'Chequea tus estudios con IA, Ahora', 'Certificados', 'Aptos físicos', 'Recetas'])
+  assert.equal(choices.filter(choice => choice.kind === 'documents').length, 3)
+  assert.equal(choices[4].url, '/documentos/doctor?type=fitness')
+  assert.match(choices[4].description, /2\.000/)
 })
 
 test('missing options stay hidden, multiple IOMA turneras retain their identities and remaining order', () => {

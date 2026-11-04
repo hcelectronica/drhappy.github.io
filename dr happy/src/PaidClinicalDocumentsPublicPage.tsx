@@ -3,9 +3,12 @@ import {
   getPaidClinicalDocumentStatus,
   getPublicPaidClinicalDocuments,
   submitPaidClinicalDocumentRequest,
+  documentServices,
+  documentServiceLabel,
 } from './paidClinicalDocumentsService'
 import type {
   PaidClinicalDocumentSettings,
+  DocumentServiceType,
 } from './paidClinicalDocumentsService'
 import './PaidClinicalDocumentsPublicPage.css'
 
@@ -16,6 +19,7 @@ interface PublicDocumentStatus {
   amount: number
   professionalName: string
   createdAt: string
+  serviceType?: string
 }
 
 function getPublicSlug(): string {
@@ -26,6 +30,8 @@ function getPublicSlug(): string {
 export function PaidClinicalDocumentsPublicPage() {
   const slug = getPublicSlug()
   const trackingToken = new URLSearchParams(window.location.search).get('s') || ''
+  const requestedType = new URLSearchParams(window.location.search).get('type')
+  const [serviceType, setServiceType] = useState<DocumentServiceType | null>(() => documentServices.find(service => service.type === requestedType)?.type ?? null)
   const [settings, setSettings] = useState<PaidClinicalDocumentSettings | null>(null)
   const [status, setStatus] = useState<PublicDocumentStatus | null>(null)
   const [patientFirstName, setPatientFirstName] = useState('')
@@ -55,15 +61,17 @@ export function PaidClinicalDocumentsPublicPage() {
           if (!cancelled) setStatus(result.request)
         } else {
           const result = await getPublicPaidClinicalDocuments(slug)
-          if (!result.success || !result.service) throw new Error(result.message || 'Este enlace no está disponible.')
+          if (!result.success || !result.services || !result.service) throw new Error(result.message || 'Este enlace no está disponible.')
           if (!cancelled) {
             setSettings({
               slug,
               professionalName: result.professionalName || 'Profesional',
               service: result.service,
+              services: result.services,
               paymentReady: result.paymentReady === true,
             })
           }
+          if (requestedType && !documentServices.some(service => service.type === requestedType)) throw new Error('El tipo de documento del enlace no es válido.')
           if (!result.paymentReady) throw new Error('El profesional todavía no habilitó los cobros en línea. No completes ningún pago.')
         }
       } catch (loadError) {
@@ -75,7 +83,7 @@ export function PaidClinicalDocumentsPublicPage() {
     if (!slug && !trackingToken) return
     void load()
     return () => { cancelled = true }
-  }, [slug, trackingToken])
+  }, [slug, trackingToken, requestedType])
 
   useEffect(() => {
     if (!trackingToken || status?.status !== 'pending_payment') return
@@ -89,12 +97,16 @@ export function PaidClinicalDocumentsPublicPage() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
-    if (!settings?.service.enabled) return
+    if (!settings || !serviceType || !settings.services[serviceType].enabled) {
+      setError('Elegí un tipo de documento habilitado.')
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
       const result = await submitPaidClinicalDocumentRequest({
         slug: settings.slug,
+        serviceType,
         patientFirstName,
         patientLastName,
         patientDni,
@@ -117,7 +129,7 @@ export function PaidClinicalDocumentsPublicPage() {
 
   const title = status
     ? status.status === 'completed' ? 'Solicitud respondida' : status.status === 'pending_review' ? 'Pago confirmado' : status.status === 'pending_payment' ? 'Pago pendiente' : 'Solicitud no completada'
-    : 'Solicitá una evaluación profesional'
+    : serviceType ? `Solicitá ${documentServiceLabel(serviceType)}` : 'Solicitá un documento médico'
 
   return (
     <main className="paid-document-public">
@@ -134,6 +146,7 @@ export function PaidClinicalDocumentsPublicPage() {
         {!loading && status ? (
           <section className={`paid-document-public-status ${status.status}`} aria-live="polite">
             <strong>{status.professionalName}</strong>
+            <p>{documentServiceLabel(status.serviceType)} · ${status.amount.toLocaleString('es-AR')}</p>
             <p>
               {status.status === 'pending_payment'
                 ? 'Estamos esperando la confirmación del pago. La solicitud se enviará al profesional cuando Mercado Pago lo confirme.'
@@ -154,16 +167,21 @@ export function PaidClinicalDocumentsPublicPage() {
             <p className="paid-document-public-intro">
               Profesional: <strong>{settings.professionalName}</strong>. Completá tus datos y contá qué necesitás. El profesional evaluará el motivo y definirá la respuesta o el documento indicado.
             </p>
+            <p className="paid-document-public-terms">El pago es por la evaluación de tu solicitud, no garantiza la emisión. Un apto físico puede requerir examen presencial y una receta depende del criterio del profesional.</p>
+            <label>Tipo de documento<select value={serviceType || ''} onChange={event => { setServiceType(documentServices.find(service => service.type === event.target.value)?.type ?? null); setError(null) }}>
+              <option value="">Elegí un documento</option>{documentServices.filter(service => settings.services[service.type].enabled).map(service => <option key={service.type} value={service.type}>{service.label} · ${settings.services[service.type].price.toLocaleString('es-AR')}</option>)}
+            </select></label>
+            {serviceType ? <p className="paid-document-public-intro" role="status">{settings.services[serviceType].enabled ? `Arancel: $${settings.services[serviceType].price.toLocaleString('es-AR')}` : 'Este tipo de documento no está habilitado.'}</p> : null}
             <form className="paid-document-public-form" onSubmit={(event) => void handleSubmit(event)}>
               <div className="paid-document-public-two-col">
                 <label>Nombre<input autoComplete="given-name" maxLength={80} value={patientFirstName} onChange={(event) => setPatientFirstName(event.target.value)} required /></label>
                 <label>Apellido<input autoComplete="family-name" maxLength={80} value={patientLastName} onChange={(event) => setPatientLastName(event.target.value)} required /></label>
                 <label>DNI<input inputMode="numeric" autoComplete="off" maxLength={9} value={patientDni} onChange={(event) => setPatientDni(event.target.value.replace(/\D/g, ''))} required /></label>
-                <label>Fecha de nacimiento (opcional)<input type="date" max={new Date().toISOString().slice(0, 10)} value={birthDate} onChange={(event) => setBirthDate(event.target.value)} /></label>
+                <label>Fecha de nacimiento<input type="date" required max={new Date().toISOString().slice(0, 10)} value={birthDate} onChange={(event) => setBirthDate(event.target.value)} /></label>
                 <label>Email<input type="email" autoComplete="email" maxLength={160} value={patientEmail} onChange={(event) => setPatientEmail(event.target.value)} required /></label>
                 <label>Teléfono<input type="tel" autoComplete="tel" maxLength={30} value={patientPhone} onChange={(event) => setPatientPhone(event.target.value)} required /></label>
-                <label>Obra social o prepaga (opcional)<input maxLength={120} value={healthInsurance} onChange={(event) => setHealthInsurance(event.target.value)} /></label>
-                <label>Número de afiliado (opcional)<input type="text" maxLength={80} value={insuranceMemberNumber} onChange={(event) => setInsuranceMemberNumber(event.target.value)} /></label>
+                <label>Obra social o prepaga (escribí Particular si no tenés)<input required maxLength={120} value={healthInsurance} onChange={(event) => setHealthInsurance(event.target.value)} /></label>
+                <label>Número de afiliado (si corresponde)<input required={Boolean(healthInsurance.trim()) && healthInsurance.trim().toLowerCase() !== 'particular'} type="text" maxLength={80} value={insuranceMemberNumber} onChange={(event) => setInsuranceMemberNumber(event.target.value)} /></label>
               </div>
               <label>Motivo de solicitud
                 <textarea rows={4} maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} required />
@@ -173,7 +191,8 @@ export function PaidClinicalDocumentsPublicPage() {
                 <span>Autorizo que mis datos y el motivo informado se envíen al profesional seleccionado para gestionar mi solicitud de atención.</span>
               </label>
               <label className="paid-document-public-honeypot" aria-hidden="true">Sitio web<input tabIndex={-1} autoComplete="off" value={website} onChange={(event) => setWebsite(event.target.value)} /></label>
-              <button className="paid-document-public-submit" type="submit" disabled={submitting || !settings.service.enabled || !settings.paymentReady}>
+              <p className="paid-document-public-terms">Completá tus datos también si ya sos paciente. Al confirmarse el pago, la solicitud se vincula por DNI a tu ficha en este consultorio o se crea una nueva, sin duplicar tu historia.</p>
+              <button className="paid-document-public-submit" type="submit" disabled={submitting || !serviceType || !settings.services[serviceType].enabled || !settings.paymentReady}>
                 {submitting ? 'Abriendo Mercado Pago…' : 'Continuar y pagar'}
               </button>
               <p className="paid-document-public-terms">Al continuar, se abrirá Mercado Pago para completar el pago. El profesional solo recibirá y gestionará tu solicitud cuando el pago se confirme. Si no pagás, no se realizará ninguna gestión. No cargues información de urgencia por este medio.</p>

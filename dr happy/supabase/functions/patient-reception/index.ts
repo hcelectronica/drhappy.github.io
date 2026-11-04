@@ -3,6 +3,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { normalizeBlocks } from '../_shared/publicBookingBlocks.ts'
+import { documentServices, documentServiceOptions } from '../_shared/clinicalDocumentServices.ts'
 
 const tools = ['documents', 'studies', 'booking', 'registration', 'video'] as const
 const slugPattern = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/
@@ -40,7 +41,7 @@ serve(async request => {
     const [booking, virtual, documents, invite, payment] = await Promise.all([
       admin.from('public_booking_profiles').select('slug,enabled,availability_blocks').eq('professional_id', professionalId).maybeSingle(),
       admin.from('virtual_consult_settings').select('slug,enabled').eq('professional_id', professionalId).maybeSingle(),
-      admin.from('paid_clinical_document_settings').select('slug,certificate_enabled').eq('professional_id', professionalId).maybeSingle(),
+      admin.from('paid_clinical_document_settings').select('slug,certificate_enabled,certificate_price,study_order_enabled,study_order_price,fitness_enabled,fitness_price,prescription_enabled,prescription_price').eq('professional_id', professionalId).maybeSingle(),
       admin.from('patient_invite_links').select('token').eq('professional_id', professionalId).maybeSingle(),
       admin.from('professional_payment_accounts').select('status').eq('professional_id', professionalId).eq('provider', 'mercadopago').maybeSingle(),
     ])
@@ -55,7 +56,7 @@ serve(async request => {
       location: block.location || '', amountToCharge: block.amountToCharge || null,
     }))
     const destinations: Record<string, string | null> = {
-      documents: documents.data?.certificate_enabled ? `${base}/documentos/${encodeURIComponent(documents.data.slug)}` : null,
+      documents: documents.data && Object.values(documentServiceOptions(documents.data)).some(service => service.enabled) ? `${base}/documentos/${encodeURIComponent(documents.data.slug)}` : null,
       studies: virtual.data?.enabled && payment.data?.status === 'connected' ? `${base}/consulta/${encodeURIComponent(virtual.data.slug)}` : null,
       booking: turneras[0]?.url || null,
       registration: invite.data ? `${base}/registro/${encodeURIComponent(invite.data.token)}` : null,
@@ -65,6 +66,14 @@ serve(async request => {
       return reply(200, { success: true, reception: {
         displayName: settings!.display_name,
         turneras: settings!.booking === true ? turneras : [],
+        documents: settings!.documents === true && documents.data && payment.data?.status === 'connected' ? documentServices.filter(service => {
+          const option = documentServiceOptions(documents.data!)[service.type]
+          return option.enabled && option.price >= 100
+        }).map(service => ({
+          type: service.type, label: service.label,
+          url: `${base}/documentos/${encodeURIComponent(documents.data!.slug)}?type=${service.type}`,
+          amount: documentServiceOptions(documents.data!)[service.type].price,
+        })) : [],
         links: Object.fromEntries(tools.filter(tool => settings![tool] === true && destinations[tool]).map(tool => [tool, destinations[tool]])),
       } })
     }

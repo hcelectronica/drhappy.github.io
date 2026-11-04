@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import vm from 'node:vm'
 import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
+import { documentServices, documentServiceOptions } from '../supabase/functions/_shared/clinicalDocumentServices.ts'
 
 const source = (await readFile(new URL('../supabase/functions/paid-clinical-documents/index.ts', import.meta.url), 'utf8')).replace(/^import .*$/gm, '')
 const js = ts.transpile(source, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None })
@@ -14,20 +15,22 @@ async function fixture() {
   const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt'])
   const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode('fixture-only'))
   const encoded = bytes => Buffer.from(bytes).toString('base64')
-  const state = { session: true, fail: false, result: { patient: { id: 'chart-one' }, archived: false }, checkoutCount: 0 }
+  const state = { session: true, fail: false, result: { patient: { id: 'chart-one' }, archived: false }, checkoutCount: 0,
+    settings: { professional_id: 'owner', slug: 'doctor-test', certificate_enabled: true, certificate_price: 30000, fitness_enabled: true, fitness_price: 50000, prescription_enabled: true, prescription_price: 10000 } }
   const inserts = [], rpcCalls = []
   let handler
   const admin = {
     from(table) {
-      let insert
+      let insert, update
       const q = {
         select() { return q }, eq() { return q }, in() { return q }, gte() { return q },
         order() { return q }, range() { return q }, maybeSingle() { return q }, single() { return q },
-        insert(value) { insert = value; return q }, update() { return q },
+        insert(value) { insert = value; return q }, update(value) { update = value; return q },
         then(resolve, reject) {
           if (insert) inserts.push({ table, value: insert })
+          if (table === 'paid_clinical_document_settings' && update) Object.assign(state.settings, update)
           const data = table === 'professionals' ? { id: 'owner', full_name: 'Prueba', active: true }
-            : table === 'paid_clinical_document_settings' ? { professional_id: 'owner', certificate_enabled: true, certificate_price: 30000 }
+            : table === 'paid_clinical_document_settings' ? state.settings
               : table === 'professional_payment_accounts' ? { status: 'connected', access_token_encrypted: `${encoded(iv)}.${encoded(encrypted)}` }
                 : null
           return Promise.resolve({ data, count: 0, error: null }).then(resolve, reject)
@@ -44,6 +47,7 @@ async function fixture() {
     Deno: { env: { get: key => key === 'MP_TOKEN_ENCRYPTION_KEY' ? encoded(keyBytes) : 'fixture' }, serve: fn => { handler = fn } },
     corsHeaders: {}, createClient: () => admin, resolveProfessionalId: async () => state.session ? 'owner' : null,
     hasMedicalToolRowAccess: () => true, MEDICAL_TOOL_ACCESS_COLUMNS: 'id',
+    documentServices, documentServiceOptions,
     Response, crypto, TextEncoder, TextDecoder, atob, Uint8Array, AbortSignal,
     fetch: async () => { state.checkoutCount++; return new Response(JSON.stringify({ id: 'checkout', init_point: 'https://checkout.example.invalid' })) },
     console: { error() {} },
@@ -58,6 +62,7 @@ const submission = {
   action: 'submit', slug: 'doctor-test', consent: true, patientFirstName: 'Ana', patientLastName: 'Prueba',
   patientDni: '12345678', patientEmail: 'patient@example.invalid', patientPhone: '11111111',
   birthDate: '1990-01-02', reason: 'Certificado laboral',
+  healthInsurance: 'Particular',
 }
 
 test('public request persists optional coverage and a textual member ID without changing checkout', async () => {
@@ -71,16 +76,44 @@ test('public request persists optional coverage and a textual member ID without 
   assert.equal(h.rpcCalls.length, 0, 'An unpaid checkout must not create a chart')
 })
 
-test('omitted or blank coverage stays optional; malformed or oversized input is rejected before checkout', async () => {
+test('all requests require complete administrative data; Particular does not require an affiliate number', async () => {
   const h = await fixture()
   assert.equal((await h.call(submission)).status, 200)
-  assert.equal(h.inserts[0].value.patient_health_insurance, null)
+  assert.equal(h.inserts[0].value.patient_health_insurance, 'Particular')
   assert.equal(h.inserts[0].value.patient_insurance_member_number, null)
   for (const fields of [{ healthInsurance: 'x'.repeat(121) }, { insuranceMemberNumber: 'x'.repeat(81) },
-    { insuranceMemberNumber: 123 }, { healthInsurance: 'bad\ninput' }]) {
+    { insuranceMemberNumber: 123 }, { healthInsurance: 'bad\ninput' }, { healthInsurance: '' }, { birthDate: '' }, { healthInsurance: 'IOMA', insuranceMemberNumber: '' }]) {
     assert.equal((await h.call({ ...submission, ...fields })).status, 400)
   }
   assert.equal(h.state.checkoutCount, 1)
+})
+
+test('three document services use server-side independent prices, preserve snapshots and reject disabled/unknown services', async () => {
+  const h = await fixture()
+  for (const [serviceType, amount] of [['certificate', 30000], ['fitness', 50000], ['prescription', 10000]]) {
+    const result = await h.call({ ...submission, serviceType, amount: 1 })
+    assert.equal(result.status, 200)
+    assert.equal(h.inserts.at(-1).value.service_type, serviceType)
+    assert.equal(h.inserts.at(-1).value.amount, amount)
+  }
+  h.state.settings.fitness_price = 60000
+  assert.equal(h.inserts[1].value.amount, 50000)
+  h.state.settings.fitness_enabled = false
+  assert.equal((await h.call({ ...submission, serviceType: 'fitness' })).status, 404)
+  assert.equal((await h.call({ ...submission, serviceType: 'unknown' })).status, 400)
+  assert.equal(h.state.checkoutCount, 3)
+})
+
+test('saving per-service settings preserves the fixed link, validates all amounts and keeps prior requests intact', async () => {
+  const h = await fixture()
+  const services = { certificate: { enabled: true, price: 1000 }, fitness: { enabled: true, price: 2000 }, prescription: { enabled: false, price: 3000 } }
+  const result = await h.call({ action: 'save-settings', services })
+  assert.equal(result.status, 200)
+  assert.deepEqual(result.body.settings.services, services)
+  assert.equal(result.body.settings.slug, 'doctor-test')
+  assert.equal((await h.call({ action: 'save-settings', services: { ...services, fitness: { enabled: true, price: 99 } } })).status, 400)
+  assert.equal((await h.call({ action: 'save-settings', services: [] })).status, 400)
+  assert.equal(h.state.settings.fitness_price, 2000)
 })
 
 test('retrieving a paid chart uses session owner, never a forged professional ID', async () => {

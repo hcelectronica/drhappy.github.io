@@ -5,10 +5,14 @@ import {
   getPaidClinicalDocumentSettings,
   listPaidClinicalDocumentRequests,
   savePaidClinicalDocumentSettings,
+  documentServices,
+  documentServiceLabel,
 } from './paidClinicalDocumentsService'
 import type {
   PaidClinicalDocumentRequest,
   PaidClinicalDocumentSettings,
+  DocumentServiceOptions,
+  DocumentServiceType,
 } from './paidClinicalDocumentsService'
 
 interface PaidClinicalDocumentsPanelProps {
@@ -28,8 +32,8 @@ function formatDate(value: string | null): string {
 export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinicalDocumentsPanelProps) {
   const [settings, setSettings] = useState<PaidClinicalDocumentSettings | null>(null)
   const [requests, setRequests] = useState<PaidClinicalDocumentRequest[]>([])
-  const [price, setPrice] = useState('')
-  const [enabled, setEnabled] = useState(false)
+  const [services, setServices] = useState<DocumentServiceOptions>({ certificate: { enabled: false, price: 0 }, fitness: { enabled: false, price: 0 }, prescription: { enabled: false, price: 0 } })
+  const [filter, setFilter] = useState<DocumentServiceType | 'all'>('all')
   const [tab, setTab] = useState<'settings' | 'requests'>('settings')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -68,8 +72,7 @@ export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinic
         if (!requestsResult.success) throw new Error(requestsResult.message || 'No se pudieron cargar las solicitudes.')
         if (cancelled) return
         setSettings(settingsResult.settings)
-        setPrice(String(settingsResult.settings.service.price || ''))
-        setEnabled(settingsResult.settings.service.enabled)
+        setServices(settingsResult.settings.services)
         setRequests(requestsResult.requests ?? [])
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar la herramienta.')
@@ -99,10 +102,7 @@ export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinic
     setError(null)
     setNotice(null)
     try {
-      const result = await savePaidClinicalDocumentSettings({
-        enabled,
-        price: Number(price) || 0,
-      })
+      const result = await savePaidClinicalDocumentSettings({ services })
       if (!result.success || !result.settings) throw new Error(result.message || 'No se pudo guardar la configuración.')
       setSettings(result.settings)
       setNotice('Configuración guardada. Los cambios del enlace público ya están activos.')
@@ -141,7 +141,7 @@ export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinic
         <header className="drhappy-modal-header">
           <div>
             <span className="section-kicker">Enlace y cobro independientes</span>
-            <h2 id="paid-documents-title">Solicitudes de certificados y estudios</h2>
+            <h2 id="paid-documents-title">Documentos médicos</h2>
           </div>
           <button type="button" className="drhappy-modal-close-btn" onClick={onClose} aria-label="Cerrar">✕</button>
         </header>
@@ -182,21 +182,22 @@ export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinic
                 : 'Conectá Mercado Pago en Perfil y ajustes para habilitar cobros.'}
             </div>
             <div className="paid-documents-professional"><span>Profesional</span><strong>{settings.professionalName}</strong></div>
-            <h3>Arancel único del enlace</h3>
+            <h3>Arancel por tipo de documento</h3>
             <div className="paid-documents-service-list">
-              <article className="paid-documents-service">
+              {documentServices.map(service => <article className="paid-documents-service" key={service.type}>
                 <label className="paid-documents-switch">
-                  <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-                  <span>Habilitar solicitudes con pago</span>
+                  <input type="checkbox" checked={services[service.type].enabled} disabled={saving} onChange={event => setServices(current => ({ ...current, [service.type]: { ...current[service.type], enabled: event.target.checked } }))} />
+                  <span>{service.label}</span>
                 </label>
                 <label className="paid-documents-price">
-                  Importe único por solicitud (ARS)
-                  <input inputMode="numeric" type="number" min="100" max="1000000" step="1" value={price} disabled={!enabled}
-                    onChange={(event) => setPrice(event.target.value)} />
+                  Arancel de {service.label} (ARS)
+                  <input inputMode="numeric" type="number" min="100" max="1000000" step="1" value={services[service.type].price || ''} disabled={saving || !services[service.type].enabled}
+                    onChange={event => setServices(current => ({ ...current, [service.type]: { ...current[service.type], price: Number(event.target.value) } }))} />
                 </label>
-                <p>El paciente paga siempre este importe. Después de revisar el motivo, vos decidís si corresponde un certificado, apto físico, constancia u orden de estudios.</p>
-              </article>
+                <small>Enlace propio: {buildPaidClinicalDocumentsUrl(settings.slug, service.type)}</small>
+              </article>)}
             </div>
+            <p>El pago corresponde a la evaluación profesional, no garantiza la emisión. Un apto físico puede requerir examen presencial. Cambiar aranceles no modifica pagos anteriores.</p>
             <button type="button" onClick={() => void saveSettings()} disabled={saving || !settings.paymentReady}>
               {saving ? 'Guardando…' : 'Guardar configuración'}
             </button>
@@ -207,15 +208,19 @@ export function PaidClinicalDocumentsPanel({ onClose, onStartIssue }: PaidClinic
           <div className="paid-documents-requests">
             <div className="paid-documents-requests-heading">
               <p>Las solicitudes aparecen cuando Mercado Pago confirma el pago. Revisás el motivo y elegís cómo responder.</p>
+              <label>Tipo de documento<select value={filter} onChange={event => setFilter(event.target.value === 'all' ? 'all' : documentServices.find(service => service.type === event.target.value)?.type || 'all')}>
+                <option value="all">Todos</option>{documentServices.map(service => <option key={service.type} value={service.type}>{service.label}</option>)}
+              </select></label>
               <button type="button" className="ghost compact" onClick={() => { void refreshRequests().catch((refreshError: unknown) => setError(refreshError instanceof Error ? refreshError.message : 'No se pudieron actualizar las solicitudes.')) }}>
                 Actualizar
               </button>
             </div>
-            {requests.length ? requests.map((request) => (
+            {requests.filter(request => filter === 'all' || request.service_type === filter).length ? requests.filter(request => filter === 'all' || request.service_type === filter).map((request) => (
               <article className="paid-documents-request" key={request.id}>
                 <div className="paid-documents-request-top">
                   <div>
                     <strong>{request.patient_last_name}, {request.patient_first_name} · DNI {request.patient_dni}</strong>
+                    <strong>{documentServiceLabel(request.service_type)}</strong>
                     <span>Motivo de solicitud</span>
                   </div>
                   <span className={`paid-documents-status ${request.status}`}>{request.status === 'pending_review' ? 'Pago confirmado' : request.status === 'completed' ? 'Respondida' : 'Cancelada'}</span>

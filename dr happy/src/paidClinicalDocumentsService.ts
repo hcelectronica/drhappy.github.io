@@ -1,4 +1,7 @@
 import { isSupabaseConfigured, supabase } from './supabaseClient'
+import type { DocumentServiceOptions, DocumentServiceType } from '../supabase/functions/_shared/clinicalDocumentServices'
+export { documentServices, documentServiceLabel } from '../supabase/functions/_shared/clinicalDocumentServices'
+export type { DocumentServiceOptions, DocumentServiceType } from '../supabase/functions/_shared/clinicalDocumentServices'
 
 export type PaidClinicalDocumentStatus = 'pending_payment' | 'pending_review' | 'completed' | 'cancelled'
 
@@ -11,11 +14,14 @@ export interface PaidClinicalDocumentSettings {
   slug: string
   professionalName: string
   service: PaidClinicalDocumentServiceOption
+  services: DocumentServiceOptions
   paymentReady: boolean
 }
 
 export interface PaidClinicalDocumentRequest {
   id: string
+  service_type?: DocumentServiceType | 'study-order'
+  requested_purpose?: string
   patient_first_name: string
   patient_last_name: string
   patient_dni: string
@@ -42,6 +48,7 @@ interface FunctionResponse {
   patient?: unknown
   professionalName?: string
   service?: PaidClinicalDocumentSettings['service']
+  services?: DocumentServiceOptions
   paymentReady?: boolean
   paymentUrl?: string
   trackingToken?: string
@@ -52,6 +59,8 @@ interface FunctionResponse {
     amount: number
     professionalName: string
     createdAt: string
+    serviceType?: string
+    purpose?: string
   }
 }
 
@@ -82,8 +91,7 @@ export function getPaidClinicalDocumentSettings(): Promise<FunctionResponse> {
 }
 
 export function savePaidClinicalDocumentSettings(settings: {
-  enabled: boolean
-  price: number
+  services: DocumentServiceOptions
 }): Promise<FunctionResponse> {
   return invokePaidClinicalDocuments({ action: 'save-settings', ...settings })
 }
@@ -111,8 +119,8 @@ export function getPaidClinicalDocumentPatient(id: string): Promise<FunctionResp
   return invokePaidClinicalDocuments({ action: 'get-patient', id })
 }
 
-export function buildPaidClinicalDocumentsUrl(slug: string): string {
-  return `https://drhappy.com.ar/documentos/${encodeURIComponent(slug)}`
+export function buildPaidClinicalDocumentsUrl(slug: string, serviceType?: DocumentServiceType): string {
+  return `https://drhappy.com.ar/documentos/${encodeURIComponent(slug)}${serviceType ? `?type=${serviceType}` : ''}`
 }
 
 export function getPublicPaidClinicalDocuments(slug: string): Promise<FunctionResponse> {
@@ -121,6 +129,7 @@ export function getPublicPaidClinicalDocuments(slug: string): Promise<FunctionRe
 
 export function submitPaidClinicalDocumentRequest(input: {
   slug: string
+  serviceType?: DocumentServiceType
   patientFirstName: string
   patientLastName: string
   patientDni: string
