@@ -28,6 +28,12 @@ Videoconsulta reutiliza el precio y los horarios de la primera turnera habilitad
 
 Despliegue: migración `20261021010000_patient_reception.sql`, función `patient-reception --no-verify-jwt` (autorización propia), y actualización de `public-booking` y `mercadopago-patient-webhook`. La nueva tabla tiene RLS y acceso exclusivo de `service_role`; el servidor determina el profesional desde la sesión y construye únicamente destinos internos conocidos. Pruebas: `node --test tests/patient-reception.test.mjs tests/registration-handlers.test.mjs tests/professional-registration-email.test.mjs tests/reception-payment.test.mjs`; navegador: `node tests/patient-reception.browser.mjs` con Vite de fixtures en 5194 y CDP 9379.
 
+### Emitir documentos desde el menú guía
+
+El menú guía (navegación profesional de la barra inferior en PC) y el Inicio móvil incluyen **Emitir documento médico**, para cuentas con acceso a herramientas médicas. Permite buscar un paciente activo de la propia cuenta por nombre o DNI y abrir el emisor existente de certificados y órdenes de estudios, sin entrar primero en su ficha ni crear pacientes nuevos. Los botones de la ficha y **Certificados y órdenes** (enlace y solicitudes pagas) conservan sus funciones.
+
+Validación: `node --test tests/menu-guide-documents.test.mjs` y `TEST_MENU_GUIDE=1 node tests/mobile-session.browser.mjs` contra el servidor local indicado por `TEST_APP_ORIGIN`. El recorrido usa datos simulados, sin emitir documentos ni escribir fichas reales.
+
 ### Turneras personalizadas por profesional
 
 En **Turnera → Configuración → Mis turneras**, y desde el diálogo de turneras públicas, cada profesional puede crear las turneras que necesite, sin un límite fijo de cantidad. Cada una tiene ID estable, nombre (por ejemplo IOMA, PAMI o Particular), días, rango horario, duración, cupo diario, lugar, motivo y cobro opcional por Mercado Pago con importe y concepto propios. La modalidad técnica `coverage/private` conserva compatibilidad y representa sin/con pago online; no impone el nombre ni la cobertura. Los importes de otras turneras y del perfil no se sobrescriben.

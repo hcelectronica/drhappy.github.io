@@ -146,7 +146,7 @@ try {
         if(!event.fixture){event.preventDefault();event.stopImmediatePropagation()}
       });
       const account=id=>({id,username:id,full_name:id==='account-a'?'Profesional A':'Profesional B',
-        specialty:localStorage.getItem('fixture-medical')?'Clinica':'Odontologia',license_number:'TEST',email:id+'@example.invalid',active:true,is_admin:id==='account-b',
+        specialty:${process.env.TEST_MENU_GUIDE === '1'}?'Medicina general':localStorage.getItem('fixture-medical')?'Clinica':'Odontologia',license_number:'TEST',email:id+'@example.invalid',active:true,is_admin:id==='account-b',
         subscription_status:'active',subscription_expires_at:'2027-12-31T00:00:00Z'});
       if(!localStorage.getItem('fixture-initialized')){
         localStorage.setItem('fixture-initialized','true');
@@ -259,6 +259,43 @@ try {
   await command('Page.navigate', { url: origin + '/' })
   const ready = (name) => wait(`document.body?.innerText.includes(${JSON.stringify(name)})&&Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Cerrar sesión'))`)
   await ready('Profesional A')
+  if (process.env.TEST_MENU_GUIDE === '1') {
+    const setSearch = async value => {
+      await evaluate(`(()=>{const input=document.querySelector('[aria-labelledby="certificate-patient-picker-title"] input');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});
+        input.dispatchEvent(new Event('input',{bubbles:true}));})()`)
+    }
+    await command('Emulation.setTouchEmulationEnabled', { enabled: false })
+    await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false })
+    await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 700, y: 996 })
+    await wait(`getComputedStyle(document.querySelector('.app-sidebar')).opacity==='1'`)
+    await evaluate(`document.querySelector('.sidebar-nav button[title="Emitir documento médico: certificados y órdenes"]').click()`)
+    await wait(`!!document.querySelector('#certificate-patient-picker-title')`)
+    await setSearch('sin coincidencias 99999999')
+    await wait(`document.body.innerText.includes('No se encontraron pacientes con ese nombre o DNI.')`)
+    await setSearch('11111111')
+    await wait(`document.querySelectorAll('[aria-labelledby="certificate-patient-picker-title"] li').length===1`)
+    await evaluate(`document.querySelector('[aria-labelledby="certificate-patient-picker-title"] li button').click()`)
+    await wait(`!!document.querySelector('#certificate-title')&&!document.querySelector('#certificate-patient-picker-title')`)
+    assert(await evaluate(`document.querySelector('.certificate-patient-card').textContent.includes('11111111')`), 'Selected patient data opens in existing issuer')
+    assert(await evaluate(`document.querySelector('.certificate-patient-card').textContent.includes('Paciente account-a')`), 'Correct patient name in document')
+    await evaluate(`Array.from(document.querySelectorAll('.certificate-document-type button')).find(b=>b.textContent==='Orden de estudios').click()`)
+    await wait(`document.querySelector('.certificate-document-type button.selected').textContent==='Orden de estudios'`)
+    await evaluate(`document.querySelector('[aria-labelledby="certificate-title"] .drhappy-modal-close-btn').click()`)
+    await wait(`!document.querySelector('#certificate-title')`)
+    await command('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
+    await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+    await evaluate(`Array.from(document.querySelectorAll('.mobile-home-menu button')).find(b=>b.textContent.includes('Emitir documento médico')).click()`)
+    await wait(`!!document.querySelector('#certificate-patient-picker-title')`)
+    assert.equal(await evaluate(`document.querySelector('[aria-labelledby="certificate-patient-picker-title"] input').value`), '', 'Search resets on reopening')
+    await checkTouchLayout('menu guide document patient selector')
+    await setSearch('Paciente')
+    await wait(`document.querySelectorAll('[aria-labelledby="certificate-patient-picker-title"] li').length===1`)
+    await evaluate(`document.querySelector('[aria-labelledby="certificate-patient-picker-title"] input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`)
+    await wait(`!document.querySelector('#certificate-patient-picker-title')`)
+    assert(!await evaluate(`window.__calls.some(call=>call.action==='save')`), 'Searching and opening documents do not create or modify patients')
+    console.log('Menu guide documents passed: desktop and mobile entry, name/DNI search, empty result, existing issuer, study order, cancellation, no writes and mobile layout.')
+  } else {
   assert(await evaluate(`!document.querySelector('.fullscreen-toggle')`), 'Authenticated app has no fullscreen button')
   assert.equal(await evaluate(`document.querySelectorAll('.mobile-tabbar button').length`), 5, 'The five navigation buttons are unchanged')
   assert.equal(await evaluate(`document.querySelectorAll('button.video-consultation-link').length`), 0, 'Non-admin does not see video links')
@@ -1233,6 +1270,7 @@ try {
   assert.equal(await evaluate(`${appointmentPatient}.consultations.length`),1,'Appointment creation never adds duplicate administrative attention')
   console.log('First attention passed: new-only signed snapshot, exact creation time, automatic weight date, allergy validation, preserved free text/medication, single double-submit, PDF, edit-without-duplication, unsaved-navigation guard, history and reload.')
   console.log('Compact clinical screens passed: visible collapsed identity, bounded widths, requested clinical field order, saved-only instructions email with confirmation/cancellation, missing-email and empty-content guards, cloud/provider/invalid-response errors, single pending send, privacy-filtered content, mobile layout, dictation, CIE10, medication, optional AI review, BP signature/reload/PDF and unchanged baseline.')
+  }
   }
 } finally {
   if (socket?.readyState === WebSocket.OPEN) socket.close()

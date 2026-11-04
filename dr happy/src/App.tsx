@@ -2766,6 +2766,8 @@ function App() {
 
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false)
   const [certificatePatientId, setCertificatePatientId] = useState<string | null>(null)
+  const [certificatePatientPickerOpen, setCertificatePatientPickerOpen] = useState(false)
+  const [certificatePatientQuery, setCertificatePatientQuery] = useState('')
   const [paidClinicalDocumentRequestId, setPaidClinicalDocumentRequestId] = useState<string | null>(null)
   const [paidClinicalDocumentRequestReason, setPaidClinicalDocumentRequestReason] = useState('')
   const [certificateDraft, setCertificateDraft] = useState({ date: '', diagnostico: '', body: '' })
@@ -5488,6 +5490,18 @@ function App() {
     }
     return visiblePatients.slice(0, 6)
   }, [patientSearchQuery, visiblePatients])
+
+  const certificatePatientOptions = useMemo(() => sortedPatients
+    .filter(patient => patient.ownerUserId === activeUserId && !archivedPatients.some(entry => entry.patient_id === patient.id))
+    .map(patient => ({ patient, score: certificatePatientQuery.trim() ? scorePatientSearch(patient, certificatePatientQuery.trim()) : 0 }))
+    .filter(entry => Number.isFinite(entry.score))
+    .sort((left, right) => left.score - right.score)
+    .map(entry => entry.patient), [sortedPatients, activeUserId, archivedPatients, certificatePatientQuery])
+
+  useEffect(() => {
+    setCertificatePatientPickerOpen(false)
+    setCertificatePatientQuery('')
+  }, [activeUserId])
 
   const certificateDiagnosisSuggestions = useMemo(() => {
     const query = normalizeSearchText(certificateDraft.diagnostico)
@@ -9864,6 +9878,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   }
 
   function handleOpenCertificateModal(patient: PatientRecord): void {
+    setCertificatePatientPickerOpen(false)
     setPaidClinicalDocumentRequestId(null)
     setPaidClinicalDocumentRequestReason('')
     setCertificatePatientId(patient.id)
@@ -9876,6 +9891,16 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     setCertificateEmail(patient.email || '')
     setCertificateDiagnosisOpen(false)
     setCertificateError(null)
+  }
+
+  function handleOpenCertificatePatientPicker(): void {
+    if (!canUseMedicalTools) {
+      setAppError('La emisión de documentos médicos no está disponible para esta cuenta.')
+      return
+    }
+    setCertificatePatientQuery('')
+    setCertificatePatientPickerOpen(true)
+    setSidebarOpen(false)
   }
 
   async function handleStartPaidClinicalDocumentIssue(request: PaidClinicalDocumentRequest): Promise<void> {
@@ -11608,6 +11633,10 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       key: 'paid-documents', icon: '📄', label: 'Certificados y órdenes', hint: 'Enlace y solicitudes pagas', tone: '#0f766e',
       onClick: () => setPaidDocumentsPanelOpen(true),
     } : null,
+    canUseMedicalTools ? {
+      key: 'issue-document', icon: '📄', label: 'Emitir documento médico', hint: 'Certificados y órdenes', tone: '#0f766e',
+      onClick: handleOpenCertificatePatientPicker,
+    } : null,
     isModuleEnabled('tools') ? {
       key: 'tools', icon: '💊', label: normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') ? 'Vademécum' : 'Herramientas', hint: normalizeSearchText(activeUser?.specialty || profile?.specialty || '').includes('psic') ? 'Consulta farmacológica' : 'Protocolos y vademécum', tone: '#7c3aed',
       onClick: handleOpenTools,
@@ -11899,6 +11928,12 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             <button type="button" title="Enlace de pago para certificados y órdenes" className={paidDocumentsPanelOpen ? 'active' : ''}
               onClick={() => { setPaidDocumentsPanelOpen(true); setSidebarOpen(false) }}>
               <span>📄</span> Certificados y órdenes
+            </button>
+          ) : null}
+          {canUseMedicalTools ? (
+            <button type="button" title="Emitir documento médico: certificados y órdenes" className={certificatePatientPickerOpen || certificatePatientId ? 'active' : ''}
+              onClick={handleOpenCertificatePatientPicker}>
+              <span>📄</span> Emitir documento médico
             </button>
           ) : null}
           {isModuleEnabled('appointments') ? (
@@ -17143,7 +17178,34 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           </div>
         )
       })() : null}
-      {certificatePatient && profile ? (
+      {certificatePatientPickerOpen && canUseMedicalTools ? (
+        <div className="drhappy-modal-overlay" onClick={() => setCertificatePatientPickerOpen(false)}>
+          <div className="drhappy-modal-card certificate-modal-card" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="certificate-patient-picker-title"
+            onKeyDown={event => { if (event.key === 'Escape') setCertificatePatientPickerOpen(false) }}>
+            <div className="drhappy-modal-header">
+              <h3 id="certificate-patient-picker-title">Emitir documento médico</h3>
+              <button type="button" className="drhappy-modal-close-btn" onClick={() => setCertificatePatientPickerOpen(false)} aria-label="Cerrar">✕</button>
+            </div>
+            <div className="drhappy-modal-body">
+              <p className="flow-hint">Elegí un paciente ya cargado para emitir un certificado o una orden de estudios.</p>
+              <label>Buscar paciente por nombre o DNI
+                <input type="search" autoFocus value={certificatePatientQuery} onChange={event => setCertificatePatientQuery(event.target.value)} />
+              </label>
+              {certificatePatientOptions.length ? <ul className="certificate-history-list">
+                {certificatePatientOptions.map(patient => <li key={patient.id}>
+                  <button type="button" className="ghost" onClick={() => handleOpenCertificateModal(patient)}>
+                    {patient.apellido}, {patient.nombre} · DNI {patient.dni || 'No informado'}
+                  </button>
+                </li>)}
+              </ul> : <p role="status">{certificatePatientQuery.trim() ? 'No se encontraron pacientes con ese nombre o DNI.' : 'No tenés pacientes activos cargados en tu cuenta.'}</p>}
+            </div>
+            <div className="drhappy-modal-footer">
+              <button type="button" className="ghost" onClick={() => setCertificatePatientPickerOpen(false)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {certificatePatient && profile && !certificatePatientPickerOpen ? (
         <div className="drhappy-modal-overlay" onClick={closeCertificateModal}>
           <div className="drhappy-modal-card certificate-modal-card" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="certificate-title">
             <div className="drhappy-modal-header">
