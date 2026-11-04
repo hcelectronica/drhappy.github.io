@@ -24,7 +24,7 @@ export function buildReceptionChoices(reception: NonNullable<ReceptionResponse['
   })
   const turneras = (reception.turneras ?? []).map(turnera => ({
     key: `turnera-${turnera.id}`, kind: 'booking', icon: 'calendar', url: turnera.url,
-    title: /^turno\b/i.test(turnera.label) ? turnera.label : `Turno ${turnera.label}`,
+    title: /^\s*turnos?\b/i.test(turnera.label) ? turnera.label : `Turno ${turnera.label}`,
     description: [turnera.location, turnera.amountToCharge ? `$ ${turnera.amountToCharge.toLocaleString('es-AR')}` : 'Sin pago online'].filter(Boolean).join(' · '),
   }))
   const isIoma = (label: string) => /\bioma\b/i.test(label.replace(/\./g, ''))

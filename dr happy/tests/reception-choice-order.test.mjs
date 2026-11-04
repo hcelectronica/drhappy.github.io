@@ -43,6 +43,17 @@ test('missing options stay hidden, multiple IOMA turneras retain their identitie
   assert.equal(buildReceptionChoices({ displayName: 'Doctor', links, turneras: [] }).filter(choice => choice.kind === 'booking').length, 0)
 })
 
+test('turnera names starting with Turno or Turnos are preserved without a duplicate prefix', () => {
+  for (const label of ['TURNOS IOMA', 'Turnos PAMI', 'Turno Particular', 'turnos ioma', '  TURNOS IOMA']) {
+    const choices = buildReceptionChoices({ displayName: 'Doctor', links: {}, turneras: [block('named', label, 15000)] })
+    assert.equal(choices[0].title, label)
+    assert.equal(choices[0].url, '/turnera/doctor?b=named')
+    assert.match(choices[0].description, /15\.000/)
+  }
+  const choices = buildReceptionChoices({ displayName: 'Doctor', links: {}, turneras: [block('other', 'Turnoterapia')] })
+  assert.equal(choices[0].title, 'Turno Turnoterapia')
+})
+
 test('legacy booking remains available when no individual turneras are returned', () => {
   const choices = buildReceptionChoices({ displayName: 'Doctor', links })
   assert.deepEqual(Array.from(choices, choice => choice.kind), ['registration', 'studies', 'documents', 'booking', 'video'])
