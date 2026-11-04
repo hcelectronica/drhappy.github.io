@@ -2,7 +2,7 @@ import { isSupabaseConfigured, supabase } from './supabaseClient'
 
 export const receptionTools = [
   { key: 'documents', title: 'Certificados y recetas', description: 'Solicitalos para evaluación profesional.', icon: 'document', destination: 'Tu enlace de certificados y recetas.' },
-  { key: 'studies', title: 'Evaluación de estudios', description: 'No esperes un turno para consultar por tu laboratorio.', icon: 'studies', destination: 'Orientación virtual asistida por IA y revisada por vos.' },
+  { key: 'studies', title: 'Chequea tus estudios con IA, Ahora', description: 'Orientación virtual asistida por IA y revisada por tu profesional.', icon: 'studies', destination: 'Orientación virtual asistida por IA y revisada por vos.' },
   { key: 'booking', title: 'Turneras', description: 'Elegí la atención que necesitás.', icon: 'calendar', destination: 'Todas tus turneras habilitadas, cada una con su nombre, enlace e importe.' },
   { key: 'video', title: 'Videoconsulta', description: 'Reservá y pagá tu turno. Tu profesional te enviará el enlace.', icon: 'video', destination: 'Tu turnera paga. Origen virtual identificado en agenda y correos.' },
   { key: 'registration', title: 'Registrarse como paciente', description: 'Completá tus datos para el consultorio.', icon: 'user', destination: 'Tu enlace de registro, no Mi Carpeta de Salud.' },
@@ -15,6 +15,26 @@ export interface ReceptionResponse {
   settings?: ReceptionSettings
   available?: Record<ReceptionTool, boolean>
   reception?: { displayName: string; links: Partial<Record<ReceptionTool, string>>; turneras?: Array<{ id: string; label: string; url: string; location: string; amountToCharge: number | null }> }
+}
+export function buildReceptionChoices(reception: NonNullable<ReceptionResponse['reception']>) {
+  const tools = receptionTools.flatMap(tool => {
+    const url = reception.links[tool.key]
+    if (!url || (tool.key === 'booking' && reception.turneras !== undefined)) return []
+    return [{ key: tool.key, kind: tool.key, title: tool.title, description: tool.description, icon: tool.icon, url }]
+  })
+  const turneras = (reception.turneras ?? []).map(turnera => ({
+    key: `turnera-${turnera.id}`, kind: 'booking', icon: 'calendar', url: turnera.url,
+    title: /^turno\b/i.test(turnera.label) ? turnera.label : `Turno ${turnera.label}`,
+    description: [turnera.location, turnera.amountToCharge ? `$ ${turnera.amountToCharge.toLocaleString('es-AR')}` : 'Sin pago online'].filter(Boolean).join(' · '),
+  }))
+  const isIoma = (label: string) => /\bioma\b/i.test(label.replace(/\./g, ''))
+  return [
+    ...tools.filter(tool => tool.kind === 'registration'),
+    ...turneras.filter(turnera => isIoma(turnera.title)),
+    ...tools.filter(tool => tool.kind === 'studies'),
+    ...tools.filter(tool => tool.kind !== 'registration' && tool.kind !== 'studies'),
+    ...turneras.filter(turnera => !isIoma(turnera.title)),
+  ]
 }
 export const receptionUrl = (slug: string) => `https://www.drhappy.com.ar/r/${encodeURIComponent(slug)}`
 export async function callReception(body: Record<string, unknown>): Promise<ReceptionResponse> {

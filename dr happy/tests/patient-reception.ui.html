@@ -16,6 +16,10 @@ window.fetch = async (input, init) => {
   else if(body.action==='get-settings') result = {success:true,settings:window.receptionFixture,available:{documents:true,studies:true,booking:true,registration:true,video:true}};
   else if(body.action==='save-settings') { window.receptionFixture=body.settings; result={success:true,settings:body.settings}; }
   else throw Error('Unexpected request '+url);
+  if(body.action==='public' && new URLSearchParams(location.search).has('turneras')) result.reception.turneras = [
+    {id:'private',label:'Particular',url:'/turnera/fixture?b=private',location:'Consultorio',amountToCharge:35000},
+    {id:'ioma',label:'Turno I.O.M.A',url:'/turnera/fixture?b=ioma',location:'Consultorio',amountToCharge:15000},
+  ];
   return new Response(JSON.stringify(result),{headers:{'Content-Type':'application/json'}});
 };
 </script>

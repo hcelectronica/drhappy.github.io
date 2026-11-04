@@ -36,7 +36,7 @@ try {
   await navigate()
   await wait(`document.querySelectorAll('.reception-choice').length===5`)
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('.reception-choice strong')].map(e=>e.textContent)`),
-    ['Certificados y recetas', 'Evaluación de estudios', 'Turneras', 'Videoconsulta', 'Registrarse como paciente'])
+    ['Registrarse como paciente', 'Chequea tus estudios con IA, Ahora', 'Certificados y recetas', 'Turneras', 'Videoconsulta'])
   assert.equal(await evaluate(`document.querySelector('.reception-video').getAttribute('href')`), '/turnos/?p=fixture&m=private&consultation=video')
   assert.equal(await evaluate(`document.querySelector('.reception-registration').getAttribute('href')`), '/registro/fixture')
   assert.equal(await evaluate(`document.querySelector('.reception-brand image').getAttribute('href').includes('favicon.svg')`), true)
@@ -46,6 +46,13 @@ try {
     const metrics = await evaluate(`({width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight,sections:[...document.querySelectorAll('.reception-page,.reception-shell,.reception-brand,.reception-card,.reception-card header,.reception-choice,footer')].map(e=>[e.className,e.getBoundingClientRect().height])})`)
     assert.ok(metrics.scrollWidth <= width && metrics.scrollHeight <= height, `Reception must fit ${width}x${height}: ${JSON.stringify(metrics)}`)
   }
+  await navigate('?turneras')
+  await wait(`document.querySelectorAll('.reception-choice').length===6`)
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('.reception-choice strong')].map(e=>e.textContent)`),
+    ['Registrarse como paciente', 'Turno I.O.M.A', 'Chequea tus estudios con IA, Ahora', 'Certificados y recetas', 'Videoconsulta', 'Turno Particular'])
+  assert.equal(await evaluate(`document.querySelectorAll('.reception-choice')[1].getAttribute('href')`), '/turnera/fixture?b=ioma')
+  assert.equal(await evaluate(`document.querySelectorAll('.reception-choice')[2].getAttribute('href')`), '/consulta/fixture')
+  assert.equal(await evaluate(`document.documentElement.scrollWidth>innerWidth`), false)
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
   await navigate('?settings')
   await wait(`document.querySelector('.reception-settings input[type=checkbox]')`)

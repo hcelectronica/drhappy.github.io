@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrandMark } from './BrandMark'
-import { callReception, receptionTools } from './patientReceptionService'
+import { buildReceptionChoices, callReception } from './patientReceptionService'
 import type { ReceptionResponse } from './patientReceptionService'
 import './patientReception.css'
 
@@ -24,8 +24,7 @@ export default function PatientReception({ slug }: { slug: string }) {
     return () => { cancelled = true }
   }, [slug, attempt])
   const reception = result?.reception
-  const tools = receptionTools.filter(tool => reception?.links[tool.key] && (tool.key !== 'booking' || reception.turneras === undefined))
-  const turneras = reception?.turneras ?? []
+  const choices = reception ? buildReceptionChoices(reception) : []
   return <main className="reception-page">
     <div className="reception-shell">
       <div className="reception-brand"><BrandMark /><span>Dr Happy</span><small>Tu recepción digital</small></div>
@@ -39,20 +38,12 @@ export default function PatientReception({ slug }: { slug: string }) {
           <p>{result.message || 'Esta recepción no está disponible.'}</p>
           <button type="button" onClick={() => { setResult(null); setAttempt(value => value + 1) }}>Volver a intentar</button>
         </div> : <nav className="reception-choices" aria-label="Opciones para pacientes">
-          {tools.map(tool => <a className={`reception-choice reception-${tool.key}`} key={tool.key} href={reception.links[tool.key]}>
-            <span className="reception-icon"><ToolIcon kind={tool.icon} /></span>
-            <span><strong>{tool.title}</strong><small>{tool.description}</small></span>
+          {choices.map(choice => <a className={`reception-choice reception-${choice.kind}`} key={choice.key} href={choice.url}>
+            <span className="reception-icon"><ToolIcon kind={choice.icon} /></span>
+            <span><strong>{choice.title}</strong><small>{choice.description}</small></span>
             <span className="reception-arrow" aria-hidden="true">›</span>
           </a>)}
-          {turneras.map(turnera => <a className="reception-choice reception-booking" key={turnera.id} href={turnera.url}>
-            <span className="reception-icon"><ToolIcon kind="calendar" /></span>
-            <span><strong>{/^turno\b/i.test(turnera.label) ? turnera.label : `Turno ${turnera.label}`}</strong><small>{[
-              turnera.location,
-              turnera.amountToCharge ? `$ ${turnera.amountToCharge.toLocaleString('es-AR')}` : 'Sin pago online',
-            ].filter(Boolean).join(' · ')}</small></span>
-            <span className="reception-arrow" aria-hidden="true">›</span>
-          </a>)}
-          {!tools.length && !turneras.length && <p>No hay servicios disponibles en este momento. Consultá con tu profesional.</p>}
+          {!choices.length && <p>No hay servicios disponibles en este momento. Consultá con tu profesional.</p>}
         </nav>}
       </section>
       <footer>No atiende urgencias. Ante una emergencia, acudí a una guardia o llamá al servicio local.<span>Atención virtual con revisión profesional. No es un diagnóstico automático.</span></footer>
