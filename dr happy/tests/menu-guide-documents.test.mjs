@@ -81,5 +81,5 @@ test('only administrators with medical access can open or save prescriptions, in
   assert.match(source, /\{canIssuePrescriptions \? \([\s\S]*?onClick=\{handleOpenPrescriptionModal\}/)
   assert.match(source, /\{canIssuePrescriptions \? <button[\s\S]*?>Receta<\/button> : null\}/)
   assert.match(source, /prescriptionModalOpen && selectedPatient && canIssuePrescriptions/)
-  assert.match(source, /<PaidClinicalDocumentsPanel\s+canIssuePrescriptions=\{canIssuePrescriptions\}/)
+  assert.match(source, /<PaidClinicalDocumentsPanel[\s\S]*?canIssuePrescriptions=\{canIssuePrescriptions\}/)
 })

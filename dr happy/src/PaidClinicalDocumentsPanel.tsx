@@ -88,7 +88,7 @@ export function PaidClinicalDocumentsPanel({ canIssuePrescriptions, onClose, onS
   async function copyLink(): Promise<void> {
     if (!settings) return
     try {
-      await navigator.clipboard.writeText(buildPaidClinicalDocumentsUrl(settings.slug))
+      await navigator.clipboard.writeText(buildPaidClinicalDocumentsUrl(settings.slug, undefined, settings.publicAlias))
       setCopyState('copied')
       setError(null)
     } catch (copyError) {
@@ -168,7 +168,7 @@ export function PaidClinicalDocumentsPanel({ canIssuePrescriptions, onClose, onS
             <section className="paid-documents-link-card">
               <div>
                 <span className="paid-documents-label">Enlace fijo para tus pacientes</span>
-                <code>{buildPaidClinicalDocumentsUrl(settings.slug)}</code>
+                <code>{buildPaidClinicalDocumentsUrl(settings.slug, undefined, settings.publicAlias)}</code>
                 <small>Los pacientes pueden abrirlo sin iniciar sesión en Dr Happy.</small>
               </div>
               <button type="button" className="ghost" onClick={() => void copyLink()}>
@@ -195,7 +195,7 @@ export function PaidClinicalDocumentsPanel({ canIssuePrescriptions, onClose, onS
                   <input inputMode="numeric" type="number" min="100" max="1000000" step="1" value={services[service.type].price || ''} disabled={saving || !services[service.type].enabled}
                     onChange={event => setServices(current => ({ ...current, [service.type]: { ...current[service.type], price: Number(event.target.value) } }))} />
                 </label>
-                <small>Enlace propio: {buildPaidClinicalDocumentsUrl(settings.slug, service.type)}</small>
+                <small>Enlace propio: {buildPaidClinicalDocumentsUrl(settings.slug, service.type, settings.publicAlias)}</small>
               </article>)}
             </div>
             <p>El pago corresponde a la evaluación profesional, no garantiza la emisión. Un apto físico puede requerir examen presencial. Cambiar aranceles no modifica pagos anteriores.</p>

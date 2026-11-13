@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase } from './supabaseClient'
+import { buildProfessionalDocumentUrl } from './professionalPublicLinks'
 import type { DocumentServiceOptions, DocumentServiceType } from '../supabase/functions/_shared/clinicalDocumentServices'
 export { documentServices, documentServiceLabel } from '../supabase/functions/_shared/clinicalDocumentServices'
 export type { DocumentServiceOptions, DocumentServiceType } from '../supabase/functions/_shared/clinicalDocumentServices'
@@ -11,6 +12,7 @@ export interface PaidClinicalDocumentServiceOption {
 }
 
 export interface PaidClinicalDocumentSettings {
+  publicAlias?: string
   slug: string
   professionalName: string
   service: PaidClinicalDocumentServiceOption
@@ -119,7 +121,8 @@ export function getPaidClinicalDocumentPatient(id: string): Promise<FunctionResp
   return invokePaidClinicalDocuments({ action: 'get-patient', id })
 }
 
-export function buildPaidClinicalDocumentsUrl(slug: string, serviceType?: DocumentServiceType): string {
+export function buildPaidClinicalDocumentsUrl(slug: string, serviceType?: DocumentServiceType, publicAlias?: string): string {
+  if (publicAlias) return buildProfessionalDocumentUrl(publicAlias, serviceType)
   return `https://drhappy.com.ar/documentos/${encodeURIComponent(slug)}${serviceType ? `?type=${serviceType}` : ''}`
 }
 

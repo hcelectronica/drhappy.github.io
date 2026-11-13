@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { ensurePublicAlias, findPublicAliasOwner, resolvePublicToolSettings } from '../_shared/professionalPublicAlias.ts'
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
@@ -139,26 +140,17 @@ function normalizeSlug(value: string): string {
 // Links generados por versiones anteriores: nombre + sufijo aleatorio (ej. alan-moodie-muc7bhne-3a3a28).
 const LEGACY_SLUG_SUFFIX = /-[a-z0-9]{6,10}-[a-f0-9]{6}$/
 
-async function resolveFixedSlug(admin: AdminClient, professionalId: string, currentSlug: string, professionalName: string): Promise<string> {
-  if (currentSlug && !LEGACY_SLUG_SUFFIX.test(currentSlug)) return currentSlug
-  const base = normalizeSlug(currentSlug.replace(LEGACY_SLUG_SUFFIX, '')) || normalizeSlug(professionalName) || currentSlug
-  for (let attempt = 1; attempt <= 20; attempt += 1) {
-    const candidate = attempt === 1 ? base : `${base}-${attempt}`
-    const { data } = await admin
-      .from('public_booking_profiles')
-      .select('professional_id')
-      .eq('slug', candidate)
-      .maybeSingle()
-    if (!data || data.professional_id === professionalId) return candidate
-  }
-  return currentSlug
-}
-
 async function findProfileBySlug(admin: AdminClient, slug: string) {
   const columns = 'professional_id, slug, enabled, professional_name, location, reason, horizon_days, availability_blocks'
-  const exact = await admin.from('public_booking_profiles').select(columns).eq('slug', slug).maybeSingle()
-  if (exact.error || exact.data || !LEGACY_SLUG_SUFFIX.test(slug)) return exact
-  return await admin.from('public_booking_profiles').select(columns).eq('slug', slug.replace(LEGACY_SLUG_SUFFIX, '')).maybeSingle()
+  const exact = await resolvePublicToolSettings(admin, 'public_booking_profiles', columns, slug)
+  if (exact || !LEGACY_SLUG_SUFFIX.test(slug)) return { data: exact, error: null }
+  if (await findPublicAliasOwner(admin, slug)) return { data: null, error: null }
+  // Compatibility for profiles shortened by older releases: only a stored
+  // internal slug may match the suffix-free form, never another owner's alias.
+  const legacy = await admin.from('public_booking_profiles').select(columns).eq('slug', slug.replace(LEGACY_SLUG_SUFFIX, '')).maybeSingle()
+  if (legacy.error || !legacy.data) return legacy
+  const verified = await resolvePublicToolSettings(admin, 'public_booking_profiles', columns, String(legacy.data.slug))
+  return { data: verified, error: null }
 }
 
 function todayISO(): string {
@@ -504,7 +496,7 @@ serve(async (request) => {
         }
         return jsonResponse(200, {
           success: true,
-          settings: settings ? publicSettingsResponse(settings) : null,
+          settings: settings ? { ...publicSettingsResponse(settings), publicAlias: await ensurePublicAlias(admin, professionalId) } : null,
         })
       }
 
@@ -527,7 +519,9 @@ serve(async (request) => {
           if (accountError) throw accountError
           if (account?.status !== 'connected') return jsonResponse(409, { success: false, message: 'Conectá Mercado Pago antes de habilitar una turnera con cobro.' })
         }
-        settings.slug = await resolveFixedSlug(admin, professionalId, settings.slug, settings.professionalName)
+        const existing = await admin.from('public_booking_profiles').select('slug').eq('professional_id', professionalId).maybeSingle()
+        if (existing.error) throw existing.error
+        if (existing.data) settings.slug = existing.data.slug
         const { data: saved, error } = await admin
           .from('public_booking_profiles')
           .upsert({
@@ -554,7 +548,7 @@ serve(async (request) => {
           })
         }
 
-        return jsonResponse(200, { success: true, settings: publicSettingsResponse(saved) })
+        return jsonResponse(200, { success: true, settings: { ...publicSettingsResponse(saved), publicAlias: await ensurePublicAlias(admin, professionalId) } })
       }
 
       case 'get-public-agenda': {

@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { ensurePublicAlias, resolvePublicToolSettings } from '../_shared/professionalPublicAlias.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { notifyProfessionalRegistration } from '../_shared/professionalRegistrationEmail.ts'
@@ -82,8 +83,8 @@ serve(async (request) => {
   // ── Acciones públicas (paciente) ───────────────────────────────────────────
   if (body.action === 'get-invite' || body.action === 'submit') {
     const token = plainText(body.token, 80).toLowerCase()
-    if (!/^[a-z0-9-]{6,80}$/.test(token)) return jsonResponse(404, { success: false, message: 'Este link de invitación no es válido.' })
-    const { data: link } = await admin.from('patient_invite_links').select('professional_id').eq('token', token).maybeSingle()
+    if (!/^[a-z0-9-]{1,80}$/.test(token)) return jsonResponse(404, { success: false, message: 'Este link de invitación no es válido.' })
+    const link = await resolvePublicToolSettings(admin, 'patient_invite_links', 'professional_id', token, 'token')
     if (!link) return jsonResponse(404, { success: false, message: 'Este link de invitación ya no está disponible. Pedile uno nuevo a tu profesional.' })
 
     if (body.action === 'get-invite') {
@@ -169,9 +170,11 @@ serve(async (request) => {
   if (!professionalId) return jsonResponse(401, { success: false, message: 'Sesión profesional requerida.' })
 
   if (body.action === 'get-link' || body.action === 'regenerate-link') {
+    const publicAlias = await ensurePublicAlias(admin, professionalId)
+    const shortUrl = `https://www.drhappy.com.ar/registro/${encodeURIComponent(publicAlias)}`
     if (body.action === 'get-link') {
       const { data: existing } = await admin.from('patient_invite_links').select('token').eq('professional_id', professionalId).maybeSingle()
-      if (existing?.token) return jsonResponse(200, { success: true, token: existing.token })
+      if (existing?.token) return jsonResponse(200, { success: true, token: existing.token, publicAlias, shortUrl })
     }
     const { data: professional } = await admin.from('professionals').select('full_name').eq('id', professionalId).maybeSingle()
     const base = slugify(String(professional?.full_name ?? '')) || 'profesional'
@@ -180,7 +183,7 @@ serve(async (request) => {
       const { error } = await admin
         .from('patient_invite_links')
         .upsert({ professional_id: professionalId, token, created_at: new Date().toISOString() }, { onConflict: 'professional_id' })
-      if (!error) return jsonResponse(200, { success: true, token })
+      if (!error) return jsonResponse(200, { success: true, token, publicAlias, shortUrl })
     }
     return jsonResponse(500, { success: false, message: 'No se pudo generar el link de invitación.' })
   }

@@ -4,6 +4,7 @@ import vm from 'node:vm'
 import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
 import { documentServices, documentServiceOptions } from '../supabase/functions/_shared/clinicalDocumentServices.ts'
+import { ensurePublicAlias, resolvePublicToolSettings } from '../supabase/functions/_shared/professionalPublicAlias.ts'
 
 const source = (await readFile(new URL('../supabase/functions/paid-clinical-documents/index.ts', import.meta.url), 'utf8')).replace(/^import .*$/gm, '')
 const js = ts.transpile(source, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None })
@@ -39,6 +40,7 @@ async function fixture() {
       return q
     },
     async rpc(name, args) {
+      if (name === 'ensure_professional_public_alias') return { data: 'doctor', error: null }
       rpcCalls.push({ name, args })
       return state.fail ? { error: { message: 'Fixture DB error' } } : { data: state.result }
     },
@@ -48,6 +50,7 @@ async function fixture() {
     corsHeaders: {}, createClient: () => admin, resolveProfessionalId: async () => state.session ? 'owner' : null,
     hasMedicalToolRowAccess: () => true, MEDICAL_TOOL_ACCESS_COLUMNS: 'id',
     documentServices, documentServiceOptions,
+    ensurePublicAlias, resolvePublicToolSettings,
     Response, crypto, TextEncoder, TextDecoder, atob, Uint8Array, AbortSignal,
     fetch: async () => { state.checkoutCount++; return new Response(JSON.stringify({ id: 'checkout', init_point: 'https://checkout.example.invalid' })) },
     console: { error() {} },

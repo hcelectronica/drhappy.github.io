@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
+import { ensurePublicAlias, resolvePublicToolSettings } from '../_shared/professionalPublicAlias.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from '../_shared/medicalToolAccess.ts'
@@ -259,9 +260,8 @@ Deno.serve(async (request) => {
     // ── Acciones públicas (paciente) ─────────────────────────────────────────
     if (body.action === 'get-page' || body.action === 'submit') {
       const slug = plainText(body.slug, 80).toLowerCase()
-      if (!/^[a-z0-9-]{6,80}$/.test(slug)) return reply(404, { success: false, message: 'Este link de consulta virtual no es válido.' })
-      const { data: settings, error: settingsError } = await admin.from('virtual_consult_settings').select('professional_id, slug, enabled, price').eq('slug', slug).maybeSingle()
-      if (settingsError) throw settingsError
+      if (!/^[a-z0-9-]{1,80}$/.test(slug)) return reply(404, { success: false, message: 'Este link de consulta virtual no es válido.' })
+      const settings = await resolvePublicToolSettings(admin, 'virtual_consult_settings', 'professional_id, slug, enabled, price', slug)
       const info = settings ? await professionalInfo(admin, settings.professional_id) : null
       if (!settings || !info?.exists || !info.active || !info.eligible) return reply(404, { success: false, message: 'Este link de consulta virtual no está disponible.' })
       if (!settings.enabled) return reply(404, { success: false, message: 'El profesional no está recibiendo consultas virtuales en este momento.' })
@@ -440,12 +440,15 @@ Deno.serve(async (request) => {
       }
       const { data: paymentAccount } = await admin.from('professional_payment_accounts').select('status')
         .eq('professional_id', professionalId).eq('provider', 'mercadopago').maybeSingle()
+      const publicAlias = await ensurePublicAlias(admin, professionalId)
       return reply(200, {
         success: true,
         settings: {
           slug: settings.slug, enabled: settings.enabled, price: Number(settings.price),
           letterhead: settings.letterhead ?? '', logoDataUrl: settings.logo_data_url ?? '',
-          paymentReady: paymentAccount?.status === 'connected', url: `${PUBLIC_SITE}/consulta/${settings.slug}`,
+          paymentReady: paymentAccount?.status === 'connected',
+          publicAlias,
+          url: `${PUBLIC_SITE}/consulta/${publicAlias}`,
           patientFolderUrl: await patientFolderUrl(admin, professionalId),
         },
       })

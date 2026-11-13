@@ -4,6 +4,7 @@ import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { normalizeBlocks } from '../_shared/publicBookingBlocks.ts'
 import { documentServices, documentServiceOptions } from '../_shared/clinicalDocumentServices.ts'
+import { ensurePublicAlias, resolvePublicToolSettings, publicDocumentPaths } from '../_shared/professionalPublicAlias.ts'
 
 const tools = ['documents', 'studies', 'booking', 'registration', 'video'] as const
 const slugPattern = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/
@@ -25,11 +26,9 @@ serve(async request => {
     let settings: Record<string, unknown> | null = null
     if (isPublic) {
       if (typeof body.slug !== 'string' || !slugPattern.test(body.slug)) return reply(404, { success: false, message: 'Esta recepción no está disponible.' })
-      const result = await admin.from('patient_receptions').select('*').eq('slug', body.slug).eq('enabled', true).maybeSingle()
-      if (result.error) throw result.error
-      if (!result.data) return reply(404, { success: false, message: 'Esta recepción no está disponible.' })
-      settings = result.data
-      professionalId = result.data.professional_id
+      settings = await resolvePublicToolSettings(admin, 'patient_receptions', '*', body.slug)
+      if (!settings?.enabled) return reply(404, { success: false, message: 'Esta recepción no está disponible.' })
+      professionalId = String(settings.professional_id)
     } else {
       const id = await resolveProfessionalId(request, admin)
       if (!id) return reply(401, { success: false, message: 'Iniciá sesión para configurar tu recepción.' })
@@ -38,6 +37,7 @@ serve(async request => {
     const professional = await admin.from('professionals').select('full_name,active').eq('id', professionalId).maybeSingle()
     if (professional.error) throw professional.error
     if (!professional.data || professional.data.active === false) return reply(404, { success: false, message: 'Esta recepción no está disponible.' })
+    const publicAlias = await ensurePublicAlias(admin, professionalId)
     const [booking, virtual, documents, invite, payment] = await Promise.all([
       admin.from('public_booking_profiles').select('slug,enabled,availability_blocks').eq('professional_id', professionalId).maybeSingle(),
       admin.from('virtual_consult_settings').select('slug,enabled').eq('professional_id', professionalId).maybeSingle(),
@@ -50,16 +50,16 @@ serve(async request => {
     const activeBlocks = booking.data?.enabled ? normalizeBlocks(booking.data.availability_blocks)
       .filter(block => block.enabled !== false && (block.modality !== 'private' || (Number(block.amountToCharge) > 0 && payment.data?.status === 'connected'))) : []
     const paidBooking = activeBlocks.find(block => block.modality === 'private')
-    const bookingUrl = (block: typeof activeBlocks[number]) => `${base}/turnera/${encodeURIComponent(booking.data!.slug)}/${encodeURIComponent(block.slug!)}`
+    const bookingUrl = (block: typeof activeBlocks[number]) => `${base}/turnera/${encodeURIComponent(publicAlias)}/${encodeURIComponent(block.slug!)}`
     const turneras = activeBlocks.map(block => ({
       id: block.id, label: block.label, url: bookingUrl(block),
       location: block.location || '', amountToCharge: block.amountToCharge || null,
     }))
     const destinations: Record<string, string | null> = {
-      documents: documents.data && Object.values(documentServiceOptions(documents.data)).some(service => service.enabled) ? `${base}/documentos/${encodeURIComponent(documents.data.slug)}` : null,
-      studies: virtual.data?.enabled && payment.data?.status === 'connected' ? `${base}/consulta/${encodeURIComponent(virtual.data.slug)}` : null,
+      documents: documents.data && Object.values(documentServiceOptions(documents.data)).some(service => service.enabled) ? `${base}/documentos/${encodeURIComponent(publicAlias)}` : null,
+      studies: virtual.data?.enabled && payment.data?.status === 'connected' ? `${base}/consulta/${encodeURIComponent(publicAlias)}` : null,
       booking: turneras[0]?.url || null,
-      registration: invite.data ? `${base}/registro/${encodeURIComponent(invite.data.token)}` : null,
+      registration: invite.data ? `${base}/registro/${encodeURIComponent(publicAlias)}` : null,
       video: paidBooking ? `${bookingUrl(paidBooking)}?consultation=video` : null,
     }
     if (isPublic) {
@@ -71,7 +71,7 @@ serve(async request => {
           return option.enabled && option.price >= 100
         }).map(service => ({
           type: service.type, label: service.label,
-          url: `${base}/documentos/${encodeURIComponent(documents.data!.slug)}?type=${service.type}`,
+          url: `${base}/documentos/${encodeURIComponent(publicAlias)}${publicDocumentPaths[service.type] ? `/${publicDocumentPaths[service.type]}` : `?type=${service.type}`}`,
           amount: documentServiceOptions(documents.data!)[service.type].price,
         })) : [],
         links: Object.fromEntries(tools.filter(tool => settings![tool] === true && destinations[tool]).map(tool => [tool, destinations[tool]])),
@@ -80,9 +80,11 @@ serve(async request => {
     if (body.action === 'get-settings') {
       const result = await admin.from('patient_receptions').select('*').eq('professional_id', professionalId).maybeSingle()
       if (result.error) throw result.error
-      return reply(200, { success: true, settings: result.data ?? {
-        slug: '', display_name: professional.data.full_name || 'Mi consultorio', enabled: false,
-        ...Object.fromEntries(tools.map(tool => [tool, !!destinations[tool]])),
+      return reply(200, { success: true, settings: {
+        ...(result.data ?? {
+          display_name: professional.data.full_name || 'Mi consultorio', enabled: false,
+          ...Object.fromEntries(tools.map(tool => [tool, false])),
+        }), slug: publicAlias,
       }, available: Object.fromEntries(tools.map(tool => [tool, !!destinations[tool]])) })
     }
     if (body.action !== 'save-settings') return reply(400, { success: false, message: 'Acción inválida.' })

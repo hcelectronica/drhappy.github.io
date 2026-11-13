@@ -55,7 +55,7 @@ export default function PublicTurnerasEditor({ settings, defaultSchedule, saving
     {settings.blocks.map(block => {
       const total = capacity(block)
       const active = settings.enabled && block.enabled !== false
-      const url = buildFixedPublicBookingUrl(settings.slug, undefined, block.id, slugs.get(block.id))
+      const url = buildFixedPublicBookingUrl(settings.slug, undefined, block.id, slugs.get(block.id), settings.publicAlias)
       return <details key={block.id} className={`public-turnera-section ${block.modality === 'private' ? 'is-private' : 'is-free'}`} open={settings.blocks.length === 1 ? true : undefined}>
         <summary><span>{block.label || 'Nueva turnera'}</span><small>{active ? 'Habilitada' : 'Pausada / sin publicar'} · hasta {block.dailyQuota ?? block.slotCount} turnos por día</small></summary>
         <div className="public-turnera-body">

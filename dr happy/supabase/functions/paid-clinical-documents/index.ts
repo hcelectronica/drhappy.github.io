@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
+import { ensurePublicAlias, resolvePublicToolSettings } from '../_shared/professionalPublicAlias.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from '../_shared/medicalToolAccess.ts'
@@ -68,12 +69,7 @@ async function getProfessional(admin: SupabaseClient, professionalId: string) {
 }
 
 async function getSettingsBySlug(admin: SupabaseClient, slug: string) {
-  const { data, error } = await admin.from('paid_clinical_document_settings')
-    .select(SETTINGS_COLUMNS)
-    .eq('slug', slug)
-    .maybeSingle()
-  if (error) throw error
-  return data
+  return resolvePublicToolSettings(admin, 'paid_clinical_document_settings', SETTINGS_COLUMNS, slug)
 }
 
 async function getPaymentAccount(admin: SupabaseClient, professionalId: string) {
@@ -170,7 +166,7 @@ Deno.serve(async (request) => {
       }
 
       const slug = plainText(body.slug, 80).toLowerCase()
-      if (!/^[a-z0-9-]{6,80}$/.test(slug)) return reply(404, { success: false, message: 'Este enlace no es válido.' })
+      if (!/^[a-z0-9-]{1,80}$/.test(slug)) return reply(404, { success: false, message: 'Este enlace no es válido.' })
       const settings = await getSettingsBySlug(admin, slug)
       const professional = settings ? await getProfessional(admin, settings.professional_id) : null
       if (!settings || !professional || professional.active === false || !canUsePaidDocuments(professional)) {
@@ -365,6 +361,7 @@ Deno.serve(async (request) => {
         success: true,
         settings: {
           slug: settings.slug,
+          publicAlias: await ensurePublicAlias(admin, professionalId),
           professionalName: professional.full_name || 'Profesional',
           ...responseService(settings),
           paymentReady: paymentAccount?.status === 'connected',

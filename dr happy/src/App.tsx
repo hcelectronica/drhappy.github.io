@@ -180,10 +180,7 @@ const WEEK_DAYS = [
   { value: 6, label: 'Sábado' },
   { value: 0, label: 'Domingo' },
 ]
-const DEFAULT_APPOINTMENT_DAYS = [1, 2, 4]
 const DEFAULT_DAILY_PATIENT_LIMIT = 10
-const DEFAULT_APPOINTMENT_START_TIME = '09:00'
-const DEFAULT_APPOINTMENT_END_TIME = '19:00'
 
 function calculateDailyCapacity(startTime: string, endTime: string, durationMinutes: number): number {
   const [startHour, startMinute] = startTime.split(':').map(Number)
@@ -196,12 +193,14 @@ const APPOINTMENT_HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => String
 const APPOINTMENT_PERIOD_OPTIONS = ['AM', 'PM'] as const
 
 function splitAppointmentTime(value: string): { hour: string; period: 'AM' | 'PM' } {
+  if (!value) return { hour: '', period: 'AM' }
   const [rawHour] = value.split(':')
   const hour24 = Number(rawHour)
   return { hour: String(hour24 % 12 || 12), period: hour24 >= 12 ? 'PM' : 'AM' }
 }
 
 function joinAppointmentTime(hour: string, period: 'AM' | 'PM'): string {
+  if (!hour) return ''
   const hour12 = Math.max(1, Math.min(12, Number(hour) || 12))
   const hour24 = period === 'PM' ? (hour12 === 12 ? 12 : hour12 + 12) : hour12 === 12 ? 0 : hour12
   return `${String(hour24).padStart(2, '0')}:00`
@@ -1306,28 +1305,18 @@ function normalizeRemoteProfile(raw: unknown, fallback: ProfessionalProfile): Pr
     return fallback
   }
   const candidate = raw as Partial<ProfessionalProfile>
-  if (
-    typeof candidate.fullName !== 'string' ||
-    typeof candidate.specialty !== 'string' ||
-    typeof candidate.licenseNumber !== 'string' ||
-    typeof candidate.email !== 'string' ||
-    typeof candidate.phone !== 'string' ||
-    typeof candidate.signatureText !== 'string'
-  ) {
-    return fallback
-  }
   return {
-    fullName: candidate.fullName,
-    specialty: candidate.specialty,
-    licenseNumber: candidate.licenseNumber,
-    email: candidate.email,
-    phone: candidate.phone,
+    fullName: typeof candidate.fullName === 'string' ? candidate.fullName : fallback.fullName,
+    specialty: typeof candidate.specialty === 'string' ? candidate.specialty : fallback.specialty,
+    licenseNumber: typeof candidate.licenseNumber === 'string' ? candidate.licenseNumber : fallback.licenseNumber,
+    email: typeof candidate.email === 'string' ? candidate.email : fallback.email,
+    phone: typeof candidate.phone === 'string' ? candidate.phone : fallback.phone,
     address: typeof candidate.address === 'string' ? candidate.address : undefined,
-    signatureText: candidate.signatureText,
+    signatureText: typeof candidate.signatureText === 'string' ? candidate.signatureText : fallback.signatureText,
     paymentLink: typeof candidate.paymentLink === 'string' ? candidate.paymentLink : undefined,
     appointmentDays: Array.isArray(candidate.appointmentDays)
       ? candidate.appointmentDays.filter((day): day is number => typeof day === 'number' && day >= 0 && day <= 6)
-      : DEFAULT_APPOINTMENT_DAYS,
+      : [],
     dailyPatientLimit:
       typeof candidate.dailyPatientLimit === 'number' && candidate.dailyPatientLimit > 0
         ? candidate.dailyPatientLimit
@@ -1338,10 +1327,10 @@ function normalizeRemoteProfile(raw: unknown, fallback: ProfessionalProfile): Pr
         : 30,
     appointmentStartTime: typeof candidate.appointmentStartTime === 'string' && /^\d{2}:\d{2}$/.test(candidate.appointmentStartTime)
       ? candidate.appointmentStartTime
-      : DEFAULT_APPOINTMENT_START_TIME,
+      : '',
     appointmentEndTime: typeof candidate.appointmentEndTime === 'string' && /^\d{2}:\d{2}$/.test(candidate.appointmentEndTime)
       ? candidate.appointmentEndTime
-      : DEFAULT_APPOINTMENT_END_TIME,
+      : '',
     appointmentAmountToCharge:
       typeof candidate.appointmentAmountToCharge === 'number' && candidate.appointmentAmountToCharge > 0
         ? candidate.appointmentAmountToCharge
@@ -1670,11 +1659,11 @@ function profileFromSeed(user: SeedUser): ProfessionalProfile {
     phone: '',
     signatureText: 'Validado digitalmente por profesional de la salud.',
     communitySeenMessageIds: [],
-    appointmentDays: DEFAULT_APPOINTMENT_DAYS,
+    appointmentDays: [],
     dailyPatientLimit: DEFAULT_DAILY_PATIENT_LIMIT,
     appointmentDurationMinutes: 30,
-    appointmentStartTime: DEFAULT_APPOINTMENT_START_TIME,
-    appointmentEndTime: DEFAULT_APPOINTMENT_END_TIME,
+    appointmentStartTime: '',
+    appointmentEndTime: '',
   }
 }
 
@@ -2634,13 +2623,13 @@ function App() {
   const [appointmentSearchQuery, setAppointmentSearchQuery] = useState('')
   const [appointmentFilterTab, setAppointmentFilterTab] = useState<'today' | 'upcoming' | 'all' | 'past'>('today')
   const [appointmentDateFilter, setAppointmentDateFilter] = useState('')
-  const [appointmentDays, setAppointmentDays] = useState<number[]>(DEFAULT_APPOINTMENT_DAYS)
+  const [appointmentDays, setAppointmentDays] = useState<number[]>([])
   const [dailyPatientLimit, setDailyPatientLimit] = useState(DEFAULT_DAILY_PATIENT_LIMIT)
   const [appointmentDurationMinutes, setAppointmentDurationMinutes] = useState(30)
   const [appointmentAmountToCharge, setAppointmentAmountToCharge] = useState('')
   const [appointmentAmountConcept, setAppointmentAmountConcept] = useState<'sena' | 'consulta'>('sena')
-  const [appointmentStartTime, setAppointmentStartTime] = useState(DEFAULT_APPOINTMENT_START_TIME)
-  const [appointmentEndTime, setAppointmentEndTime] = useState(DEFAULT_APPOINTMENT_END_TIME)
+  const [appointmentStartTime, setAppointmentStartTime] = useState('')
+  const [appointmentEndTime, setAppointmentEndTime] = useState('')
   // Prueba piloto: vista alternativa de la Turnera con calendario mensual de ocupación
   // y estadísticas de pacientes atendidos por semana/mes (candidata a feature premium anual).
   const [turneraViewMode, setTurneraViewMode] = useState<'list' | 'calendar' | 'stats' | 'ledger' | 'capacity'>('list')
@@ -2786,6 +2775,7 @@ function App() {
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [receptionSettingsOpen, setReceptionSettingsOpen] = useState(false)
   const [inviteToken, setInviteToken] = useState<string | null>(null)
+  const [invitePublicUrl, setInvitePublicUrl] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
   const [inviteError, setInviteError] = useErrorNotification()
   const [inviteCopied, setInviteCopied] = useState(false)
@@ -3823,6 +3813,25 @@ function App() {
     localStorage.setItem(SESSION_USER_KEY, user.id)
     localStorage.setItem(SESSION_USER_CACHE_KEY, JSON.stringify(user))
     setActiveUserId(user.id)
+    setAppointmentDays([])
+    setAppointmentStartTime('')
+    setAppointmentEndTime('')
+    setAppointmentDurationMinutes(30)
+    setAppointmentAmountToCharge('')
+    setAppointmentAmountConcept('sena')
+    setPublicBookingSettings(null)
+    setReceptionSettingsOpen(false)
+    setPaidDocumentsPanelOpen(false)
+    setFreeSlotModalOpen(false)
+    setAppointmentModalOpen(false)
+    setInviteModalOpen(false)
+    setInviteToken(null)
+    setInvitePublicUrl('')
+    setInviteBusy(false)
+    setInviteCopied(false)
+    setInviteError(null)
+    setVirtualConsultOpen(false)
+    setMercadoPagoConnected(false)
     setProfile(isSupabaseConfigured ? null : localProfile)
     setCommunitySeenIds(localSeenIds)
     setPatients(isSupabaseConfigured ? [] : localLoaded.patientsList)
@@ -3858,6 +3867,7 @@ function App() {
 
       if (data) {
         const workspace = data as RemoteWorkspaceRow
+        if (workspace.user_id !== user.id) throw new Error('El espacio de trabajo no corresponde a tu cuenta. Cerrá sesión y volvé a entrar.')
         loadedProfile = normalizeRemoteProfile(workspace.profile_json, profileFromSeed(user))
         const remotePatients = Array.isArray(workspace.patients_json)
           ? workspace.patients_json
@@ -3877,26 +3887,14 @@ function App() {
               .map(normalizeTreatmentLedgerEntry)
               .filter((entry): entry is TreatmentLedgerEntry => Boolean(entry))
           : []
-        const ledgerInitialized = workspace.treatment_ledger_initialized === true || remoteLedger.length > 0
-        // Solo importar el ledger local en la primera sincronización. Un balance
-        // remoto vacío pero ya inicializado representa una eliminación real.
-        if (!ledgerInitialized && remoteLedger.length === 0 && (loadedLedger.length > 0 || user.isAdmin)) {
-          const ledgerResult = await saveTreatmentLedgerData(loadedLedger)
-          if (!ledgerResult.success) console.warn('No se pudo inicializar el balance remoto:', ledgerResult.message)
-        } else {
-          loadedLedger = remoteLedger
-        }
+        loadedLedger = remoteLedger
       } else {
-        await persistWorkspaceRemote(
-          user.id,
-          localProfile,
-          localLoaded.patientsList,
-          localAppointments,
-        )
-        if (loadedLedger.length > 0) {
-          const ledgerResult = await saveTreatmentLedgerData(loadedLedger)
-          if (!ledgerResult.success) console.warn('No se pudo inicializar el balance remoto:', ledgerResult.message)
-        }
+        loadedProfile = profileFromSeed(user)
+        patientsList = []
+        availablePatientsList = []
+        loadedAppointments = []
+        loadedLedger = []
+        if (!await persistWorkspaceRemote(user.id, loadedProfile, [], [])) return
       }
     }
 
@@ -5564,14 +5562,20 @@ function App() {
   }, [selectedPatient, pendingAttentionAppointmentId])
 
   useEffect(() => {
-    if (!profile) return
-    setAppointmentDays(profile.appointmentDays?.length ? profile.appointmentDays : DEFAULT_APPOINTMENT_DAYS)
+    if (!profile) {
+      setAppointmentDays([])
+      setAppointmentStartTime('')
+      setAppointmentEndTime('')
+      setAppointmentAmountToCharge('')
+      return
+    }
+    setAppointmentDays(profile.appointmentDays ?? [])
     setDailyPatientLimit(profile.dailyPatientLimit || DEFAULT_DAILY_PATIENT_LIMIT)
     setAppointmentDurationMinutes(profile.appointmentDurationMinutes || 30)
     setAppointmentAmountToCharge(typeof profile.appointmentAmountToCharge === 'number' ? String(profile.appointmentAmountToCharge) : '')
     setAppointmentAmountConcept(profile.appointmentAmountConcept === 'consulta' ? 'consulta' : 'sena')
-    setAppointmentStartTime(profile.appointmentStartTime || DEFAULT_APPOINTMENT_START_TIME)
-    setAppointmentEndTime(profile.appointmentEndTime || DEFAULT_APPOINTMENT_END_TIME)
+    setAppointmentStartTime(profile.appointmentStartTime || '')
+    setAppointmentEndTime(profile.appointmentEndTime || '')
   }, [profile])
 
   useEffect(() => {
@@ -7668,10 +7672,14 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   function saveAppointmentCapacity(nextDays: number[], nextStartTime = appointmentStartTime, nextEndTime = appointmentEndTime, nextDuration = appointmentDurationMinutes): void {
     const normalizedDays = Array.from(new Set(nextDays)).filter((day) => day >= 0 && day <= 6)
     const normalizedLimit = Math.max(1, Math.min(100, calculateDailyCapacity(nextStartTime, nextEndTime, nextDuration)))
-    const normalizedStartTime = /^\d{2}:\d{2}$/.test(nextStartTime) ? nextStartTime : DEFAULT_APPOINTMENT_START_TIME
-    const normalizedEndTime = /^\d{2}:\d{2}$/.test(nextEndTime) ? nextEndTime : DEFAULT_APPOINTMENT_END_TIME
+    const normalizedStartTime = nextStartTime
+    const normalizedEndTime = nextEndTime
+    if ((nextStartTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(nextStartTime)) || (nextEndTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(nextEndTime))) {
+      setAppError('Revisá los horarios de atención.')
+      return
+    }
     const normalizedDuration = Math.max(5, Math.min(240, Math.round(nextDuration)))
-    if (normalizedStartTime >= normalizedEndTime) {
+    if (normalizedStartTime && normalizedEndTime && normalizedStartTime >= normalizedEndTime) {
       setAppError('El horario Desde debe ser anterior al horario Hasta.')
       return
     }
@@ -7694,7 +7702,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     setProfile(nextProfile)
     localStorage.setItem(profileStorageKey(activeUserId), JSON.stringify(nextProfile))
     void persistWorkspaceRemote(activeUserId, nextProfile, patients, appointments)
-    setAppNotice(`Configuración guardada: ${normalizedLimit} turnos posibles por día.`)
+    setAppNotice(normalizedDays.length && normalizedStartTime && normalizedEndTime ? `Configuración guardada: ${normalizedLimit} turnos posibles por día.` : 'Configuración guardada. Completá días y horarios para otorgar turnos.')
   }
 
 
@@ -7706,8 +7714,8 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         patientEmail: prefillPatient.email || '',
         patientDni: prefillPatient.dni || '',
         scheduledDate: prefillDate || todayLocalISO(),
-        scheduledTime: '09:00',
-        durationMinutes: 30,
+        scheduledTime: appointmentStartTime,
+        durationMinutes: appointmentDurationMinutes,
         reason: prefillPatient.diagnosticoPrincipal || 'Control médico general',
         notes: '',
         location: 'Consultorio médico',
@@ -7716,7 +7724,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
         amountConcept: 'consulta',
       })
     } else {
-      setAppointmentDraft({ ...buildEmptyAppointmentDraft(), scheduledDate: prefillDate || todayLocalISO() })
+      setAppointmentDraft({ ...buildEmptyAppointmentDraft(), scheduledDate: prefillDate || todayLocalISO(), scheduledTime: appointmentStartTime, durationMinutes: appointmentDurationMinutes })
     }
     setAppointmentPatientQuery('')
     setAppointmentSuggestionsOpen(false)
@@ -8239,7 +8247,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
 
   function buildDefaultPublicBookingSettings(): PublicBookingSettings | null {
     if (!activeUserId) return null
-    const currentProf = profile || (activeUser ? profileFromSeed(activeUser) : null)
+    const currentProf = activeUser ? profileFromSeed(activeUser) : null
     const professionalName = currentProf?.fullName || activeUser?.fullName || 'Profesional Dr Happy'
     return {
       professionalId: activeUserId,
@@ -10268,18 +10276,23 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   // ── Invitar paciente ────────────────────────────────────────────────────────
 
   async function loadInviteLink(regenerate = false): Promise<void> {
+    const generation = sessionGenerationRef.current
+    const userId = activeUserId
+    if (!userId) return
     setInviteBusy(true)
     setInviteError(null)
     try {
       const result = await getPatientInviteLink(regenerate)
+      if (generation !== sessionGenerationRef.current || localStorage.getItem(SESSION_USER_KEY) !== userId) return
       if (!result.success || !result.token) {
         setInviteError(result.message || 'No se pudo generar el link de invitación.')
         return
       }
       setInviteToken(result.token)
+      setInvitePublicUrl(result.shortUrl || buildPatientInviteUrl(result.token, result.publicAlias))
       setInviteCopied(false)
     } finally {
-      setInviteBusy(false)
+      if (generation === sessionGenerationRef.current) setInviteBusy(false)
     }
   }
 
@@ -13907,6 +13920,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 Desde
                 <span className="time-select-pair">
                   <select value={splitAppointmentTime(appointmentStartTime).hour} onChange={(event) => saveAppointmentCapacity(appointmentDays, joinAppointmentTime(event.target.value, splitAppointmentTime(appointmentStartTime).period), appointmentEndTime, appointmentDurationMinutes)}>
+                    <option value="">Elegí horario</option>
                     {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}:00</option>)}
                   </select>
                   <select value={splitAppointmentTime(appointmentStartTime).period} onChange={(event) => saveAppointmentCapacity(appointmentDays, joinAppointmentTime(splitAppointmentTime(appointmentStartTime).hour, event.target.value as 'AM' | 'PM'), appointmentEndTime, appointmentDurationMinutes)}>
@@ -13918,6 +13932,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
                 Hasta
                 <span className="time-select-pair">
                   <select value={splitAppointmentTime(appointmentEndTime).hour} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, joinAppointmentTime(event.target.value, splitAppointmentTime(appointmentEndTime).period), appointmentDurationMinutes)}>
+                    <option value="">Elegí horario</option>
                     {APPOINTMENT_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{hour}:00</option>)}
                   </select>
                   <select value={splitAppointmentTime(appointmentEndTime).period} onChange={(event) => saveAppointmentCapacity(appointmentDays, appointmentStartTime, joinAppointmentTime(splitAppointmentTime(appointmentEndTime).hour, event.target.value as 'AM' | 'PM'), appointmentDurationMinutes)}>
@@ -13961,7 +13976,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </details>
             {publicBookingSettings && publicBookingSettings.professionalId === activeUserId ? <PublicTurnerasEditor
               settings={publicBookingSettings}
-              defaultSchedule={{ days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS, startTime: appointmentStartTime, endTime: appointmentEndTime, durationMinutes: appointmentDurationMinutes }}
+              defaultSchedule={{ days: appointmentDays, startTime: appointmentStartTime, endTime: appointmentEndTime, durationMinutes: appointmentDurationMinutes }}
               saving={publicBookingSaving || publicBookingLoading} mercadoPagoConnected={mercadoPagoConnected}
               error={publicBookingError} notice={publicBookingNotice}
               onChange={setPublicBookingSettings} onSave={handleSavePublicBookingSettings} onCopy={copyPublicTurneraLink}
@@ -16848,7 +16863,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             <section className="panel public-booking-config">
             {publicBookingSettings && publicBookingSettings.professionalId === activeUserId ? <PublicTurnerasEditor
               settings={publicBookingSettings}
-              defaultSchedule={{ days: appointmentDays.length ? appointmentDays : DEFAULT_APPOINTMENT_DAYS, startTime: appointmentStartTime, endTime: appointmentEndTime, durationMinutes: appointmentDurationMinutes }}
+              defaultSchedule={{ days: appointmentDays, startTime: appointmentStartTime, endTime: appointmentEndTime, durationMinutes: appointmentDurationMinutes }}
               saving={publicBookingSaving || publicBookingLoading} mercadoPagoConnected={mercadoPagoConnected}
               error={publicBookingError} notice={publicBookingNotice}
               onChange={setPublicBookingSettings} onSave={handleSavePublicBookingSettings} onCopy={copyPublicTurneraLink}
@@ -17143,9 +17158,9 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
           </div>
         </div>
       ) : null}
-      {receptionSettingsOpen && <PatientReceptionSettings onClose={() => setReceptionSettingsOpen(false)} />}
+      {receptionSettingsOpen && <PatientReceptionSettings key={activeUserId} onClose={() => setReceptionSettingsOpen(false)} />}
       {inviteModalOpen ? (() => {
-        const inviteUrl = inviteToken ? buildPatientInviteUrl(inviteToken) : ''
+        const inviteUrl = inviteToken ? invitePublicUrl || buildPatientInviteUrl(inviteToken) : ''
         const inviteQr = inviteUrl ? buildQrDataUrl(inviteUrl, 360) : ''
         return (
           <div className="drhappy-modal-overlay" onClick={() => setInviteModalOpen(false)}>
@@ -17560,6 +17575,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       ) : null}
       {paidDocumentsPanelOpen && canUsePaidClinicalDocuments ? (
         <PaidClinicalDocumentsPanel
+          key={activeUserId}
           canIssuePrescriptions={canIssuePrescriptions}
           onClose={() => setPaidDocumentsPanelOpen(false)}
           onStartIssue={handleStartPaidClinicalDocumentIssue}

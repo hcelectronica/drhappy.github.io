@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { parsePublicDocumentPath } from './professionalPublicLinks'
 import {
   getPaidClinicalDocumentStatus,
   getPublicPaidClinicalDocuments,
@@ -23,14 +24,15 @@ interface PublicDocumentStatus {
 }
 
 function getPublicSlug(): string {
-  const pathSlug = window.location.pathname.match(/^\/documentos\/([a-z0-9-]+)\/?$/i)?.[1]
+  const pathSlug = parsePublicDocumentPath(window.location.pathname)?.slug
+  if (/^\/documentos\/.+/i.test(window.location.pathname)) return pathSlug || ''
   return pathSlug || new URLSearchParams(window.location.search).get('paid_documents_slug') || ''
 }
 
 export function PaidClinicalDocumentsPublicPage() {
   const slug = getPublicSlug()
   const trackingToken = new URLSearchParams(window.location.search).get('s') || ''
-  const requestedType = new URLSearchParams(window.location.search).get('type')
+  const requestedType = parsePublicDocumentPath(window.location.pathname)?.serviceType || new URLSearchParams(window.location.search).get('type')
   const [serviceType, setServiceType] = useState<DocumentServiceType | null>(() => documentServices.find(service => service.type === requestedType)?.type ?? null)
   const [settings, setSettings] = useState<PaidClinicalDocumentSettings | null>(null)
   const [status, setStatus] = useState<PublicDocumentStatus | null>(null)

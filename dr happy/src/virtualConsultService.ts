@@ -43,6 +43,7 @@ export interface VirtualConsult {
 }
 
 export interface VirtualConsultSettings {
+  publicAlias?: string
   patientFolderUrl?: string
   slug: string
   enabled: boolean

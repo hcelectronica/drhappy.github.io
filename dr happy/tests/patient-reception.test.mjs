@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
 import { normalizeBlocks } from '../supabase/functions/_shared/publicBookingBlocks.ts'
 import { documentServices, documentServiceOptions } from '../supabase/functions/_shared/clinicalDocumentServices.ts'
+import { ensurePublicAlias, resolvePublicToolSettings, publicDocumentPaths } from '../supabase/functions/_shared/professionalPublicAlias.ts'
 
 const source = await readFile(new URL('../supabase/functions/patient-reception/index.ts', import.meta.url), 'utf8')
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
@@ -12,6 +13,7 @@ function fixture() {
   const settings = { professional_id: 'owner', slug: 'fixture', display_name: 'Doctor', enabled: true,
     documents: true, studies: true, booking: true, registration: true, video: true }
   const db = {
+    professional_public_aliases: [{ alias: 'fixture', professional_id: 'owner', is_primary: true }],
     professionals: [{ id: 'owner', active: true, full_name: 'Doctor' }],
     patient_receptions: [settings],
     public_booking_profiles: [{ professional_id: 'owner', slug: 'doctor-booking', enabled: true, availability_blocks: [{ id: 'private', label: 'Particular', modality: 'private', amountToCharge: 100, days: [1,2,3,4,5], startTime: '09:00', endTime: '12:00', durationMinutes: 30, slotCount: 6 }] }],
@@ -36,13 +38,15 @@ function fixture() {
       },
     }; return query
   }
+  const admin = { from, async rpc() { return { data: 'fixture', error: null } } }
   let handler
   vm.runInNewContext(js, { exports: {}, Request, Response, console: { error() {} },
     normalizeBlocks, documentServices, documentServiceOptions,
     Deno: { env: { get: () => 'fixture' } },
     require: name => name.includes('server.ts') ? { serve: fn => { handler = fn } }
       : name.includes('clinicalDocumentServices') ? { documentServices, documentServiceOptions }
-      : name.includes('publicBookingBlocks') ? { normalizeBlocks } : name.includes('supabase-js') ? { createClient: () => ({ from }) }
+      : name.includes('professionalPublicAlias') ? { ensurePublicAlias, resolvePublicToolSettings, publicDocumentPaths }
+      : name.includes('publicBookingBlocks') ? { normalizeBlocks } : name.includes('supabase-js') ? { createClient: () => admin }
         : name.includes('professionalSession') ? { resolveProfessionalId: async () => state.identity } : { corsHeaders: {} },
   })
   async function call(body, method = 'POST') {
@@ -55,9 +59,10 @@ test('public reception exposes only selected internal destinations; paid video i
   const h = fixture(); const result = await h.call({ action: 'public', slug: 'fixture', professionalId: 'attacker' })
   assert.equal(result.status, 200)
   assert.equal(Object.keys(result.body.reception.links).length, 5)
-  assert.match(result.body.reception.links.video, /\/doctor-booking\/particular\?consultation=video$/)
-  assert.match(result.body.reception.links.booking, /\/doctor-booking\/particular$/)
-  assert.match(result.body.reception.links.registration, /\/registro\/doctor-invite$/)
+  assert.match(result.body.reception.links.video, /\/fixture\/particular\?consultation=video$/)
+  assert.match(result.body.reception.links.booking, /\/fixture\/particular$/)
+  assert.match(result.body.reception.links.registration, /\/registro\/fixture$/)
+  assert.equal(JSON.stringify(result.body).includes('doctor-invite'), false)
   assert.equal(JSON.stringify(result.body).includes('professional_id'), false)
   h.settings.documents = false
   assert.equal((await h.call({ action: 'public', slug: 'fixture' })).body.reception.links.documents, undefined)
@@ -80,7 +85,7 @@ test('reception lists independent document prices and hides disabled types or di
   Object.assign(h.db.paid_clinical_document_settings[0], { certificate_price: 1000, fitness_enabled: true, fitness_price: 2000, prescription_enabled: true, prescription_price: 3000 })
   let reception = (await h.call({ action: 'public', slug: 'fixture' })).body.reception
   assert.deepEqual(reception.documents.map(item => [item.type, item.label, item.amount]), [['certificate', 'Certificados', 1000], ['fitness', 'Aptos físicos', 2000], ['prescription', 'Recetas', 3000]])
-  assert.match(reception.documents[1].url, /\?type=fitness$/)
+  assert.match(reception.documents[1].url, /\/fixture\/aptos-fisicos$/)
   h.db.paid_clinical_document_settings[0].certificate_enabled = false
   reception = (await h.call({ action: 'public', slug: 'fixture' })).body.reception
   assert.deepEqual(reception.documents.map(item => item.type), ['fitness', 'prescription'])
@@ -122,7 +127,7 @@ test('reception lists each enabled turnera by identity, including free turneras 
   h.db.professional_payment_accounts[0].status = 'disconnected'
   result = (await h.call({ action: 'public', slug: 'fixture' })).body.reception
   assert.deepEqual(result.turneras.map(block => block.label), ['IOMA'])
-  assert.match(result.links.booking, /\/doctor-booking\/ioma$/)
+  assert.match(result.links.booking, /\/fixture\/ioma$/)
   h.settings.booking = false
   assert.deepEqual((await h.call({ action: 'public', slug: 'fixture' })).body.reception.turneras, [])
 })
@@ -134,7 +139,7 @@ test('renaming an individual turnera updates its reception destination without c
   block.label='TURNOS IOMA'
   const after=(await h.call({action:'public',slug:'fixture'})).body.reception.turneras[0]
   assert.equal(after.id,before.id)
-  assert.equal(after.url,'https://www.drhappy.com.ar/turnera/doctor-booking/turnos-ioma')
+  assert.equal(after.url,'https://www.drhappy.com.ar/turnera/fixture/turnos-ioma')
   assert.equal(h.settings.slug,'fixture')
   assert.equal(h.writes.length,0)
 })

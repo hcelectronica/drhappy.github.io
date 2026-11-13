@@ -5,6 +5,7 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import { normalizeBlocks, pickBlock } from '../supabase/functions/_shared/publicBookingBlocks.ts'
 import { notifyProfessionalRegistration } from '../supabase/functions/_shared/professionalRegistrationEmail.ts'
+import { ensurePublicAlias, findPublicAliasOwner, resolvePublicToolSettings } from '../supabase/functions/_shared/professionalPublicAlias.ts'
 
 async function handler(name, options = {}) {
   const writes = []
@@ -69,6 +70,7 @@ async function handler(name, options = {}) {
     notifyProfessionalRegistration: (params) => notifyProfessionalRegistration({ ...params, send: fetchMock }),
     Deno: { env: { get: (name) => name === 'MP_TOKEN_ENCRYPTION_KEY' ? encode(keyBytes) : name === 'SUPABASE_URL' ? 'https://example.invalid' : 'test-key' } },
     normalizeBlocks, pickBlock, crypto, Request, Response, fetch: fetchMock, console: { error: (...args) => errors.push(args) },
+    ensurePublicAlias, findPublicAliasOwner, resolvePublicToolSettings,
     TextEncoder, TextDecoder, atob, Date,
   })
   return { request: async (body) => {

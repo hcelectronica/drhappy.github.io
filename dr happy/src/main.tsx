@@ -5,12 +5,13 @@ import App from './App.tsx'
 import { AppErrorBoundary } from './AppErrorBoundary'
 import { ErrorNotificationProvider } from './ErrorNotifications'
 import { installRuntimeErrorLogging, logRuntime } from './runtimeLogger'
+import { parsePublicDocumentPath } from './professionalPublicLinks'
 
 const DentalDesignPreview = import.meta.env.DEV && window.location.pathname === '/dental-design'
   ? lazy(() => import('./dental/DentalDesignPreview'))
   : null
 const isPaidDocumentsPublicRoute = Boolean(
-  window.location.pathname.match(/^\/documentos\/[a-z0-9-]+\/?$/i) ||
+  parsePublicDocumentPath(window.location.pathname) ||
   new URLSearchParams(window.location.search).get('paid_documents_slug'),
 )
 const PaidDocumentsPublicPage = isPaidDocumentsPublicRoute

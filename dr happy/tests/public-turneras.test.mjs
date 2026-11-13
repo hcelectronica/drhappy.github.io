@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { normalizeBlocks, pickBlock, turneraSlugs } from '../supabase/functions/_shared/publicBookingBlocks.ts'
+import { ensurePublicAlias, findPublicAliasOwner, resolvePublicToolSettings } from '../supabase/functions/_shared/professionalPublicAlias.ts'
 
 const template = { days: [0,1,2,3,4,5,6], startTime: '09:00', endTime: '12:00', durationMinutes: 30, slotCount: 6, dailyQuota: 2, modality: 'coverage' }
 const blocks = [
@@ -17,12 +18,18 @@ function fixture() {
   const date = new Date(Date.now() + 86400000).toISOString().slice(0,10)
   const profile = { professional_id: 'owner', slug: 'fixture', enabled: true, professional_name: 'Fixture', horizon_days: 60, availability_blocks: structuredClone(blocks) }
   const records = {
+    professionals: [{ id: 'owner', active: true }],
+    professional_public_aliases: [{ alias: 'doctor', professional_id: 'owner', is_primary: true }],
     public_booking_profiles: [profile], user_workspaces: [{ user_id: 'owner', appointments_json: [] }],
     public_booking_reservations: [], professional_payment_accounts: [{ professional_id: 'owner', provider: 'mercadopago', status: 'connected' }],
   }
   const state = { identity: 'owner', fail: false }
   const writes = []
-  const admin = { from(table) {
+  const admin = { async rpc(name, params) {
+    assert.equal(name, 'ensure_professional_public_alias')
+    assert.equal(params.p_professional_id, state.identity)
+    return { data: 'doctor', error: null }
+  }, from(table) {
     const filters = []; let value, operation
     const q = { select() { return q }, maybeSingle() { q.singleResult = true; return q }, single() { q.singleResult = true; return q },
       eq(k,v) { filters.push(r => r[k] === v); return q },
@@ -39,13 +46,44 @@ function fixture() {
   } }
   let handler
   vm.runInNewContext(code,{ serve:fn=>{handler=fn}, createClient:()=>admin, normalizeBlocks,pickBlock, resolveProfessionalId:async()=>state.identity,
+    ensurePublicAlias, findPublicAliasOwner, resolvePublicToolSettings,
     getHolidayName:()=>null, corsHeaders:{}, Deno:{ env:{get:()=> 'fixture'} }, crypto,Date,Request,Response,console:{error(){}},
   })
+
   return { records, state, writes, date, profile, async call(body) {
     const response=await handler(new Request('https://fixture.invalid',{method:'POST',body:JSON.stringify(body)}))
     return { status:response.status, body:await response.json() }
   } }
 }
+test('a virgin owner has no public profile, schedule, preset turneras or writes', async () => {
+  const h = fixture()
+  h.records.public_booking_profiles = []
+  const result = await h.call({ action: 'get-public-settings', professionalId: 'foreign' })
+  assert.equal(result.status, 200)
+  assert.equal(result.body.settings, null)
+  assert.equal(h.writes.length, 0)
+  const settings = { professionalId: 'foreign', professionalName: 'Doctor', slug: 'internal-new', enabled: true, blocks: [] }
+  assert.equal((await h.call({ action: 'save-public-settings', settings })).status, 200)
+  assert.equal(h.writes[0].enabled, false)
+  assert.deepEqual(h.writes[0].availability_blocks, [])
+})
+
+test('alias resolves the owner and preserves internal identifiers, disabled and inactive gates', async () => {
+  const h = fixture()
+  const query = { action: 'get-public-agenda', slug: 'doctor', blockSlug: 'ioma', startDate: h.date, days: 1 }
+  assert.equal((await h.call(query)).status, 200)
+  const originalSlug = h.profile.slug = 'legacy-profile-abcdefgh-123abc'
+  const settings = { professionalId: 'foreign', professionalName: 'Doctor', slug: 'replacement', enabled: true, blocks }
+  const saved = await h.call({ action: 'save-public-settings', settings })
+  assert.equal(saved.status, 200)
+  assert.equal(saved.body.settings.slug, originalSlug)
+  assert.equal(saved.body.settings.publicAlias, 'doctor')
+  h.profile.enabled = false
+  assert.equal((await h.call(query)).status, 404)
+  h.profile.enabled = true
+  h.records.professionals[0].active = false
+  assert.equal((await h.call(query)).status, 404)
+})
 test('more than ten turneras retain names, independent prices, identifiers and paused states', () => {
   const input = Array.from({length:15},(_,i)=>({...blocks[i%4],id:'block-'+i,label:'Turnera '+i,enabled:i!==2}))
   const result=normalizeBlocks(input)

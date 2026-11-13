@@ -152,6 +152,9 @@ try {
         localStorage.setItem('fixture-initialized','true');
         localStorage.setItem('drhappy-active-user','account-a');
         localStorage.setItem('drhappy-professional-session','token-account-a');
+        if(${process.env.TEST_VIRGIN_ACCOUNT === '1'}){
+          localStorage.setItem('drhappy-profile-account-a',JSON.stringify({fullName:'Otra cuenta',specialty:'Medicina',licenseNumber:'OTHER',email:'other@example.invalid',phone:'',signatureText:'Otra firma',appointmentDays:[1,2,4],appointmentStartTime:'09:00',appointmentEndTime:'19:00'}));
+        }
       }
       localStorage.setItem('drhappy-install-prompt-dismissed',String(Date.now()+86400000));
       localStorage.setItem('drhappy-notification-prompt-dismissed',String(Date.now()+86400000));
@@ -202,14 +205,18 @@ try {
           if(body.action==='save'&&window.__failInstructionsSync)return Response.json({success:false,message:'Sincronización simulada fallida'});
           if(window.__delayWorkspace)await new Promise(resolve=>{window.__finishWorkspace=resolve});
           data={success:true,professional:prof,archivedPatients:[],workspace:{user_id:id,
-            profile_json:{fullName:prof.full_name,specialty:prof.specialty,email:prof.email,licenseNumber:'TEST',address:'Consultorio de prueba',phone:'11111111',signatureText:'Firma de prueba'},
+            profile_json:{fullName:prof.full_name,specialty:prof.specialty,email:prof.email,licenseNumber:'TEST',address:'Consultorio de prueba',phone:'11111111',signatureText:'Firma de prueba',appointmentDays:[0,1,2,3,4,5,6],appointmentStartTime:'09:00',appointmentEndTime:'19:00',appointmentDurationMinutes:30},
             patients_json:[{id:'patient-'+id,ownerUserId:id,nombre:'Paciente',apellido:id,dni:id==='account-a'?'11111111':'22222222',
               email:'patient@example.invalid',consultations:[],documents:[],dentalStatus:'provisional',
               createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}],
             appointments_json:id==='account-b'?[{id:'appointment-b',patientId:'patient-account-b',patientName:'Paciente account-b',
-              patientEmail:'patient@example.invalid',scheduledDate:new Date().toLocaleDateString('en-CA'),scheduledTime:'12:00',
+              patientEmail:'patient@example.invalid',scheduledDate:new Date().toISOString().slice(0,10),scheduledTime:'12:00',
               reason:'Videoconsulta fixture',createdAt:new Date().toISOString(),createdByUserId:id,status:'confirmed'}]:[],
             treatment_ledger_json:[],treatment_ledger_initialized:true}};
+          if(${process.env.TEST_VIRGIN_ACCOUNT === '1'}){
+            if(body.action==='save')window.__virginSaved=body;
+            data.workspace=null;
+          }
           if(localStorage.getItem('fixture-medical')){
             if(body.action==='save')localStorage.setItem('fixture-document-patients',JSON.stringify(body.patients));
             data.workspace.patients_json=JSON.parse(localStorage.getItem('fixture-document-patients'));
@@ -270,7 +277,29 @@ try {
   await command('Page.navigate', { url: origin + '/' })
   const ready = (name) => wait(`document.body?.innerText.includes(${JSON.stringify(name)})&&Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Cerrar sesión'))`)
   await ready('Profesional A')
-  if (process.env.TEST_MENU_GUIDE === '1') {
+  if (process.env.TEST_VIRGIN_ACCOUNT === '1') {
+    const click = async text => {
+      await evaluate(`(()=>{const button=[...document.querySelectorAll('button')].find(button=>button.textContent.includes(${JSON.stringify(text)}));if(!button)throw new Error('Missing button');button.click()})()`)
+      await sleep(150)
+    }
+    assert.equal(await evaluate(`window.__virginSaved.profile.fullName`), 'Profesional A', 'Own identity replaces stale local cache')
+    assert.equal(await evaluate(`window.__virginSaved.patients.length`), 0)
+    assert.equal(await evaluate(`window.__virginSaved.appointments.length`), 0)
+    assert.deepEqual(await evaluate(`window.__virginSaved.profile.appointmentDays`), [])
+    assert.equal(await evaluate(`window.__virginSaved.profile.appointmentStartTime`), '')
+    assert.equal(await evaluate(`window.__virginSaved.profile.appointmentEndTime`), '')
+    await click('Turnera')
+    await click('Cupos y link público')
+    await wait(`!!document.querySelector('.appointment-capacity-panel')`)
+    await evaluate(`document.querySelector('details.is-manual').open=true`)
+    assert.equal(await evaluate(`document.querySelectorAll('details.is-manual input[type=checkbox]:checked').length`), 0, 'No predefined working days')
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('details.is-manual .time-select-pair')].map(pair=>pair.querySelector('select').value)`), ['', ''], 'No predefined working hours')
+    assert.equal(await evaluate(`document.querySelectorAll('section[aria-label="Mis turneras"] details').length`), 0, 'No preset public turneras')
+    await click('Nuevo turno')
+    await wait(`!!document.querySelector('#appointment-modal-title')`)
+    assert.equal(await evaluate(`document.querySelector('#appointment-modal-title').closest('.drhappy-modal-card').querySelector('input[type=time]').value`), '', 'New appointment does not reuse another professional hours')
+    console.log('Virgin account UI passed: no cached identity, patients, appointments, working days, hours or preset public turneras.')
+  } else if (process.env.TEST_MENU_GUIDE === '1') {
     const setSearch = async value => {
       await evaluate(`(()=>{const input=document.querySelector('[aria-labelledby="certificate-patient-picker-title"] input');
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});

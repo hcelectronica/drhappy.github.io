@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient'
+import { buildProfessionalPublicUrl } from './professionalPublicLinks'
 export { turneraSlugs } from '../supabase/functions/_shared/publicBookingBlocks'
 
 // Servicio NUEVO e independiente de la Turnera. Gestiona los enlaces
@@ -39,6 +40,7 @@ export interface PublicBookingAvailabilityBlock {
 }
 
 export interface PublicBookingSettings {
+  publicAlias?: string
   professionalId: string
   slug: string
   enabled: boolean
@@ -130,7 +132,11 @@ export function buildPublicBookingUrl(token: string): string {
   return `${base}turno-libre.html?t=${token}`
 }
 
-export function buildFixedPublicBookingUrl(slug: string, modality?: 'coverage' | 'private', blockId?: string, blockSlug?: string): string {
+export function buildFixedPublicBookingUrl(slug: string, modality?: 'coverage' | 'private', blockId?: string, blockSlug?: string, publicAlias?: string): string {
+  if (publicAlias) {
+    const detail = blockSlug || (modality === 'coverage' ? 'gratis' : undefined)
+    return `${buildProfessionalPublicUrl('turnera', publicAlias, detail)}${!blockSlug && blockId ? `?b=${encodeURIComponent(blockId)}` : ''}`
+  }
   const base = `${window.location.origin}/`
   if (blockSlug) return `${base}turnera/${encodeURIComponent(slug)}/${encodeURIComponent(blockSlug)}`
   const freeSuffix = modality === 'coverage' ? '/gratis' : ''

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { getPatientInviteLink } from './patientInviteService'
 import { callReception, receptionTools, receptionUrl } from './patientReceptionService'
 import type { ReceptionSettings, ReceptionTool } from './patientReceptionService'
 import './patientReception.css'
@@ -16,8 +15,6 @@ export default function PatientReceptionSettings({ onClose }: { onClose: () => v
     dialog.current?.showModal()
     let cancelled = false
     async function load() {
-      const invite = await getPatientInviteLink()
-      if (!invite.success) throw new Error(invite.message || 'No se pudo preparar el enlace de registro.')
       const result = await callReception({ action: 'get-settings' })
       if (!result.success || !result.settings || !result.available) throw new Error(result.message || 'No se pudo cargar la recepción.')
       if (!cancelled) {
@@ -40,15 +37,15 @@ export default function PatientReceptionSettings({ onClose }: { onClose: () => v
   }
   return <dialog className="reception-settings" ref={dialog} onCancel={event => { if (busy) event.preventDefault(); else onClose() }}>
     <div className="reception-settings-head"><h2>Mi recepción</h2><button type="button" disabled={busy} onClick={onClose} aria-label="Cerrar recepción">×</button></div>
-    <p>Un solo enlace para tus pacientes. Los enlaces individuales siguen funcionando igual.</p>
+    <p>Un único alias profesional para recepción, turneras, documentos, registro y consultas. Los enlaces anteriores siguen funcionando.</p>
     {error && <p role="alert" className="reception-error">{error}</p>}
     {message && <p role="status">{message}</p>}
     {!settings && !error && <p role="status">Cargando configuración…</p>}
     {settings && <form onSubmit={save}>
       <fieldset disabled={busy}>
         <label>Nombre visible<input required maxLength={80} value={settings.display_name} onChange={event => setSettings({ ...settings, display_name: event.target.value })} /></label>
-        <label>Enlace corto<input required pattern="[a-z0-9]([a-z0-9-]{0,22}[a-z0-9])?" maxLength={24} placeholder="alan" value={settings.slug} onChange={event => setSettings({ ...settings, slug: event.target.value })} /></label>
-        <small>Solo minúsculas, números o guiones. Cambiarlo deja de usar la dirección anterior.</small>
+        <label>Alias profesional<input required pattern="[a-z0-9]([a-z0-9-]{0,22}[a-z0-9])?" maxLength={24} placeholder="mi-consultorio" value={settings.slug} onChange={event => setSettings({ ...settings, slug: event.target.value })} /></label>
+        <small>Solo minúsculas, números o guiones. Recomendamos mantenerlo estable. Cambiarlo actualiza todos tus enlaces nuevos; los anteriores se conservan.</small>
         <label className="reception-toggle"><input type="checkbox" checked={settings.enabled} onChange={event => setSettings({ ...settings, enabled: event.target.checked })} /> Recepción pública habilitada</label>
         {receptionTools.map(tool => <label className="reception-toggle" key={tool.key}>
           <input type="checkbox" disabled={!available[tool.key] && !settings[tool.key]} checked={settings[tool.key]} onChange={event => setSettings({ ...settings, [tool.key]: event.target.checked })} />

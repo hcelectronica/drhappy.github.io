@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient'
+import { buildProfessionalPublicUrl } from './professionalPublicLinks'
 
 export interface PatientInviteSubmission {
   id: string
@@ -17,6 +18,8 @@ interface InviteResponse {
   success: boolean
   message?: string
   token?: string
+  publicAlias?: string
+  shortUrl?: string
   submissions?: PatientInviteSubmission[]
 }
 
@@ -45,7 +48,8 @@ async function invokeInvite(body: Record<string, unknown>): Promise<InviteRespon
 // El paciente siempre debe abrir el sitio público, aunque el profesional use la app desde otro origen.
 const PUBLIC_SITE_URL = 'https://drhappy.com.ar'
 
-export function buildPatientInviteUrl(token: string): string {
+export function buildPatientInviteUrl(token: string, publicAlias?: string): string {
+  if (publicAlias) return buildProfessionalPublicUrl('registro', publicAlias)
   return `${PUBLIC_SITE_URL}/registro/${encodeURIComponent(token)}`
 }
 
