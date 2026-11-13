@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient'
+export { turneraSlugs } from '../supabase/functions/_shared/publicBookingBlocks'
 
 // Servicio NUEVO e independiente de la Turnera. Gestiona los enlaces
 // públicos de "turnos libres" que el profesional comparte por WhatsApp.
@@ -21,6 +22,7 @@ export interface PublicBookingLinkSummary {
 export interface PublicBookingAvailabilityBlock {
   id: string
   label: string
+  slug?: string
   enabled?: boolean
   modality: 'coverage' | 'private'
   days: number[]
@@ -128,8 +130,9 @@ export function buildPublicBookingUrl(token: string): string {
   return `${base}turno-libre.html?t=${token}`
 }
 
-export function buildFixedPublicBookingUrl(slug: string, modality?: 'coverage' | 'private', blockId?: string): string {
-  const base = `${window.location.origin}${window.location.pathname.replace(/index\.html$/, '')}`
+export function buildFixedPublicBookingUrl(slug: string, modality?: 'coverage' | 'private', blockId?: string, blockSlug?: string): string {
+  const base = `${window.location.origin}/`
+  if (blockSlug) return `${base}turnera/${encodeURIComponent(slug)}/${encodeURIComponent(blockSlug)}`
   const freeSuffix = modality === 'coverage' ? '/gratis' : ''
   return `${base}turnera/${encodeURIComponent(slug)}${freeSuffix}${blockId ? `?b=${encodeURIComponent(blockId)}` : ''}`
 }

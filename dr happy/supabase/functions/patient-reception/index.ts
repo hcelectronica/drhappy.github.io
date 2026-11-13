@@ -47,12 +47,12 @@ serve(async request => {
     ])
     for (const result of [booking, virtual, documents, invite, payment]) if (result.error) throw result.error
     const base = 'https://www.drhappy.com.ar'
-    const bookingUrl = (id: string) => `${base}/turnera/${encodeURIComponent(booking.data!.slug)}?b=${encodeURIComponent(id)}`
     const activeBlocks = booking.data?.enabled ? normalizeBlocks(booking.data.availability_blocks)
       .filter(block => block.enabled !== false && (block.modality !== 'private' || (Number(block.amountToCharge) > 0 && payment.data?.status === 'connected'))) : []
     const paidBooking = activeBlocks.find(block => block.modality === 'private')
+    const bookingUrl = (block: typeof activeBlocks[number]) => `${base}/turnera/${encodeURIComponent(booking.data!.slug)}/${encodeURIComponent(block.slug!)}`
     const turneras = activeBlocks.map(block => ({
-      id: block.id, label: block.label, url: bookingUrl(block.id),
+      id: block.id, label: block.label, url: bookingUrl(block),
       location: block.location || '', amountToCharge: block.amountToCharge || null,
     }))
     const destinations: Record<string, string | null> = {
@@ -60,7 +60,7 @@ serve(async request => {
       studies: virtual.data?.enabled && payment.data?.status === 'connected' ? `${base}/consulta/${encodeURIComponent(virtual.data.slug)}` : null,
       booking: turneras[0]?.url || null,
       registration: invite.data ? `${base}/registro/${encodeURIComponent(invite.data.token)}` : null,
-      video: paidBooking ? `${bookingUrl(paidBooking.id)}&consultation=video` : null,
+      video: paidBooking ? `${bookingUrl(paidBooking)}?consultation=video` : null,
     }
     if (isPublic) {
       return reply(200, { success: true, reception: {

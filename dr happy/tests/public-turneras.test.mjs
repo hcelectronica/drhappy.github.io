@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import ts from 'typescript'
-import { normalizeBlocks, pickBlock } from '../supabase/functions/_shared/publicBookingBlocks.ts'
+import { normalizeBlocks, pickBlock, turneraSlugs } from '../supabase/functions/_shared/publicBookingBlocks.ts'
 
 const template = { days: [0,1,2,3,4,5,6], startTime: '09:00', endTime: '12:00', durationMinutes: 30, slotCount: 6, dailyQuota: 2, modality: 'coverage' }
 const blocks = [
@@ -134,7 +134,7 @@ test('editor confirms deletion, saves once, preserves other IDs and waits for su
   const exports={}
   let confirmed=true, message=''
   vm.runInNewContext(ts.transpile(source,{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}),{
-    exports,require:name=>name==='react/jsx-runtime' ? {jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})} : {buildFixedPublicBookingUrl:()=>'',buildWhatsAppShareUrl:()=>''},
+    exports,require:name=>name==='react/jsx-runtime' ? {jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})} : {buildFixedPublicBookingUrl:()=>'',buildWhatsAppShareUrl:()=>'',turneraSlugs},
     window:{confirm:text=>{message=text;return confirmed}},crypto,
   })
   const find=(node,predicate)=>Array.isArray(node) ? node.flatMap(n=>find(n,predicate)) : node && typeof node==='object' && node.props ? [...(predicate(node)?[node]:[]),...find(node.props.children,predicate)] : []
@@ -174,4 +174,30 @@ test('individual links use stable block IDs while legacy routes remain unchanged
   assert.equal(exports.buildFixedPublicBookingUrl('doctor'),'https://fixture.invalid/turnera/doctor')
   assert.equal(exports.buildFixedPublicBookingUrl('doctor','coverage'),'https://fixture.invalid/turnera/doctor/gratis')
   assert.equal(exports.buildFixedPublicBookingUrl('doctor',undefined,'pami'),'https://fixture.invalid/turnera/doctor?b=pami')
+  assert.equal(exports.buildFixedPublicBookingUrl('doctor',undefined,'pami','turnos-pami'),'https://fixture.invalid/turnera/doctor/turnos-pami')
+})
+
+test('named routes normalize accents, avoid collisions and reserved legacy routes, and update only renamed names', async () => {
+  const input = normalizeBlocks([
+    {...blocks[0],id:'a',label:'TURNOS IÓMA'},
+    {...blocks[0],id:'b',label:'Turnos Ioma'},
+    {...blocks[0],id:'c',label:'Gratis'},
+  ])
+  assert.deepEqual(input.map(b=>b.slug),['turnos-ioma','turnos-ioma-2','gratis-2'])
+  assert.deepEqual(normalizeBlocks(input).map(b=>b.slug),input.map(b=>b.slug))
+  const renamed=normalizeBlocks(input.map(b=>b.id==='a'?{...b,label:'IOMA Norte'}:b))
+  assert.deepEqual(renamed.map(b=>b.slug),['ioma-norte','turnos-ioma-2','gratis-2'])
+  const many=normalizeBlocks(Array.from({length:15},(_,i)=>({...blocks[0],id:String(i),label:'IOMA'})))
+  assert.deepEqual(normalizeBlocks(many).map(b=>b.slug),many.map(b=>b.slug))
+  const h=fixture()
+  const query={action:'get-public-agenda',slug:'fixture',startDate:h.date,days:1,blockSlug:'particular-norte'}
+  assert.equal((await h.call(query)).body.profile.blockId,'private-b')
+  assert.equal((await h.call({...query,blockSlug:'unknown'})).status,404)
+  h.profile.availability_blocks[3].enabled=false
+  assert.equal((await h.call(query)).status,404)
+  h.profile.availability_blocks[3].enabled=true
+  h.profile.availability_blocks[3].label='Particular Sur'
+  assert.equal((await h.call(query)).status,404)
+  assert.equal((await h.call({...query,blockSlug:'particular-sur'})).body.profile.blockId,'private-b')
+  assert.equal((await h.call({...query,blockId:'private-b'})).status,200,'Legacy UUID remains valid after rename')
 })

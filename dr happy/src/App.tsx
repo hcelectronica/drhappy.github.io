@@ -13896,7 +13896,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
             </div>
             <details className="public-turnera-section is-manual">
               <summary>
-                <span>🗓️ Horario del consultorio</span>
+                <span>🗓️ Turnos otorgados por mí</span>
                 <small>Turnos otorgados por vos o sobreturnos</small>
               </summary>
               <div className="public-turnera-body">

@@ -1,6 +1,7 @@
 export interface PublicBookingBlock {
   id: string
   label: string
+  slug?: string
   enabled?: boolean
   modality: 'coverage' | 'private'
   days: number[]
@@ -45,6 +46,7 @@ function normalizeBlock(raw: unknown): PublicBookingBlock | null {
   return {
     id,
     label,
+    slug: typeof block.slug === 'string' ? block.slug : undefined,
     enabled: block.enabled !== false,
     modality,
     days,
@@ -64,18 +66,44 @@ function normalizeBlock(raw: unknown): PublicBookingBlock | null {
 // La modalidad conserva compatibilidad; cada turnera tiene identidad propia.
 export function normalizeBlocks(raw: unknown): PublicBookingBlock[] {
   const list = Array.isArray(raw) ? raw : []
-  return list.flatMap((entry) => {
+  const blocks = list.flatMap((entry) => {
     if (!entry || typeof entry !== 'object') return []
     const declared = entry.modality
     const modality = declared === 'coverage' ? 'coverage' : declared === 'private' || list.length === 1 ? 'private' : 'coverage'
     const block = normalizeBlock({ ...entry, modality })
     return block ? [block] : []
   })
+  const slugs = turneraSlugs(blocks)
+  return blocks.map(block => ({ ...block, slug: slugs.get(block.id)! }))
 }
 
-export function pickBlock(blocks: PublicBookingBlock[], modality?: 'coverage' | 'private', blockId?: string): PublicBookingBlock | undefined {
+export function turneraSlugs(blocks: Array<{ id: string; label: string; slug?: string }>): Map<string, string> {
+  const baseFor = (label: string) => label.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48).replace(/-+$/g, '') || 'turnos'
+  const result = new Map<string, string>()
+  const used = new Set(['gratis'])
+  for (const block of blocks) {
+    const base = baseFor(block.label)
+    if (block.slug && (block.slug === base || new RegExp(`^${base}-(?:[2-9]|[1-9][0-9]+)$`).test(block.slug)) && !used.has(block.slug)) {
+      result.set(block.id, block.slug)
+      used.add(block.slug)
+    }
+  }
+  for (const block of blocks) {
+    if (result.has(block.id)) continue
+    const base = baseFor(block.label)
+    let slug = base
+    for (let suffix = 2; used.has(slug); suffix += 1) slug = `${base}-${suffix}`
+    result.set(block.id, slug)
+    used.add(slug)
+  }
+  return result
+}
+
+export function pickBlock(blocks: PublicBookingBlock[], modality?: 'coverage' | 'private', blockId?: string, blockSlug?: string): PublicBookingBlock | undefined {
   // Un enlace pausado nunca debe terminar mostrando otra turnera.
   const block = blockId ? blocks.find((entry) => entry.id === blockId)
+    : blockSlug ? blocks.find((entry) => entry.slug === blockSlug)
     : modality ? blocks.find((entry) => entry.modality === modality)
       : blocks.find((entry) => entry.modality === 'private') ?? blocks[0]
   return block?.enabled !== false ? block : undefined

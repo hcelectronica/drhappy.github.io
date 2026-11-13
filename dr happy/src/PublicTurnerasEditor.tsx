@@ -1,4 +1,4 @@
-import { buildFixedPublicBookingUrl, buildWhatsAppShareUrl } from './publicBookingService'
+import { buildFixedPublicBookingUrl, buildWhatsAppShareUrl, turneraSlugs } from './publicBookingService'
 import type { PublicBookingAvailabilityBlock, PublicBookingSettings } from './publicBookingService'
 
 interface Props {
@@ -18,6 +18,7 @@ function capacity(block: Pick<PublicBookingAvailabilityBlock, 'startTime' | 'end
   return Math.max(0, Math.floor((minutes(block.endTime) - minutes(block.startTime)) / block.durationMinutes)) || 0
 }
 export default function PublicTurnerasEditor({ settings, defaultSchedule, saving, mercadoPagoConnected, error, notice, onChange, onSave, onCopy }: Props) {
+  const slugs = turneraSlugs(settings.blocks)
   function update(id: string, patch: Partial<PublicBookingAvailabilityBlock>): void {
     onChange({ ...settings, blocks: settings.blocks.map(block => {
       if (block.id !== id) return block
@@ -54,7 +55,7 @@ export default function PublicTurnerasEditor({ settings, defaultSchedule, saving
     {settings.blocks.map(block => {
       const total = capacity(block)
       const active = settings.enabled && block.enabled !== false
-      const url = buildFixedPublicBookingUrl(settings.slug, undefined, block.id)
+      const url = buildFixedPublicBookingUrl(settings.slug, undefined, block.id, slugs.get(block.id))
       return <details key={block.id} className={`public-turnera-section ${block.modality === 'private' ? 'is-private' : 'is-free'}`} open={settings.blocks.length === 1 ? true : undefined}>
         <summary><span>{block.label || 'Nueva turnera'}</span><small>{active ? 'Habilitada' : 'Pausada / sin publicar'} · hasta {block.dailyQuota ?? block.slotCount} turnos por día</small></summary>
         <div className="public-turnera-body">
@@ -86,7 +87,7 @@ export default function PublicTurnerasEditor({ settings, defaultSchedule, saving
               </> : null}
             </div>
             {block.modality === 'private' && !mercadoPagoConnected ? <p className="flow-hint">Conectá Mercado Pago antes de habilitar esta turnera.</p> : null}
-            <p className="flow-hint">Una reserva bloquea su intervalo completo en las demás turneras. Pausar no elimina las reservas ni cambia el enlace.</p>
+            <p className="flow-hint">El enlace con el nombre se actualiza al guardar y aparece automáticamente en Mi recepción. Una reserva bloquea su intervalo completo en las demás turneras. Pausar no elimina las reservas ni cambia el enlace.</p>
             <div className="public-turnera-actions">
               <button type="button" className="screen-action primary" onClick={() => save(block.id, true)}>{saving ? 'Guardando...' : active ? 'Guardar cambios' : 'Guardar y habilitar'}</button>
               {active ? <button type="button" className="ghost compact" onClick={() => save(block.id, false)}>Pausar</button> : null}

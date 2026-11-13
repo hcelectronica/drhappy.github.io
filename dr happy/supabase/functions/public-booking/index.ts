@@ -69,6 +69,7 @@ interface RequestBody {
   startDate?: string
   days?: number
   blockId?: string
+  blockSlug?: string
   modality?: 'coverage' | 'private'
   consultationMode?: 'presential' | 'video'
 }
@@ -571,7 +572,7 @@ serve(async (request) => {
         }
 
         const allAgendaBlocks = normalizeBlocks(settings.availability_blocks)
-        const agendaBlock = pickBlock(allAgendaBlocks, requestedModality(body.modality), body.blockId)
+        const agendaBlock = pickBlock(allAgendaBlocks, requestedModality(body.modality), body.blockId, body.blockSlug)
         if (!agendaBlock) {
           return jsonResponse(404, { success: false, message: 'Esta turnera pública no está disponible.' })
         }
@@ -789,7 +790,7 @@ serve(async (request) => {
           if (paymentAccount?.status === 'connected') {
             try {
               const accessToken = await decryptPaymentToken(paymentAccount.access_token_encrypted)
-              const returnUrl = `${Deno.env.get('APP_BASE_URL') || 'https://drhappy.com.ar'}/turnos/?p=${encodeURIComponent(settings.slug)}&b=${encodeURIComponent(block.id)}${isVideo ? '&consultation=video' : ''}`
+              const returnUrl = `${Deno.env.get('APP_BASE_URL') || 'https://www.drhappy.com.ar'}/turnera/${encodeURIComponent(settings.slug)}/${encodeURIComponent(block.slug!)}${isVideo ? '?consultation=video' : ''}`
               const preferenceResponse = await fetch('https://api.mercadopago.com/checkout/preferences', {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': crypto.randomUUID() },

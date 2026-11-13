@@ -13,6 +13,7 @@
   # Link fijo de la turnera: /turnera/nombre-profesional -> página pública de turnos.
   RewriteRule ^r/([a-z0-9-]{1,24})/?$ /index.html?reception=$1 [QSA,L]
   RewriteRule ^turnera/([a-z0-9-]+)/gratis/?$ /turnos/?p=$1&m=gratis [R=302,L,QSA]
+  RewriteRule ^turnera/([a-z0-9-]+)/([a-z0-9-]+)/?$ /turnos/index.html?p=$1&turnera=$2 [QSA,L]
   RewriteRule ^turnera/([a-z0-9-]+)/?$ /turnos/?p=$1 [R=302,L,QSA]
   # Invitación para que el paciente se registre: /registro/token -> formulario público.
   RewriteRule ^registro/([a-z0-9-]+)/?$ /registro/?t=$1 [R=302,L,QSA]

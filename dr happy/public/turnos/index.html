@@ -153,7 +153,10 @@
     var FUNCTIONS_URL = SUPABASE_URL + '/functions/v1/public-booking';
     var params = new URLSearchParams(window.location.search);
     var blockId = params.get('b') || undefined;
+    var namedPath = window.location.pathname.match(/^\/turnera\/([a-z0-9-]+)\/([a-z0-9-]+)\/?$/);
+    var blockSlug = namedPath ? namedPath[2] : params.get('turnera') || undefined;
     var slug = params.get('p') || (window.location.hash || '').replace(/^#\/?/, '') || '';
+    if (namedPath) slug = namedPath[1];
     var modalityParam = (params.get('m') || '').toLowerCase();
     var fixedModality = modalityParam === 'gratis' || modalityParam === 'coverage' ? 'coverage' : modalityParam === 'private' ? 'private' : null;
     var consultationMode = params.get('consultation') === 'video' ? 'video' : 'presential';
@@ -178,7 +181,7 @@
     function loadAgenda() {
       if (!slug) { showError('Falta el link público del profesional.'); return; }
       el('loading').style.display = 'block';
-      callFunction({ action: 'get-public-agenda', slug: slug, blockId: blockId, modality: fixedModality, startDate: cursor, days: 35 }).then(function (result) {
+      callFunction({ action: 'get-public-agenda', slug: slug, blockId: blockId, blockSlug: blockSlug, modality: fixedModality, startDate: cursor, days: 35 }).then(function (result) {
         if (!result.data.success) { showError(result.data.message); return; }
         agenda = result.data;
         el('title').textContent = (agenda.profile.label ? agenda.profile.label + ' · ' : 'Turnos de ') + agenda.profile.professionalName;

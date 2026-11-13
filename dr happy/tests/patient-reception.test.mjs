@@ -55,8 +55,8 @@ test('public reception exposes only selected internal destinations; paid video i
   const h = fixture(); const result = await h.call({ action: 'public', slug: 'fixture', professionalId: 'attacker' })
   assert.equal(result.status, 200)
   assert.equal(Object.keys(result.body.reception.links).length, 5)
-  assert.match(result.body.reception.links.video, /\?b=private&consultation=video$/)
-  assert.match(result.body.reception.links.booking, /\?b=private$/)
+  assert.match(result.body.reception.links.video, /\/doctor-booking\/particular\?consultation=video$/)
+  assert.match(result.body.reception.links.booking, /\/doctor-booking\/particular$/)
   assert.match(result.body.reception.links.registration, /\/registro\/doctor-invite$/)
   assert.equal(JSON.stringify(result.body).includes('professional_id'), false)
   h.settings.documents = false
@@ -122,7 +122,19 @@ test('reception lists each enabled turnera by identity, including free turneras 
   h.db.professional_payment_accounts[0].status = 'disconnected'
   result = (await h.call({ action: 'public', slug: 'fixture' })).body.reception
   assert.deepEqual(result.turneras.map(block => block.label), ['IOMA'])
-  assert.match(result.links.booking, /b=ioma$/)
+  assert.match(result.links.booking, /\/doctor-booking\/ioma$/)
   h.settings.booking = false
   assert.deepEqual((await h.call({ action: 'public', slug: 'fixture' })).body.reception.turneras, [])
+})
+
+test('renaming an individual turnera updates its reception destination without changing reception slug or reservations', async () => {
+  const h=fixture()
+  const block=h.db.public_booking_profiles[0].availability_blocks[0]
+  const before=(await h.call({action:'public',slug:'fixture'})).body.reception.turneras[0]
+  block.label='TURNOS IOMA'
+  const after=(await h.call({action:'public',slug:'fixture'})).body.reception.turneras[0]
+  assert.equal(after.id,before.id)
+  assert.equal(after.url,'https://www.drhappy.com.ar/turnera/doctor-booking/turnos-ioma')
+  assert.equal(h.settings.slug,'fixture')
+  assert.equal(h.writes.length,0)
 })
