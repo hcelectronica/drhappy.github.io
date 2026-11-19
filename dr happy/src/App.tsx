@@ -8351,7 +8351,7 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       }
     }
     void refreshAppointments()
-    const timer = window.setInterval(() => { void refreshAppointments() }, 30_000)
+    const timer = window.setInterval(() => { void refreshAppointments() }, 5_000)
     const onResume = () => { void refreshAppointments() }
     window.addEventListener('focus', onResume)
     document.addEventListener('visibilitychange', onResume)
