@@ -58,6 +58,15 @@ Deno.serve(async (request) => {
     }
     return jsonResponse(200, { success: true })
   }
+  if (body.action === 'load-appointments') {
+    const { data: workspace, error } = await admin.from('user_workspaces')
+      .select('user_id, appointments_json').eq('user_id', professionalId).maybeSingle()
+    if (error) return jsonResponse(500, { success: false, message: 'No se pudo actualizar la agenda.' })
+    if (!workspace || !Array.isArray(workspace.appointments_json)) {
+      return jsonResponse(500, { success: false, message: 'No se encontró una agenda válida para esta cuenta.' })
+    }
+    return jsonResponse(200, { success: true, userId: workspace.user_id, appointments: workspace.appointments_json })
+  }
   if (body.action === 'load') {
     void admin.from('professionals').update({ last_seen_at: new Date().toISOString() }).eq('id', professionalId)
     const [{ data: loadedWorkspace, error: workspaceError }, { data: professional, error: professionalError }] = await Promise.all([

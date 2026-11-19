@@ -19,6 +19,7 @@ async function handler(name, options = {}) {
   const block = { id: 'block', modality: options.paid ? 'private' : 'coverage', days: [0, 1, 2, 3, 4, 5, 6], startTime: '15:00', endTime: '16:00', durationMinutes: 30, slotCount: 2, amountToCharge: options.paid ? 1000 : undefined }
   const admin = {
     async rpc(name, params) {
+      if (name === 'mark_public_booking_email_sent') return { error: null }
       assert.equal(name, 'reserve_public_booking')
       if (options.saveError) return { error: { message: 'Save failed' } }
       writes.push({ table: 'public_booking_reservations', value: params.p_reservation })
@@ -54,8 +55,9 @@ async function handler(name, options = {}) {
   }
   const fetchMock = async (url, request) => {
     if (url.includes('mercadopago.com')) return new Response(JSON.stringify({ id: 'preference', init_point: 'https://example.invalid/pay' }))
-    mails.push(JSON.parse(request.body))
-    return new Response(JSON.stringify({ success: !options.emailFailure }))
+    const mail = JSON.parse(request.body)
+    mails.push(mail)
+    return new Response(JSON.stringify({ success: !options.emailFailure && !(options.patientEmailFailure && mail.to === 'patient@example.invalid') }))
   }
   const errors = []
   let serveHandler
@@ -71,7 +73,7 @@ async function handler(name, options = {}) {
     Deno: { env: { get: (name) => name === 'MP_TOKEN_ENCRYPTION_KEY' ? encode(keyBytes) : name === 'SUPABASE_URL' ? 'https://example.invalid' : 'test-key' } },
     normalizeBlocks, pickBlock, crypto, Request, Response, fetch: fetchMock, console: { error: (...args) => errors.push(args) },
     ensurePublicAlias, findPublicAliasOwner, resolvePublicToolSettings,
-    TextEncoder, TextDecoder, atob, Date,
+    TextEncoder, TextDecoder, atob, Date, AbortSignal,
   })
   return { request: async (body) => {
     const response = await serveHandler(new Request('https://example.invalid', { method: 'POST', body: JSON.stringify(body) }))
@@ -106,9 +108,11 @@ test('public free and paid bookings notify professional and preserve patient mai
     assert.equal(result.body.professionalEmailSent, true)
     assert.equal(result.body.emailSent, true)
     assert.equal(h.mails.length, 2)
-    assert.equal(h.mails[0].to, 'professional@example.invalid')
-    assert.equal(h.mails[1].to, 'patient@example.invalid')
-    assert.match(h.mails[0].text, paid ? /todavía no está confirmado/ : /Turno confirmado/)
+    const professionalMail = h.mails.find((mail) => mail.to === 'professional@example.invalid')
+    const patientMail = h.mails.find((mail) => mail.to === 'patient@example.invalid')
+    assert.ok(professionalMail)
+    assert.ok(patientMail)
+    assert.match(professionalMail.text, paid ? /todavía no está confirmado/ : /Turno confirmado/)
   }
 })
 
@@ -128,6 +132,17 @@ test('legacy link sends turnera origin; mail failures do not invalidate saved bo
   assert.ok(failed.errors.length > 0)
 })
 
+test('failed patient confirmation keeps the free booking and warns the professional', async () => {
+  const h = await handler('public-booking', { patientEmailFailure: true })
+  const result = await h.request({ action: 'book-public-slot', slug: 'test', slotDate: h.date, slotTime: '15:00', blockId: 'block', patientName: 'Prueba', patientDni: '12345678', patientEmail: 'patient@example.invalid' })
+  assert.equal(result.body.success, true)
+  assert.equal(result.body.emailSent, false)
+  assert.equal(result.body.professionalEmailSent, true)
+  assert.match(h.mails.find(mail => mail.to === 'professional@example.invalid').text, /no se pudo enviar la confirmación al paciente/i)
+  assert.ok(h.writes.some(write => write.table === 'public_booking_reservations' && write.value.confirmation_email_status === 'failed'))
+  assert.ok(h.writes.some(write => write.table === 'user_workspaces' && write.value.appointments_json?.length === 1))
+})
+
 test('video booking retains origin before payment and identifies it in both emails; free slots reject video', async () => {
   for (const paid of [true, false]) {
     const h = await handler('public-booking', { paid })
@@ -138,10 +153,12 @@ test('video booking retains origin before payment and identifies it in both emai
     assert.equal(result.body.paymentRequired, true)
     assert.equal(h.writes.find(write => write.table === 'public_booking_reservations' && write.value.appointment_id).value.consultation_mode, 'video')
     assert.equal(h.writes.some(write => write.table === 'user_workspaces'), false, 'no appointment before payment')
-    assert.match(h.mails[0].text, /recepción digital|Recepción digital/)
-    assert.match(h.mails[0].text, /consulta virtual/)
-    assert.match(h.mails[0].text, /todavía no está confirmado/)
-    assert.match(h.mails[1].templateData.notes, /videoconsulta/)
-    assert.match(h.mails[1].templateData.location, /Videoconsulta/)
+    const professionalMail = h.mails.find((mail) => mail.to === 'professional@example.invalid')
+    const patientMail = h.mails.find((mail) => mail.to === 'patient@example.invalid')
+    assert.match(professionalMail.text, /recepción digital|Recepción digital/)
+    assert.match(professionalMail.text, /consulta virtual/)
+    assert.match(professionalMail.text, /todavía no está confirmado/)
+    assert.match(patientMail.templateData.notes, /videoconsulta/)
+    assert.match(patientMail.templateData.location, /Videoconsulta/)
   }
 })

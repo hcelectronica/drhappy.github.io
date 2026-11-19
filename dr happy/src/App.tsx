@@ -94,7 +94,7 @@ import type { AdminAIUsageStats, AdminUserStats, AdminStatsSummary } from './adm
 import { startTelemetry, stopTelemetry, trackClinicalAction } from './telemetryService'
 import { askSofia, transcribePaperRecord } from './aiAssistantService'
 import { DICTATION_COMMANDS_HINT, formatDictation, joinDictation } from './dictation'
-import { loadWorkspaceData, saveWorkspaceData, saveTreatmentLedgerData, updatePatientArchive } from './workspaceService'
+import { loadWorkspaceAppointments, loadWorkspaceData, saveWorkspaceData, saveTreatmentLedgerData, updatePatientArchive } from './workspaceService'
 import { sendConsultationInstructions } from './consultationInstructionsService'
 import { readPatientArchives } from './patientArchive'
 import type { ArchivedPatient } from './patientArchive'
@@ -2607,6 +2607,7 @@ function App() {
     }
   }, [])
   const workspaceSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const workspaceSaveFailedRef = useRef(false)
   const [googleIdentity, setGoogleIdentity] = useState<{
     email: string
     avatarUrl?: string
@@ -2620,6 +2621,8 @@ function App() {
   const [showPatientArchive, setShowPatientArchive] = useState(false)
   const [availablePatients, setAvailablePatients] = useState<PatientRecord[]>([])
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
+  const appointmentsRef = useRef(appointments)
+  appointmentsRef.current = appointments
   const [appointmentSearchQuery, setAppointmentSearchQuery] = useState('')
   const [appointmentFilterTab, setAppointmentFilterTab] = useState<'today' | 'upcoming' | 'all' | 'past'>('today')
   const [appointmentDateFilter, setAppointmentDateFilter] = useState('')
@@ -2649,6 +2652,8 @@ function App() {
   })
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<string | null>(null)
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false)
+  const appointmentModalOpenRef = useRef(appointmentModalOpen)
+  appointmentModalOpenRef.current = appointmentModalOpen
   const [appointmentDraft, setAppointmentDraft] = useState<AppointmentDraft>(emptyAppointmentDraft)
   // Sugerencias de pacientes ya cargados al escribir en el modal de turno, para
   // que el turno quede vinculado a la ficha existente en vez de duplicarla.
@@ -3774,8 +3779,10 @@ function App() {
     workspaceSaveQueueRef.current = save.catch(() => {})
     try {
       await save
+      if (generation === sessionGenerationRef.current) workspaceSaveFailedRef.current = false
       return true
     } catch (err) {
+      if (generation === sessionGenerationRef.current) workspaceSaveFailedRef.current = true
       console.warn('Fallo de conexión al sincronizar workspace en la nube:', err)
       setAppError(err instanceof Error ? err.message : 'No se pudieron guardar los cambios en la nube.')
       return false
@@ -3789,6 +3796,7 @@ function App() {
     setArchivedPatients([])
     setShowPatientArchive(false)
     const sessionGeneration = ++sessionGenerationRef.current
+    workspaceSaveFailedRef.current = false
     const localProfile = readJsonStorage<ProfessionalProfile>(profileStorageKey(user.id), profileFromSeed(user))
     const localLoaded = loadAccessiblePatientsForUser(user.id)
     const localAppointments = readJsonStorage<AppointmentRecord[]>(appointmentsStorageKey(user.id), [])
@@ -7523,14 +7531,17 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
   async function refreshDentalPatients({ propagateError = false, skipInvitations = false }: { propagateError?: boolean; skipInvitations?: boolean } = {}): Promise<void> {
     if (!isDentist || !activeUserId || dentalRefreshRef.current) return
     const userId = activeUserId
+    const generation = sessionGenerationRef.current
     dentalRefreshRef.current = true
     setDentalRefreshBusy(true)
     try {
       if (!skipInvitations) await syncInvitedPatients()
-      await workspaceSaveQueueRef.current
+      const pendingSave = workspaceSaveQueueRef.current
+      await pendingSave
+      const previousAppointments = appointmentsRef.current
       const result = await loadWorkspaceData()
       if (!result.success) throw new Error(result.message || 'No se pudo actualizar la base odontológica.')
-      if (localStorage.getItem(SESSION_USER_KEY) !== userId) return
+      if (generation !== sessionGenerationRef.current || localStorage.getItem(SESSION_USER_KEY) !== userId) return
       const workspace = result.workspace as RemoteWorkspaceRow | null
       const archives = readPatientArchives(result.archivedPatients)
       setArchivedPatients(archives)
@@ -7542,10 +7553,10 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
       setAvailablePatients(sortPatientsByName(nextPatients))
       localStorage.setItem(patientIndexStorageKey(userId), JSON.stringify(nextPatients.map((item) => item.id)))
       for (const patient of nextPatients) localStorage.setItem(patientGlobalStorageKey(patient.id), JSON.stringify(patient))
-      if (Array.isArray(workspace.appointments_json)) {
+      if (Array.isArray(workspace.appointments_json) && pendingSave === workspaceSaveQueueRef.current
+        && !workspaceSaveFailedRef.current && !appointmentModalOpenRef.current) {
         const nextAppointments = workspace.appointments_json.map((item) => normalizeAppointmentRecord(item as AppointmentRecord))
-        setAppointments(nextAppointments)
-        localStorage.setItem(appointmentsStorageKey(userId), JSON.stringify(nextAppointments))
+        setAppointments((current) => current === previousAppointments ? nextAppointments : current)
       }
       if (Array.isArray(workspace.treatment_ledger_json)) {
         const ledger = workspace.treatment_ledger_json.map(normalizeTreatmentLedgerEntry).filter((item): item is TreatmentLedgerEntry => Boolean(item))
@@ -8301,6 +8312,56 @@ ${clinicalAttachment?.text ? `Archivo ${clinicalAttachment.name}:\n${clinicalAtt
     else void syncInvitedPatients()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeUserId, Boolean(profile), workspaceLayer])
+
+  useEffect(() => {
+    if (!activeUserId || !profile || !isSupabaseConfigured || workspaceLayer !== 'appointments' || appointmentModalOpen) return
+    const userId = activeUserId
+    const generation = sessionGenerationRef.current
+    let cancelled = false
+    let running = false
+    let errorReported = false
+    async function refreshAppointments(): Promise<void> {
+      if (running || document.visibilityState === 'hidden') return
+      running = true
+      try {
+        const pendingSave = workspaceSaveQueueRef.current
+        await pendingSave
+        if (cancelled || pendingSave !== workspaceSaveQueueRef.current || workspaceSaveFailedRef.current) return
+        const previousAppointments = appointmentsRef.current
+        const result = await loadWorkspaceAppointments()
+        if (cancelled || generation !== sessionGenerationRef.current || localStorage.getItem(SESSION_USER_KEY) !== userId
+          || pendingSave !== workspaceSaveQueueRef.current || workspaceSaveFailedRef.current) return
+        if (!result.success || result.userId !== userId || !Array.isArray(result.appointments)) {
+          throw new Error(result.message || 'No se pudo validar la agenda del profesional.')
+        }
+        const nextAppointments = result.appointments
+          .map((item) => normalizeAppointmentRecord(item as AppointmentRecord))
+          .filter((appointment) => appointment.scheduledDate && appointment.scheduledTime)
+          .sort((left, right) => appointmentSortKey(left).localeCompare(appointmentSortKey(right)))
+        setAppointments((current) => current === previousAppointments ? nextAppointments : current)
+        errorReported = false
+      } catch (error) {
+        if (!cancelled && !errorReported) {
+          console.error('No se pudo actualizar la agenda:', error)
+          setAppError('No se pudo actualizar la agenda. Revisá tu conexión y volvé a intentar.')
+          errorReported = true
+        }
+      } finally {
+        running = false
+      }
+    }
+    void refreshAppointments()
+    const timer = window.setInterval(() => { void refreshAppointments() }, 30_000)
+    const onResume = () => { void refreshAppointments() }
+    window.addEventListener('focus', onResume)
+    document.addEventListener('visibilitychange', onResume)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onResume)
+      document.removeEventListener('visibilitychange', onResume)
+    }
+  }, [activeUserId, Boolean(profile), workspaceLayer, appointmentModalOpen, setAppError])
 
   /* El checklist de Inicio necesita saber si la turnera pública ya está publicada. */
   useEffect(() => {

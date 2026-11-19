@@ -821,15 +821,6 @@ serve(async (request) => {
         }
 
 
-        const professionalEmailSent = await notifyProfessionalRegistration({
-          admin, url: supabaseUrl, key: serviceRoleKey, professionalId: newAppointment.createdByUserId, eventId: appointmentId,
-          event: {
-            source: 'booking', patientName, patientEmail, patientPhone,
-            date: slotDate, time: slotTime, location: newAppointment.location,
-            status: amount ? 'pending_payment' : 'confirmed',
-            consultationMode: isVideo ? 'video' : 'presential',
-          },
-        })
         let emailSent = false
         if (patientEmail) {
           try {
@@ -840,6 +831,7 @@ serve(async (request) => {
                 apikey: serviceRoleKey,
                 'Content-Type': 'application/json',
               },
+              signal: AbortSignal.timeout(10000),
               body: JSON.stringify({
                 to: patientEmail,
                 subject: amount
@@ -866,6 +858,35 @@ serve(async (request) => {
           } catch (error) {
             console.error('[public-booking] Confirmación al paciente no enviada; reserva conservada', { appointmentId, message: error instanceof Error ? error.message : String(error) })
           }
+        }
+        if (!amount) {
+          const { error: emailStatusError } = await admin.from('public_booking_reservations')
+            .update({ confirmation_email_status: emailSent ? 'sent' : 'failed' })
+            .eq('professional_id', settings.professional_id).eq('appointment_id', appointmentId)
+          if (emailStatusError) console.error('[public-booking] No se pudo registrar el estado del email', { appointmentId, code: emailStatusError.code })
+          if (emailSent) {
+            const { error: markerError } = await admin.rpc('mark_public_booking_email_sent', {
+              p_professional_id: settings.professional_id, p_appointment_id: appointmentId,
+              p_sent_at: new Date().toISOString(),
+            })
+            if (markerError) console.error('[public-booking] No se pudo registrar el envío del email en la agenda', { appointmentId, code: markerError.code })
+          }
+        }
+        const professionalEmailSent = await notifyProfessionalRegistration({
+          admin, url: supabaseUrl, key: serviceRoleKey, professionalId: newAppointment.createdByUserId, eventId: appointmentId,
+          event: {
+            source: 'booking', patientName, patientEmail, patientPhone,
+            date: slotDate, time: slotTime, location: newAppointment.location,
+            status: amount ? 'pending_payment' : 'confirmed',
+            consultationMode: isVideo ? 'video' : 'presential',
+            patientConfirmationEmailFailed: !amount && !emailSent,
+          },
+        })
+        if (!amount) {
+          const { error: professionalStatusError } = await admin.from('public_booking_reservations')
+            .update({ professional_confirmation_status: professionalEmailSent ? 'sent' : 'failed' })
+            .eq('professional_id', settings.professional_id).eq('appointment_id', appointmentId)
+          if (professionalStatusError) console.error('[public-booking] No se pudo registrar el aviso al profesional', { appointmentId, code: professionalStatusError.code })
         }
 
         return jsonResponse(200, {

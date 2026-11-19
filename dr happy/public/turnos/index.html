@@ -287,7 +287,7 @@
           return;
         }
         msg.className = 'msg ok';
-        msg.textContent = 'Turno confirmado para el ' + formatDate(result.data.appointment.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' a las ' + result.data.appointment.time + ' hs.' + (result.data.emailSent ? ' Te enviamos la confirmación por email.' : ' Revisá los datos del turno en pantalla.') + (result.data.appointment.amountToCharge ? ' Recordá completar el pago indicado por el profesional.' : '');
+        msg.textContent = 'Turno confirmado para el ' + formatDate(result.data.appointment.date, { weekday: 'long', day: 'numeric', month: 'long' }) + ' a las ' + result.data.appointment.time + ' hs.' + (result.data.emailSent ? ' Enviamos la confirmación por email; revisá también correo no deseado.' : ' No se pudo enviar el email de confirmación. Tu turno está reservado: guardá estos datos y contactá al consultorio. No vuelvas a reservar.') + (result.data.appointment.amountToCharge ? ' Recordá completar el pago indicado por el profesional.' : '');
         el('confirmBtn').style.display = 'none';
         selected = null;
         loadAgenda();

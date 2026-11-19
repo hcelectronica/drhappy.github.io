@@ -62,7 +62,7 @@ test('a cloud account with no workspace never imports cached patients, profile o
   Object.assign(c, {
     isSupabaseConfigured: true, supabase: {},
     readProfessionalSession: () => ({ userId: user.id }),
-    sessionGenerationRef: { current: 0 },
+    sessionGenerationRef: { current: 0 }, workspaceSaveFailedRef: { current: false },
     readJsonStorage: () => ({ fullName: 'Otra cuenta', appointmentDays: [1, 2, 4] }),
     profileStorageKey: id => `profile-${id}`,
     appointmentsStorageKey: id => `appointments-${id}`,

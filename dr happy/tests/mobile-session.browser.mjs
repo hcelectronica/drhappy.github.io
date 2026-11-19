@@ -223,6 +223,10 @@ try {
             if(body.action==='save')localStorage.setItem('fixture-clinical-appointments',JSON.stringify(body.appointments||[]));
             data.workspace.appointments_json=JSON.parse(localStorage.getItem('fixture-clinical-appointments')||'[]');
           }
+          if(body.action==='load-appointments'){
+            if(window.__delayAppointmentRefresh)await new Promise(resolve=>{window.__finishAppointmentRefresh=resolve});
+            data={success:true,userId:id,appointments:window.__fixtureAppointments||data.workspace?.appointments_json||[]};
+          }
         }
         if(url.endsWith('/consultation-correction')){
           window.__correctionCalls=(window.__correctionCalls||0)+1;
@@ -277,7 +281,27 @@ try {
   await command('Page.navigate', { url: origin + '/' })
   const ready = (name) => wait(`document.body?.innerText.includes(${JSON.stringify(name)})&&Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Cerrar sesión'))`)
   await ready('Profesional A')
-  if (process.env.TEST_VIRGIN_ACCOUNT === '1') {
+  if (process.env.TEST_APPOINTMENT_REFRESH === '1') {
+    const click = async text => {
+      await evaluate(`(()=>{const button=[...document.querySelectorAll('button')].find(button=>button.textContent.includes(${JSON.stringify(text)}));if(!button)throw new Error('Missing button: '+${JSON.stringify(text)});button.click()})()`)
+    }
+    await click('Turnera')
+    await wait(`document.body.innerText.includes('Turnera Médica')`)
+    await wait(`window.__calls.some(call=>call.action==='load-appointments')`)
+    await evaluate(`window.__fixtureAppointments=[{id:'fresh-public',patientId:'fixture-patient',patientName:'Paciente de prueba',patientEmail:'fixture@example.invalid',scheduledDate:new Date().toISOString().slice(0,10),scheduledTime:'12:00',durationMinutes:30,reason:'Control',createdAt:new Date().toISOString(),createdByUserId:'account-a',publicBookingModality:'coverage',status:'confirmed'}];window.dispatchEvent(new Event('focus'))`)
+    await wait(`document.body.innerText.includes('Paciente de prueba')`)
+    await click('Calendario de ocupación')
+    await wait(`document.querySelector('.turnera-calendar-day-count')?.textContent==='1'`)
+    await evaluate(`window.__delayAppointmentRefresh=true;window.dispatchEvent(new Event('focus'))`)
+    await wait(`typeof window.__finishAppointmentRefresh==='function'`)
+    await click('Nuevo turno')
+    await wait(`!!document.querySelector('#appointment-modal-title')`)
+    await evaluate(`window.__fixtureAppointments=[];window.__finishAppointmentRefresh()`)
+    await sleep(500)
+    assert(await evaluate(`!!document.querySelector('#appointment-modal-title')`), 'Refresh does not close an appointment editor')
+    assert(await evaluate(`document.querySelector('.turnera-calendar-day-count')?.textContent==='1'`), 'Late refresh does not replace appointments while editing')
+    console.log('Appointment refresh UI passed: live booking appears and late refresh is ignored during editing.')
+  } else if (process.env.TEST_VIRGIN_ACCOUNT === '1') {
     const click = async text => {
       await evaluate(`(()=>{const button=[...document.querySelectorAll('button')].find(button=>button.textContent.includes(${JSON.stringify(text)}));if(!button)throw new Error('Missing button');button.click()})()`)
       await sleep(150)

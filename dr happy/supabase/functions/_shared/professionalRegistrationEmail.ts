@@ -10,7 +10,7 @@ type RegistrationEvent = {
   patientPhone?: string
 } & (
   | { source: 'invite' }
-  | { source: 'booking'; date: string; time: string; location: string; status: 'confirmed' | 'pending_payment' | 'pending'; consultationMode?: 'presential' | 'video' }
+  | { source: 'booking'; date: string; time: string; location: string; status: 'confirmed' | 'pending_payment' | 'pending'; consultationMode?: 'presential' | 'video'; patientConfirmationEmailFailed?: boolean }
 )
 
 function escapeHtml(value: string): string {
@@ -42,6 +42,7 @@ export function registrationEmail(event: RegistrationEvent, professionalName: st
       `Estado: ${event.status === 'confirmed' ? 'Turno confirmado' : event.status === 'pending_payment' ? 'Pendiente de pago. El turno todavía no está confirmado.' : 'Solicitud pendiente de atención por el profesional.'}`,
     )
     if (isVideo) lines.push(event.status === 'confirmed' ? 'Pago aprobado. Ingresá a Dr Happy y enviá al paciente el enlace de la videoconsulta.' : 'El paciente solicitó atención virtual. Verificá el pago antes de enviarle el enlace de la videoconsulta.')
+    if (event.patientConfirmationEmailFailed) lines.push('Atención: no se pudo enviar la confirmación al paciente. El turno está confirmado; contactalo para informarle los datos.')
   } else {
     lines.push('Este registro no reserva un turno. La ficha queda disponible para incorporarla a tu base de pacientes.')
   }

@@ -6,6 +6,8 @@ interface WorkspaceResponse {
   professional?: unknown
   workspace?: unknown
   archivedPatients?: unknown[]
+  userId?: string
+  appointments?: unknown[]
 }
 
 async function invokeWorkspace(body: Record<string, unknown>): Promise<WorkspaceResponse> {
@@ -29,6 +31,10 @@ async function invokeWorkspace(body: Record<string, unknown>): Promise<Workspace
 
 export function loadWorkspaceData(): Promise<WorkspaceResponse> {
   return invokeWorkspace({ action: 'load' })
+}
+
+export function loadWorkspaceAppointments(): Promise<WorkspaceResponse> {
+  return invokeWorkspace({ action: 'load-appointments' })
 }
 
 export function saveWorkspaceData(params: { profile: unknown; patients: unknown[]; appointments: unknown[]; treatmentLedger?: unknown[]; knownPatientIds?: string[] }): Promise<WorkspaceResponse> {

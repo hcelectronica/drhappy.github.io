@@ -251,25 +251,53 @@ Deno.serve(async (request) => {
     })
     if (confirmError) return jsonResponse(500, { success: false, message: `No se pudo confirmar el turno pagado: ${confirmError.message}` })
     if (!confirmed) return jsonResponse(200, { success: true, ignored: true, paymentStatus })
-    if (isVideo) {
-      // A webhook can be repeated or concurrent. Claim before SMTP to avoid duplicate notices.
-      const { data: claimed, error: claimError } = await admin.from('public_booking_reservations')
-        .update({ video_notice_claimed_at: new Date().toISOString() }).eq('id', reservation.id)
-        .is('video_notice_claimed_at', null).select('id')
-      if (claimError) return jsonResponse(500, { success: false, message: 'No se pudo preparar el aviso de videoconsulta.' })
-      if (claimed?.length) await notifyProfessionalRegistration({
+    let professionalEmailFailed = false
+    const { error: expiredProfessionalClaimError } = await admin.from('public_booking_reservations')
+      .update({ professional_confirmation_status: 'failed' })
+      .eq('id', reservation.id).eq('professional_confirmation_status', 'sending')
+      .lt('professional_confirmation_claimed_at', new Date(Date.now() - 10 * 60_000).toISOString())
+    if (expiredProfessionalClaimError) return jsonResponse(500, { success: false, message: 'No se pudo revisar el aviso al profesional.' })
+    const { data: professionalClaim, error: professionalClaimError } = await admin.from('public_booking_reservations')
+      .update({ professional_confirmation_status: 'sending', professional_confirmation_claimed_at: new Date().toISOString() })
+      .eq('id', reservation.id).eq('status', 'confirmed').in('professional_confirmation_status', ['pending', 'failed']).select('id')
+    if (professionalClaimError) return jsonResponse(500, { success: false, message: 'No se pudo preparar el aviso al profesional.' })
+    if (professionalClaim?.length) {
+      const professionalEmailSent = await notifyProfessionalRegistration({
         admin, url: supabaseUrl, key: serviceRoleKey, professionalId: reservation.professional_id, eventId: reservation.appointment_id,
         event: { source: 'booking', patientName: reservation.patient_name, patientEmail: reservation.patient_email || '',
           patientPhone: reservation.patient_phone || '', date: reservation.slot_date, time: reservation.slot_time,
-          location: confirmedAppointment.location, status: 'confirmed', consultationMode: 'video' },
+          location: confirmedAppointment.location, status: 'confirmed', consultationMode: isVideo ? 'video' : 'presential' },
       })
+      professionalEmailFailed = !professionalEmailSent
+      const { error: professionalStatusError } = await admin.from('public_booking_reservations')
+        .update({ professional_confirmation_status: professionalEmailSent ? 'sent' : 'failed' })
+        .eq('id', reservation.id).eq('professional_confirmation_status', 'sending')
+      if (professionalStatusError) return jsonResponse(500, { success: false, message: 'No se pudo registrar el aviso al profesional.' })
     }
-    let emailConfirmationSentAt: string | undefined
-    if (reservation.patient_email && reservation.payment_status !== 'approved') {
+    const { error: expiredClaimError } = await admin.from('public_booking_reservations')
+      .update({ confirmation_email_status: 'failed' })
+      .eq('id', reservation.id).eq('confirmation_email_status', 'sending')
+      .lt('confirmation_email_claimed_at', new Date(Date.now() - 10 * 60_000).toISOString())
+    if (expiredClaimError) return jsonResponse(500, { success: false, message: 'No se pudo revisar el estado del correo de confirmación.' })
+    const { data: emailClaim, error: emailClaimError } = await admin.from('public_booking_reservations')
+      .update({ confirmation_email_status: 'sending', confirmation_email_claimed_at: new Date().toISOString() })
+      .eq('id', reservation.id).eq('status', 'confirmed').in('confirmation_email_status', ['pending', 'failed']).select('id')
+    if (emailClaimError) return jsonResponse(500, { success: false, message: 'No se pudo preparar el correo de confirmación.' })
+    if (emailClaim?.length) {
+      if (!reservation.patient_email) {
+        const { error } = await admin.from('public_booking_reservations')
+          .update({ confirmation_email_status: 'failed' }).eq('id', reservation.id).eq('confirmation_email_status', 'sending')
+        if (error) console.error('[mercadopago-patient-webhook] No se pudo registrar la falta de email', { appointmentId: reservation.appointment_id, code: error.code })
+        console.error('[mercadopago-patient-webhook] Turno confirmado sin email de paciente', { appointmentId: reservation.appointment_id })
+        return jsonResponse(500, { success: false, message: 'El turno está confirmado, pero falta el email del paciente.' })
+      }
       const { data: professional } = await admin.from('professionals').select('full_name, specialty').eq('id', reservation.professional_id).maybeSingle()
-      const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+      let emailSent = false
+      try {
+        const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10000),
         body: JSON.stringify({
           to: reservation.patient_email,
           subject: `Turno confirmado con ${professional?.full_name || 'tu profesional'} - ${reservation.slot_date} ${reservation.slot_time} hs`,
@@ -286,17 +314,27 @@ Deno.serve(async (request) => {
             amountConcept: reservation.amount_concept || 'sena',
           },
         }),
-      })
-      if (emailResponse.ok) emailConfirmationSentAt = new Date().toISOString()
-    }
-    if (emailConfirmationSentAt) {
+        })
+        const emailResult: unknown = await emailResponse.json()
+        emailSent = emailResponse.ok && Boolean(emailResult && typeof emailResult === 'object'
+          && 'success' in emailResult && emailResult.success === true)
+        if (!emailSent) console.error('[mercadopago-patient-webhook] Confirmación no enviada', { appointmentId: reservation.appointment_id, status: emailResponse.status })
+      } catch (error) {
+        console.error('[mercadopago-patient-webhook] Confirmación no enviada', { appointmentId: reservation.appointment_id, message: error instanceof Error ? error.message : String(error) })
+      }
+      const { error: emailStatusError } = await admin.from('public_booking_reservations')
+        .update({ confirmation_email_status: emailSent ? 'sent' : 'failed' })
+        .eq('id', reservation.id).eq('confirmation_email_status', 'sending')
+      if (emailStatusError) return jsonResponse(500, { success: false, message: 'No se pudo registrar el estado del correo de confirmación.' })
+      if (!emailSent) return jsonResponse(503, { success: false, message: 'El turno está confirmado, pero no se pudo enviar el email.' })
       const { error } = await admin.rpc('mark_public_booking_email_sent', {
         p_professional_id: reservation.professional_id,
         p_appointment_id: reservation.appointment_id,
-        p_sent_at: emailConfirmationSentAt,
+        p_sent_at: new Date().toISOString(),
       })
-      if (error) return jsonResponse(500, { success: false, message: `No se pudo registrar el envío del email: ${error.message}` })
+      if (error) console.error('[mercadopago-patient-webhook] No se pudo registrar el envío del email en la agenda', { appointmentId: reservation.appointment_id, code: error.code })
     }
+    if (professionalEmailFailed) return jsonResponse(503, { success: false, message: 'El turno está confirmado, pero no se pudo enviar el aviso al profesional.' })
   }
   return jsonResponse(200, { success: true, paymentStatus })
 })
