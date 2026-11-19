@@ -33,6 +33,7 @@ async function navigate(query = '') {
 }
 try {
   await send('Page.enable')
+  if (!process.env.TEST_BOOKING_ONLY) {
   await navigate()
   await wait(`document.querySelectorAll('.reception-choice').length===5`)
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('.reception-choice strong')].map(e=>e.textContent)`),
@@ -60,7 +61,9 @@ try {
   await wait(`window.fixtureCalls.some(c=>c.action==='save-settings')`)
   assert.equal(await evaluate(`window.fixtureCalls.find(c=>c.action==='save-settings').settings.video`), false)
   assert.equal(await evaluate(`document.documentElement.scrollWidth>innerWidth`), false)
+  }
   const bookingCalls = []
+  let bookingResponse = { success: false, message: 'Fixture: sin reserva real ni pago.' }
   socket.addEventListener('message', async message => {
     const event = JSON.parse(message.data)
     if (event.method !== 'Fetch.requestPaused') return
@@ -70,7 +73,7 @@ try {
       const response = body.action === 'get-public-agenda'
         ? { success: true, profile: { professionalName: 'Fixture', horizonDays: 60, location: 'Consultorio' },
           days: [{ date: new Date().toISOString().slice(0, 10), slots: [{ time: '15:00', blockId: 'fixture', modality: 'private', available: true, label: 'Consulta', location: 'Consultorio' }] }] }
-        : { success: false, message: 'Fixture: sin reserva real ni pago.' }
+        : bookingResponse
       await send('Fetch.fulfillRequest', { requestId: event.params.requestId, responseCode: 200,
         responseHeaders: [{ name: 'Content-Type', value: 'application/json' }, { name: 'Access-Control-Allow-Origin', value: '*' }, { name: 'Access-Control-Allow-Headers', value: 'content-type,apikey,authorization' }],
         body: Buffer.from(JSON.stringify(response)).toString('base64') })
@@ -88,8 +91,28 @@ try {
   assert.equal(bookingCalls[0].blockId, 'fixture')
   const request = bookingCalls.find(call => call.action === 'book-public-slot')
   assert.equal(request.consultationMode, 'video'); assert.equal(request.modality, 'private')
+  bookingResponse = { success: true, paymentRequired: false, emailSent: false,
+    appointment: { date: new Date().toISOString().slice(0, 10), time: '15:00', amountToCharge: null } }
+  for (const path of ['/turnos/index.html', '/turnos.html']) {
+    await send('Page.navigate', { url: `${origin}${path}?p=fixture&b=fixture` })
+    await wait(`document.querySelector('.first-available:not(:disabled)')`)
+    await evaluate(`document.querySelector('.first-available').click()`)
+    await evaluate(`if(document.querySelector('#patientName')) document.querySelector('#patientName').value='Paciente de prueba'; else {document.querySelector('#patientLastName').value='Prueba';document.querySelector('#patientFirstName').value='Fixture'};document.querySelector('#patientDni').value='12345678';document.querySelector('#patientEmail').value='fixture@example.invalid';document.querySelector('#confirmBtn').click()`)
+    await wait(`document.querySelector('#message').textContent.includes('No vuelvas a reservar')`)
+    assert.match(await evaluate(`document.querySelector('#message').textContent`), /Turno confirmado/)
+    assert.match(await evaluate(`document.querySelector('#message').textContent`), /No se pudo enviar el email/)
+  }
+  bookingResponse = { success: true, paymentRequired: true, emailSent: false, paymentUrl: 'https://example.invalid/pay',
+    appointment: { date: new Date().toISOString().slice(0, 10), time: '15:00', amountToCharge: 100 } }
+  await send('Page.navigate', { url: `${origin}/turnos.html?p=fixture&b=fixture` })
+  await wait(`document.querySelector('.first-available:not(:disabled)')`)
+  await evaluate(`document.querySelector('.first-available').click();document.querySelector('#patientName').value='Paciente de prueba';document.querySelector('#patientDni').value='12345678';document.querySelector('#patientEmail').value='fixture@example.invalid';document.querySelector('#confirmBtn').click()`)
+  await wait(`document.querySelector('#message').textContent.includes('Reserva pendiente de pago')`)
+  assert.match(await evaluate(`document.querySelector('#message').textContent`), /se confirma cuando se apruebe el pago/)
   await send('Fetch.disable')
-  console.log('PASS: five correct destinations, Dr Happy logo, no page scroll 320x568/360x640/390x844/1280x720/844x390, professional toggle/save, paid booking UI forwards video origin without real booking.')
+  console.log(process.env.TEST_BOOKING_ONLY
+    ? 'PASS: video origin, failed free confirmation emails, and pending paid booking messages without real bookings.'
+    : 'PASS: reception layout and settings, video origin, failed free confirmation emails, and pending paid booking messages without real bookings.')
 } finally {
   await send('Emulation.clearDeviceMetricsOverride').catch(() => {})
   const closed = new Promise(resolve => socket.addEventListener('close', resolve, { once: true }))
