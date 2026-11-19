@@ -203,6 +203,37 @@ test('editor confirms deletion, saves once, preserves other IDs and waits for su
   assert.equal(writes.length,3)
 })
 
+test('hour selectors preserve existing non-hour schedules and update only the selected turnera', async()=>{
+  const source=await readFile(new URL('../src/PublicTurnerasEditor.tsx',import.meta.url),'utf8')
+  const exports={}
+  vm.runInNewContext(ts.transpile(source,{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}),{
+    exports,require:name=>name==='react/jsx-runtime' ? {jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})} : {buildFixedPublicBookingUrl:()=>'',buildWhatsAppShareUrl:()=>'',turneraSlugs},
+    window:{confirm:()=>true},crypto,
+  })
+  const find=(node,predicate)=>Array.isArray(node) ? node.flatMap(n=>find(n,predicate)) : node && typeof node==='object' && node.props ? [...(predicate(node)?[node]:[]),...find(node.props.children,predicate)] : []
+  const settings={professionalId:'owner',professionalName:'Fixture',slug:'fixture',enabled:true,blocks:[
+    {...blocks[0],startTime:'08:30',endTime:'13:00'}, {...blocks[1],startTime:'',endTime:'18:00'}
+  ]}
+  let changed, saved
+  const tree=exports.default({settings,defaultSchedule:template,saving:false,mercadoPagoConnected:true,error:null,notice:null,
+    onChange:value=>{changed=value},onSave:async value=>{saved=value;return true},onCopy:async()=>{}})
+  const selects=find(tree,n=>n.type==='label' && ['Desde','Hasta'].includes(n.props.children?.[0])).map(label=>label.props.children[1])
+  assert.equal(selects.length,4)
+  assert.equal(selects[0].props.value,'08:30')
+  const options=find(selects[0],n=>n.type==='option').map(n=>n.props.value)
+  assert.equal(options.length,25)
+  assert(options.includes('08:30'))
+  assert.equal(options.filter(value=>value.endsWith(':00')).length,24)
+  assert(find(selects[2],n=>n.type==='option').some(n=>n.props.value===''))
+  find(tree,n=>n.type==='button' && n.props.children==='Guardar cambios')[0].props.onClick()
+  assert.equal(saved.blocks[0].startTime,'08:30', 'saving other fields does not change an existing schedule')
+  selects[0].props.onChange({target:{value:'09:00'}})
+  assert.equal(changed.blocks[0].startTime,'09:00')
+  assert.equal(changed.blocks[0].endTime,'13:00')
+  assert.equal(changed.blocks[0].slotCount,8)
+  assert.equal(changed.blocks[1].startTime,'')
+})
+
 test('individual links use stable block IDs while legacy routes remain unchanged', async()=>{
   const source=await readFile(new URL('../src/publicBookingService.ts',import.meta.url),'utf8')
   const exports={}

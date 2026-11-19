@@ -13,6 +13,10 @@ interface Props {
   onCopy: (url: string) => Promise<void>
 }
 const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+const wholeHours = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`)
+function timeOptions(current: string): string[] {
+  return current && !wholeHours.includes(current) ? [...wholeHours, current].sort() : wholeHours
+}
 function capacity(block: Pick<PublicBookingAvailabilityBlock, 'startTime' | 'endTime' | 'durationMinutes'>): number {
   const minutes = (time: string) => { const [h, m] = time.split(':').map(Number); return h * 60 + m }
   return Math.max(0, Math.floor((minutes(block.endTime) - minutes(block.startTime)) / block.durationMinutes)) || 0
@@ -67,8 +71,14 @@ export default function PublicTurnerasEditor({ settings, defaultSchedule, saving
               </select></label>
             </div>
             <div className="capacity-controls">
-              <label>Desde<input type="time" value={block.startTime} onChange={event => update(block.id, { startTime: event.target.value })} /></label>
-              <label>Hasta<input type="time" value={block.endTime} onChange={event => update(block.id, { endTime: event.target.value })} /></label>
+              <label>Desde<select value={block.startTime} onChange={event => update(block.id, { startTime: event.target.value })}>
+                {!block.startTime ? <option value="">Elegí una hora</option> : null}
+                {timeOptions(block.startTime).map(time => <option key={time} value={time}>{time}</option>)}
+              </select></label>
+              <label>Hasta<select value={block.endTime} onChange={event => update(block.id, { endTime: event.target.value })}>
+                {!block.endTime ? <option value="">Elegí una hora</option> : null}
+                {timeOptions(block.endTime).map(time => <option key={time} value={time}>{time}</option>)}
+              </select></label>
               <label>Duración del turno<select value={block.durationMinutes} onChange={event => update(block.id, { durationMinutes: Number(event.target.value) })}>
                 {Array.from(new Set([15, 20, 30, 45, 60, 90, block.durationMinutes])).sort((a, b) => a - b).map(minutes => <option key={minutes} value={minutes}>{minutes} minutos</option>)}
               </select></label>
