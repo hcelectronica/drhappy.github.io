@@ -352,6 +352,14 @@ Con acceso al Balance, las solicitudes con pago `approved` y estado pendiente de
 
 Despliegue: aplicar la migración y publicar `paid-clinical-documents` y `mercadopago-patient-webhook` con `verify_jwt=false`; luego publicar el build web y `public/.htaccess` en Hostinger. No se deben activar precios de prueba hasta comprobar la cuenta Mercado Pago conectada de cada perfil.
 
+## Solicitudes de receta IOMA
+
+Cada profesional médico puede habilitar Receta I.O.M.A. en su recepción de forma independiente de los documentos pagos y sin conectar Mercado Pago. El paciente informa sus datos, número de afiliado y medicación solicitada. No se solicitan ni almacenan capturas ni tokens. El profesional recibe un aviso por correo sin incluir datos clínicos. Si el envío del aviso falla, la solicitud permanece guardada y se informa al paciente.
+
+La ficha se crea o reutiliza por DNI dentro del perfil del profesional; no se reactiva una ficha archivada. Al marcar la solicitud como atendida se registra una evolución de receta digital IOMA en esa ficha, sin emitir ni facturar automáticamente. El profesional coordina por fuera de la aplicación los datos adicionales que necesite. La entrega del correo no está garantizada.
+
+Validación: `node --test tests/ioma-prescriptions.test.mjs tests/patient-reception.test.mjs` y `tests/ioma-prescriptions.database.sql` en transacción con rollback, junto con la prueba de reservas existentes. Aplicar la migración `20261120010000_ioma_prescription_requests.sql` antes de desplegar `ioma-prescriptions`, `patient-reception` y el frontend.
+
 ## Documentos clínicos
 
 Desde la ficha del paciente, **Emitir certificado** permite elegir entre un certificado médico y una orden de estudios complementarios. En la orden se busca entre estudios frecuentes codificados o se agrega uno en texto libre; el profesional debe indicar el motivo clínico, puede añadir observaciones y revisar el borrador antes de emitir. Si el contenido no cabe en el PDF, se informa el error antes de guardar la orden. Ambos documentos se guardan en la historia clínica con firma, PDF y QR; las órdenes se identifican como tales en el historial, la descarga y el envío.

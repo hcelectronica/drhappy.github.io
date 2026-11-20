@@ -38,6 +38,8 @@ const SharedFolderPage = sharedFolderToken && !PaidDocumentsPublicPage && !Patie
 const receptionSlug = window.location.pathname.match(/^\/r\/([a-z0-9-]{1,24})\/?$/)?.[1]
   || new URLSearchParams(window.location.search).get('reception')
 const PatientReception = receptionSlug ? lazy(() => import('./PatientReception')) : null
+const iomaSlug = new URLSearchParams(window.location.search).get('ioma')
+const IomaPrescriptionPage = iomaSlug ? lazy(() => import('./IomaPrescriptionPage')) : null
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -53,7 +55,9 @@ createRoot(document.getElementById('root')!).render(
                 ? <Suspense fallback={<p style={{ textAlign: 'center', marginTop: '30vh' }}>Abriendo estudios…</p>}><SharedFolderPage token={sharedFolderToken} /></Suspense>
                 : PatientReception
                   ? <Suspense fallback={<p role="status">Abriendo recepción…</p>}><PatientReception slug={receptionSlug!} /></Suspense>
-                  : <App />}
+                  : IomaPrescriptionPage
+                    ? <Suspense fallback={<p role="status">Abriendo solicitud…</p>}><IomaPrescriptionPage slug={iomaSlug!} /></Suspense>
+                    : <App />}
       </ErrorNotificationProvider>
     </AppErrorBoundary>
   </StrictMode>,

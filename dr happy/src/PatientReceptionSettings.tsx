@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { callReception, receptionTools, receptionUrl } from './patientReceptionService'
 import type { ReceptionSettings, ReceptionTool } from './patientReceptionService'
+import IomaReceptionSettings from './IomaReceptionSettings'
 import './patientReception.css'
 
 export default function PatientReceptionSettings({ onClose }: { onClose: () => void }) {
   const [settings, setSettings] = useState<ReceptionSettings | null>(null)
   const [savedSlug, setSavedSlug] = useState('')
   const [available, setAvailable] = useState<Partial<Record<ReceptionTool, boolean>>>({})
+  const [iomaAvailable, setIomaAvailable] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -18,7 +20,7 @@ export default function PatientReceptionSettings({ onClose }: { onClose: () => v
       const result = await callReception({ action: 'get-settings' })
       if (!result.success || !result.settings || !result.available) throw new Error(result.message || 'No se pudo cargar la recepción.')
       if (!cancelled) {
-        setSettings(result.settings); setSavedSlug(result.settings.slug); setAvailable(result.available)
+        setSettings(result.settings); setSavedSlug(result.settings.slug); setAvailable(result.available); setIomaAvailable(result.iomaAvailable === true)
       }
     }
     load().catch(cause => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'No se pudo cargar la recepción.') })
@@ -63,5 +65,6 @@ export default function PatientReceptionSettings({ onClose }: { onClose: () => v
         <a href={`https://wa.me/?text=${encodeURIComponent(`Elegí cómo atenderte desde mi recepción: ${receptionUrl(savedSlug)}`)}`} target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a>
       </div>}
     </form>}
+    {iomaAvailable && <IomaReceptionSettings />}
   </dialog>
 }

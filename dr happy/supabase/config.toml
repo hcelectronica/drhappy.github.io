@@ -88,3 +88,6 @@ verify_jwt = false
 verify_jwt = false
 [functions.patient-reception]
 verify_jwt = false
+
+[functions.ioma-prescriptions]
+verify_jwt = false

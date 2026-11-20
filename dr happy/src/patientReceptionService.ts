@@ -12,9 +12,10 @@ export type ReceptionSettings = Record<ReceptionTool, boolean> & { slug: string;
 export interface ReceptionResponse {
   success: boolean
   message?: string
+  iomaAvailable?: boolean
   settings?: ReceptionSettings
   available?: Record<ReceptionTool, boolean>
-  reception?: { displayName: string; links: Partial<Record<ReceptionTool, string>>; turneras?: Array<{ id: string; label: string; url: string; location: string; amountToCharge: number | null }>; documents?: Array<{ type: string; label: string; url: string; amount: number }> }
+  reception?: { displayName: string; links: Partial<Record<ReceptionTool, string>>; iomaUrl?: string | null; turneras?: Array<{ id: string; label: string; url: string; location: string; amountToCharge: number | null }>; documents?: Array<{ type: string; label: string; url: string; amount: number }> }
 }
 export function buildReceptionChoices(reception: NonNullable<ReceptionResponse['reception']>) {
   const tools = receptionTools.flatMap(tool => {
@@ -32,6 +33,7 @@ export function buildReceptionChoices(reception: NonNullable<ReceptionResponse['
     ...tools.filter(tool => tool.kind === 'registration'),
     ...turneras.filter(turnera => isIoma(turnera.title)),
     ...tools.filter(tool => tool.kind === 'studies'),
+    ...(reception.iomaUrl ? [{ key: 'ioma-prescription', kind: 'ioma', title: 'RECETA I.O.M.A', description: 'Solicitud sin cobro online', icon: 'document', url: reception.iomaUrl }] : []),
     ...(reception.documents ?? []).map(document => ({ key: `document-${document.type}`, kind: 'documents', title: document.label, description: 'Evaluación profesional', icon: 'document', url: document.url })),
     ...tools.filter(tool => tool.kind !== 'registration' && tool.kind !== 'studies'),
     ...turneras.filter(turnera => !isIoma(turnera.title)),

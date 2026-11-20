@@ -5,6 +5,7 @@ import { resolveProfessionalId } from '../_shared/professionalSession.ts'
 import { normalizeBlocks } from '../_shared/publicBookingBlocks.ts'
 import { documentServices, documentServiceOptions } from '../_shared/clinicalDocumentServices.ts'
 import { ensurePublicAlias, resolvePublicToolSettings, publicDocumentPaths } from '../_shared/professionalPublicAlias.ts'
+import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from '../_shared/medicalToolAccess.ts'
 
 const tools = ['documents', 'studies', 'booking', 'registration', 'video'] as const
 const slugPattern = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/
@@ -34,18 +35,19 @@ serve(async request => {
       if (!id) return reply(401, { success: false, message: 'Iniciá sesión para configurar tu recepción.' })
       professionalId = id
     }
-    const professional = await admin.from('professionals').select('full_name,active').eq('id', professionalId).maybeSingle()
+    const professional = await admin.from('professionals').select(`${MEDICAL_TOOL_ACCESS_COLUMNS},full_name`).eq('id', professionalId).maybeSingle()
     if (professional.error) throw professional.error
     if (!professional.data || professional.data.active === false) return reply(404, { success: false, message: 'Esta recepción no está disponible.' })
     const publicAlias = await ensurePublicAlias(admin, professionalId)
-    const [booking, virtual, documents, invite, payment] = await Promise.all([
+    const [booking, virtual, documents, invite, payment, ioma] = await Promise.all([
       admin.from('public_booking_profiles').select('slug,enabled,availability_blocks').eq('professional_id', professionalId).maybeSingle(),
       admin.from('virtual_consult_settings').select('slug,enabled').eq('professional_id', professionalId).maybeSingle(),
       admin.from('paid_clinical_document_settings').select('slug,certificate_enabled,certificate_price,study_order_enabled,study_order_price,fitness_enabled,fitness_price,prescription_enabled,prescription_price').eq('professional_id', professionalId).maybeSingle(),
       admin.from('patient_invite_links').select('token').eq('professional_id', professionalId).maybeSingle(),
       admin.from('professional_payment_accounts').select('status').eq('professional_id', professionalId).eq('provider', 'mercadopago').maybeSingle(),
+      admin.from('ioma_prescription_settings').select('enabled').eq('professional_id', professionalId).maybeSingle(),
     ])
-    for (const result of [booking, virtual, documents, invite, payment]) if (result.error) throw result.error
+    for (const result of [booking, virtual, documents, invite, payment, ioma]) if (result.error) throw result.error
     const base = 'https://www.drhappy.com.ar'
     const activeBlocks = booking.data?.enabled ? normalizeBlocks(booking.data.availability_blocks)
       .filter(block => block.enabled !== false && (block.modality !== 'private' || (Number(block.amountToCharge) > 0 && payment.data?.status === 'connected'))) : []
@@ -65,6 +67,7 @@ serve(async request => {
     if (isPublic) {
       return reply(200, { success: true, reception: {
         displayName: settings!.display_name,
+        iomaUrl: ioma.data?.enabled && hasMedicalToolRowAccess(professional.data, ['attention']) ? `${base}/?ioma=${encodeURIComponent(publicAlias)}` : null,
         turneras: settings!.booking === true ? turneras : [],
         documents: settings!.documents === true && documents.data && payment.data?.status === 'connected' ? documentServices.filter(service => {
           const option = documentServiceOptions(documents.data!)[service.type]
@@ -85,7 +88,8 @@ serve(async request => {
           display_name: professional.data.full_name || 'Mi consultorio', enabled: false,
           ...Object.fromEntries(tools.map(tool => [tool, false])),
         }), slug: publicAlias,
-      }, available: Object.fromEntries(tools.map(tool => [tool, !!destinations[tool]])) })
+      }, available: Object.fromEntries(tools.map(tool => [tool, !!destinations[tool]])),
+      iomaAvailable: hasMedicalToolRowAccess(professional.data, ['attention']) })
     }
     if (body.action !== 'save-settings') return reply(400, { success: false, message: 'Acción inválida.' })
     const input = body.settings
@@ -96,7 +100,7 @@ serve(async request => {
       || ['enabled', ...tools].some(field => typeof value[field] !== 'boolean')) {
       return reply(400, { success: false, message: 'Completá el nombre y un enlace de hasta 24 letras minúsculas, números o guiones, con todas las opciones revisadas.' })
     }
-    if (value.enabled && !tools.some(tool => value[tool] && destinations[tool])) return reply(400, { success: false, message: 'Activá al menos una herramienta disponible.' })
+    if (value.enabled && !(ioma.data?.enabled && hasMedicalToolRowAccess(professional.data, ['attention'])) && !tools.some(tool => value[tool] && destinations[tool])) return reply(400, { success: false, message: 'Activá al menos una herramienta disponible.' })
     for (const tool of tools) if (value[tool] && !destinations[tool]) return reply(409, { success: false, message: 'Una herramienta elegida no está habilitada. Revisá sus ajustes y volvé a abrir Mi recepción.' })
     const result = await admin.from('patient_receptions').upsert({
       professional_id: professionalId, slug: value.slug, display_name: value.display_name.trim(), enabled: value.enabled,

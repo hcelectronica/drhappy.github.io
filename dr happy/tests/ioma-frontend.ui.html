@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body><div id="root"></div>
+<script>
+sessionStorage.setItem('drhappy-professional-session', 'fixture-session')
+localStorage.setItem('drhappy-session-v2', JSON.stringify({userId:'fixture', token:'fixture-session'}))
+window.fixtureCalls = []
+const originalFetch = window.fetch
+window.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : input.url
+  if (!url.includes('/functions/v1/ioma-prescriptions')) return originalFetch(input, init)
+  const body = JSON.parse(init.body)
+  window.fixtureCalls.push(body)
+  let result = { success: true }
+  if (body.action === 'public-info') result = { ...result, enabled: true, professionalName: 'Profesional ficticio' }
+  if (body.action === 'submit') result = { ...result, emailSent: false }
+  if (body.action === 'get-settings' || body.action === 'save-settings') result = { ...result, enabled: body.enabled ?? false, slug: 'fixture' }
+  if (body.action === 'list') result.requests = Array.from({ length: body.offset === 0 ? 100 : 1 }, (_, index) => ({
+    id: String(body.offset + index), patient_first_name: 'Paciente', patient_last_name: 'Ficticio', patient_dni: '12345678',
+    patient_email: 'fixture@example.invalid', patient_phone: '12345678', patient_birth_date: '2000-01-01',
+    insurance_member_number: 'fixture', medication: 'Prueba', status: 'pending_review', email_status: 'failed',
+    created_at: '2026-01-01T00:00:00Z',
+  }))
+  return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } })
+}
+</script>
+<script type="module">
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import Page from '/src/IomaPrescriptionPage.tsx'
+import Settings from '/src/IomaReceptionSettings.tsx'
+import '/src/index.css'
+import '/src/patientReception.css'
+createRoot(document.getElementById('root')).render(new URLSearchParams(location.search).has('settings')
+  ? React.createElement(Settings) : React.createElement(Page, { slug: 'fixture' }))
+</script></body></html>

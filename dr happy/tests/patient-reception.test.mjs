@@ -6,6 +6,7 @@ import ts from 'typescript'
 import { normalizeBlocks } from '../supabase/functions/_shared/publicBookingBlocks.ts'
 import { documentServices, documentServiceOptions } from '../supabase/functions/_shared/clinicalDocumentServices.ts'
 import { ensurePublicAlias, resolvePublicToolSettings, publicDocumentPaths } from '../supabase/functions/_shared/professionalPublicAlias.ts'
+import { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS } from '../supabase/functions/_shared/medicalToolAccess.ts'
 
 const source = await readFile(new URL('../supabase/functions/patient-reception/index.ts', import.meta.url), 'utf8')
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
@@ -14,13 +15,14 @@ function fixture() {
     documents: true, studies: true, booking: true, registration: true, video: true }
   const db = {
     professional_public_aliases: [{ alias: 'fixture', professional_id: 'owner', is_primary: true }],
-    professionals: [{ id: 'owner', active: true, full_name: 'Doctor' }],
+    professionals: [{ id: 'owner', active: true, full_name: 'Doctor', is_admin: true }],
     patient_receptions: [settings],
     public_booking_profiles: [{ professional_id: 'owner', slug: 'doctor-booking', enabled: true, availability_blocks: [{ id: 'private', label: 'Particular', modality: 'private', amountToCharge: 100, days: [1,2,3,4,5], startTime: '09:00', endTime: '12:00', durationMinutes: 30, slotCount: 6 }] }],
     virtual_consult_settings: [{ professional_id: 'owner', enabled: true, slug: 'doctor-virtual' }],
     paid_clinical_document_settings: [{ professional_id: 'owner', certificate_enabled: true, slug: 'doctor-documents' }],
     patient_invite_links: [{ professional_id: 'owner', token: 'doctor-invite' }],
     professional_payment_accounts: [{ professional_id: 'owner', provider: 'mercadopago', status: 'connected' }],
+    ioma_prescription_settings: [],
   }
   const state = { identity: 'owner', conflict: false, fail: false }
   const writes = []
@@ -46,6 +48,7 @@ function fixture() {
     require: name => name.includes('server.ts') ? { serve: fn => { handler = fn } }
       : name.includes('clinicalDocumentServices') ? { documentServices, documentServiceOptions }
       : name.includes('professionalPublicAlias') ? { ensurePublicAlias, resolvePublicToolSettings, publicDocumentPaths }
+      : name.includes('medicalToolAccess') ? { hasMedicalToolRowAccess, MEDICAL_TOOL_ACCESS_COLUMNS }
       : name.includes('publicBookingBlocks') ? { normalizeBlocks } : name.includes('supabase-js') ? { createClient: () => admin }
         : name.includes('professionalSession') ? { resolveProfessionalId: async () => state.identity } : { corsHeaders: {} },
   })
@@ -55,6 +58,17 @@ function fixture() {
   }
   return { db, state, call, writes, settings }
 }
+test('free IOMA prescription link is independent of payment and other document services', async () => {
+  const h = fixture()
+  h.db.ioma_prescription_settings.push({ professional_id: 'owner', enabled: true })
+  h.db.professional_payment_accounts[0].status = 'disconnected'
+  h.settings.documents = false
+  const result = await h.call({ action: 'public', slug: 'fixture' })
+  assert.equal(result.status, 200)
+  assert.equal(result.body.reception.iomaUrl, 'https://www.drhappy.com.ar/?ioma=fixture')
+  h.db.ioma_prescription_settings[0].enabled = false
+  assert.equal((await h.call({ action: 'public', slug: 'fixture' })).body.reception.iomaUrl, null)
+})
 test('public reception exposes only selected internal destinations; paid video is distinct and no patient data is returned', async () => {
   const h = fixture(); const result = await h.call({ action: 'public', slug: 'fixture', professionalId: 'attacker' })
   assert.equal(result.status, 200)
